@@ -46,6 +46,22 @@
       "description": "Seller's identifier for the creative whose status changed. References the same id space as `list_creatives` / `sync_creatives` responses.",
       "x-entity": "creative"
     },
+    "revision_id": {
+      "$ref": "/schemas/core/creative-revision-id.json",
+      "description": "Buyer-authored input revision to which this transition applies. Required when the reviewed state has revision identity and the seller advertises creative.supports_revisions; it need not be the current list revision when the fire is received. Omitted for unversioned current content. A stale review outcome MUST NOT emit a fire as though it applied to a newer current revision.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "revision_transition_attribution": {
+            "required_capability": "creative.supports_revisions",
+            "required_when_transition_applies_to_bound_revision": true,
+            "must_equal": "revision_to_which_transition_applies",
+            "omit_for_unversioned_content": true,
+            "stale_result_must_not_target_current_revision": true
+          }
+        },
+        "spec": "docs/creative/specification.mdx#lifecycle-webhooks"
+      }
+    },
     "transition": {
       "type": "object",
       "description": "The status transition that triggered this fire. Valid `from` values are restricted to the prior states from which a seller/system-initiated transition can fire (`processing` for processing outcomes, `pending_review` for initial review outcomes, `approved` for re-review/revocation/seller-archive/recoverable suspension, `suspended` for seller-observed recovery or terminal escalation). The post-terminal states `rejected` and `archived` MUST NOT appear as `from` — those would require a buyer-initiated unblock (`sync_creatives` resubmit / unarchive), which does not fire this event.",

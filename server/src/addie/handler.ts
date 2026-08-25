@@ -55,6 +55,7 @@ import {
   DIRECTORY_TOOLS,
   createDirectoryToolHandlers,
 } from './mcp/directory-tools.js';
+import { resolveSlackDirectoryContext } from './directory-access.js';
 import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
@@ -353,6 +354,19 @@ async function createUserScopedTools(
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Shadow the globally registered anonymous directory handlers with a
+  // caller-scoped view. API-access members may discover members_only agents;
+  // Explorer and unauthenticated callers remain public-only.
+  const directoryContext = resolveSlackDirectoryContext(
+    memberContext,
+    options?.isChannelMention ? 'mention' : 'dm',
+  );
+  const directoryHandlers = createDirectoryToolHandlers(directoryContext);
+  allTools.push(...DIRECTORY_TOOLS);
+  for (const [name, handler] of directoryHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   const slackKnowledge = createSlackKnowledgeRequestTools(
     slackUserId

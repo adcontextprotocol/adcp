@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-dialect.json",
+  "title": "Macro Dialect Family",
+  "description": "Governed family for a creative macro token. `vendor` is qualified by an authority-controlled namespace and immutable revision on the declaration/capability; AdCP does not enumerate companies as dialects. `unknown` is declaration-only and always byte-preserved.",
+  "type": "string",
+  "enum": ["adcp", "iab_vast", "iab_daast", "vendor", "unknown"],
+  "enumDescriptions": {
+    "adcp": "AdCP universal macro syntax and semantics.",
+    "iab_vast": "IAB VAST macro syntax, qualified by the referenced live-registry revision.",
+    "iab_daast": "IAB DAAST macro syntax, qualified by the referenced specification/registry revision.",
+    "vendor": "A vendor- or platform-owned macro namespace, qualified by its authoritative URI and immutable revision.",
+    "unknown": "The token namespace cannot be established. Preserve the token unchanged and never advertise it as resolvable."
+  }
+}

@@ -12,6 +12,7 @@ import {
   runWithSessionContext,
   flushDirtySessions,
   findMediaBuyAcrossSessions,
+  findSessionsMatching,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
   SESSION_RETENTION_MS,
@@ -1241,6 +1242,30 @@ describe('session state', () => {
         });
         await runWithSessionContext(async () => {
           await expect(findMediaBuyAcrossSessions('missing-buy')).resolves.toBeNull();
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('fails a fan-out scan instead of returning partial session matches', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          await getSession('fanout-scan-one');
+          await getSession('fanout-scan-two');
+          await flushDirtySessions();
+        });
+        const originalGet = store.get.bind(store);
+        store.get = async (collection: string, id: string) => {
+          if (id === 'fanout-scan-two') throw new Error('fan-out scan storage failure');
+          return originalGet(collection, id);
+        };
+
+        await runWithSessionContext(async () => {
+          await expect(findSessionsMatching(() => true)).rejects.toThrow(SESSION_STORE_UNAVAILABLE_MESSAGE);
         });
       } finally {
         setStateStore(null);
@@ -8828,6 +8853,89 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('removes existing localization when localization is explicitly null', async () => {
+    const account = { brand: { domain: 'localization-remove.example' }, operator: 'localization-remove.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const creative = {
+      creative_id: 'cr_localization_remove',
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+      name: 'Localized creative',
+      localization: {
+        source: { locale_variant_id: 'source-en', locale: 'en-US' },
+        target_variants: [],
+        default_locale_variant_id: 'source-en',
+        unmatched_locale_action: 'serve_default',
+      },
+    };
+    const { result: created } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [creative],
+    });
+    expect(created.creatives).toEqual([
+      expect.objectContaining({ creative_id: creative.creative_id, action: 'created' }),
+    ]);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{ ...creative, localization: null }],
+    });
+    expect(updated.creatives).toEqual([
+      expect.objectContaining({ creative_id: creative.creative_id, action: 'updated' }),
+    ]);
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .creatives.get(creative.creative_id);
+    expect(persisted?.localization).toBeUndefined();
+  });
+
+  it('rejects source-asset changes when existing localization is omitted', async () => {
+    const account = { brand: { domain: 'localization-source.example' }, operator: 'localization-source.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const creativeId = 'cr_localization_source_change';
+    const originalAssets = {
+      image: { asset_type: 'image', url: 'https://cdn.example/original.png' },
+    };
+    const { result: created } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: creativeId,
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: originalAssets,
+        localization: {
+          source: { locale_variant_id: 'source-en', locale: 'en-US' },
+          target_variants: [],
+          default_locale_variant_id: 'source-en',
+        },
+      }],
+    });
+    expect(created.creatives).toEqual([
+      expect.objectContaining({ creative_id: creativeId, action: 'created' }),
+    ]);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: creativeId,
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { image: { asset_type: 'image', url: 'https://cdn.example/replacement.png' } },
+      }],
+    });
+    expect(updated.creatives).toEqual([
+      expect.objectContaining({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          field: `creatives[${creativeId}].localization`,
+        })],
+      }),
+    ]);
+
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .creatives.get(creativeId);
+    expect(persisted?.assets).toEqual(originalAssets);
+    expect(persisted?.localization).toBeDefined();
+  });
+
   it('preserves coordinated-placement component assets through creative-library readback', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'takeover-library.example' }, operator: 'takeover-library.example' };
@@ -9959,7 +10067,7 @@ describe('list_creatives handler', () => {
         },
         {
           creative_id: 'cr_image',
-          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250 },
+          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 2 },
           name: 'Image creative',
           assets: {
             image: { asset_type: 'image', url: 'https://cdn.example/image.png', width: 300, height: 250 },
@@ -10047,6 +10155,24 @@ describe('list_creatives handler', () => {
       },
     });
     expect(exactParameterizedFormat.creatives).toEqual([]);
+
+    const { result: mismatchedPixelRatio } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ['cr_image'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 1 }],
+      },
+    });
+    expect(mismatchedPixelRatio.creatives).toEqual([]);
+
+    const { result: exactPixelRatio } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ['cr_image'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 2 }],
+      },
+    });
+    expect((exactPixelRatio.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual(['cr_image']);
 
     const { result: zipBundle } = await simulateCallTool(server2, 'list_creatives', {
       account,
@@ -10291,7 +10417,7 @@ describe('canonical creative build capabilities', () => {
     expect(imageCapability?.format.format_option_id).toBeUndefined();
     expect(supportedFormats.some(format => format.capability_id === 'build_html5')).toBe(false);
     expect((result.creative as any).preview).toEqual({
-      routes: supportedFormats.map(format => ({
+      routes: supportedFormats.filter(format => format.operations.includes('preview')).map(format => ({
         capability_id: format.capability_id,
         rendering_origin: 'agent_approximation',
       })),
@@ -10390,7 +10516,7 @@ describe('canonical creative build capabilities', () => {
     expect(failure.result.code).toBe('FORMAT_NOT_SUPPORTED');
   });
 
-  it('preserves implicit preview routing only on the 3.0 storyboard compatibility surface', async () => {
+  it('infers a unique advertised preview route on current and 3.0 compatibility surfaces', async () => {
     const manifest = {
       format_kind: 'native_in_feed',
       assets: {
@@ -10403,7 +10529,7 @@ describe('canonical creative build capabilities', () => {
       request_type: 'single',
       creative_manifest: manifest,
     });
-    expect(current.result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(current.result.response_type).toBe('single');
 
     const compatServer = createTrainingAgentServer({
       ...DEFAULT_CTX,
@@ -10425,9 +10551,22 @@ describe('canonical creative build capabilities', () => {
       },
     });
     expect(legacyProjection.result.response_type).toBe('single');
+
+    // The 3.0 SDK facade projects an inline legacy format_id into the later
+    // format_kind slot before dispatch. Preserve that named legacy route even
+    // when the original format_id object is no longer present.
+    const projectedLegacyOnly = await simulateCallTool(compatServer, 'preview_creative', {
+      request_type: 'single',
+      creative_manifest: {
+        creative_id: 'inline_projected_legacy',
+        format_kind: 'display_300x250',
+        assets: {},
+      },
+    });
+    expect(projectedLegacyOnly.result.response_type).toBe('single');
   });
 
-  it('threads 3.0 preview compatibility through both v6 creative adapters', async () => {
+  it('threads unique preview routing through current and 3.0 v6 creative adapters', async () => {
     const request = {
       request_type: 'single',
       creative_manifest: {
@@ -10443,8 +10582,8 @@ describe('canonical creative build capabilities', () => {
       new TrainingCreativePlatform(),
       new TrainingCreativeBuilderPlatform(),
     ]) {
-      await expect(currentPlatform.creative.previewCreativeLegacy(request as any, platformContext as any))
-        .rejects.toThrow(/no unique matching advertised preview capability/i);
+      const result = await currentPlatform.creative.previewCreativeLegacy(request as any, platformContext as any);
+      expect((result as any).response_type).toBe('single');
     }
 
     for (const compatPlatform of [
@@ -13824,6 +13963,50 @@ describe('get_media_buy_delivery handler', () => {
     expect(result.media_buy_deliveries).toBeDefined();
   });
 
+  it('allocates one media-buy simulation across packages without double-counting totals', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'delivery-allocation.example' }, operator: 'delivery-allocation.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: 'asap',
+      end_time: '2099-12-31T00:00:00Z',
+      packages: [30000, 20000].map(budget => ({
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget,
+      })),
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 5000,
+        clicks: 50,
+        reported_spend: { amount: 250, currency: 'USD' },
+      },
+      account,
+      brand: account.brand,
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+    const delivery = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const packages = delivery.by_package as Array<Record<string, number>>;
+    const totals = delivery.totals as Record<string, number>;
+    expect(packages).toHaveLength(2);
+    expect(packages.reduce((sum, pkg) => sum + pkg.impressions, 0)).toBe(5000);
+    expect(packages.reduce((sum, pkg) => sum + pkg.clicks, 0)).toBe(50);
+    expect(packages.reduce((sum, pkg) => sum + pkg.spend, 0)).toBe(250);
+    expect(totals).toMatchObject({ impressions: 5000, clicks: 50, spend: 250 });
+  });
+
   it('computes cost_per_acquisition when simulate_delivery injects conversions and spend', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -15149,7 +15332,7 @@ describe('activate_signal handler', () => {
     });
 
     expect(result.code).toBeDefined();
-    expect(result.code).toBe('SIGNAL_AGENT_SEGMENT_NOT_FOUND');
+    expect(result.code).toBe('REFERENCE_NOT_FOUND');
   });
 
   it('returns error for invalid pricing option', async () => {

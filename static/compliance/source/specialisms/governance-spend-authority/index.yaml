@@ -219,19 +219,19 @@ phases:
             path: "plans[0].version"
             description: "Plan includes version for concurrency"
   - id: governance_check_conditions
-    title: "Governance check — approved with conditions"
+    title: "Governance check — conditions and adjusted re-check"
     narrative: |
       The buyer proposes a media buy that includes CTV inventory. The governance agent
-      approves the buy but attaches the weekly reporting condition from the plan. The
-      buyer receives a governance context that encodes these conditions.
+      returns a non-authorizing condition requiring weekly reporting. The buyer applies
+      that condition and re-checks the adjusted request to obtain authorization.
 
     steps:
       - id: check_governance_conditions
-        title: "Pre-buy governance check (approved with conditions)"
+        title: "Pre-buy governance check returns conditions"
         narrative: |
           The buyer calls check_governance with a media buy that includes CTV products.
-          The governance agent approves the buy but attaches conditions: weekly delivery
-          reporting is required for the CTV line items.
+          The governance agent does not authorize the buy yet. It returns the condition
+          that weekly delivery reporting is required for the CTV line items.
         task: check_governance
         schema_ref: "governance/check-governance-request.json"
         response_schema_ref: "governance/check-governance-response.json"
@@ -239,11 +239,11 @@ phases:
         comply_scenario: governance_spend_authority
         stateful: true
         expected: |
-          Return an approved governance decision with conditions:
-          - decision: approved
+          Return a non-authorizing governance decision with conditions:
+          - verdict: conditions
           - conditions: array of requirements the buyer must honor
             - e.g., "Weekly delivery reporting required for CTV line items"
-          - governance_context: token the buyer passes to create_media_buy
+          - consultation_context: token the buyer uses to re-check after satisfying conditions
           - findings: may include warning-severity findings noting the conditions
 
         sample_request:
@@ -251,32 +251,55 @@ phases:
           caller: "https://pinnacle-agency.example"
           target_agent: "https://seller.example.com"
           tool: "create_media_buy"
+          purchase_type: "media_buy"
+          proposed_commitment:
+            amount: 40000
+            currency: "USD"
           payload:
             account:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
-            total_budget: 40000
+            brand:
+              domain: "acmeoutdoor.example"
+            total_budget:
+              amount: 40000
+              currency: "USD"
+            start_time: "asap"
+            end_time: "2099-06-30T23:59:59Z"
             packages:
               - product_id: "sports_ctv_q2"
                 budget: 25000
+                pricing_option_id: "cpm_guaranteed"
               - product_id: "lifestyle_display_q2"
                 budget: 15000
+                pricing_option_id: "cpm_standard"
+            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
 
           context:
             correlation_id: "governance_spend_authority--check_governance_conditions"
+        context_outputs:
+          - name: consultation_context
+            path: "consultation_context"
         validations:
           - check: response_schema
             description: "Response matches check-governance-response.json schema"
           - check: field_present
             path: "verdict"
             description: "Response contains a governance verdict"
+          - check: field_value
+            path: "verdict"
+            value: "conditions"
+            description: "Conditions do not authorize the downstream mutation"
           - check: field_present
             path: "conditions"
             description: "Approval includes conditions"
           - check: field_present
+            path: "consultation_context"
+            description: "Conditional response includes a consultation context for re-check"
+          - check: field_absent
             path: "governance_context"
-            description: "Response includes governance context for the media buy"
+            description: "A conditions verdict does not carry execution authorization"
 
           - check: field_present
             path: "context"
@@ -285,11 +308,85 @@ phases:
             path: "context.correlation_id"
             value: "governance_spend_authority--check_governance_conditions"
             description: "Context correlation_id returned unchanged"
+
+      - id: check_governance_adjusted
+        title: "Re-check the adjusted governed intent"
+        narrative: |
+          The buyer acknowledges the required weekly reporting policy and submits the
+          exact adjusted request with the consultation context. Only this approved
+          re-check may return the governance context used for execution.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_spend_authority
+        stateful: true
+        expected: |
+          Return an approved governance decision:
+          - verdict: approved
+          - governance_context: bounded authorization for the adjusted request
+          - consultation_context: omitted because consultation is complete
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "https://seller.example.com"
+          tool: "create_media_buy"
+          purchase_type: "media_buy"
+          consultation_context: "$context.consultation_context"
+          proposed_commitment:
+            amount: 40000
+            currency: "USD"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            brand:
+              domain: "acmeoutdoor.example"
+            total_budget:
+              amount: 40000
+              currency: "USD"
+            start_time: "asap"
+            end_time: "2099-06-30T23:59:59Z"
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 25000
+                pricing_option_id: "cpm_guaranteed"
+              - product_id: "lifestyle_display_q2"
+                budget: 15000
+                pricing_option_id: "cpm_standard"
+            idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+            ext:
+              governance_policy_acknowledgements:
+                - "ctv_weekly_reporting"
+                - "ugc_brand_safety"
+          context:
+            correlation_id: "governance_spend_authority--check_governance_adjusted"
+        context_outputs:
+          - name: governance_context
+            path: "governance_context"
+        validations:
+          - check: response_schema
+            description: "Adjusted response matches check-governance-response.json schema"
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+            description: "The adjusted intent receives explicit approval"
+          - check: field_present
+            path: "governance_context"
+            description: "Approved response supplies downstream authorization"
+          - check: field_absent
+            path: "consultation_context"
+            description: "Approval replaces the consultation handle"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_spend_authority--check_governance_adjusted"
+            description: "Context correlation_id returned unchanged"
   - id: create_buy_with_conditions
     title: "Create media buy with governance conditions"
     narrative: |
-      The buyer creates the media buy, passing the governance context from the conditional
-      approval. The seller validates the governance approval and confirms the buy. The
+      The buyer creates the media buy, passing the governance context from the approved
+      adjusted re-check. The seller validates the governance approval and confirms the buy. The
       conditions from the governance check are now binding for the campaign duration.
 
     steps:
@@ -297,7 +394,7 @@ phases:
         title: "Create a media buy with conditional governance approval"
         narrative: |
           The buyer creates the media buy with the governance_context token from the
-          conditional approval. The seller confirms the buy. The buyer is now bound by
+          approved adjusted request. The seller confirms the buy. The buyer is now bound by
           the conditions (weekly reporting for CTV line items).
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
@@ -309,7 +406,6 @@ phases:
           Confirm the media buy with governance approval:
           - media_buy_id: your platform's identifier
           - status: active
-          - governance_context: echoed back confirming governance was validated
           - packages: line items
 
         sample_request:
@@ -319,7 +415,10 @@ phases:
             operator: "pinnacle-agency.example"
           brand:
             domain: "acmeoutdoor.example"
-          governance_context: "gov_ctx_acme_conditional_approved"
+          governance_context: "$context.governance_context"
+          total_budget:
+            amount: 40000
+            currency: "USD"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           packages:
@@ -329,8 +428,11 @@ phases:
             - product_id: "lifestyle_display_q2"
               budget: 15000
               pricing_option_id: "cpm_standard"
-
-          idempotency_key: "$generate:uuid_v4#governance_spend_authority_create_buy_with_conditions_create_media_buy"
+          idempotency_key: "$generate:uuid_v4#governance_spend_authority_conditions_create_media_buy"
+          ext:
+            governance_policy_acknowledgements:
+              - "ctv_weekly_reporting"
+              - "ugc_brand_safety"
           context:
             correlation_id: "governance_spend_authority--create_media_buy"
         validations:

@@ -90,9 +90,11 @@ phases:
             - product_id: "total_budget_prospecting"
               pricing_option_id: "total_budget_prospecting_cpm"
               budget: 60000
+              bid_price: 1.50
             - product_id: "total_budget_retargeting"
               pricing_option_id: "total_budget_retargeting_cpm"
               budget: 40000
+              bid_price: 2.00
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
           idempotency_key: "$generate:uuid_v4#total_budget_redistribution_create"

@@ -5,10 +5,12 @@
 # Usage: scripts/with-timeout.sh <seconds> <cmd> [args...]
 #
 # On expiry, SIGTERM is sent first with a 5s grace window before SIGKILL —
-# letting the child attempt a clean shutdown.
+# letting the child attempt a clean shutdown. A timeout prints an explicit
+# marker to stderr: a silently SIGTERMed test suite is indistinguishable from
+# a mystery failure, and the marker is what tells a reader "budget, not bug".
 #
-# Not using `set -e` because the fallback branch handles exit codes explicitly;
-# `-e` would abort before the explicit `exit "$code"` on a non-zero child.
+# Not using `set -e` because exit codes are handled explicitly; `-e` would
+# abort before the explicit `exit "$code"` on a non-zero child.
 set -u -o pipefail
 
 if [ "$#" -lt 2 ]; then
@@ -24,10 +26,31 @@ if ! [[ "$secs" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+started=$(date +%s)
+
+report_if_timeout() {
+  local code="$1"
+  shift
+  local elapsed=$(( $(date +%s) - started ))
+  # 124 = coreutils timeout default; 143/137 = TERM/KILL with --preserve-status
+  # or the bash fallback. Only report when the budget was actually consumed,
+  # so a child that exits 143 on its own doesn't produce a false marker.
+  if { [ "$code" -eq 124 ] || [ "$code" -eq 143 ] || [ "$code" -eq 137 ]; } \
+    && [ "$elapsed" -ge "$secs" ]; then
+    echo "⏰ TIMEOUT: with-timeout killed the command after ${secs}s (exit $code, elapsed ${elapsed}s): $*" >&2
+  fi
+}
+
 if command -v timeout >/dev/null 2>&1; then
-  exec timeout --preserve-status --kill-after=5 "$secs" "$@"
+  timeout --preserve-status --kill-after=5 "$secs" "$@"
+  code=$?
+  report_if_timeout "$code" "$@"
+  exit "$code"
 elif command -v gtimeout >/dev/null 2>&1; then
-  exec gtimeout --preserve-status --kill-after=5 "$secs" "$@"
+  gtimeout --preserve-status --kill-after=5 "$secs" "$@"
+  code=$?
+  report_if_timeout "$code" "$@"
+  exit "$code"
 fi
 
 "$@" &
@@ -61,4 +84,5 @@ wait "$pid"
 code=$?
 trap - EXIT INT TERM
 cleanup
+report_if_timeout "$code" "$@"
 exit "$code"

@@ -122,6 +122,7 @@ type InlineCreativeInput = {
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
   component_assets?: Record<string, Record<string, unknown>>;
+  localization?: Record<string, unknown>;
   manifest?: CreativeManifest;
   weight?: number;
   placement_refs?: Array<Record<string, unknown>>;
@@ -157,7 +158,7 @@ type GetProductsRejectedResponse = {
 };
 type GetProductsReadDirectives = {
   rejection?: { reason: string; suggestions?: string[] };
-  staleDirective?: { tool: string; upstreamName?: string; createdAt: string };
+  staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
 type CompactProductPurchase = ProposalPurchase & {
@@ -461,8 +462,22 @@ const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
 };
 const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
   { capabilityId: 'training_image_generation', formatKind: 'image' },
+  { capabilityId: 'display_300x250', formatKind: 'image' },
+  { capabilityId: 'display_728x90', formatKind: 'image' },
+  { capabilityId: 'display_320x50', formatKind: 'image' },
+  { capabilityId: 'display_300x250_generative', formatKind: 'image' },
+  { capabilityId: 'display_728x90_generative', formatKind: 'image' },
+  { capabilityId: 'display_320x50_generative', formatKind: 'image' },
+  { capabilityId: 'native_in_feed', formatKind: 'native_in_feed' },
+  { capabilityId: 'vast_30s', formatKind: 'video_vast' },
+  { capabilityId: 'audio_30s', formatKind: 'audio_hosted' },
   { capabilityId: 'audio_vo', formatKind: 'audio_hosted' },
 ] as const;
+const CANONICAL_PREVIEW_CAPABILITY_IDS = new Set([
+  'training_image_generation',
+  'native_in_feed',
+  'audio_vo',
+]);
 const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
 const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
@@ -3443,6 +3458,42 @@ function controllerFixtureSessionKey(
   }, ctx.mode, ctx.userId, ctx.moduleId, controllerFixturePrincipal(ctx.principal));
 }
 
+/** Resolve the exact public-demo task partition used by controller scenarios
+ * that seed or arm buyer-visible state. Static controller calls normalize a
+ * natural sandbox account to its brand-owned task identity; ordinary authored
+ * requests may name a buyer operator, so they need this exact alternate key
+ * instead of an unqualified scan across every session. */
+function controllerPublicTaskSessionKey(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): string | undefined {
+  if (!ctx.principal?.startsWith('static:')) return undefined;
+  const requestedAccount = args.account ?? ctx.resolvedAccount ?? (
+    ctx.requestInput?.account && typeof ctx.requestInput.account === 'object'
+      ? ctx.requestInput.account as ToolArgs['account']
+      : undefined
+  );
+  if (requestedAccount) {
+    try {
+      const account = canonicalizeAccountRef(requestedAccount);
+      const controllerAccount: ToolArgs['account'] = account.kind === 'natural'
+        ? {
+            brand: account.brand,
+            operator: account.brand.domain,
+            sandbox: false,
+          }
+        : { account_id: account.account_id };
+      return sessionKeyFromArgs({ account: controllerAccount }, ctx.mode, ctx.userId, ctx.moduleId);
+    } catch {
+      return undefined;
+    }
+  }
+  if (ctx.storyboardCompat?.version === '3.0' && typeof args.brand?.domain === 'string') {
+    return sessionKeyFromArgs({ brand: args.brand }, ctx.mode, ctx.userId, ctx.moduleId);
+  }
+  return undefined;
+}
+
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
 export function clearTaskStore(): void {
   resetTrainingTaskStore();
@@ -3752,6 +3803,8 @@ interface CreativeDeliveryEntry {
 interface SyncCreativeResult {
   creative_id: string;
   action: 'created' | 'updated' | 'failed';
+  status?: string;
+  localization?: Record<string, unknown>;
   errors?: TaskError[];
 }
 
@@ -5500,7 +5553,9 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
 export function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
   return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
     capability_id: capabilityId,
-    operations: ['build', 'validate', 'preview'],
+    operations: CANONICAL_PREVIEW_CAPABILITY_IDS.has(capabilityId)
+      ? ['build', 'validate', 'preview']
+      : ['build'],
     format: {
       format_kind: formatKind,
       params: {
@@ -5535,8 +5590,8 @@ function supportedCanonicalBuildCapability(formatId: string): { formatKind: stri
   return slots ? { formatKind, slots } : undefined;
 }
 
-function nativeInFeedValidationError(creative: { format_id?: FormatID; assets?: Record<string, unknown> }): TaskError | null {
-  if (creative.format_id?.id !== 'native_in_feed') return null;
+function nativeInFeedValidationError(creative: { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> }): TaskError | null {
+  if (creative.format_kind !== 'native_in_feed' && creative.format_id?.id !== 'native_in_feed') return null;
   const assets = creative.assets;
   if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return null;
 
@@ -7729,30 +7784,39 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
       const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
-      let directiveSession = session;
+      let rejectionSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-        ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+        ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
         : undefined;
-      if (!rejection && ctx.principal?.startsWith('static:')) {
-        directiveSession = await getSession(
-          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
-        );
-        rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-          ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
-          : undefined;
-      }
       let staleDirectiveSession = session;
       let staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
       if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
-        staleDirectiveSession = await getSession(fixtureSessionKey);
-        staleDirective = staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
-          ? staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable
-          : undefined;
+        const fixtureDirectiveSession = await getSession(fixtureSessionKey);
+        const fixtureDirective = fixtureDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
+        if (fixtureDirective?.tool === 'get_products') {
+          staleDirectiveSession = fixtureDirectiveSession;
+          staleDirective = fixtureDirective;
+        }
+      }
+      if (ctx.principal?.startsWith('static:') && (!rejection || !staleDirective)) {
+        const globalDirectiveSession = await getSession(
+          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
+        );
+        if (!rejection) {
+          rejectionSession = globalDirectiveSession;
+          rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+            ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+            : undefined;
+        }
+        if (!staleDirective && globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products') {
+          staleDirectiveSession = globalDirectiveSession;
+          staleDirective = globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
+        }
       }
       if (rejection) {
-        directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+        rejectionSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
@@ -9050,12 +9114,12 @@ async function handleGetProductsUnlocked(
           recovery: 'transient',
           details: {
             served_from_cache: true,
-            cache_age_seconds: 60,
+            cache_age_seconds: staleDirective.cacheAgeSeconds ?? 60,
             freshness_target_seconds: 30,
             ...(staleDirective.upstreamName && { upstream: { name: staleDirective.upstreamName } }),
           },
         }] : []),
-        ...canonicalFormatAdvisories,
+        ...(!staleDirective ? canonicalFormatAdvisories : []),
       ] as unknown as GetProductsResponse['errors'],
     }),
   };
@@ -11327,7 +11391,18 @@ async function handleCreateMediaBuyUnlocked(
   // Idempotency_key replay is unaffected: the SDK's request-idempotency cache
   // wraps this handler, so a replayed request returns the cached submitted
   // response without re-evaluating the (now-empty) directive slot.
-  const directive = session.complyExtensions.forcedCreateMediaBuyArm;
+  let directiveSession = session;
+  let directive = directiveSession.complyExtensions.forcedCreateMediaBuyArm;
+  if (!directive) {
+    const ownerKey = controllerPublicTaskSessionKey(req, ctx);
+    if (ownerKey && ownerKey !== sessionKey) {
+      const ownerSession = await getSession(ownerKey);
+      if (ownerSession.complyExtensions.forcedCreateMediaBuyArm?.arm === 'submitted') {
+        directiveSession = ownerSession;
+        directive = ownerSession.complyExtensions.forcedCreateMediaBuyArm;
+      }
+    }
+  }
   if (
     directive
     && directive.arm === 'submitted'
@@ -11335,7 +11410,7 @@ async function handleCreateMediaBuyUnlocked(
     && directive.taskId.length > 0
     && directive.taskId.length <= 128
   ) {
-    session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    directiveSession.complyExtensions.forcedCreateMediaBuyArm = undefined;
     const responseMessage =
       typeof directive.message === 'string' && directive.message.length <= 2000
         ? directive.message
@@ -12478,10 +12553,24 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
       : {}),
   } as GetMediaBuysArgs;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = await getSession(sessionKey);
+  let session = await getSession(sessionKey);
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
+  if (buys.length === 0 && req.account) {
+    const ownerSession = await findSessionMatching(candidate => (
+      Array.from(candidate.mediaBuys.values()).some(mediaBuy => (
+        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+        && (!filterIds?.length || filterIds.includes(mediaBuy.mediaBuyId))
+      ))
+    ));
+    if (ownerSession) {
+      session = ownerSession;
+      buys = Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => (
+        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+      ));
+    }
+  }
   if (!filterIds?.length && buys.length === 0) {
     // Broad list on an empty session: provide compliance fixtures so demo.example.com
     // sessions show realistic media buy data without the learner first creating a buy.
@@ -12660,18 +12749,28 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
-  const session = await getSession(
+  let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),
   );
+  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
+  let mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
+  if (!mb && req.account) {
+    const ownerSession = await findSessionMatching(candidate => {
+      const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
+      return candidateBuy !== undefined
+        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+    });
+    if (ownerSession) {
+      session = ownerSession;
+      mb = ownerSession.mediaBuys.get(mediaBuyId);
+    }
+  }
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
-  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
-
   if (!mb) {
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
@@ -12709,7 +12808,39 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let totalReachUnit: string | undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
-  const simDelivery = mediaBuyPaused ? undefined : simDeliveryEarly;
+  const simulatedPackages = mb.packages.filter(pkg => (
+    pkg.paused !== true && !pkg.canceled
+  ));
+  const simDelivery = mediaBuyPaused || simulatedPackages.length === 0
+    ? undefined
+    : simDeliveryEarly;
+  const allocateSimulatedMetric = (total: number, decimalPlaces = 0): Map<string, number> => {
+    if (!simDelivery || simulatedPackages.length === 0) return new Map();
+    const scale = 10 ** decimalPlaces;
+    const totalUnits = Math.round(total * scale);
+    const positiveBudgetTotal = simulatedPackages.reduce(
+      (sum, pkg) => sum + Math.max(0, pkg.budget),
+      0,
+    );
+    const totalWeight = positiveBudgetTotal > 0 ? positiveBudgetTotal : simulatedPackages.length;
+    let cumulativeWeight = 0;
+    let allocatedUnits = 0;
+    return new Map(simulatedPackages.map((pkg, index) => {
+      cumulativeWeight += positiveBudgetTotal > 0 ? Math.max(0, pkg.budget) : 1;
+      const targetUnits = index === simulatedPackages.length - 1
+        ? totalUnits
+        : Math.round((totalUnits * cumulativeWeight) / totalWeight);
+      const packageUnits = targetUnits - allocatedUnits;
+      allocatedUnits = targetUnits;
+      return [pkg.packageId, packageUnits / scale];
+    }));
+  };
+  const simulatedSpendByPackage = allocateSimulatedMetric(simDelivery?.reportedSpend.amount ?? 0, 2);
+  const simulatedImpressionsByPackage = allocateSimulatedMetric(simDelivery?.impressions ?? 0);
+  const simulatedClicksByPackage = allocateSimulatedMetric(simDelivery?.clicks ?? 0);
+  const simulatedConversionsByPackage = allocateSimulatedMetric(simDelivery?.conversions ?? 0);
+  const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
+  const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
   const byPackage = mb.packages.map(pkg => {
     const packagePaused = pkg.paused === true;
@@ -12732,11 +12863,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
     const isRevenueShare = pricingModel === 'revenue_share';
-    const useScopedSimulation = simDelivery !== undefined
-      && Boolean(req.start_date || req.end_date);
+    const useSimulation = simDelivery !== undefined;
     const budget = pkg.budget;
-    const spend = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.reportedSpend.amount ?? 0)
+    const spend = isRevenueShare || useSimulation
+      ? (simulatedSpendByPackage.get(pkg.packageId) ?? 0)
       : Math.round(budget * elapsed * 100) / 100;
 
     // Channel-appropriate CTR
@@ -12751,14 +12881,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.impressions ?? 0)
+    const impressions = isRevenueShare || useSimulation
+      ? (simulatedImpressionsByPackage.get(pkg.packageId) ?? 0)
       : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.clicks ?? 0)
+    const clicks = isRevenueShare || useSimulation
+      ? (simulatedClicksByPackage.get(pkg.packageId) ?? 0)
       : Math.round(impressions * ctr);
 
-    if (!isRevenueShare && !useScopedSimulation) {
+    if (!isRevenueShare && !useSimulation) {
       totalImpressions += impressions;
       totalSpend += spend;
       totalClicks += clicks;
@@ -12791,11 +12921,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           : {}),
       }
       : {};
-    const byCreative = simDelivery?.conversions && pkg.creativeAssignments.length > 0
+    const packageConversions = simulatedConversionsByPackage.get(pkg.packageId) ?? 0;
+    const byCreative = packageConversions > 0 && pkg.creativeAssignments.length > 0
       ? {
         by_creative: pkg.creativeAssignments.map((creativeId, index) => {
-          const base = Math.floor(simDelivery.conversions / pkg.creativeAssignments.length);
-          const remainder = simDelivery.conversions % pkg.creativeAssignments.length;
+          const base = Math.floor(packageConversions / pkg.creativeAssignments.length);
+          const remainder = packageConversions % pkg.creativeAssignments.length;
           const impressionBase = Math.floor(impressions / pkg.creativeAssignments.length);
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
@@ -12870,6 +13001,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       impressions,
       clicks,
       ...audioMetrics,
+      ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
       ...byCreative,
       ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
     };
@@ -12907,9 +13039,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       package_id: pkg.packageId,
       ...packageDeliveryMetrics,
       ...(isRevenueShare && simDelivery ? {
-        conversions: simDelivery.conversions,
-        ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
-        ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+        conversions: packageConversions,
+        ...(simDelivery.conversionValue !== undefined ? {
+          conversion_value: simulatedConversionValueByPackage.get(pkg.packageId) ?? 0,
+        } : {}),
+        ...(simDelivery.commissionableValue !== undefined ? {
+          commissionable_value: simulatedCommissionableValueByPackage.get(pkg.packageId) ?? 0,
+        } : {}),
       } : {}),
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
@@ -13198,6 +13334,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
       component_assets?: Record<string, Record<string, unknown>>;
+      localization?: Record<string, unknown>;
       manifest?: CreativeManifest;
     };
     const identityResult = validatedCreativeIdentity(creativeShape);
@@ -13250,12 +13387,88 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
 
-    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; assets?: Record<string, unknown> });
+    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> });
     if (nativeError) return { errors: [nativeError] as TaskError[] };
 
     const existingCreative = session.creatives.get(creativeId)
       ?? getSharedAccountCreative(accountId, creativeId);
     const existing = existingCreative !== undefined;
+    const retainedSourceVariant = Array.isArray(existingCreative?.localization?.variants)
+      ? existingCreative.localization.variants.find(variant => (
+        isRecord(variant) && variant.role === 'source'
+      ))
+      : undefined;
+    if (
+      creativeShape.localization === undefined
+      && Object.hasOwn(creativeShape, 'assets')
+      && isRecord(retainedSourceVariant)
+      && !isDeepStrictEqual(creativeShape.assets ?? {}, retainedSourceVariant.assets)
+    ) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'Changing source assets on a localized creative requires a complete localization replacement or localization: null.',
+          field: `creatives[${creativeId}].localization`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    let localization = existingCreative?.localization;
+    if (creativeShape.localization === null) {
+      localization = undefined;
+    } else if (creativeShape.localization !== undefined) {
+      const source = isRecord(creativeShape.localization.source)
+        ? creativeShape.localization.source
+        : undefined;
+      const targets = Array.isArray(creativeShape.localization.target_variants)
+        ? creativeShape.localization.target_variants.filter(isRecord)
+        : [];
+      const sourceAssets = creativeShape.assets ?? {};
+      const variants: Array<Record<string, unknown>> = source
+        ? [
+            { ...source, role: 'source', assets: structuredClone(sourceAssets) },
+            ...targets.map(target => ({
+              ...target,
+              role: 'target',
+              assets: {
+                ...structuredClone(sourceAssets),
+                ...(isRecord(target.assets) ? structuredClone(target.assets) : {}),
+              },
+            })),
+          ]
+        : [];
+      const variantIds = new Set(variants.flatMap(variant => (
+        typeof variant.locale_variant_id === 'string' ? [variant.locale_variant_id] : []
+      )));
+      const defaultId = creativeShape.localization.default_locale_variant_id;
+      if (!source || typeof defaultId !== 'string' || !variantIds.has(defaultId)) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: [{
+            code: 'VALIDATION_ERROR',
+            message: 'localization.default_locale_variant_id must reference the source or a target variant.',
+            field: `creatives[${creativeId}].localization.default_locale_variant_id`,
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+      localization = {
+        locale_matching: 'rfc4647_lookup',
+        variants: structuredClone(variants),
+        default_locale_variant_id: defaultId,
+        ...(Array.isArray(creativeShape.localization.locale_fallbacks) && {
+          locale_fallbacks: structuredClone(creativeShape.localization.locale_fallbacks),
+        }),
+        ...(typeof creativeShape.localization.unmatched_locale_action === 'string' && {
+          unmatched_locale_action: creativeShape.localization.unmatched_locale_action,
+        }),
+      };
+    }
     const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
     const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
       && Object.hasOwn(creativeShape.manifest, 'component_assets');
@@ -13346,6 +13559,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           }),
         ...(manifest && { assets: manifest.assets }),
         ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
+        ...(localization && { localization }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -13396,6 +13610,8 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
+      status: existingCreative?.status ?? 'approved',
+      ...(localization && { localization }),
     });
   }
 
@@ -13470,6 +13686,34 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
   return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
 }
 
+function mediaBuyAccountVisibleToRequest(
+  stored: AccountRef | undefined,
+  requested: AccountRef,
+  ctx: TrainingContext,
+): boolean {
+  if (accountRefsOverlap(stored, requested)) return true;
+  if (!ctx.principal?.startsWith('static:') || !stored) return false;
+  if (
+    !stored.account_id
+    && !requested.account_id
+    && stored.brand?.domain
+    && stored.brand.domain === requested.brand?.domain
+    && stored.brand.brand_id === requested.brand?.brand_id
+  ) {
+    return true;
+  }
+  try {
+    const storedIdentity = canonicalizeAccountRef(stored);
+    const requestedIdentity = canonicalizeAccountRef(requested);
+    return storedIdentity.kind === 'natural'
+      && requestedIdentity.kind === 'natural'
+      && storedIdentity.brand.domain === requestedIdentity.brand.domain
+      && storedIdentity.brand.brand_id === requestedIdentity.brand.brand_id;
+  } catch {
+    return false;
+  }
+}
+
 type CreativeListFilters = {
   creative_ids?: string[];
   statuses?: string[];
@@ -13501,6 +13745,17 @@ function creativeMatchesAnyFormatId(
   requested: FormatID[],
   adapters: CreativeProjectionAdapters,
 ): boolean {
+  if (creative.formatId) {
+    const storedAgentUrl = creative.formatId.agent_url ?? getAgentUrl();
+    if (requested.some(wanted => (
+      wanted.id === creative.formatId?.id
+      && (!wanted.agent_url
+        || canonicalizeAgentUrl(wanted.agent_url) === canonicalizeAgentUrl(storedAgentUrl))
+      && (['width', 'height', 'duration_ms', 'pixel_ratio'] as const).every(parameter => (
+        wanted[parameter] === creative.formatId?.[parameter]
+      ))
+    ))) return true;
+  }
   let projected: Record<string, unknown>;
   try {
     projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'legacy', adapters);
@@ -13514,7 +13769,7 @@ function creativeMatchesAnyFormatId(
     if (!wanted?.id || wanted.id !== actual.id) return false;
     if (!wanted.agent_url
       || canonicalizeAgentUrl(wanted.agent_url) !== canonicalizeAgentUrl(actualAgentUrl)) return false;
-    for (const parameter of ['width', 'height', 'duration_ms'] as const) {
+    for (const parameter of ['width', 'height', 'duration_ms', 'pixel_ratio'] as const) {
       if (wanted[parameter] !== actual[parameter]) return false;
     }
     return true;
@@ -13685,10 +13940,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
-        ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.assets
+          && (!selectedFields || selectedFields.has('assets') || selectedFields.has('localization'))
+          && { assets: c.manifest.assets }),
         ...(c.manifest?.component_assets
           && (!selectedFields || selectedFields.has('component_assets'))
           && { component_assets: c.manifest.component_assets }),
+        ...(c.localization && (!selectedFields || selectedFields.has('localization')) && {
+          localization: c.localization,
+        }),
       };
       if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
@@ -13819,12 +14079,24 @@ async function handleUpdateMediaBuyUnlocked(
   options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
-  const session = await getSession(
+  let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
   );
   const mediaBuyId = req.media_buy_id || '';
   let mb = session.mediaBuys.get(mediaBuyId);
+
+  if (!mb && req.account) {
+    const ownerSession = await findSessionMatching(candidate => {
+      const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
+      return candidateBuy !== undefined
+        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+    });
+    if (ownerSession) {
+      session = ownerSession;
+      mb = ownerSession.mediaBuys.get(mediaBuyId);
+    }
+  }
 
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
@@ -15187,6 +15459,15 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     };
   }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const forcedSignalsArm = session.complyExtensions.forcedGetSignalsArm;
+  if (req.discovery_mode !== 'wholesale' && forcedSignalsArm?.arm === 'submitted') {
+    session.complyExtensions.forcedGetSignalsArm = undefined;
+    return {
+      status: 'submitted',
+      task_id: forcedSignalsArm.taskId,
+      ...(forcedSignalsArm.message && { message: forcedSignalsArm.message }),
+    };
+  }
   const wholesaleMeta = req.discovery_mode === 'wholesale'
     ? signalWholesaleFeedMeta(req as WholesaleFeedRequest)
     : undefined;
@@ -15377,7 +15658,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   if (!signal) {
     return {
       errors: [{
-        code: 'SIGNAL_AGENT_SEGMENT_NOT_FOUND',
+        code: 'REFERENCE_NOT_FOUND',
         message: `Signal not found: ${segmentId}. Use get_signals to discover available signals.`,
       }],
     };
@@ -16235,18 +16516,20 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
       isThreeZeroStoryboardCompat(ctx)
       && formatKind
       && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)
-      && formatId?.id
-      && validFormatIds.has(formatId.id)
+      && validFormatIds.has(formatKind)
     ) {
+      formatId ??= { agent_url: agentUrl, id: formatKind };
       formatKind = undefined;
     }
 
     if (legacyFormatId) {
       if (!legacyFormatId.id || !validFormatIds.has(legacyFormatId.id)) return null;
     } else if (formatKind) {
-      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
+      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => (
+        item.formatKind === formatKind && CANONICAL_PREVIEW_CAPABILITY_IDS.has(item.capabilityId)
+      ));
       if (targetCapabilityId) {
-        const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
+        const selected = matches.find(item => item.capabilityId === targetCapabilityId);
         if (!selected || selected.formatKind !== formatKind) return null;
       } else if (matches.length !== 1 && !isThreeZeroStoryboardCompat(ctx)) {
         return null;

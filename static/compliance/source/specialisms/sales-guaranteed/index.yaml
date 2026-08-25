@@ -440,6 +440,7 @@ phases:
               pricing_option_id: "$context.pricing_option_2_id"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
+            operation_id: "op_sales_guaranteed_create"
             authentication:
               schemes:
                 - "HMAC-SHA256"

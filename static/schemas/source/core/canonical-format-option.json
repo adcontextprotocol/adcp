@@ -2,11 +2,26 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-format-option.json",
   "title": "Canonical Format Option",
-  "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery.",
+  "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params.",
   "type": "object",
   "properties": {
     "format_option_id": { "type": "string", "minLength": 1 },
     "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" },
+    "macro_resolution_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "/schemas/core/macro-resolution-capability.json" },
+      "description": "Binding format-option processing capabilities for exact macro dialect identities, semantics, operations, actors, contexts, and encodings. Absence means undeclared, not supported on the opt-in declared-token path. Seller-wide capabilities are only a ceiling. This field does not claim that a buyer tracker asset is honored or fired.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+        }
+      }
+    },
+    "technical_requirements_complete": {
+      "type": "boolean",
+      "description": "When true, every technical creative-acceptance constraint for this declaration layer is expressed and omitted technical fields mean no constraint. When false or absent, omitted technical fields are undeclared and MUST NOT be inferred. The effective contract is complete only when every applicable declaration layer asserts true."
+    },
     "display_name": { "type": "string", "minLength": 1 },
     "sample_render_url": { "type": "string", "format": "uri", "pattern": "^https://" },
     "applies_to_channels": {

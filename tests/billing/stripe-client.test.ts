@@ -1,7 +1,7 @@
 // lint-allow-test-imports-file: this suite legitimately tests
 // `STRIPE_SECRET_KEY`-loaded module init — vi.resetModules() and dynamic
 // imports per test are how the env-var-load behavior is exercised.
-import { describe, test, expect, vi, beforeEach, type MockedClass } from 'vitest';
+import { describe, test, expect, vi, beforeEach, afterEach, type MockedClass } from 'vitest';
 import type Stripe from 'stripe';
 
 // Mock the Stripe module with a constructor that stores the latest mock instance
@@ -19,11 +19,14 @@ describe('stripe-client', () => {
     vi.resetModules();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   describe('getStripeSubscriptionInfo', () => {
     test('returns null when Stripe is not initialized', async () => {
       // Set environment variable to undefined to disable Stripe
-      const originalEnv = process.env.STRIPE_SECRET_KEY;
-      delete process.env.STRIPE_SECRET_KEY;
+      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
 
       // Re-import module after changing env var
       const { getStripeSubscriptionInfo } = await import('../../server/src/billing/stripe-client.js');
@@ -31,16 +34,11 @@ describe('stripe-client', () => {
       const result = await getStripeSubscriptionInfo('cus_test123');
 
       expect(result).toBeNull();
-
-      // Restore original env var
-      if (originalEnv) {
-        process.env.STRIPE_SECRET_KEY = originalEnv;
-      }
     });
 
     test('returns status "none" for deleted customer', async () => {
       // Set a test Stripe key
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       // Mock Stripe SDK
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
@@ -66,7 +64,7 @@ describe('stripe-client', () => {
     });
 
     test('returns status "none" for customer with no subscriptions', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -89,7 +87,7 @@ describe('stripe-client', () => {
     });
 
     test('returns subscription info for active subscription', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -150,7 +148,7 @@ describe('stripe-client', () => {
     });
 
     test('handles errors gracefully and returns null', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -170,7 +168,7 @@ describe('stripe-client', () => {
 
   describe('createStripeCustomer', () => {
     test('returns null when Stripe is not initialized', async () => {
-      delete process.env.STRIPE_SECRET_KEY;
+      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
 
       const { createStripeCustomer } = await import('../../server/src/billing/stripe-client.js');
 
@@ -183,7 +181,7 @@ describe('stripe-client', () => {
     });
 
     test('creates customer and returns customer ID when no existing customer', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -217,7 +215,7 @@ describe('stripe-client', () => {
     });
 
     test('returns existing customer ID when customer already exists', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -252,7 +250,7 @@ describe('stripe-client', () => {
     });
 
     test('handles errors and returns null', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -273,7 +271,7 @@ describe('stripe-client', () => {
     });
 
     test('searches by workos_organization_id metadata before email', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -307,7 +305,7 @@ describe('stripe-client', () => {
     });
 
     test('falls through to email check when org metadata search returns empty', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -337,7 +335,7 @@ describe('stripe-client', () => {
     });
 
     test('skips email-matched customer that belongs to a different org', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -373,7 +371,7 @@ describe('stripe-client', () => {
     });
 
     test('skips email-matched customer with no org metadata when requesting org is set', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -404,7 +402,7 @@ describe('stripe-client', () => {
 
   describe('createCustomerPortalSession', () => {
     test('returns null when Stripe is not initialized', async () => {
-      delete process.env.STRIPE_SECRET_KEY;
+      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
 
       const { createCustomerPortalSession } = await import('../../server/src/billing/stripe-client.js');
 
@@ -414,7 +412,7 @@ describe('stripe-client', () => {
     });
 
     test('creates portal session and returns URL', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -442,7 +440,7 @@ describe('stripe-client', () => {
 
   describe('createCustomerSession', () => {
     test('returns null when Stripe is not initialized', async () => {
-      delete process.env.STRIPE_SECRET_KEY;
+      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
 
       const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
 
@@ -452,7 +450,7 @@ describe('stripe-client', () => {
     });
 
     test('creates customer session and returns client secret', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -480,7 +478,7 @@ describe('stripe-client', () => {
     });
 
     test('re-throws resource_missing so callers can recover from a stale ID', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const notFound = Object.assign(new Error('No such customer'), {
@@ -502,7 +500,7 @@ describe('stripe-client', () => {
     });
 
     test('returns null and swallows other Stripe errors', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -535,7 +533,7 @@ describe('stripe-client', () => {
     };
 
     test('returns null when Stripe is not initialized', async () => {
-      delete process.env.STRIPE_SECRET_KEY;
+      vi.stubEnv('STRIPE_SECRET_KEY', undefined);
 
       const { createAndSendInvoice } = await import('../../server/src/billing/stripe-client.js');
 
@@ -545,7 +543,7 @@ describe('stripe-client', () => {
     });
 
     test('creates subscription with invoice billing and returns invoice details', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -618,7 +616,7 @@ describe('stripe-client', () => {
     });
 
     test('stamps invoice subscriptions with org and user metadata for webhook agreement attribution', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
       const mockDbQuery = vi.fn<any>().mockResolvedValue({ rows: [] });
       vi.doMock('../../server/src/db/client.js', () => ({
         getPool: () => ({ query: mockDbQuery }),
@@ -696,7 +694,7 @@ describe('stripe-client', () => {
     });
 
     test('refuses org-scoped invoice creation without signer metadata', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -722,7 +720,7 @@ describe('stripe-client', () => {
     });
 
     test('stamps metadata when reusing a DB-linked Stripe customer', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
       const mockDbQuery = vi.fn<any>().mockResolvedValue({
         rows: [{ stripe_customer_id: 'cus_linked' }],
       });
@@ -809,7 +807,7 @@ describe('stripe-client', () => {
     });
 
     test('returns null when price has zero amount', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -847,7 +845,7 @@ describe('stripe-client', () => {
     });
 
     test('cancels subscription when invoice has zero amount', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -895,7 +893,7 @@ describe('stripe-client', () => {
     });
 
     test('returns null when lookup key not found', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -918,7 +916,7 @@ describe('stripe-client', () => {
     });
 
     test('uses existing customer when found by email', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -974,7 +972,7 @@ describe('stripe-client', () => {
 
   describe('createCheckoutSession', () => {
     test('includes subscription_data.metadata with org and user IDs for subscription-mode checkout', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
@@ -1015,7 +1013,7 @@ describe('stripe-client', () => {
     });
 
     test('does not include subscription_data for one-time payment checkout', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockSession = {
@@ -1054,7 +1052,7 @@ describe('stripe-client', () => {
     });
 
     test('adds autopublish disclosure for membership-tier prices', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -1090,7 +1088,7 @@ describe('stripe-client', () => {
     });
 
     test('adds disclosure for invoice-based membership prices', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -1123,7 +1121,7 @@ describe('stripe-client', () => {
     });
 
     test('omits disclosure for non-membership prices (e.g. event sponsorships)', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -1156,7 +1154,7 @@ describe('stripe-client', () => {
     });
 
     test('omits disclosure when price has no lookup_key', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const mockStripeInstance = {
@@ -1274,7 +1272,7 @@ describe('stripe-client', () => {
 
   describe('getAllOpenInvoices', () => {
     test('does not exceed Stripe 4-level expand cap (data.lines.data.price.product is 5)', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ expand }: { expand?: string[] }) => {
@@ -1316,7 +1314,7 @@ describe('stripe-client', () => {
     });
 
     test('propagates Stripe errors to the caller (no silent empty-array fallback)', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       // Stripe SDK throws synchronously here to model how the previous swallow
@@ -1336,7 +1334,7 @@ describe('stripe-client', () => {
     });
 
     test('resolves product names via separate stripe.products.retrieve, with caching', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
@@ -1394,7 +1392,7 @@ describe('stripe-client', () => {
     // (Rishi @ InMobi, 2026-05-14). Filter them out, but keep real drafts (with
     // line items + amount) and all `open` invoices.
     test('drops empty draft invoices (no line items or zero amount)', async () => {
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
@@ -1444,7 +1442,7 @@ describe('stripe-client', () => {
       // Locks down the AND semantics of the filter: both conditions must
       // hold. A draft with amount but no lines is still not actionable —
       // there's nothing for Stripe to invoice — and should not surface.
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
@@ -1479,7 +1477,7 @@ describe('stripe-client', () => {
       // Stripe `open` invoices have already been finalized + sent. Even an
       // edge-case open invoice with a $0 balance (e.g. fully refunded) is
       // legitimate state that the UI needs to render.
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
       const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {

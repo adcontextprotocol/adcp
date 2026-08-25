@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/macro-resolution-reason.json",
+  "title": "Macro Resolution Reason",
+  "description": "Structured reason for a macro preflight result.",
+  "type": "string",
+  "enum": [
+    "capability_match",
+    "preserved_unknown",
+    "preserved_for_downstream",
+    "dialect_unsupported",
+    "namespace_mismatch",
+    "revision_mismatch",
+    "semantic_unsupported",
+    "operation_unsupported",
+    "resolver_mismatch",
+    "context_unsupported",
+    "encoding_unsupported",
+    "ambiguous_mapping"
+  ]
+}

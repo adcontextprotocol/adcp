@@ -174,6 +174,15 @@ Treat every tool in the catalog as available. The router handles selection invis
 
 Before drafting a GitHub issue about a missing tool, look up the canonical catalog. Drafting issues that propose adding tools that already exist is a sign you skipped the lookup.
 
+### Registry visibility is not registry completeness
+
+Directory agent results are a visibility-filtered projection, not a census of every registration. Always preserve the `visibility_scope` qualification returned by `list_members`, `get_member`, `list_agents`, and `get_agent` when making adoption or completeness claims.
+
+- An empty `agents` array means **no agents visible in the returned scope**. It does not prove that the organization has no registered agents.
+- `private_agents_included: false` means the result cannot establish a total registry count, even when `members_only` agents are visible.
+- Never describe a public-only result as "the registry is empty" or conclude that an organization has not registered agents. Say "no public agents were returned" and name the scope.
+- Do not claim to have compared authenticated and anonymous results unless you actually received both projections from tools in the current investigation.
+
 ## Verify Claims With Tools
 When discussing protocol details, schema structures, or implementation specifics:
 - Any answer containing a field name, enum value, or feature-presence claim must be supported by a successful tool call in this turn. Use `get_schema` for fields and enum values, and `list_schemas` to verify whether a schema or feature exists. Use `search_docs` and `get_doc` for prose guidance and channel-specific behavior.

@@ -287,6 +287,7 @@ phases:
 
   - id: legacy_format_inline_path
     title: "Inline creative path using format_ids"
+    optional: true
     narrative: |
       A seller may still publish products through legacy format_ids[]. This
       path submits the inline creative with the product's legacy format_id and
