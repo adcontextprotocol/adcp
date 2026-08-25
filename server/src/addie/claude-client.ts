@@ -1263,31 +1263,47 @@ export class AddieClaudeClient {
       const invocationTools = retriedEmptyPostToolResponse ? [] : firstInvocationTools;
       let invocationAttempt = 0;
       try {
-        response = await withRetry(
-          async () => {
-            invocationAttempt++;
-            const providerRequest = this.buildProviderRequest(
-              effectiveModel,
-              systemBlocks,
-              invocationTools as unknown as Array<Record<string, unknown>>,
-              messages,
-            );
-            await this.notifyInvocationPrepared(
-              options,
-              providerRequest,
-              iteration,
-              invocationAttempt,
-            );
-            return this.client.beta.messages.create(
-              providerRequest as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming,
-            );
-          },
-          { maxRetries: 3, initialDelayMs: 1000 },
-          'processMessage'
-        );
+        const invokeProvider = async (sdkMaxRetries?: number) => {
+          invocationAttempt++;
+          const providerRequest = this.buildProviderRequest(
+            effectiveModel,
+            systemBlocks,
+            invocationTools as unknown as Array<Record<string, unknown>>,
+            messages,
+          );
+          await this.notifyInvocationPrepared(
+            options,
+            providerRequest,
+            iteration,
+            invocationAttempt,
+          );
+          return this.client.beta.messages.create(
+            providerRequest as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming,
+            sdkMaxRetries === undefined ? undefined : { maxRetries: sdkMaxRetries },
+          );
+        };
+        // A replay is an exactly-once paid experiment. A timeout can occur
+        // after provider acceptance, so neither our outer retry helper nor the
+        // Anthropic SDK may submit the request again.
+        response = options?.executionMode === 'replay'
+          ? await invokeProvider(0)
+          : await withRetry(
+            () => invokeProvider(),
+            { maxRetries: 3, initialDelayMs: 1000 },
+            'processMessage',
+          );
       } catch (error) {
         const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, requestWebSearchEnabled ? 1 : 0);
-        this.logPromptOverflow(error, stats, 'processMessage');
+        if (options?.executionMode === 'replay') {
+          // Provider errors may echo request text. Replay logs only categorical
+          // metadata; the signed ledger records the terminal outcome.
+          logger.error(
+            { source: 'processMessage', payload: stats },
+            'Addie: Replay provider invocation failed',
+          );
+        } else {
+          this.logPromptOverflow(error, stats, 'processMessage');
+        }
         throw error;
       }
 

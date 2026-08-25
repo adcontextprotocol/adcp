@@ -113,6 +113,49 @@ export interface ShadowReplayCaptureSummaryRow extends QueryResultRow {
   count: number;
 }
 
+export type ShadowReplayGenerationStatus = 'succeeded' | 'blocked' | 'error';
+
+export interface ShadowReplayInvocationEvidence {
+  iteration: number;
+  attempt: number;
+  provider_request_hmac: string;
+}
+
+export interface ShadowReplayToolEvidence {
+  sequence: number;
+  name: 'search_docs' | 'get_doc' | 'unapproved_tool';
+  schema_hmac: string | null;
+  input_hmac: string;
+  result_hmac: string;
+  disposition: 'live_read' | 'blocked_unknown' | 'blocked_policy' | 'error';
+}
+
+export interface ShadowReplayGenerationCompletion {
+  status: ShadowReplayGenerationStatus;
+  reason: string;
+  outputHmac: string | null;
+  outputBytes: number;
+  invocations: ShadowReplayInvocationEvidence[];
+  toolExecutions: ShadowReplayToolEvidence[];
+  blockedCapabilities: string[];
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export type ShadowReplayGenerationClaimDecision =
+  | 'claimed'
+  | 'already_claimed'
+  | 'daily_limit_reached'
+  | 'trace_unavailable';
+
+export interface ShadowReplayGenerationSummaryRow extends QueryResultRow {
+  status: string;
+  reason: string;
+  count: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
 type QueryFn = <T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[],
@@ -767,6 +810,49 @@ function compareSnapshotList(
   });
 }
 
+/**
+ * Last-moment guard for the exact first request handed to the provider.
+ * This is intentionally narrower than the full hydrated-context parity check:
+ * callers run that first, then run this synchronously from
+ * `onInvocationPrepared` before the SDK dispatch.
+ */
+export function verifyShadowReplayFirstInvocation(
+  trace: ResolvedShadowReplayTrace,
+  snapshot: InvocationPreparedSnapshot,
+): { verified: boolean; reasons: string[] } {
+  const expected = trace.expected;
+  const reasons: string[] = [];
+  if (snapshot.execution_mode !== 'replay') reasons.push('execution_mode_drift');
+  if (snapshot.iteration !== 1 || snapshot.attempt !== 1) {
+    reasons.push('first_invocation_position_drift');
+  }
+  if (snapshot.model !== expected.effective_model) reasons.push('model_drift');
+  if (snapshot.message_count !== expected.message_count) reasons.push('message_count_drift');
+  if (!compareSnapshotList(expected.system_block_hmacs, snapshot.system_blocks)) {
+    reasons.push('system_blocks_drift');
+  }
+  if (!compareSnapshotList(expected.tool_schema_hmacs, snapshot.tool_schemas)) {
+    reasons.push('tool_schemas_drift');
+  }
+  if (!compareSnapshotList(expected.message_payload_hmacs, snapshot.message_payloads)) {
+    reasons.push('message_payloads_drift');
+  }
+  const actualToolNames = snapshot.tool_schemas.map(({ name }) => name);
+  if (
+    actualToolNames.length !== expected.approved_tool_names.length
+    || !expected.approved_tool_names.every((name, index) => actualToolNames[index] === name)
+  ) {
+    reasons.push('capability_policy_drift');
+  }
+  if (
+    !expected.provider_request_hmac
+    || !equalDigest(expected.provider_request_hmac, snapshot.provider_request_sha256)
+  ) {
+    reasons.push('provider_request_drift');
+  }
+  return { verified: reasons.length === 0, reasons };
+}
+
 export function verifyShadowReplayTraceContext(
   trace: ResolvedShadowReplayTrace,
   input: {
@@ -859,6 +945,10 @@ export async function listPendingShadowReplayCaptures(
      WHERE capture_version = $1
        AND capture_status = 'pending'
        AND created_at < NOW() - INTERVAL '10 minutes'
+       AND NOT EXISTS (
+         SELECT 1 FROM addie_shadow_replay_generations generation
+         WHERE generation.trace_id = addie_shadow_replay_traces.trace_id
+       )
      ORDER BY created_at ASC, trace_id ASC
      LIMIT $2`,
     [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, Math.max(1, Math.min(100, Math.trunc(limit)))],
@@ -934,6 +1024,352 @@ export async function completeShadowReplayCapture(
   return result.rows[0]?.completed === true;
 }
 
+const CATEGORICAL_REASON = /^[a-z0-9_]{1,96}$/;
+const HMAC = /^[0-9a-f]{64}$/;
+const MAX_REPLAY_OUTPUT_BYTES = 128 * 1024;
+
+function validateGenerationCompletion(
+  trace: ResolvedShadowReplayTrace,
+  outcome: ShadowReplayGenerationCompletion,
+): void {
+  if (!CATEGORICAL_REASON.test(outcome.reason)) {
+    throw new Error('shadow_replay_generation_reason_invalid');
+  }
+  if (outcome.outputHmac !== null && !HMAC.test(outcome.outputHmac)) {
+    throw new Error('shadow_replay_generation_output_hmac_invalid');
+  }
+  if (outcome.status === 'succeeded' && !outcome.outputHmac) {
+    throw new Error('shadow_replay_generation_output_hmac_required');
+  }
+  if (!Number.isInteger(outcome.outputBytes)
+    || outcome.outputBytes < 0
+    || outcome.outputBytes > MAX_REPLAY_OUTPUT_BYTES) {
+    throw new Error('shadow_replay_generation_output_bytes_invalid');
+  }
+  if (!Number.isInteger(outcome.inputTokens) || outcome.inputTokens < 0
+    || !Number.isInteger(outcome.outputTokens) || outcome.outputTokens < 0) {
+    throw new Error('shadow_replay_generation_usage_invalid');
+  }
+  if (outcome.invocations.length > 4
+    || (outcome.status === 'succeeded' && outcome.invocations.length === 0)) {
+    throw new Error('shadow_replay_generation_invocations_invalid');
+  }
+  for (const [index, invocation] of outcome.invocations.entries()) {
+    if (!Number.isInteger(invocation.iteration) || invocation.iteration < 1
+      || invocation.iteration !== index + 1
+      || invocation.attempt !== 1
+      || !HMAC.test(invocation.provider_request_hmac)) {
+      throw new Error('shadow_replay_generation_invocation_invalid');
+    }
+  }
+  const firstInvocation = outcome.invocations[0];
+  if (firstInvocation && (
+    firstInvocation.iteration !== 1
+    || firstInvocation.attempt !== 1
+    || !trace.expected.provider_request_hmac
+    || !equalDigest(
+      firstInvocation.provider_request_hmac,
+      trace.expected.provider_request_hmac,
+    )
+  )) {
+    throw new Error('shadow_replay_generation_first_invocation_mismatch');
+  }
+  if (outcome.toolExecutions.length > 8) {
+    throw new Error('shadow_replay_generation_tool_limit_exceeded');
+  }
+  const expectedSchemaHmacs = new Map(
+    trace.expected.tool_schema_hmacs.map(({ name, sha256 }) => [name, sha256]),
+  );
+  for (const [index, execution] of outcome.toolExecutions.entries()) {
+    if (!Number.isInteger(execution.sequence) || execution.sequence < 1
+      || execution.sequence !== index + 1
+      || !['search_docs', 'get_doc', 'unapproved_tool'].includes(execution.name)
+      || (execution.schema_hmac !== null && !HMAC.test(execution.schema_hmac))
+      || !HMAC.test(execution.input_hmac)
+      || !HMAC.test(execution.result_hmac)
+      || !['live_read', 'blocked_unknown', 'blocked_policy', 'error'].includes(
+        execution.disposition,
+      )) {
+      throw new Error('shadow_replay_generation_tool_evidence_invalid');
+    }
+    if (execution.name === 'unapproved_tool') {
+      if (execution.schema_hmac !== null || execution.disposition === 'live_read') {
+        throw new Error('shadow_replay_generation_tool_binding_invalid');
+      }
+    } else if (execution.schema_hmac !== expectedSchemaHmacs.get(execution.name)) {
+      throw new Error('shadow_replay_generation_tool_binding_invalid');
+    }
+  }
+  if (outcome.blockedCapabilities.length > 32
+    || outcome.blockedCapabilities.some((reason) => !CATEGORICAL_REASON.test(reason))) {
+    throw new Error('shadow_replay_generation_blocked_capability_invalid');
+  }
+  if (outcome.status === 'succeeded' && (
+    outcome.blockedCapabilities.length > 0
+    || outcome.toolExecutions.some(({ disposition }) => disposition !== 'live_read')
+    || outcome.reason !== 'generation_succeeded'
+  )) {
+    throw new Error('shadow_replay_generation_success_inconsistent');
+  }
+}
+
+/**
+ * Claim one paid generation exactly once under a database-enforced UTC-day
+ * slot quota. Unique `(quota_date, quota_slot)` reservations remain safe even
+ * when concurrent statements begin with the same MVCC snapshot.
+ */
+export async function claimShadowReplayGeneration(
+  trace: ResolvedShadowReplayTrace,
+  dailyLimit: number,
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<ShadowReplayGenerationClaimDecision> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const now = dependencies.now ?? new Date();
+  if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 100) {
+    return 'trace_unavailable';
+  }
+  const boundedLimit = dailyLimit;
+  const result = await runQuery<{ decision: ShadowReplayGenerationClaimDecision }>(
+    `WITH eligible AS MATERIALIZED (
+       SELECT trace.trace_id, trace.retained_until, trace.provider_request_hmac
+       FROM addie_shadow_replay_traces trace
+       WHERE trace.trace_id = $1
+         AND trace.thread_id = $2
+         AND trace.capture_version = $3
+         AND trace.capture_status = 'pending'
+         AND trace.revoked_at IS NULL
+         AND trace.expires_at > $9
+         AND trace.effective_model = $7
+         AND trace.capability_profile = $4
+         AND trace.capability_policy_version = $5
+         AND trace.approved_tool_names = $6::jsonb
+         AND trace.provider_request_hmac IS NOT NULL
+     ), inserted AS (
+       INSERT INTO addie_shadow_replay_generations (
+         trace_id, execution_policy_version, model,
+         quota_date, quota_slot, first_provider_request_hmac,
+         started_at, heartbeat_at, retained_until
+       )
+       SELECT eligible.trace_id, $8, $7,
+              ($9::timestamptz AT TIME ZONE 'UTC')::date, slot,
+              eligible.provider_request_hmac, $9, $9, eligible.retained_until
+       FROM eligible
+       CROSS JOIN LATERAL generate_series(1, $10::integer) AS slot
+       ORDER BY slot
+       ON CONFLICT DO NOTHING
+       RETURNING trace_id
+     )
+     SELECT CASE
+       WHEN EXISTS (SELECT 1 FROM inserted) THEN 'claimed'
+       WHEN EXISTS (
+         SELECT 1 FROM addie_shadow_replay_generations generation
+         WHERE generation.trace_id = $1
+       ) THEN 'already_claimed'
+       WHEN EXISTS (SELECT 1 FROM eligible) THEN 'daily_limit_reached'
+       ELSE 'trace_unavailable'
+     END AS decision`,
+    [
+      trace.traceId,
+      trace.threadId,
+      SHADOW_REPLAY_TRACE_CAPTURE_VERSION,
+      OFFICIAL_DOCS_PROFILE,
+      OFFICIAL_DOCS_POLICY_VERSION,
+      JSON.stringify(OFFICIAL_DOCS_ALLOWED_TOOLS),
+      trace.expected.effective_model,
+      SHADOW_REPLAY_POLICY_VERSION,
+      now,
+      boundedLimit,
+    ],
+  );
+  const decision = result.rows[0]?.decision ?? 'trace_unavailable';
+  if (decision !== 'daily_limit_reached') return decision;
+
+  // ON CONFLICT can observe an uncommitted same-trace winner that remains
+  // invisible to this statement's original MVCC snapshot. Recheck with a new
+  // statement before classifying the empty insert as quota exhaustion.
+  const existing = await runQuery<{ claimed: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM addie_shadow_replay_generations WHERE trace_id = $1
+     ) AS claimed`,
+    [trace.traceId],
+  );
+  return existing.rows[0]?.claimed ? 'already_claimed' : 'daily_limit_reached';
+}
+
+/**
+ * Renew the paid-call lease immediately before an SDK dispatch. Recovery uses
+ * this heartbeat rather than claim time, so a live multi-iteration run cannot
+ * be terminalized between provider calls.
+ */
+export async function renewShadowReplayGenerationLease(
+  trace: Pick<ResolvedShadowReplayTrace, 'traceId' | 'threadId'>,
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<boolean> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const now = dependencies.now ?? new Date();
+  const result = await runQuery<{ renewed: boolean }>(
+    `WITH renewed AS (
+       UPDATE addie_shadow_replay_generations generation
+       SET heartbeat_at = $3
+       WHERE generation.trace_id = $1
+         AND generation.status = 'running'
+         AND EXISTS (
+           SELECT 1 FROM addie_shadow_replay_traces trace
+           WHERE trace.trace_id = generation.trace_id
+             AND trace.thread_id = $2
+             AND trace.capture_status = 'pending'
+             AND trace.revoked_at IS NULL
+             AND trace.expires_at > $3
+         )
+       RETURNING generation.trace_id
+     )
+     SELECT EXISTS (SELECT 1 FROM renewed) AS renewed`,
+    [trace.traceId, trace.threadId, now],
+  );
+  return result.rows[0]?.renewed === true;
+}
+
+/** Finish the generation ledger and capture outcome in one database statement. */
+export async function completeShadowReplayGeneration(
+  trace: ResolvedShadowReplayTrace,
+  outcome: ShadowReplayGenerationCompletion,
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<boolean> {
+  validateGenerationCompletion(trace, outcome);
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const completedAt = dependencies.now ?? new Date();
+  const captureStatus = outcome.status === 'succeeded'
+    ? 'verified'
+    : outcome.status === 'blocked'
+      ? 'skipped'
+      : 'error';
+  const context = {
+    shadow_eval_status: outcome.status === 'error' ? 'error' : 'skipped',
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: completedAt.toISOString(),
+    shadow_eval_replay_error: outcome.reason,
+    shadow_eval_trace_id: trace.traceId,
+    shadow_eval_capture_parity_verified: true,
+    shadow_eval_replay_generation_status: outcome.status,
+  };
+  const result = await runQuery<{ completed: boolean }>(
+    `WITH finished AS (
+       UPDATE addie_shadow_replay_generations generation
+       SET status = $3,
+           reason = $4,
+           output_hmac = $5,
+           output_bytes = $6,
+           invocation_hmacs = $7::jsonb,
+           tool_executions = $8::jsonb,
+           blocked_capabilities = $9::jsonb,
+           input_tokens = $10,
+           output_tokens = $11,
+           completed_at = $12
+       WHERE generation.trace_id = $1
+         AND generation.status = 'running'
+         AND EXISTS (
+           SELECT 1 FROM addie_shadow_replay_traces trace
+           WHERE trace.trace_id = generation.trace_id
+             AND trace.thread_id = $2
+             AND trace.capture_status = 'pending'
+         )
+       RETURNING generation.trace_id
+     ), trace_completed AS (
+       UPDATE addie_shadow_replay_traces trace
+       SET capture_status = $13,
+           capture_reason = $4,
+           capture_completed_at = $12
+       FROM finished
+       WHERE trace.trace_id = finished.trace_id
+         AND trace.thread_id = $2
+         AND trace.capture_status = 'pending'
+       RETURNING trace.trace_id, trace.thread_id
+     ), patched AS (
+       UPDATE addie_threads thread
+       SET context = COALESCE(thread.context, '{}'::jsonb) || $14::jsonb,
+           updated_at = NOW()
+       FROM trace_completed
+       WHERE thread.thread_id = trace_completed.thread_id
+         AND thread.context->>'shadow_eval_trace_id' = trace_completed.trace_id::text
+       RETURNING thread.thread_id
+     )
+     SELECT EXISTS (SELECT 1 FROM trace_completed) AS completed`,
+    [
+      trace.traceId,
+      trace.threadId,
+      outcome.status,
+      outcome.reason,
+      outcome.outputHmac,
+      outcome.outputBytes,
+      JSON.stringify(outcome.invocations),
+      JSON.stringify(outcome.toolExecutions),
+      JSON.stringify(outcome.blockedCapabilities),
+      outcome.inputTokens,
+      outcome.outputTokens,
+      completedAt,
+      captureStatus,
+      JSON.stringify(context),
+    ],
+  );
+  return result.rows[0]?.completed === true;
+}
+
+/**
+ * Close abandoned paid calls categorically. They are never made eligible for
+ * retry, preventing duplicate generations and candidate cherry-picking.
+ */
+export async function recoverStaleShadowReplayGenerations(
+  staleAfterMinutes: number = 20,
+  dependencies: { query?: QueryFn; now?: Date } = {},
+): Promise<number> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const now = dependencies.now ?? new Date();
+  // Anthropic's per-request timeout is ten minutes. The recovery floor must
+  // stay strictly above it; each later dispatch renews the lease first.
+  const boundedMinutes = Math.max(15, Math.min(60, Math.trunc(staleAfterMinutes)));
+  const context = {
+    shadow_eval_status: 'error',
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: now.toISOString(),
+    shadow_eval_replay_error: 'replay_generation_interrupted',
+    shadow_eval_capture_parity_verified: true,
+    shadow_eval_replay_generation_status: 'error',
+  };
+  const result = await runQuery<{ recovered: number }>(
+    `WITH stale AS (
+       UPDATE addie_shadow_replay_generations generation
+       SET status = 'error',
+           reason = 'replay_generation_interrupted',
+           completed_at = $1
+       WHERE generation.status = 'running'
+         AND generation.heartbeat_at <= $1 - ($2::integer * INTERVAL '1 minute')
+       RETURNING generation.trace_id
+     ), trace_completed AS (
+       UPDATE addie_shadow_replay_traces trace
+       SET capture_status = 'error',
+           capture_reason = 'replay_generation_interrupted',
+           capture_completed_at = $1
+       FROM stale
+       WHERE trace.trace_id = stale.trace_id
+         AND trace.capture_status = 'pending'
+       RETURNING trace.trace_id, trace.thread_id
+     ), patched AS (
+       UPDATE addie_threads thread
+       SET context = COALESCE(thread.context, '{}'::jsonb) || $3::jsonb,
+           updated_at = NOW()
+       FROM trace_completed
+       WHERE thread.thread_id = trace_completed.thread_id
+         AND thread.context->>'shadow_eval_trace_id' = trace_completed.trace_id::text
+       RETURNING thread.thread_id
+     )
+     SELECT COUNT(*)::integer AS recovered FROM trace_completed`,
+    [now, boundedMinutes, JSON.stringify(context)],
+  );
+  return result.rows[0]?.recovered ?? 0;
+}
+
 export async function getShadowReplayCaptureSummary(
   days: number,
   dependencies: { query?: QueryFn } = {},
@@ -954,6 +1390,27 @@ export async function getShadowReplayCaptureSummary(
      GROUP BY 1, 2
      ORDER BY 1, 2`,
     [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
+  );
+  return result.rows;
+}
+
+export async function getShadowReplayGenerationSummary(
+  days: number,
+  dependencies: { query?: QueryFn } = {},
+): Promise<ShadowReplayGenerationSummaryRow[]> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
+  const result = await runQuery<ShadowReplayGenerationSummaryRow>(
+    `SELECT status,
+            reason,
+            COUNT(*)::integer AS count,
+            COALESCE(SUM(input_tokens), 0)::integer AS input_tokens,
+            COALESCE(SUM(output_tokens), 0)::integer AS output_tokens
+     FROM addie_shadow_replay_generations
+     WHERE started_at >= NOW() - ($1::integer * INTERVAL '1 day')
+     GROUP BY status, reason
+     ORDER BY status, reason`,
+    [boundedDays],
   );
   return result.rows;
 }

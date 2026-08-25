@@ -2,14 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import type { InvocationPreparedSnapshot } from '../../../src/addie/claude-client.js';
 import {
   beginShadowReplayCaptureAttempt,
+  claimShadowReplayGeneration,
   completeShadowReplayCaptureAttempt,
   completeShadowReplayCapture,
+  completeShadowReplayGeneration,
   createShadowReplayCaptureIdentity,
   getShadowReplayCaptureSummary,
+  getShadowReplayGenerationSummary,
   listPendingShadowReplayCaptures,
   purgeRetainedShadowReplayTraces,
   queueShadowReplayTrace,
+  recoverStaleShadowReplayGenerations,
+  renewShadowReplayGenerationLease,
   resolveShadowReplayTrace,
+  verifyShadowReplayFirstInvocation,
   verifyShadowReplayTraceContext,
 } from '../../../src/addie/jobs/shadow-replay-trace.js';
 import {
@@ -158,6 +164,17 @@ async function persistedTrace(input = captureInput()) {
     thread_channel: 'slack',
   };
   return { calls, input, row };
+}
+
+async function authorizedTrace() {
+  const persisted = await persistedTrace();
+  const resolved = await resolveShadowReplayTrace(persisted.input.identity.traceId, {
+    query: vi.fn(async () => ({ rows: [persisted.row], rowCount: 1 })) as never,
+    keyConfig: { key: TRACE_KEY, version: TRACE_KEY_VERSION },
+    now: NOW,
+  });
+  if (!resolved.authorized) throw new Error(resolved.reason);
+  return { ...persisted, trace: resolved.trace };
 }
 
 describe('shadow replay trace authorization', () => {
@@ -433,6 +450,23 @@ describe('shadow replay trace authorization', () => {
     });
   });
 
+  it('guards the exact replay request immediately before the first provider call', async () => {
+    const { trace } = await authorizedTrace();
+    const replaySnapshot = { ...snapshot(), execution_mode: 'replay' as const };
+    expect(verifyShadowReplayFirstInvocation(trace, replaySnapshot)).toEqual({
+      verified: true,
+      reasons: [],
+    });
+    expect(verifyShadowReplayFirstInvocation(trace, {
+      ...replaySnapshot,
+      model: 'tampered-model',
+      provider_request_sha256: '0'.repeat(64),
+    })).toEqual({
+      verified: false,
+      reasons: ['model_drift', 'provider_request_drift'],
+    });
+  });
+
   it('lists and completes each signed opportunity independently of the mutable thread pointer', async () => {
     const pending = [
       { trace_id: '00000000-0000-4000-8000-000000000011', thread_id: '00000000-0000-4000-8000-000000000001' },
@@ -476,5 +510,244 @@ describe('shadow replay trace authorization', () => {
       .resolves.toEqual(rows);
     expect(runQuery.mock.calls[0][1]).toEqual([2, 7]);
     expect(runQuery.mock.calls[0][0]).toContain('addie_shadow_replay_capture_attempts');
+  });
+
+  it('claims one generation through a database-enforced daily slot quota', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn(async () => ({
+      rows: [{ decision: 'claimed' }],
+      rowCount: 1,
+    }));
+    await expect(claimShadowReplayGeneration(trace, 100, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe('claimed');
+    expect(runQuery.mock.calls[0][0]).toContain('generate_series(1, $10::integer)');
+    expect(runQuery.mock.calls[0][0]).toContain('ON CONFLICT DO NOTHING');
+    expect(runQuery.mock.calls[0][1][9]).toBe(100);
+    expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
+  });
+
+  it('fails closed before SQL when the generation quota is not bounded', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    await expect(claimShadowReplayGeneration(trace, 0, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe('trace_unavailable');
+    await expect(claimShadowReplayGeneration(trace, 101, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe('trace_unavailable');
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('rechecks a slot conflict in a fresh snapshot before reporting quota exhaustion', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ decision: 'daily_limit_reached' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ claimed: true }], rowCount: 1 });
+    await expect(claimShadowReplayGeneration(trace, 1, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe('already_claimed');
+    expect(runQuery).toHaveBeenCalledTimes(2);
+    expect(runQuery.mock.calls[1][0]).toContain('WHERE trace_id = $1');
+  });
+
+  it('renews only a live pending generation before provider dispatch', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn(async () => ({ rows: [{ renewed: true }], rowCount: 1 }));
+    await expect(renewShadowReplayGenerationLease(trace, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe(true);
+    expect(runQuery.mock.calls[0][0]).toContain("generation.status = 'running'");
+    expect(runQuery.mock.calls[0][0]).toContain("trace.capture_status = 'pending'");
+    expect(runQuery.mock.calls[0][0]).toContain('SET heartbeat_at = $3');
+  });
+
+  it('atomically completes a hash-only generation and its trace outcome', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    const outcome = {
+      status: 'succeeded' as const,
+      reason: 'generation_succeeded',
+      outputHmac: '1'.repeat(64),
+      outputBytes: 128,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [{
+        sequence: 1,
+        name: 'search_docs' as const,
+        schema_hmac: trace.expected.tool_schema_hmacs[0].sha256,
+        input_hmac: '2'.repeat(64),
+        result_hmac: '3'.repeat(64),
+        disposition: 'live_read' as const,
+      }],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+    };
+    await expect(completeShadowReplayGeneration(trace, outcome, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe(true);
+    expect(runQuery.mock.calls[0][0]).toContain("generation.status = 'running'");
+    expect(runQuery.mock.calls[0][0]).toContain("trace.capture_status = 'pending'");
+    expect(JSON.parse(runQuery.mock.calls[0][1][13] as string)).toMatchObject({
+      shadow_eval_status: 'skipped',
+      shadow_eval_capture_parity_verified: true,
+      shadow_eval_replay_generation_status: 'succeeded',
+    });
+    expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
+  });
+
+  it('rejects unsafe or unbounded generation evidence before persistence', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'blocked',
+      reason: 'replay_generation_blocked',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: ['private:value'],
+      inputTokens: 0,
+      outputTokens: 0,
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_blocked_capability_invalid',
+    );
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('persists a pre-provider boundary outcome with no invocation evidence', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'blocked',
+      reason: 'provider_request_drift',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [],
+      toolExecutions: [],
+      blockedCapabilities: ['provider_request_drift'],
+      inputTokens: 0,
+      outputTokens: 0,
+    }, { query: runQuery as never, now: NOW })).resolves.toBe(true);
+    expect(JSON.parse(runQuery.mock.calls[0][1][6] as string)).toEqual([]);
+  });
+
+  it('rejects a success row whose signed first request or policy outcome is inconsistent', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    const base = {
+      status: 'succeeded' as const,
+      reason: 'generation_succeeded',
+      outputHmac: '1'.repeat(64),
+      outputBytes: 4,
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 1,
+      outputTokens: 1,
+    };
+    await expect(completeShadowReplayGeneration(trace, {
+      ...base,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'f'.repeat(64),
+      }],
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_first_invocation_mismatch',
+    );
+    await expect(completeShadowReplayGeneration(trace, {
+      ...base,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      blockedCapabilities: ['output_rejected'],
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_success_inconsistent',
+    );
+    await expect(completeShadowReplayGeneration(trace, {
+      ...base,
+      invocations: [{
+        iteration: 1,
+        attempt: 2,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_invocation_invalid',
+    );
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'blocked',
+      reason: 'unapproved_tool',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [{
+        sequence: 1,
+        name: 'unapproved_tool',
+        schema_hmac: null,
+        input_hmac: '2'.repeat(64),
+        result_hmac: '3'.repeat(64),
+        disposition: 'live_read',
+      }],
+      blockedCapabilities: ['unapproved_tool'],
+      inputTokens: 1,
+      outputTokens: 1,
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_tool_binding_invalid',
+    );
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('closes stale paid calls without making them retryable', async () => {
+    const runQuery = vi.fn(async () => ({ rows: [{ recovered: 2 }], rowCount: 1 }));
+    await expect(recoverStaleShadowReplayGenerations(999, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe(2);
+    expect(runQuery.mock.calls[0][1][1]).toBe(60);
+    expect(runQuery.mock.calls[0][0]).toContain("reason = 'replay_generation_interrupted'");
+    expect(runQuery.mock.calls[0][0]).toContain('generation.heartbeat_at');
+    expect(runQuery.mock.calls[0][0]).toContain("trace.capture_status = 'pending'");
+
+    const floorQuery = vi.fn(async () => ({ rows: [{ recovered: 0 }], rowCount: 1 }));
+    await recoverStaleShadowReplayGenerations(1, {
+      query: floorQuery as never,
+      now: NOW,
+    });
+    expect(floorQuery.mock.calls[0][1][1]).toBe(15);
+  });
+
+  it('reports only categorical generation outcomes and token totals', async () => {
+    const rows = [{
+      status: 'succeeded',
+      reason: 'replay_generation_succeeded',
+      count: 2,
+      input_tokens: 100,
+      output_tokens: 40,
+    }];
+    const runQuery = vi.fn(async () => ({ rows, rowCount: 1 }));
+    await expect(getShadowReplayGenerationSummary(999, { query: runQuery as never }))
+      .resolves.toEqual(rows);
+    expect(runQuery.mock.calls[0][1]).toEqual([7]);
+    expect(runQuery.mock.calls[0][0]).not.toContain('trace_id');
   });
 });
