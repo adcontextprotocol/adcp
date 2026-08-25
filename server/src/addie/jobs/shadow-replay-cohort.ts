@@ -15,6 +15,27 @@ export type ProfiledChannelRespondPlan = Extract<ExecutionPlan, { action: 'respo
 interface CohortEnvironment {
   ADDIE_OFFICIAL_DOCS_COHORT_ENABLED?: string;
   ADDIE_OFFICIAL_DOCS_COHORT_CHANNEL_IDS?: string;
+  SHADOW_EVAL_TRACE_CAPTURE_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT?: string;
+}
+
+export const MAX_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT = 100;
+
+export type OfficialDocsReplayActivationReason =
+  | 'enabled'
+  | 'cohort_disabled'
+  | 'trace_capture_disabled'
+  | 'generation_disabled'
+  | 'unsupported_profile'
+  | 'channel_not_allowlisted'
+  | 'daily_limit_invalid';
+
+export interface OfficialDocsReplayActivationDecision {
+  enabled: boolean;
+  reason: OfficialDocsReplayActivationReason;
+  dailyLimit: number;
 }
 
 export type OfficialDocsCohortReason =
@@ -40,6 +61,66 @@ function allowlistedChannels(env: CohortEnvironment): Set<string> {
       .map((value) => value.trim())
       .filter(Boolean),
   );
+}
+
+function generationAllowlistedChannels(env: CohortEnvironment): Set<string> {
+  return new Set(
+    (env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function replayDailyLimit(env: CohortEnvironment): number {
+  const raw = env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return 0;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed)
+    && parsed > 0
+    && parsed <= MAX_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT
+    ? parsed
+    : 0;
+}
+
+/**
+ * Generation has an independent, default-off rollout boundary. A signed trace
+ * remains necessary but cannot activate model spend by itself.
+ */
+export function selectOfficialDocsReplayActivation(
+  input: {
+    channelId: string;
+    plan: ProfiledChannelRespondPlan;
+  },
+  env: CohortEnvironment = process.env,
+): OfficialDocsReplayActivationDecision {
+  const disabled = (reason: OfficialDocsReplayActivationReason) => ({
+    enabled: false,
+    reason,
+    dailyLimit: 0,
+  });
+  if (env.ADDIE_OFFICIAL_DOCS_COHORT_ENABLED !== 'true') {
+    return disabled('cohort_disabled');
+  }
+  if (env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+    return disabled('trace_capture_disabled');
+  }
+  if (env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED !== 'true') {
+    return disabled('generation_disabled');
+  }
+  if (!isOfficialDocsProfile(input.plan)) {
+    return disabled('unsupported_profile');
+  }
+  // Removal from either allowlist is an immediate channel-level rollback.
+  // A previously signed profile cannot keep replay generation active after
+  // the production cohort itself has been narrowed.
+  if (!allowlistedChannels(env).has(input.channelId)
+    || !generationAllowlistedChannels(env).has(input.channelId)) {
+    return disabled('channel_not_allowlisted');
+  }
+  const dailyLimit = replayDailyLimit(env);
+  if (dailyLimit === 0) return disabled('daily_limit_invalid');
+  return { enabled: true, reason: 'enabled', dailyLimit };
 }
 
 export function normalizeReplayableSiResult(

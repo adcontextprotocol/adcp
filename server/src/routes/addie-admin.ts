@@ -58,7 +58,10 @@ import {
 } from "../db/conversation-insights-db.js";
 import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.js";
 import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
-import { getShadowReplayCaptureSummary } from "../addie/jobs/shadow-replay-trace.js";
+import {
+  getShadowReplayCaptureSummary,
+  getShadowReplayGenerationSummary,
+} from "../addie/jobs/shadow-replay-trace.js";
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -567,11 +570,26 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 7) {
         return res.status(400).json({ error: 'days must be an integer from 1 to 7' });
       }
-      const outcomes = await getShadowReplayCaptureSummary(parsedDays);
+      const [outcomes, generationOutcomes] = await Promise.all([
+        getShadowReplayCaptureSummary(parsedDays),
+        getShadowReplayGenerationSummary(parsedDays),
+      ]);
       res.json({
         days: parsedDays,
         total: outcomes.reduce((sum, outcome) => sum + outcome.count, 0),
         outcomes,
+        generations: {
+          total: generationOutcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+          input_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.input_tokens,
+            0,
+          ),
+          output_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.output_tokens,
+            0,
+          ),
+          outcomes: generationOutcomes,
+        },
       });
     } catch (error) {
       logger.error(

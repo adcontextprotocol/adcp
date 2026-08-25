@@ -6,6 +6,7 @@ import {
   hasOfficialDocsToolBoundary,
   normalizeReplayableSiResult,
   selectOfficialDocsCohort,
+  selectOfficialDocsReplayActivation,
 } from '../../../src/addie/jobs/shadow-replay-cohort.js';
 
 const CHANNEL_ID = 'C_PUBLIC_DOCS';
@@ -113,5 +114,65 @@ describe('official docs replay cohort', () => {
     expect(hasOfficialDocsToolBoundary(client)).toBe(true);
     expect(hasOfficialDocsToolBoundary({ hasRegisteredTools: () => false })).toBe(false);
     expect(hasOfficialDocsToolBoundary(null)).toBe(false);
+  });
+
+  describe('generation activation', () => {
+    const generationEnv = {
+      ...enabledEnv,
+      SHADOW_EVAL_TRACE_CAPTURE_ENABLED: 'true',
+      SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED: 'true',
+      SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS: `C_OTHER, ${CHANNEL_ID}`,
+      SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT: '5',
+    };
+    const profiledPlan = applyOfficialDocsProfile(plan());
+
+    it('requires every independent gate and returns a bounded positive quota', () => {
+      expect(selectOfficialDocsReplayActivation({
+        channelId: CHANNEL_ID,
+        plan: profiledPlan,
+      }, generationEnv)).toEqual({
+        enabled: true,
+        reason: 'enabled',
+        dailyLimit: 5,
+      });
+    });
+
+    it.each([
+      ['cohort_disabled', { ADDIE_OFFICIAL_DOCS_COHORT_ENABLED: 'false' }],
+      ['trace_capture_disabled', { SHADOW_EVAL_TRACE_CAPTURE_ENABLED: 'false' }],
+      ['generation_disabled', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED: 'false' }],
+      ['channel_not_allowlisted', { ADDIE_OFFICIAL_DOCS_COHORT_CHANNEL_IDS: 'C_OTHER' }],
+      ['channel_not_allowlisted', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS: 'C_OTHER' }],
+      ['daily_limit_invalid', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT: '0' }],
+      ['daily_limit_invalid', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT: '101' }],
+      ['daily_limit_invalid', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT: '1.5' }],
+    ])('fails closed with %s', (reason, override) => {
+      expect(selectOfficialDocsReplayActivation({
+        channelId: CHANNEL_ID,
+        plan: profiledPlan,
+      }, { ...generationEnv, ...override })).toEqual({
+        enabled: false,
+        reason,
+        dailyLimit: 0,
+      });
+    });
+
+    it('rejects an unprofiled plan even when every environment gate is enabled', () => {
+      expect(selectOfficialDocsReplayActivation({
+        channelId: CHANNEL_ID,
+        plan: plan(),
+      }, generationEnv)).toEqual({
+        enabled: false,
+        reason: 'unsupported_profile',
+        dailyLimit: 0,
+      });
+    });
+
+    it('is disabled by default', () => {
+      expect(selectOfficialDocsReplayActivation({
+        channelId: CHANNEL_ID,
+        plan: profiledPlan,
+      }, {})).toMatchObject({ enabled: false, dailyLimit: 0 });
+    });
   });
 });

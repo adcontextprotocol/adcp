@@ -2,10 +2,27 @@ import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdkState = vi.hoisted(() => ({
-  nonStreamingResponses: [] as Array<Record<string, unknown>>,
+  nonStreamingResponses: [] as unknown[],
   streamingResponses: [] as Array<Record<string, unknown>>,
   calls: [] as Array<Record<string, unknown>>,
+  requestOptions: [] as unknown[],
 }));
+
+const loggerState = vi.hoisted(() => ({ entries: [] as unknown[][] }));
+
+vi.mock('../../src/logger.js', () => {
+  const record = (...args: unknown[]) => loggerState.entries.push(args);
+  const logger = {
+    trace: record,
+    debug: record,
+    info: record,
+    warn: record,
+    error: record,
+    fatal: record,
+    child: () => logger,
+  };
+  return { createLogger: () => logger, logger };
+});
 
 const notifyToolError = vi.hoisted(() => vi.fn());
 const notifySystemError = vi.hoisted(() => vi.fn());
@@ -19,10 +36,12 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: class {
     beta = {
       messages: {
-        create: vi.fn(async (payload: Record<string, unknown>) => {
+        create: vi.fn(async (payload: Record<string, unknown>, options?: unknown) => {
           sdkState.calls.push(payload);
+          sdkState.requestOptions.push(options);
           const response = sdkState.nonStreamingResponses.shift();
           if (!response) throw new Error('Missing non-streaming response fixture');
+          if (response instanceof Error) throw response;
           return response;
         }),
         stream: vi.fn((payload: Record<string, unknown>) => {
@@ -101,6 +120,8 @@ beforeEach(() => {
   sdkState.nonStreamingResponses.length = 0;
   sdkState.streamingResponses.length = 0;
   sdkState.calls.length = 0;
+  sdkState.requestOptions.length = 0;
+  loggerState.entries.length = 0;
   notifyToolError.mockReset();
   notifySystemError.mockReset();
 });
@@ -392,6 +413,31 @@ describe('AddieClaudeClient replay execution policy', () => {
 
     expect(actual).toEqual([prepared]);
     expect(sdkState.calls).toHaveLength(1);
+  });
+
+  it('submits replay exactly once and logs no provider-echoed private text', async () => {
+    const privateSentinel = 'private-provider-error-sentinel';
+    const error = Object.assign(new Error(`temporary 500 ${privateSentinel}`), { status: 500 });
+    sdkState.nonStreamingResponses.push(error);
+    const client = new AddieClaudeClient('unused', 'test-model');
+
+    await expect(client.processMessage(
+      'private question',
+      undefined,
+      undefined,
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'replay',
+        disableServerTools: true,
+        uncapped: true,
+        invocationHashKey: 'no-retry-key',
+        invocationHashDomain: 'no-retry-domain',
+      },
+    )).rejects.toThrow(privateSentinel);
+
+    expect(sdkState.calls).toHaveLength(1);
+    expect(sdkState.requestOptions).toEqual([{ maxRetries: 0 }]);
+    expect(JSON.stringify(loggerState.entries)).not.toContain(privateSentinel);
   });
 
   it('enforces an exact request-local tool boundary in both preparation and provider calls', async () => {

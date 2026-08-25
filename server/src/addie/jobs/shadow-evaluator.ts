@@ -27,13 +27,25 @@ import {
   type ChannelRespondPlan,
 } from '../bolt-app.js';
 import {
+  claimShadowReplayGeneration,
+  completeShadowReplayGeneration,
   completeShadowReplayCapture,
   listPendingShadowReplayCaptures,
   purgeRetainedShadowReplayTraces,
+  recoverStaleShadowReplayGenerations,
+  renewShadowReplayGenerationLease,
   resolveShadowReplayTrace,
   verifyShadowReplayTraceContext,
 } from './shadow-replay-trace.js';
-import { isOfficialDocsProfile } from './shadow-replay-cohort.js';
+import {
+  isOfficialDocsProfile,
+  selectOfficialDocsReplayActivation,
+} from './shadow-replay-cohort.js';
+import {
+  executeVerifiedOfficialDocsReplay,
+  OfficialDocsReplayBoundaryError,
+  OfficialDocsReplayExecutionError,
+} from './shadow-replay.js';
 import { getDocsCorpusFingerprint } from '../mcp/docs-indexer.js';
 import { getCurrentConfigVersionId } from '../config-version.js';
 import { guardBareJsonEnvelope, validateOutput } from '../security.js';
@@ -383,6 +395,7 @@ export async function runShadowEvaluatorJob(
   options: { limit: number } = { limit: 5 },
   dependencies: {
     purgeTraces?: typeof purgeRetainedShadowReplayTraces;
+    recoverGenerations?: typeof recoverStaleShadowReplayGenerations;
     listPending?: typeof listPendingShadowReplayCaptures;
     resolveTrace?: typeof resolveShadowReplayTrace;
     verifyTraceContext?: typeof verifyShadowReplayTraceContext;
@@ -393,6 +406,11 @@ export async function runShadowEvaluatorJob(
     getMember?: typeof getMemberContext;
     getChannel?: typeof buildChannelContext;
     buildInvocation?: typeof buildChannelResponseInvocation;
+    selectReplayActivation?: typeof selectOfficialDocsReplayActivation;
+    claimGeneration?: typeof claimShadowReplayGeneration;
+    executeReplay?: typeof executeVerifiedOfficialDocsReplay;
+    completeGeneration?: typeof completeShadowReplayGeneration;
+    renewGenerationLease?: typeof renewShadowReplayGenerationLease;
   } = {},
 ): Promise<ShadowEvalResult> {
   const result: ShadowEvalResult = {
@@ -407,6 +425,9 @@ export async function runShadowEvaluatorJob(
   // evaluation queue. Failure is non-fatal; a later run will retry.
   await (dependencies.purgeTraces ?? purgeRetainedShadowReplayTraces)().catch(() => {
     logger.warn('Shadow evaluator: Replay trace retention cleanup failed');
+  });
+  await (dependencies.recoverGenerations ?? recoverStaleShadowReplayGenerations)().catch(() => {
+    logger.warn('Shadow evaluator: Stale replay generation recovery failed');
   });
 
   let pendingCaptures: Awaited<ReturnType<typeof listPendingShadowReplayCaptures>>;
@@ -518,12 +539,97 @@ export async function runShadowEvaluatorJob(
         continue;
       }
 
-      // Capture-only rollout gate: prove the complete first provider request
-      // can be reconstructed before enabling any model or judge call.
-      await finishCapture(capture, 'verified', 'replay_generation_disabled', {
-        parityVerified: true,
+      const activation = (
+        dependencies.selectReplayActivation ?? selectOfficialDocsReplayActivation
+      )({
+        channelId: authorization.trace.channelId,
+        plan,
       });
-      result.skipped++;
+      if (!activation.enabled) {
+        const reason = activation.reason === 'generation_disabled'
+          ? 'replay_generation_disabled'
+          : `replay_${activation.reason}`;
+        await finishCapture(capture, 'verified', reason, { parityVerified: true });
+        result.skipped++;
+        continue;
+      }
+
+      const claim = await (
+        dependencies.claimGeneration ?? claimShadowReplayGeneration
+      )(authorization.trace, activation.dailyLimit);
+      if (claim === 'already_claimed') {
+        // Another worker owns this exact trace. It alone may complete the
+        // generation ledger; this worker must not call either model.
+        result.skipped++;
+        continue;
+      }
+      if (claim !== 'claimed') {
+        await finishCapture(
+          capture,
+          'skipped',
+          claim === 'daily_limit_reached'
+            ? 'replay_daily_limit_reached'
+            : 'replay_claim_unavailable',
+          { parityVerified: true },
+        );
+        result.skipped++;
+        continue;
+      }
+
+      try {
+        const generation = await (
+          dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay
+        )({
+          trace: authorization.trace,
+          invocation,
+          docsCorpusFingerprint,
+        }, {
+          renewLease: () => (
+            dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
+          )(authorization.trace),
+        });
+        const completed = await (
+          dependencies.completeGeneration ?? completeShadowReplayGeneration
+        )(authorization.trace, generation);
+        if (!completed) {
+          logger.warn('Shadow evaluator: Claimed replay generation was not completed');
+          result.errors++;
+          continue;
+        }
+        // Generation-only rollout: the output was digested and discarded.
+        // No human evidence or judge is consulted in this phase.
+        result.skipped++;
+      } catch (error) {
+        const boundaryReason = error instanceof OfficialDocsReplayBoundaryError
+          ? error.reason
+          : null;
+        const terminal = error instanceof OfficialDocsReplayExecutionError
+          ? error.completion
+          : {
+          status: boundaryReason ? 'blocked' as const : 'error' as const,
+          reason: boundaryReason ?? 'replay_generation_failed',
+          outputHmac: null,
+          outputBytes: 0,
+          invocations: [],
+          toolExecutions: [],
+          blockedCapabilities: boundaryReason ? [boundaryReason] : [],
+          inputTokens: 0,
+          outputTokens: 0,
+          };
+        let completed = false;
+        try {
+          completed = await (
+            dependencies.completeGeneration ?? completeShadowReplayGeneration
+          )(authorization.trace, terminal);
+        } catch {
+          // Keep the one-attempt row running. Stale recovery will close it;
+          // never fall through to mutable capture completion after a claim.
+          logger.warn('Shadow evaluator: Failed replay generation persistence failed');
+        }
+        if (!completed) logger.warn('Shadow evaluator: Failed replay generation was not completed');
+        if (terminal.status === 'blocked') result.skipped++;
+        else result.errors++;
+      }
     } catch (error) {
       logger.error(
         {
