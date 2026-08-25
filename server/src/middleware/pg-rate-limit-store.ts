@@ -12,11 +12,24 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('pg-rate-limit');
 
-// Periodic cleanup of expired rows (runs once, shared across all stores)
-let cleanupStarted = false;
+// Periodic cleanup of expired rows (runs once, shared across all stores).
+//
+// The "once" guard has to live on `globalThis` rather than as a plain
+// module-scope `let`: under vitest, each test file gets a fresh module
+// registry (isolate resets `evaluatedModules`), so a module-scope flag is
+// re-initialized to `false` on every file that imports this module and
+// `startCleanup()` unconditionally arms a *new* `setInterval`. `globalThis`
+// is a real, unreset object for the life of the worker process, so a flag
+// stored there actually enforces "once per process" the way the comment
+// above promises — otherwise every test file that constructs a Postgres
+// rate-limit store leaves one more live interval timer behind (closed
+// over that file's now-stale `query`/`isDatabaseInitialized` bindings)
+// for the remainder of the run.
+const CLEANUP_STARTED_KEY = '__adcp_pg_rate_limit_cleanup_started__';
 function startCleanup(): void {
-  if (cleanupStarted) return;
-  cleanupStarted = true;
+  const g = globalThis as typeof globalThis & { [CLEANUP_STARTED_KEY]?: boolean };
+  if (g[CLEANUP_STARTED_KEY]) return;
+  g[CLEANUP_STARTED_KEY] = true;
   const timer = setInterval(async () => {
     if (!isDatabaseInitialized()) return;
     try {
