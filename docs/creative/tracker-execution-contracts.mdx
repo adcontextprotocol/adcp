@@ -77,39 +77,52 @@ Asset defaults are normalized before matching: omitted `pixel_tracker.method` is
 The following VAST/DAAST contract is valid only on an effective option whose `params.slots[]` includes first-class `vast_tracker` and `daast_tracker` slots:
 
 ```json
-{
-  "format_option_id": "acme_av_trackers",
-  "format_kind": "custom",
-  "params": {
-    "slots": [
-      { "asset_group_id": "video_start_tracker", "asset_type": "vast_tracker", "required": false },
-      { "asset_group_id": "audio_quartile_tracker", "asset_type": "daast_tracker", "required": false }
-    ]
-  },
-  "tracker_execution_contract": {
-    "complete": true,
-    "honored": [
-    {
-      "selector_id": "linear_vast_start",
-      "asset_type": "vast_tracker",
-      "vast_versions": ["4.2", "4.3"],
-      "vast_event": "start",
-      "target": "linear",
-      "execution_actor": "request_executor",
-      "firing_paths": ["client", "server"]
+[
+  {
+    "format_option_id": "acme_video_trackers",
+    "format_kind": "video_hosted",
+    "params": {
+      "slots": [
+        { "asset_group_id": "video_main", "asset_type": "video", "required": true },
+        { "asset_group_id": "video_start_tracker", "asset_type": "vast_tracker", "required": false }
+      ]
     },
-    {
-      "selector_id": "linear_daast_quartile",
-      "asset_type": "daast_tracker",
-      "daast_versions": ["1.1"],
-      "daast_event": "firstQuartile",
-      "target": "linear",
-      "execution_actor": "request_executor",
-      "firing_paths": ["client"]
+    "tracker_execution_contract": {
+      "complete": true,
+      "honored": [{
+        "selector_id": "linear_vast_start",
+        "asset_type": "vast_tracker",
+        "vast_versions": ["4.2", "4.3"],
+        "vast_event": "start",
+        "target": "linear",
+        "execution_actor": "request_executor",
+        "firing_paths": ["client", "server"]
+      }]
     }
-    ]
+  },
+  {
+    "format_option_id": "acme_audio_trackers",
+    "format_kind": "audio_hosted",
+    "params": {
+      "slots": [
+        { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },
+        { "asset_group_id": "audio_quartile_tracker", "asset_type": "daast_tracker", "required": false }
+      ]
+    },
+    "tracker_execution_contract": {
+      "complete": true,
+      "honored": [{
+        "selector_id": "linear_daast_quartile",
+        "asset_type": "daast_tracker",
+        "daast_versions": ["1.1"],
+        "daast_event": "firstQuartile",
+        "target": "linear",
+        "execution_actor": "request_executor",
+        "firing_paths": ["client"]
+      }]
+    }
   }
-}
+]
 ```
 
 `close` remains accepted in legacy DAAST asset payloads for AdCP 3.x compatibility, but it is not in the DAAST 1.0/1.1 standards event enum and therefore cannot appear in a closed 3.2 execution selector.
