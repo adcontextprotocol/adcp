@@ -120,7 +120,7 @@ export class SimulationEngine {
       );
       const threadId = threadResult.rows[0].thread_id;
 
-      for (const msg of profile.messageHistory) {
+      for (const [index, msg] of profile.messageHistory.entries()) {
         const msgTime = new Date(
           this.clock.nowMs() +
           (msg.relativeTime.days ?? 0) * 86400000 +
@@ -128,9 +128,19 @@ export class SimulationEngine {
         );
 
         await this.pool.query(
-          `INSERT INTO addie_thread_messages (thread_id, role, content, created_at)
-           VALUES ($1, $2, $3, $4)`,
-          [threadId, msg.role, msg.content, msgTime]
+          `INSERT INTO addie_thread_messages (
+             thread_id, role, content, created_at, sequence_number,
+             model_execution_source, local_response_reason
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            threadId,
+            msg.role,
+            msg.content,
+            msgTime,
+            index + 1,
+            msg.role === 'assistant' ? 'local' : null,
+            msg.role === 'assistant' ? 'canned_response' : null,
+          ]
         );
       }
     }

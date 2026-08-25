@@ -10,6 +10,7 @@ import {
   type CreateMessageInput,
   type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
+import { AddieDatabase } from '../../src/db/addie-db.js';
 
 // These tests require a running PostgreSQL instance. Lives in integration/
 // so the build-check.yml server-integration job picks them up; the skipIf
@@ -21,6 +22,12 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
   let threadService: ThreadService;
   const TEST_THREAD_EXTERNAL_ID = 'test-channel:test-thread-ts';
   const TEST_WEB_EXTERNAL_ID = 'test-web-conversation-uuid';
+  const TEST_LOCAL_MODEL_EXECUTION = {
+    source: 'local' as const,
+    requested_provider: null,
+    requested_model: null,
+    reason: 'canned_response' as const,
+  };
 
   beforeAll(async () => {
     // Initialize test database
@@ -37,12 +44,14 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
 
   afterAll(async () => {
     // Clean up test data
+    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%'");
     await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-%'`);
     await closeDatabase();
   });
 
   beforeEach(async () => {
     // Clean up threads before each test
+    await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%'");
     await pool.query(`DELETE FROM addie_threads WHERE external_id LIKE 'test-%'`);
   });
 
@@ -176,6 +185,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: thread.thread_id,
         role: 'assistant',
         content: 'Second message',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
       });
 
       const msg3 = await threadService.addMessage({
@@ -211,12 +221,333 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
           { name: 'search_knowledge', input: { query: 'something' }, result: { found: true } },
         ],
         model: 'claude-sonnet-4-20250514',
+        model_execution: {
+          source: 'provider',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-sonnet-4-20250514',
+          provider: 'openai',
+          model: 'm'.repeat(256),
+          model_resolution: 'fallback',
+          fallback_reason: 'primary_unavailable',
+        },
         latency_ms: 500,
       });
 
       expect(assistantMsg.tools_used).toContain('search_knowledge');
       expect(assistantMsg.model).toBe('claude-sonnet-4-20250514');
+      expect(assistantMsg.model_execution_source).toBe('provider');
+      expect(assistantMsg.requested_model_provider).toBe('anthropic');
+      expect(assistantMsg.requested_model).toBe('claude-sonnet-4-20250514');
+      expect(assistantMsg.model_provider).toBe('openai');
+      expect(assistantMsg.provider_model).toBe('m'.repeat(256));
+      expect(assistantMsg.provider_model_resolution).toBe('fallback');
+      expect(assistantMsg.provider_fallback_reason).toBe('primary_unavailable');
       expect(assistantMsg.latency_ms).toBe(500);
+    });
+
+    it('should distinguish local responses from provider responses', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_THREAD_EXTERNAL_ID}-local-response`,
+        user_type: 'anonymous',
+      });
+
+      const message = await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: 'Please try again later.',
+        model: 'claude-sonnet-5',
+        model_execution: {
+          source: 'local',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-sonnet-5',
+          reason: 'provider_error',
+        },
+      });
+
+      expect(message.model_execution_source).toBe('local');
+      expect(message.requested_model_provider).toBe('anthropic');
+      expect(message.requested_model).toBe('claude-sonnet-5');
+      expect(message.model_provider).toBeNull();
+      expect(message.provider_model).toBeNull();
+      expect(message.provider_fallback_reason).toBeNull();
+      expect(message.local_response_reason).toBe('provider_error');
+    });
+
+    it('requires explicit resolution metadata for same-provider model fallback', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_THREAD_EXTERNAL_ID}-same-provider-fallback`,
+        user_type: 'anonymous',
+      });
+
+      const message = await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: 'Fallback completed.',
+        model_execution: {
+          source: 'provider',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-primary',
+          provider: 'anthropic',
+          model: 'claude-fallback',
+          model_resolution: 'fallback',
+          fallback_reason: 'primary_unavailable',
+        },
+      });
+      expect(message.provider_model_resolution).toBe('fallback');
+
+      await expect(pool.query(
+        `INSERT INTO addie_thread_messages (
+           thread_id, role, content, sequence_number, model_execution_source,
+           requested_model_provider, requested_model, model_provider, provider_model,
+           provider_model_resolution
+         ) VALUES (
+           $1, 'assistant', 'invalid fallback', 2, 'provider',
+           'anthropic', 'claude-primary', 'anthropic', 'claude-fallback', 'fallback'
+         )`,
+        [thread.thread_id],
+      )).rejects.toThrow();
+    });
+
+    it('rejects partial provider provenance while allowing rolling-deploy writes', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_THREAD_EXTERNAL_ID}-partial-provider`,
+        user_type: 'anonymous',
+      });
+
+      await expect(pool.query(
+        `INSERT INTO addie_thread_messages (
+           thread_id, role, content, sequence_number,
+           model_execution_source, requested_model_provider
+         ) VALUES ($1, 'assistant', 'invalid', 1, 'provider', 'anthropic')`,
+        [thread.thread_id],
+      )).rejects.toThrow();
+
+      const rollingDeployWrite = await pool.query<{ model_execution_source: string | null }>(
+        `INSERT INTO addie_thread_messages (
+           thread_id, role, content, sequence_number
+         ) VALUES ($1, 'assistant', 'rolling deploy', 2)
+         RETURNING model_execution_source`,
+        [thread.thread_id],
+      );
+      expect(rollingDeployWrite.rows[0]?.model_execution_source).toBeNull();
+    });
+
+    it('enforces atomic provenance without validating legacy table contents', async () => {
+      const constraintNames = [
+        'addie_thread_messages_provider_values',
+        'addie_thread_messages_execution_source_values',
+        'addie_thread_messages_execution_assistant_only',
+        'addie_thread_messages_provider_model_nonempty',
+        'addie_thread_messages_provider_fallback_reason_values',
+        'addie_thread_messages_provider_model_resolution_values',
+        'addie_thread_messages_local_response_reason_values',
+        'addie_thread_messages_provider_execution_atomic',
+        'addie_thread_messages_provider_fallback_consistent',
+        'addie_interactions_provider_values',
+        'addie_interactions_execution_source_values',
+        'addie_interactions_provider_model_nonempty',
+        'addie_interactions_provider_fallback_reason_values',
+        'addie_interactions_provider_model_resolution_values',
+        'addie_interactions_local_response_reason_values',
+        'addie_interactions_provider_execution_atomic',
+        'addie_interactions_provider_fallback_consistent',
+      ];
+      const result = await pool.query<{ conname: string; convalidated: boolean }>(
+        `SELECT conname, convalidated
+         FROM pg_constraint
+         WHERE conname = ANY($1::text[])
+         ORDER BY conname`,
+        [constraintNames],
+      );
+
+      expect(result.rows).toHaveLength(constraintNames.length);
+      expect(result.rows.every((row) => row.convalidated === false)).toBe(true);
+    });
+
+    it('lazily classifies historical rows when feedback and review paths update them', async () => {
+      const thread = await threadService.getOrCreateThread({
+        channel: 'web',
+        external_id: `${TEST_THREAD_EXTERNAL_ID}-legacy-feedback`,
+        user_type: 'anonymous',
+      });
+
+      const messages = await pool.query<{ message_id: string }>(
+        `INSERT INTO addie_thread_messages (thread_id, role, content, sequence_number)
+         VALUES
+           ($1, 'assistant', 'legacy feedback', 1),
+           ($1, 'assistant', 'legacy flag', 2),
+           ($1, 'assistant', 'legacy outcome', 3)
+         RETURNING message_id`,
+        [thread.thread_id],
+      );
+      const messageIds = messages.rows.map((row) => row.message_id);
+      await pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms
+         ) VALUES
+           ('provider-provenance-legacy-review', 'dm', 'D_TEST', 'legacy-user', 'q', 'q', 'a', 'legacy', 1),
+           ('provider-provenance-legacy-rating', 'dm', 'D_TEST', 'legacy-user', 'q', 'q', 'a', 'legacy', 1)`,
+      );
+
+      await threadService.addMessageFeedback(thread.thread_id, messageIds[0], {
+        rating: 5,
+        rated_by: 'legacy-reviewer',
+        rating_source: 'admin',
+      });
+      await threadService.flagMessage(messageIds[1], 'legacy flag');
+      await threadService.setMessageOutcome(messageIds[2], 'resolved');
+
+      const addieDb = new AddieDatabase();
+      await addieDb.markInteractionReviewed('provider-provenance-legacy-review', 'legacy-reviewer');
+      await addieDb.rateInteraction('provider-provenance-legacy-rating', 4, 'legacy-reviewer');
+
+      const messageSources = await pool.query<{ model_execution_source: string | null }>(
+        `SELECT model_execution_source
+         FROM addie_thread_messages
+         WHERE message_id = ANY($1::uuid[])`,
+        [messageIds],
+      );
+      const interactionSources = await pool.query<{ model_execution_source: string | null }>(
+        `SELECT model_execution_source
+         FROM addie_interactions
+         WHERE id IN ('provider-provenance-legacy-review', 'provider-provenance-legacy-rating')`,
+      );
+
+      expect(messageSources.rows).toHaveLength(3);
+      expect(messageSources.rows.every((row) => row.model_execution_source === 'legacy')).toBe(true);
+      expect(interactionSources.rows).toHaveLength(2);
+      expect(interactionSources.rows.every((row) => row.model_execution_source === 'legacy')).toBe(true);
+    });
+
+    it('round-trips provider and local provenance through the legacy interaction audit', async () => {
+      const addieDb = new AddieDatabase();
+      const userId = 'provider-provenance-user';
+      await pool.query("DELETE FROM addie_interactions WHERE id LIKE 'provider-provenance-%'");
+
+      await addieDb.logInteraction({
+        id: 'provider-provenance-provider',
+        timestamp: new Date(),
+        event_type: 'dm',
+        channel_id: 'D_TEST',
+        user_id: userId,
+        input_text: 'question',
+        input_sanitized: 'question',
+        output_text: 'answer',
+        tools_used: [],
+        model: 'claude-sonnet-5',
+        model_execution: {
+          source: 'provider',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-sonnet-5',
+          provider: 'openai',
+          model: 'p'.repeat(256),
+          model_resolution: 'fallback',
+          fallback_reason: 'primary_unavailable',
+        },
+        latency_ms: 10,
+        flagged: false,
+      });
+      await addieDb.logInteraction({
+        id: 'provider-provenance-local',
+        timestamp: new Date(),
+        event_type: 'dm',
+        channel_id: 'D_TEST',
+        user_id: userId,
+        input_text: 'question',
+        input_sanitized: 'question',
+        output_text: 'try again',
+        tools_used: [],
+        model: 'claude-sonnet-5',
+        model_execution: {
+          source: 'local',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-sonnet-5',
+          reason: 'provider_error',
+        },
+        latency_ms: 5,
+        flagged: true,
+      });
+      await addieDb.logInteraction({
+        id: 'provider-provenance-model-fallback',
+        timestamp: new Date(),
+        event_type: 'dm',
+        channel_id: 'D_TEST',
+        user_id: userId,
+        input_text: 'question',
+        input_sanitized: 'question',
+        output_text: 'fallback answer',
+        tools_used: [],
+        model: 'claude-primary',
+        model_execution: {
+          source: 'provider',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-primary',
+          provider: 'anthropic',
+          model: 'claude-fallback',
+          model_resolution: 'fallback',
+          fallback_reason: 'primary_unavailable',
+        },
+        latency_ms: 7,
+        flagged: false,
+      });
+
+      const interactions = await addieDb.getInteractions({ userId });
+      expect(interactions.find((row) => row.id === 'provider-provenance-provider')?.model_execution).toEqual({
+        source: 'provider',
+        requested_provider: 'anthropic',
+        requested_model: 'claude-sonnet-5',
+        provider: 'openai',
+        model: 'p'.repeat(256),
+        model_resolution: 'fallback',
+        fallback_reason: 'primary_unavailable',
+      });
+      expect(interactions.find((row) => row.id === 'provider-provenance-local')?.model_execution).toEqual({
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: 'claude-sonnet-5',
+        reason: 'provider_error',
+      });
+      expect(interactions.find((row) => row.id === 'provider-provenance-model-fallback')?.model_execution).toEqual({
+        source: 'provider',
+        requested_provider: 'anthropic',
+        requested_model: 'claude-primary',
+        provider: 'anthropic',
+        model: 'claude-fallback',
+        model_resolution: 'fallback',
+        fallback_reason: 'primary_unavailable',
+      });
+
+      await expect(pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms, model_execution_source,
+           requested_model_provider, requested_model, model_provider, provider_model,
+           provider_model_resolution
+         ) VALUES (
+           'provider-provenance-invalid-fallback', 'dm', 'D_TEST', $1, 'q', 'q',
+           'a', 'claude-primary', 1, 'provider',
+           'anthropic', 'claude-primary', 'anthropic', 'claude-fallback', 'fallback'
+         )`,
+        [userId],
+      )).rejects.toThrow();
+
+      await expect(pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms, model_execution_source,
+           requested_model_provider, requested_model, model_provider, provider_model,
+           provider_model_resolution, provider_fallback_reason
+         ) VALUES (
+           'provider-provenance-too-long', 'dm', 'D_TEST', $1, 'q', 'q',
+           'a', 'claude-sonnet-5', 1, 'provider', 'anthropic', 'claude-sonnet-5', 'anthropic', $2,
+           'fallback', 'primary_unavailable'
+         )`,
+        [userId, 'x'.repeat(257)],
+      )).rejects.toThrow();
     });
 
     it('should handle flagged messages', async () => {
@@ -248,7 +579,12 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       });
 
       await threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'First' });
-      await threadService.addMessage({ thread_id: thread.thread_id, role: 'assistant', content: 'Second' });
+      await threadService.addMessage({
+        thread_id: thread.thread_id,
+        role: 'assistant',
+        content: 'Second',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+      });
       await threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Third' });
 
       const messages = await threadService.getThreadMessages(thread.thread_id);
@@ -266,11 +602,15 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         user_type: 'workos',
       });
       for (let index = 1; index <= 5; index += 1) {
-        await threadService.addMessage({
-          thread_id: thread.thread_id,
-          role: index % 2 ? 'user' : 'assistant',
-          content: `page-${index}`,
-        });
+        const input: CreateMessageInput = index % 2
+          ? { thread_id: thread.thread_id, role: 'user', content: `page-${index}` }
+          : {
+              thread_id: thread.thread_id,
+              role: 'assistant',
+              content: `page-${index}`,
+              model_execution: TEST_LOCAL_MODEL_EXECUTION,
+            };
+        await threadService.addMessage(input);
       }
 
       expect((await threadService.getThreadMessages(thread.thread_id, { limit: 2 })).map(m => m.content))
@@ -295,6 +635,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: thread.thread_id,
         role: 'assistant',
         content: 'Answer',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
       });
 
       await threadService.addMessageFeedback(thread.thread_id, assistantMsg.message_id, {
@@ -330,6 +671,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: ownerThread.thread_id,
         role: 'assistant',
         content: 'Private answer',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
       });
 
       const updated = await threadService.addMessageFeedback(
@@ -570,7 +912,10 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       });
 
       await threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Test' });
-      await threadService.addMessage({ thread_id: thread.thread_id, role: 'assistant', content: 'Response' });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: 'Response',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+      });
 
       const stats = await threadService.getStats();
 
@@ -633,7 +978,10 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
       });
 
       await threadService.addMessage({ thread_id: thread.thread_id, role: 'user', content: 'Hello' });
-      await threadService.addMessage({ thread_id: thread.thread_id, role: 'assistant', content: 'Hi!' });
+      await threadService.addMessage({
+        thread_id: thread.thread_id, role: 'assistant', content: 'Hi!',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+      });
 
       const threadWithMessages = await threadService.getThreadWithMessages(thread.thread_id);
 
@@ -662,6 +1010,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         thread_id: thread.thread_id,
         role: 'assistant',
         content: 'Answer',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
       });
 
       await threadService.setMessageOutcome(
@@ -749,7 +1098,10 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         user_id: 'U_STATS_1',
       });
       await threadService.addMessage({ thread_id: thread1.thread_id, role: 'user', content: 'Test 1' });
-      await threadService.addMessage({ thread_id: thread1.thread_id, role: 'assistant', content: 'Response 1' });
+      await threadService.addMessage({
+        thread_id: thread1.thread_id, role: 'assistant', content: 'Response 1',
+        model_execution: TEST_LOCAL_MODEL_EXECUTION,
+      });
 
       const thread2 = await threadService.getOrCreateThread({
         channel: 'web',

@@ -13,6 +13,7 @@ import {
   validateNormalizedModelResponse,
 } from '../../../src/addie/model-providers/events.js';
 import {
+  classifyLocalModelExecution,
   UnsupportedModelCapabilityError,
   type ModelProviderCapabilities,
   type ModelRequest,
@@ -20,6 +21,15 @@ import {
   type NormalizedModelEvent,
 } from '../../../src/addie/model-providers/model-provider.js';
 import { AddieClaudeClient } from '../../../src/addie/claude-client.js';
+
+describe('model execution selection integrity', () => {
+  it('rejects a partially populated requested provider/model tuple', () => {
+    expect(() => classifyLocalModelExecution(
+      { requested_provider: 'openai', requested_model: null } as never,
+      'provider_error',
+    )).toThrow('Requested provider and model must be supplied together');
+  });
+});
 
 function request(overrides: Partial<ModelRequest> = {}): ModelRequest {
   return {

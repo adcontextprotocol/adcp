@@ -5,7 +5,7 @@ import {
   __setCostTrackerStore,
   __createInMemoryCostStore,
 } from '../../src/addie/claude-cost-tracker.js';
-import { AddieClaudeClient } from '../../src/addie/claude-client.js';
+import { AddieClaudeClient, type AddieResponse } from '../../src/addie/claude-client.js';
 
 /**
  * End-to-end gate test (#2790). When a user has exhausted their
@@ -63,6 +63,12 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(response.text).toMatch(/conversation limit/);
     // No token usage because no Claude call fired.
     expect(response.usage).toBeUndefined();
+    expect(response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'cost_cap_exceeded',
+    });
     expect(anthropicCall).not.toHaveBeenCalled();
   });
 
@@ -71,14 +77,14 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     await recordCost('user-y', 'claude-opus-5', { input_tokens: tokensToExceedCap, output_tokens: 0 });
 
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
-    const events: Array<{ type: string; response?: { flagged: boolean; flag_reason?: string } }> = [];
+    const events: Array<{ type: string; response?: AddieResponse }> = [];
     for await (const event of client.processMessageStream(
       'hello',
       undefined,
       undefined,
       { costScope: { userId: 'user-y', tier: 'anonymous' } },
     )) {
-      events.push(event as { type: string; response?: { flagged: boolean; flag_reason?: string } });
+      events.push(event as { type: string; response?: AddieResponse });
     }
 
     // A single `done` event carrying the cap-exceeded flag.
@@ -86,6 +92,12 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(events[0].type).toBe('done');
     expect(events[0].response?.flagged).toBe(true);
     expect(events[0].response?.flag_reason).toBe('cost_cap_exceeded');
+    expect(events[0].response?.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'cost_cap_exceeded',
+    });
     expect(anthropicCall).not.toHaveBeenCalled();
   });
 

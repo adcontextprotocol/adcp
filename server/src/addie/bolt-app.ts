@@ -114,6 +114,7 @@ import {
   truncateNotificationText,
   planStreamStopFailureFallback,
   resolveStreamTurnCompletion,
+  STREAM_COMPLETION_MISSING_NOTICE,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
@@ -1892,6 +1893,11 @@ async function handleUserMessage({
   const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  const dmEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
   // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
   // Prefers a mapped WorkOS user ID (aao_team for AAO admins,
   // member_paid for active subs); falls back to `slack:${userId}` at
@@ -2177,6 +2183,12 @@ async function handleUserMessage({
         tool_executions: [],
         flagged: true,
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+        model_execution: {
+          source: 'local',
+          requested_provider: 'anthropic',
+          requested_model: dmEffectiveModel,
+          reason: 'provider_error',
+        },
       };
       fullText = response.text;
 
@@ -2189,11 +2201,13 @@ async function handleUserMessage({
     }
   }
 
-  const streamCompletion = resolveStreamTurnCompletion(streamWasInterrupted, response, () => {
+  const streamCompletion = resolveStreamTurnCompletion(streamWasInterrupted, response, (): AddieResponse => {
     logger.warn({ fullTextLength: fullText.length, toolsUsedCount: toolsUsed.length },
       'Addie Bolt: Streaming completed without done event - using fallback response');
     return {
-      text: fullText,
+      // Without the terminal `done` receipt, `fullText` is unverified provider
+      // output. Never persist it under a local provenance label.
+      text: STREAM_COMPLETION_MISSING_NOTICE,
       tools_used: toolsUsed,
       tool_executions: toolExecutions.map((t, i) => ({
         ...t,
@@ -2203,6 +2217,12 @@ async function handleUserMessage({
       })),
       flagged: true,
       flag_reason: 'Streaming completed without done event',
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: dmEffectiveModel,
+        reason: 'no_provider_response',
+      },
     };
   });
   if (streamCompletion.kind === 'discard-interrupted') {
@@ -2223,7 +2243,13 @@ async function handleUserMessage({
       input_sanitized: inputValidation.sanitized,
       output_text: '',
       tools_used: toolsUsed,
-      model: AddieModelConfig.chat,
+      model: dmEffectiveModel,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: dmEffectiveModel,
+        reason: 'stream_interrupted',
+      },
       latency_ms: Date.now() - startTime,
       flagged: true,
       flag_reason: `stream_interrupted:${streamInterruptCategory}`,
@@ -2268,12 +2294,6 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const dmEffectiveModel = routedTools.requiresPrecision
-    ? ModelConfig.precision
-    : routedTools.requiresDepth
-      ? ModelConfig.depth
-      : AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -2288,6 +2308,7 @@ async function handleUserMessage({
         is_error: exec.is_error,
       })),
       model: dmEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2332,7 +2353,8 @@ async function handleUserMessage({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: dmEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -2617,6 +2639,7 @@ async function handleAppMention({
     : (routedTools.requiresDepth || mentionIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   // Admin users get higher iteration limit for bulk operations.
   // Public home-workspace discussions use a bounded community budget;
@@ -2632,7 +2655,7 @@ async function handleAppMention({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -2643,6 +2666,12 @@ async function handleAppMention({
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: mentionEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -2663,8 +2692,6 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -2679,6 +2706,7 @@ async function handleAppMention({
         is_error: exec.is_error,
       })),
       model: mentionEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2723,7 +2751,8 @@ async function handleAppMention({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: mentionEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -3900,6 +3929,12 @@ async function handleDirectMessage(
     .filter(Boolean)
     .join('\n\n');
 
+  const directMessageEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
+
   // Admin users get higher iteration limit for bulk operations. DMs
   // remain user-scoped.
   const processOptions = {
@@ -3917,7 +3952,7 @@ async function handleDirectMessage(
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -3928,6 +3963,12 @@ async function handleDirectMessage(
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: directMessageEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -3957,7 +3998,8 @@ async function handleDirectMessage(
       duration_ms: exec.duration_ms,
       is_error: exec.is_error,
     })),
-    model: AddieModelConfig.chat,
+    model: directMessageEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     tokens_input: response.usage?.input_tokens,
     tokens_output: response.usage?.output_tokens,
@@ -4028,7 +4070,8 @@ async function handleDirectMessage(
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: directMessageEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     delivery_status: delivery.delivered ? 'delivered' : 'failed',
     flagged: userMessageFlagged || assistantFlagged || !delivery.delivered,
@@ -4288,6 +4331,7 @@ async function handleActiveThreadReply({
     : (routedTools.requiresDepth || threadIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   // Admin users get higher iteration limit. Public home-workspace
   // discussions use a bounded community budget; other channels stay user-scoped.
@@ -4302,7 +4346,7 @@ async function handleActiveThreadReply({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -4313,6 +4357,12 @@ async function handleActiveThreadReply({
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: activeThreadEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -4340,8 +4390,6 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -4356,6 +4404,7 @@ async function handleActiveThreadReply({
         is_error: exec.is_error,
       })),
       model: activeThreadEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -4399,7 +4448,8 @@ async function handleActiveThreadReply({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: activeThreadEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -4950,6 +5000,7 @@ async function handleChannelMessage({
         is_error: exec.is_error,
       })),
       model: invocation.effectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -5721,7 +5772,7 @@ async function handleReactionAdded({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(userInput, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
@@ -5731,6 +5782,12 @@ async function handleReactionAdded({
       tools_used: [],
       tool_executions: [],
       flagged: false,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: AddieModelConfig.chat,
+        reason: 'canned_response',
+      },
     };
   }
 
@@ -5761,6 +5818,7 @@ async function handleReactionAdded({
         is_error: exec.is_error,
       })),
       model: AddieModelConfig.chat,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
