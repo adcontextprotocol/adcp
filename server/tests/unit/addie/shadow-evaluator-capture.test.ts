@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { runShadowEvaluatorJob } from '../../../src/addie/jobs/shadow-evaluator.js';
 import { OFFICIAL_DOCS_PROFILE } from '../../../src/addie/jobs/shadow-replay-cohort.js';
+import {
+  OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+  OfficialDocsReplayBoundaryError,
+  OfficialDocsReplayExecutionError,
+} from '../../../src/addie/jobs/shadow-replay.js';
 
 const capture = {
   trace_id: '00000000-0000-4000-8000-000000000011',
@@ -73,6 +78,7 @@ function baseDependencies() {
     resolveTrace,
     dependencies: {
       purgeTraces: vi.fn().mockResolvedValue(0),
+      recoverGenerations: vi.fn().mockResolvedValue(0),
       listPending: vi.fn().mockResolvedValue([capture]),
       resolveTrace,
       completeCapture,
@@ -96,6 +102,14 @@ function baseDependencies() {
         isAdmin: false,
       }),
       verifyTraceContext: vi.fn().mockReturnValue({ verified: true, reasons: [] }),
+      selectReplayActivation: vi.fn().mockReturnValue({
+        enabled: false,
+        reason: 'generation_disabled',
+        dailyLimit: 0,
+      }),
+      claimGeneration: vi.fn(),
+      executeReplay: vi.fn(),
+      completeGeneration: vi.fn().mockResolvedValue(true),
     },
   };
 }
@@ -119,6 +133,7 @@ describe('shadow evaluator capture-only orchestration', () => {
       .toBeLessThan(fixture.getMember.mock.invocationCallOrder[0]);
     expect(fixture.providerCall).not.toHaveBeenCalled();
     expect(fixture.judgeCall).not.toHaveBeenCalled();
+    expect(fixture.dependencies.claimGeneration).not.toHaveBeenCalled();
   });
 
   it('terminates configuration drift before private hydration', async () => {
@@ -155,5 +170,190 @@ describe('shadow evaluator capture-only orchestration', () => {
       }),
     );
     expect(fixture.providerCall).not.toHaveBeenCalled();
+  });
+
+  it('claims and completes one generation without judging or exposing output', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    fixture.dependencies.executeReplay = vi.fn().mockResolvedValue({
+      traceId: capture.trace_id,
+      model: 'claude-test',
+      executionPolicyVersion: 'official-docs-read-only:v1',
+      completeFidelity: true,
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac: 'b'.repeat(64),
+      outputBytes: 42,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'a'.repeat(64),
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+    });
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.dependencies.claimGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      5,
+    );
+    expect(fixture.dependencies.executeReplay).toHaveBeenCalledOnce();
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      expect.objectContaining({
+        status: 'succeeded',
+        outputHmac: 'b'.repeat(64),
+      }),
+    );
+    expect(fixture.completeCapture).not.toHaveBeenCalled();
+    expect(fixture.providerCall).not.toHaveBeenCalled();
+    expect(fixture.judgeCall).not.toHaveBeenCalled();
+  });
+
+  it('does not generate when another worker wins the claim', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('already_claimed');
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.dependencies.executeReplay).not.toHaveBeenCalled();
+    expect(fixture.dependencies.completeGeneration).not.toHaveBeenCalled();
+    expect(fixture.completeCapture).not.toHaveBeenCalled();
+  });
+
+  it('records the daily quota outcome without making a provider call', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('daily_limit_reached');
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.completeCapture).toHaveBeenCalledWith(
+      capture.trace_id,
+      capture.thread_id,
+      expect.objectContaining({
+        status: 'skipped',
+        reason: 'replay_daily_limit_reached',
+        parityVerified: true,
+      }),
+    );
+    expect(fixture.dependencies.executeReplay).not.toHaveBeenCalled();
+  });
+
+  it('persists a categorical boundary failure with no raw exception text', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    fixture.dependencies.executeReplay = vi.fn().mockRejectedValue(
+      new OfficialDocsReplayBoundaryError('provider_request_drift'),
+    );
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      expect.objectContaining({
+        status: 'blocked',
+        reason: 'provider_request_drift',
+        invocations: [],
+        blockedCapabilities: ['provider_request_drift'],
+      }),
+    );
+  });
+
+  it('closes a claimed operational failure without retrying generation', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    fixture.dependencies.executeReplay = vi.fn().mockRejectedValue(new Error('private detail'));
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 0, errors: 1 });
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      {
+        status: 'error',
+        reason: 'replay_generation_failed',
+        outputHmac: null,
+        outputBytes: 0,
+        invocations: [],
+        toolExecutions: [],
+        blockedCapabilities: [],
+        inputTokens: 0,
+        outputTokens: 0,
+      },
+    );
+    expect(fixture.completeCapture).not.toHaveBeenCalled();
+  });
+
+  it('preserves hash-only invocation evidence from a post-dispatch failure', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    const completion = {
+      traceId: capture.trace_id,
+      model: 'claude-test',
+      executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+      completeFidelity: false,
+      status: 'error' as const,
+      reason: 'provider_execution_failed',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'a'.repeat(64),
+      }],
+      toolExecutions: [],
+      blockedCapabilities: ['provider_execution_failed', 'usage_unavailable'],
+      inputTokens: 0,
+      outputTokens: 0,
+    };
+    fixture.dependencies.executeReplay = vi.fn().mockRejectedValue(
+      new OfficialDocsReplayExecutionError(completion),
+    );
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 0, errors: 1 });
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      completion,
+    );
   });
 });

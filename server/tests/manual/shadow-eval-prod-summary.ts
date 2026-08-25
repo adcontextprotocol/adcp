@@ -83,6 +83,18 @@ interface CaptureSummary {
   days: number;
   total: number;
   outcomes: Array<{ status: string; reason: string; count: number }>;
+  generations?: {
+    total: number;
+    input_tokens: number;
+    output_tokens: number;
+    outcomes: Array<{
+      status: string;
+      reason: string;
+      count: number;
+      input_tokens: number;
+      output_tokens: number;
+    }>;
+  };
 }
 
 async function fetchCaptureSummary(baseUrl: string, apiKey: string): Promise<CaptureSummary> {
@@ -297,6 +309,19 @@ async function main() {
       console.log(
         `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count}`,
       );
+    }
+    if (captureSummary.generations) {
+      console.log(
+        `Generation-only replays: ${captureSummary.generations.total} `
+        + `(${captureSummary.generations.input_tokens} input / `
+        + `${captureSummary.generations.output_tokens} output tokens)`,
+      );
+      for (const outcome of captureSummary.generations.outcomes) {
+        console.log(
+          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+        );
+      }
     }
   } catch (error) {
     console.warn(

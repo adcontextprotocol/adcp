@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/vast-media-delivery-method.json",
+  "title": "VAST Media Delivery Method",
+  "description": "Delivery method declared by the required VAST MediaFile `delivery` attribute.",
+  "type": "string",
+  "enum": ["progressive", "streaming"]
+}

@@ -33,7 +33,7 @@
     },
     "macro_support": {
       "type": "boolean",
-      "description": "Whether the URL supports macro substitution (e.g., ${CACHEBUSTER})"
+      "description": "Coarse slot gate for macro-bearing URLs. `false` is a hard prohibition on macro tokens. `true` permits tokens but does not prove any dialect semantic, resolver, context, or encoding capability; exact support comes from the selected format option's macro_resolution_capabilities."
     }
   },
   "additionalProperties": true
