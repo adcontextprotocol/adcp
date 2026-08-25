@@ -254,6 +254,12 @@ test('package snapshot is registered and all package projections reference it', 
     '/schemas/core/package-format-snapshot.json');
   assert.equal(packageSchema.properties.formats_pending.items.$ref,
     '/schemas/core/package-format-snapshot.json');
+  assert.match(packageSchema.properties.formats_pending.description,
+    /when product_snapshot_digest is present/);
+  assert.match(
+    packageSchema.properties.formats_pending['x-adcp-validation'].verifier_constraints.subset_identity,
+    /when product_snapshot_digest is present/
+  );
 
   const trustedMatch = JSON.parse(fs.readFileSync(
     path.join(SCHEMA_BASE_DIR, 'trusted-match/available-package.json'), 'utf8'

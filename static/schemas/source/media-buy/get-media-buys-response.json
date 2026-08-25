@@ -596,7 +596,7 @@
                 },
                 "formats_pending": {
                   "type": "array",
-                  "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage. Each entry MUST be canonically equal to the corresponding checklist snapshot and carry the identical product_snapshot_digest. An empty emitted array means all requirements are covered; absence means readiness was not reported.",
+                  "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage. Each entry MUST be canonically equal to the corresponding checklist snapshot and, when product_snapshot_digest is present, carry the identical digest. An empty emitted array means all requirements are covered; absence means readiness was not reported.",
                   "items": {
                     "$ref": "/schemas/core/package-format-snapshot.json"
                   },

@@ -226,6 +226,11 @@ test('pixel selector rejects invalid method, custom shape, actor, and path', () 
   assert.match(customSemantics, /complete:true/,
     'complete contracts must override the legacy unknown-custom no-op behavior');
   assert.match(customSemantics, /tracker_contract_mismatch/);
+  const eventSemantics = pixelAsset.properties.event.description;
+  assert.match(eventSemantics, /audible_video_complete` \(AdCP-defined\)/);
+  assert.match(eventSemantics, /reserves event types 500\+ for exchange-specific use/);
+  assert.match(eventSemantics, /type 4 does not require audio/);
+  assert.doesNotMatch(eventSemantics, /audible_video_complete` \(IAB type 500\)/);
 });
 
 test('VAST selector enforces event, target, progress, and per-version constraints', () => {
@@ -251,6 +256,39 @@ test('VAST selector enforces event, target, progress, and per-version constraint
     'loaded is accepted only in its ratified exact versions');
   assert.equal(validate(vastSelector({ vast_event: 'impression' })), false,
     'VAST Impression is not a TrackingEvents selector');
+
+  const vastVersions = ['2.0', '3.0', '4.0', '4.1', '4.2', '4.3'];
+  const versionRules = [
+    { event: 'skip', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3'] },
+    { event: 'progress', allowed: ['3.0', '4.0', '4.1', '4.2', '4.3'], offset: '25%' },
+    { event: 'fullscreen', allowed: ['2.0', '3.0'] },
+    { event: 'exitFullscreen', allowed: ['3.0'] },
+    { event: 'playerExpand', allowed: ['4.0', '4.1', '4.2', '4.3'] },
+    { event: 'loaded', allowed: ['4.1', '4.2', '4.3'] },
+    { event: 'interactiveStart', allowed: ['4.2', '4.3'] },
+    { event: 'closeLinear', allowed: ['3.0', '4.1', '4.2', '4.3'] }
+  ];
+  for (const rule of versionRules) {
+    for (const version of vastVersions) {
+      const selector = vastSelector({
+        vast_event: rule.event,
+        vast_versions: [version],
+        ...(rule.offset ? { offset: rule.offset } : {})
+      });
+      const expected = rule.allowed.includes(version);
+      assert.equal(validate(selector), expected,
+        `${rule.event} VAST ${version} expected ${expected}: ${JSON.stringify(validate.errors)}`);
+    }
+  }
+
+  const vastConstraints = JSON.parse(fs.readFileSync(
+    path.join(SCHEMAS, 'core/vast-tracker-constraints.json'),
+    'utf8'
+  ));
+  const closeLinearRule = vastConstraints.allOf.find(rule =>
+    rule.if?.properties?.vast_event?.const === 'closeLinear'
+  );
+  assert.match(closeLinearRule.$comment, /4\.0 omitted closeLinear.*4\.1 restored/i);
 
   const validateAsset = ajv.getSchema('/schemas/core/assets/vast-tracker-asset.json');
   assert.equal(validateAsset({
@@ -350,6 +388,10 @@ test('complete and empty contract semantics validate and operational uniqueness 
     /matching first-class slot/);
   assert.match(validate.schema['x-adcp-validation'].layer_derivation,
     /atomic tuples/);
+  assert.match(validate.schema['x-adcp-validation'].layer_derivation,
+    /child may add or omit affirmative tuples/);
+  assert.doesNotMatch(validate.schema['x-adcp-validation'].layer_derivation,
+    /genuinely excludes/);
 });
 
 test('contracts require matching first-class slots and narrowing cannot invent version/path tuples', () => {

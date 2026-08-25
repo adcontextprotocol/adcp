@@ -226,6 +226,7 @@
       }
     },
     {
+      "$comment": "VAST 4.0 omitted closeLinear; VAST 4.1 restored it from VAST 3.0. The 4.0 gap is intentional.",
       "if": {
         "properties": { "vast_event": { "const": "closeLinear" } },
         "required": ["vast_event"]

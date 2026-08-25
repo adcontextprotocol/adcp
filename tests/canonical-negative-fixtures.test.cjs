@@ -479,7 +479,7 @@ const NEGATIVE_CASES = {
       },
     },
     {
-      label: 'valid pixel_tracker for audible_video_complete (IAB event 500)',
+      label: 'valid pixel_tracker for AdCP audible_video_complete',
       expected: true,
       doc: {
         asset_type: 'pixel_tracker',

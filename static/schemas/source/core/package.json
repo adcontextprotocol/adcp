@@ -197,13 +197,13 @@
     },
     "formats_pending": {
       "type": "array",
-      "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage through sync_creatives or inline assignment. Every entry MUST equal its formats_to_provide snapshot after RFC 8785 canonicalization and carry the identical product_snapshot_digest. An empty emitted array means every required format is covered. Absence means readiness was not reported.",
+      "description": "PackageFormatSnapshot entries from formats_to_provide that do not yet have creative coverage through sync_creatives or inline assignment. Every entry MUST equal its formats_to_provide snapshot after RFC 8785 canonicalization and, when product_snapshot_digest is present, carry the identical digest. An empty emitted array means every required format is covered. Absence means readiness was not reported.",
       "items": {
         "$ref": "/schemas/core/package-format-snapshot.json"
       },
       "x-adcp-validation": {
         "verifier_constraints": {
-          "subset_identity": "every item equals exactly one formats_to_provide item after RFC 8785 canonicalization and carries the identical product_snapshot_digest"
+          "subset_identity": "every item equals exactly one formats_to_provide item after RFC 8785 canonicalization and, when product_snapshot_digest is present, carries the identical digest"
         }
       }
     },
