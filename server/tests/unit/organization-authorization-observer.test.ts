@@ -173,6 +173,35 @@ describe('organization authorization rollout observer', () => {
     await Promise.all(inFlight);
   });
 
+  it('drops observer work when the bounded WorkOS comparison pool is saturated', async () => {
+    const pending: Array<(value: { data: never[] }) => void> = [];
+    listOrganizationMemberships.mockImplementation(() => new Promise((resolve) => {
+      pending.push(resolve);
+    }));
+    const request = (suffix: number) => observeLinkedCredentialOrganizationAuthorization({
+      headers: {},
+      query: { org: `org_selected_${suffix}` },
+      body: {},
+      params: {},
+      method: 'GET',
+      user: { id: `user_canonical_${suffix}`, authWorkosUserId: `user_authenticated_${suffix}` },
+    } as any, 'GET /api/example', 200);
+
+    const inFlight = Array.from({ length: 5 }, (_, index) => request(index));
+    await vi.waitFor(() => expect(listOrganizationMemberships).toHaveBeenCalledTimes(10));
+
+    await request(6);
+
+    expect(listOrganizationMemberships).toHaveBeenCalledTimes(10);
+    expect(captureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'org_authorization_shadow',
+      expect.objectContaining({ decision: 'observer_saturated' }),
+    );
+    pending.forEach((resolve) => resolve({ data: [] }));
+    await Promise.all(inFlight);
+  });
+
   it('does no extra work for unlinked sessions or when disabled', async () => {
     await observeLinkedCredentialOrganizationAuthorization({
       headers: {}, query: {}, body: {}, params: {}, method: 'GET',
