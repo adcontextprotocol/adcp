@@ -3,15 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   listOrganizationMemberships,
   captureEvent,
+  loggerInfo,
 } = vi.hoisted(() => ({
   listOrganizationMemberships: vi.fn(),
   captureEvent: vi.fn(),
+  loggerInfo: vi.fn(),
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
   getAuthorizationObserverWorkos: () => ({ userManagement: { listOrganizationMemberships } }),
 }));
 vi.mock('../../src/utils/posthog.js', () => ({ captureEvent }));
+vi.mock('../../src/logger.js', () => ({
+  createLogger: () => ({ info: loggerInfo, warn: vi.fn() }),
+}));
 
 import {
   classifyAuthorizationObservation,
@@ -85,9 +90,20 @@ describe('organization authorization rollout observer', () => {
         explicit_organization: true,
       }),
     );
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('user_canonical');
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('user_authenticated');
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('org_selected');
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: 'legacy_allow_exact_deny',
+        selector_source: 'query_org',
+        legacy_allowed: true,
+        exact_allowed: false,
+      }),
+      'org authorization shadow observation',
+    );
+    const telemetry = JSON.stringify([captureEvent.mock.calls, loggerInfo.mock.calls]);
+    expect(telemetry).not.toContain('user_canonical');
+    expect(telemetry).not.toContain('user_authenticated');
+    expect(telemetry).not.toContain('org_selected');
+    expect(JSON.stringify(loggerInfo.mock.calls)).not.toContain('POST /api/example');
   });
 
   it('records a missing selector without inferring or mutating organization state', async () => {
