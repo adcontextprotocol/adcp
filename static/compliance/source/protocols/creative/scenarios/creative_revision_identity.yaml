@@ -153,7 +153,8 @@ phases:
             path: "creatives[0].action"
             value: "failed"
             description: "Changed content under a bound revision is rejected"
-          - check: error_code
+          - check: field_value
+            path: "creatives[0].errors[0].code"
             value: "CREATIVE_REVISION_CONTENT_MISMATCH"
             description: "The typed correctable mismatch error is returned"
           - check: field_absent

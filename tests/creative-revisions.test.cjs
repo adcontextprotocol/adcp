@@ -200,4 +200,11 @@ test('revision mismatch has a typed correctable error contract', async () => {
   const errors = schema('enums/error-code.json');
   assert.ok(errors.enum.includes('CREATIVE_REVISION_CONTENT_MISMATCH'));
   assert.equal(errors.enumMetadata.CREATIVE_REVISION_CONTENT_MISMATCH.recovery, 'correctable');
+
+  const scenario = fs.readFileSync(path.join(
+    SCHEMA_DIR,
+    '../../compliance/source/protocols/creative/scenarios/creative_revision_identity.yaml'
+  ), 'utf8');
+  assert.match(scenario, /path: "creatives\[0\]\.errors\[0\]\.code"/,
+    'best-effort mismatch validation must inspect the per-creative error');
 });
