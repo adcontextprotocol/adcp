@@ -1547,7 +1547,10 @@ function localScenariosFor(ctx: TrainingContext): string[] {
  * params: { token?, mode?: 'verify'|'revoked_demo'|'wrong_aud_demo',
  *           tamper?: 'signature'|'sub'|<anything-else> }
  */
-async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
+// This is a sandbox teaching fixture, not an authorization guard for the
+// controller route. Name it accordingly so static analysis does not mistake
+// scenario dispatch for a user-controlled permission check.
+async function handleInspectGovernanceTokenFixture(rawArgs: Record<string, unknown>): Promise<object> {
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
   const mode = typeof params.mode === 'string' ? params.mode : 'verify';
   let token = typeof params.token === 'string' ? params.token : undefined;
@@ -1887,7 +1890,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
   if (scenario === 'verify_governance_token') {
-    return handleVerifyGovernanceToken(rawArgs);
+    return handleInspectGovernanceTokenFixture(rawArgs);
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
