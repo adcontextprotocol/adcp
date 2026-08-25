@@ -356,3 +356,32 @@ phases:
             path: "has_more"
             value: false
             description: "Buyer is caught up to seller ingestion"
+
+      - id: reject_cursor_filter_reuse
+        title: "Reject a cursor under a different filter set"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_status_cursor"
+          resource_types:
+            - "creative"
+        expected: |
+          Reject with INVALID_REQUEST rather than applying a new filter at the
+          old checkpoint and silently skipping retained creative history.
+        validations:
+          - check: response_schema
+            description: "Failure matches list-account-changes-response.json"
+          - check: error_code
+            value: "INVALID_REQUEST"
+            description: "Cursor/filter mismatch is rejected"
+          - check: field_value
+            path: "errors[0].field"
+            value: "cursor"
+            description: "The seller identifies the incompatible cursor"

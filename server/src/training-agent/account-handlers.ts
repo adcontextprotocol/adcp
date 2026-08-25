@@ -79,6 +79,7 @@ export interface TrainingAccountChange {
   change_id: string;
   recorded_at: string;
   occurred_at?: string;
+  batch_id?: string;
   resource: {
     type: string;
     account_id: string;
@@ -109,6 +110,7 @@ interface StoredAccountChange {
 interface AccountChangeCursor {
   principal: string;
   accountScopeId: string;
+  authorizationEpoch: string;
   accountId: string;
   resourceTypes: string[];
   sequence: number;
@@ -211,6 +213,7 @@ export function recordAccountChange(
     change_id: input.change_id ?? `chg_${randomUUID()}`,
     recorded_at: input.recorded_at ?? new Date().toISOString(),
     ...(input.occurred_at && { occurred_at: input.occurred_at }),
+    ...(input.batch_id && { batch_id: input.batch_id }),
     resource: {
       ...input.resource,
       ...(input.resource.parent_ids && { parent_ids: { ...input.resource.parent_ids } }),
@@ -1812,6 +1815,13 @@ function sameStringArray(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function accountChangeAuthorizationEpoch(accountScopeId: string): string {
+  // This reference seller grants immutable full-account visibility for the
+  // lifetime of one internal access scope. Sellers with mutable partial
+  // visibility must rotate this value whenever that visible set changes.
+  return `full-account:${accountScopeId}`;
+}
+
 function issueAccountChangeCursor(cursor: AccountChangeCursor): string {
   const payload = Buffer.from(JSON.stringify(cursor)).toString('base64url');
   const signature = createHmac('sha256', ACCOUNT_CHANGE_CURSOR_SECRET)
@@ -1835,6 +1845,7 @@ function readAccountChangeCursor(token: string): AccountChangeCursor | undefined
     if (
       typeof value.principal !== 'string'
       || typeof value.accountScopeId !== 'string'
+      || typeof value.authorizationEpoch !== 'string'
       || typeof value.accountId !== 'string'
       || !Array.isArray(value.resourceTypes)
       || !value.resourceTypes.every(item => typeof item === 'string')
@@ -1865,7 +1876,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
     return accountChangeFailure({ code: 'INVALID_REQUEST', message: 'account is required', field: 'account', recovery: 'correctable' });
   }
   if (req.cursor && req.starting_position) {
-    return accountChangeFailure({ code: 'INVALID_REQUEST', message: 'cursor and starting_position are mutually exclusive', recovery: 'correctable' });
+    return accountChangeFailure({ code: 'INVALID_REQUEST', message: 'cursor and starting_position are mutually exclusive', field: 'cursor', recovery: 'correctable' });
   }
 
   const access = resolveAccountForChangeFeed(req.account, ctx.principal);
@@ -1876,6 +1887,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   ensureExistingAccountChangeSeed(accountScopeId, ctx.principal, account);
 
   const resourceTypes = normalizeResourceTypes(req.resource_types);
+  const authorizationEpoch = accountChangeAuthorizationEpoch(accountScopeId);
   const changes = accountChanges(accountScopeId);
   const nowMs = Date.now();
   pruneExpiredAccountChanges(accountScopeId, nowMs);
@@ -1909,6 +1921,19 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
           message: 'cursor is scoped to a different principal, account, or resource_types filter',
           field: 'cursor',
           recovery: 'correctable',
+      });
+    }
+    if (cursor.authorizationEpoch !== authorizationEpoch) {
+      return accountChangeFailure({
+        code: 'CURSOR_EXPIRED',
+        message: 'The authorization scope for this account changed; rebuild authoritative snapshots from a new latest checkpoint',
+        field: 'cursor',
+        recovery: 'correctable',
+        details: {
+          reason: 'authorization_scope_changed',
+          available_since: accountChangeAvailableSince(accountScopeId, nowMs),
+          restart_with: { starting_position: 'latest' },
+        },
       });
     }
     if (cursor.sequence < retainedFloor) {
@@ -1953,6 +1978,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
   const cursor = issueAccountChangeCursor({
     principal: principalScope(ctx.principal),
     accountScopeId,
+    authorizationEpoch,
     accountId: account.account_id,
     resourceTypes,
     sequence: scannedSequence,
@@ -1979,6 +2005,7 @@ export function handleListAccountChanges(args: ToolArgs, ctx: TrainingContext): 
         coverage_start: accountChangeAvailableSince(accountScopeId, nowMs),
         observed_through: new Date(nowMs).toISOString(),
         last_successful_sync_at: new Date(nowMs).toISOString(),
+        stale_after_seconds: 300,
         resource_types: ['creative'],
       }] : []),
     ],

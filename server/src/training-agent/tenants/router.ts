@@ -26,7 +26,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsAccountChangeFeed, supportsGetProductsRejected, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';

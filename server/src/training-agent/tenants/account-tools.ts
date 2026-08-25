@@ -31,6 +31,8 @@ export function listAccountChangesTool(storyboardCompat?: TrainingContext['story
     'list_account_changes',
     'List durable ordered changes to authoritative AdCP-visible state for one shared account. Use a latest checkpoint before snapshot bootstrap and drain after notifications.',
     {
+      adcp_version: TOOL_REQUEST_SCHEMAS.list_accounts.shape.adcp_version,
+      adcp_major_version: TOOL_REQUEST_SCHEMAS.list_accounts.shape.adcp_major_version,
       account: TOOL_REQUEST_SCHEMAS.list_accounts.shape.account.unwrap(),
       cursor: z.string().min(1).max(4096).optional(),
       starting_position: z.enum(['earliest', 'latest']).optional(),

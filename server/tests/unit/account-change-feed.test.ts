@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const webhookMocks = vi.hoisted(() => ({
   emit: vi.fn(),
@@ -27,6 +28,7 @@ import { handleComplyTestController } from '../../src/training-agent/comply-test
 import { handleListCreatives, handleSyncCreatives } from '../../src/training-agent/task-handlers.js';
 import { supportsAccountChangeFeed, type TrainingContext } from '../../src/training-agent/types.js';
 import { toolsForTenant } from '../../src/training-agent/tenants/tool-catalog.js';
+import { listAccountChangesTool } from '../../src/training-agent/tenants/account-tools.js';
 
 const account = { account_id: 'acc_luma_shared' };
 const context: TrainingContext = { mode: 'open', principal: 'test:account-change-buyer' };
@@ -55,6 +57,7 @@ describe('training account change feed', () => {
     expect(bootstrap.cursor).toMatch(/^accchg_/);
 
     const change = recordAccountChange(context.principal, {
+      batch_id: 'batch_external_001',
       resource: {
         type: 'creative',
         account_id: 'acc_luma_shared',
@@ -74,6 +77,7 @@ describe('training account change feed', () => {
     const drained = call({ account, cursor: bootstrap.cursor });
     expect(drained.changes).toHaveLength(1);
     expect(drained.changes[0].change_id).toBe(change.change_id);
+    expect(drained.changes[0].batch_id).toBe('batch_external_001');
     expect(drained.changes[0].origin.kind).toBe('connected_platform');
     expect(drained.cursor).not.toBe(bootstrap.cursor);
 
@@ -81,6 +85,34 @@ describe('training account change feed', () => {
     expect(tail.changes).toEqual([]);
     expect(tail.has_more).toBe(false);
     expect(tail.cursor).toMatch(/^accchg_/);
+    const connectedCoverage = tail.source_coverage.find((source: any) => source.kind === 'connected_platform');
+    expect(connectedCoverage).toMatchObject({
+      status: 'current',
+      stale_after_seconds: 300,
+    });
+    expect(Date.parse(tail.generated_at) - Date.parse(connectedCoverage.last_successful_sync_at))
+      .toBeLessThanOrEqual(connectedCoverage.stale_after_seconds * 1000);
+  });
+
+  it('keeps the emitted MCP input schema flat and enforces cursor exclusivity at runtime', () => {
+    const tool = listAccountChangesTool();
+    const inputSchema = z.toJSONSchema(z.object(tool.inputSchema as Record<string, z.ZodTypeAny>)) as Record<string, any>;
+    expect(inputSchema.type).toBe('object');
+    expect(inputSchema.required).toContain('account');
+    expect(inputSchema.properties).toHaveProperty('adcp_version');
+    expect(inputSchema.properties).toHaveProperty('adcp_major_version');
+    for (const combinator of ['allOf', 'anyOf', 'oneOf', 'not']) {
+      expect(inputSchema).not.toHaveProperty(combinator);
+    }
+
+    const bootstrap = call({ account, starting_position: 'latest' });
+    const mixed = call({
+      account,
+      cursor: bootstrap.cursor,
+      starting_position: 'earliest',
+    });
+    expect(mixed.status).toBe('failed');
+    expect(mixed.errors[0]).toMatchObject({ code: 'INVALID_REQUEST', field: 'cursor' });
   });
 
   it('binds cursors to principal, account, and normalized filters', () => {

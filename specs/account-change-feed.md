@@ -40,7 +40,8 @@ change feed MUST:
 1. reflect the resulting current state on that authoritative read regardless
    of whether the change originated through AdCP, a seller UI or API, seller
    automation, another authorized principal, or a connected platform;
-2. append one immutable account change record in the same commit boundary;
+2. append at least one immutable account change record at the persistence
+   boundary described below;
 3. make the authoritative snapshot and change record readable before
    enqueueing a notification; and
 4. fan out `account.change_recorded` to every active account subscriber that
@@ -49,6 +50,30 @@ change feed MUST:
 A synchronous task response does not suppress the change notification. The
 account can have other subscribers and authorized principals that did not
 invoke the task.
+
+For a mutation mediated by the seller, the authoritative projection and its
+change records commit atomically. For an externally mediated change that the
+seller observes through polling, subscription, or pass-through integration,
+the records commit atomically with the seller's ingestion or projection of
+that observation. An authoritative pass-through read MAY expose upstream state
+before the feed observes it, but only within the connected source's declared
+freshness bound. The seller does not notify until the record and any
+seller-maintained projection are readable. Advertising coverage therefore
+requires bounded external observation; it does not require a transaction that
+spans the seller and an upstream platform.
+
+### Minimum invalidation granularity
+
+A seller emits at least one record per independently repairable authoritative
+identity affected by a commit. One operation that changes several independent
+creatives therefore emits one record per creative. Changes to packages and
+assignments MAY coalesce into one media-buy record only when `get_media_buys`
+fully repairs the entire changed closure for that media buy. A seller does not
+need one record per changed field.
+
+Records from the same operation or external ingestion batch MAY share
+`batch_id`. That identifier groups records only; each record keeps its own
+`change_id`, cursor position, resource identity, and logical notification.
 
 This is not event sourcing. Current state remains authoritative on the named
 read, while a change record proves that a material transition was recorded and
@@ -124,6 +149,9 @@ The request contains one required `account` and accepts:
 record. `latest` returns a checkpoint at the seller's current ingestion
 high-water. A cursor is bound to authenticated principal, resolved account,
 and normalized filter set and MUST NOT be reusable under another scope.
+The completeness-first `earliest` default is intentional for callers that ask
+for history without first bootstrapping; the recommended projection bootstrap
+still begins at `latest`.
 
 ### Response
 
@@ -146,6 +174,11 @@ Cursor order is a total account order independent of timestamps. A cursor
 means strictly after its scanned high-water. Appends never reorder previously
 returned pages. A filtered page advances across nonmatching records, and an
 empty page advances to the current scanned high-water.
+
+A seller MUST reject a cursor presented with a different principal, account,
+or normalized filter set using `INVALID_REQUEST` with `field: "cursor"`. It
+MUST NOT apply new filters at the embedded position because doing so can
+silently skip older records. The rejection does not advance a checkpoint.
 
 If a cursor falls outside retention, the seller MUST return
 `CURSOR_EXPIRED`. It MUST NOT silently restart from the retention boundary.
@@ -177,6 +210,8 @@ Every `account-change.json` record has:
 
 - stable `change_id`;
 - seller `recorded_at` and optional trustworthy upstream `occurred_at`;
+- optional `batch_id` grouping records from one commit without weakening
+  per-identity invalidation granularity;
 - structured resource type, account, ID, and optional parent IDs;
 - open `action`, with standard values `created`, `discovered`, `updated`,
   `status_changed`, `linked`, `unlinked`, `deleted`, and `purged`;
@@ -225,6 +260,15 @@ The seller-wide capability lists resource types the seller can support.
 health with a source kind, status, resource types, optional coverage start,
 last successful sync, and observed-through watermark.
 
+Every connected source that reports `current` MUST provide
+`last_successful_sync_at` and `stale_after_seconds`. At response
+`generated_at`, the last successful sync MUST be no older than that threshold,
+and the seller must know of no ingestion gap. A source is `delayed` when the
+threshold is exceeded or a gap is known, and `unavailable` when observation
+cannot currently proceed. `observed_through` describes upstream business-time
+coverage; it is not a substitute for the last successful poll, subscription
+heartbeat, or equivalent observation time.
+
 `has_more: false` means the caller is caught up to seller ingestion. It does
 not mean an unavailable upstream platform has been observed through the
 present. A seller may report a connection as delayed or unavailable; it may
@@ -235,7 +279,16 @@ not silently omit connected resources while reporting current coverage.
 Current authorization controls both snapshots and history. Sellers filter
 inaccessible resource changes without revealing their existence or count, but
 still advance the scoped cursor across filtered records. Cursors are bound to
-the authenticated principal to prevent cross-principal reuse.
+the authenticated principal and an authorization-scope epoch to prevent
+cross-principal reuse and gaps after a visibility change.
+
+Whenever the set of resources visible to that principal and account expands or
+contracts, the seller changes the epoch. A cursor from the prior epoch returns
+`CURSOR_EXPIRED` with `details.reason: "authorization_scope_changed"` and the
+ordinary latest-checkpoint snapshot-rebootstrap guidance. The seller MUST NOT
+resume it after records that were skipped under the old scope. Implementations
+whose authorization is immutable full-account access may use one stable epoch
+for the lifetime of that grant.
 
 Subscriber authorization is rechecked when each notification is fired. Losing
 account access immediately suspends or removes that principal's subscriptions;
@@ -258,12 +311,14 @@ Capability-gated conformance MUST test:
    other-principal origins produce records;
 4. no-op, failed, dry-run, and exact idempotency replay calls do not;
 5. total ordering, timestamp ties, pagination, concurrent appends, filters,
-   empty-tail checkpoints, expiry, and rebootstrap are gap-free;
+   mandatory cursor-scope mismatch rejection, empty-tail checkpoints, expiry,
+   authorization-epoch changes, and rebootstrap are gap-free;
 6. subscriber activation, fan-out, retry and re-emission identity, and
    specialized-notification overlap behave as specified;
 7. cross-account and cross-principal isolation, actor redaction, and absence of
    secrets and PII; and
-8. retention and connected-source freshness match advertised values.
+8. retention and connected-source freshness classifications match their
+   advertised timestamps and `stale_after_seconds` thresholds.
 
 Failure of a test for an advertised resource type is a failure, not a silent
 skip.

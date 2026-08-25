@@ -74,7 +74,8 @@
           },
           "status": {
             "type": "string",
-            "enum": ["current", "delayed", "unavailable", "not_configured"]
+            "enum": ["current", "delayed", "unavailable", "not_configured"],
+            "description": "Connector freshness classification. For connected_platform, current means last_successful_sync_at is no older than stale_after_seconds at generated_at and the seller knows of no ingestion gap; delayed means that threshold is exceeded or a gap is known."
           },
           "coverage_start": {
             "type": "string",
@@ -90,6 +91,12 @@
             "type": "string",
             "format": "date-time"
           },
+          "stale_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2592000,
+            "description": "Maximum age of last_successful_sync_at at generated_at for this connected source to self-classify as current. Required by the protocol contract whenever a connected source reports current."
+          },
           "resource_types": {
             "type": "array",
             "items": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]{0,99}$"},
@@ -98,6 +105,20 @@
           }
         },
         "required": ["source_id", "kind", "status", "resource_types"],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {"type": "string", "const": "connected_platform"},
+                "status": {"type": "string", "const": "current"}
+              },
+              "required": ["kind", "status"]
+            },
+            "then": {
+              "required": ["last_successful_sync_at", "stale_after_seconds"]
+            }
+          }
+        ],
         "additionalProperties": true
       }
     },

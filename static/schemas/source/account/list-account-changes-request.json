@@ -5,22 +5,26 @@
   "description": "Read a durable, ordered feed of material changes to AdCP-visible state for one account. Use a latest checkpoint before snapshot bootstrap, then drain from that cursor to close the bootstrap race.",
   "x-tool-summary": "List durable changes to authoritative AdCP-visible state for one account.",
   "type": "object",
-  "allOf": [
-    {"$ref": "/schemas/core/version-envelope.json"},
-    {
-      "not": {
-        "required": ["cursor", "starting_position"]
-      }
-    }
-  ],
   "properties": {
+    "adcp_version": {
+      "type": "string",
+      "description": "Release-precision AdCP version. Flattened here so emitted MCP tool input schemas remain plain root objects for clients that reject top-level combinators.",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "Deprecated major-only version pin retained through 3.x.",
+      "minimum": 1,
+      "maximum": 99
+    },
     "account": {
       "$ref": "/schemas/core/account-ref.json",
       "description": "Account whose change feed to read. The resolved account and returned cursor are bound to the authenticated principal."
     },
     "cursor": {
       "type": "string",
-      "description": "Opaque checkpoint returned by a prior call using the same authenticated principal, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value.",
+      "description": "Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.",
       "minLength": 1,
       "maxLength": 4096
     },
@@ -28,7 +32,7 @@
       "type": "string",
       "enum": ["earliest", "latest"],
       "default": "earliest",
-      "description": "Initial position when cursor is absent. earliest begins at the oldest retained change. latest returns a checkpoint at the current seller-ingestion high-water and is used before a race-free snapshot bootstrap."
+      "description": "Initial position when cursor is absent. Mutually exclusive with cursor; sellers enforce this semantic rule at runtime so the emitted MCP input schema can remain a plain root object. earliest intentionally begins at the oldest retained change. latest returns a checkpoint at the current seller-ingestion high-water and is used before a race-free snapshot bootstrap."
     },
     "resource_types": {
       "type": "array",

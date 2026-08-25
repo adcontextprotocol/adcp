@@ -40,8 +40,8 @@ For the complete coverage matrix and rationale, see the
 | Field | Required | Description |
 | --- | --- | --- |
 | `account` | Yes | Exactly one account reference. |
-| `cursor` | No | Opaque checkpoint from an earlier call under the same principal, account, and filters. Mutually exclusive with `starting_position`. |
-| `starting_position` | No | `earliest` (default) or `latest`. Use `latest` before a snapshot bootstrap. |
+| `cursor` | No | Opaque checkpoint from an earlier call under the same principal, authorization epoch, account, and filters. Mutually exclusive with `starting_position`. |
+| `starting_position` | No | `earliest` (intentional completeness-first default) or `latest`. Use `latest` before a snapshot bootstrap. |
 | `resource_types` | No | Exact resource-type filter. The cursor is bound to the normalized filter. |
 | `max_results` | No | 1–100 changes; default 50. |
 
@@ -67,7 +67,7 @@ Acquire a high-water checkpoint before reading several snapshots:
 | `has_more` | Whether more retained matching records were available when the page was generated. |
 | `available_since` | Current retention boundary for this caller and account. |
 | `generated_at` | Seller time for the page and coverage watermarks. |
-| `source_coverage` | Optional per-account connected-source status and freshness. |
+| `source_coverage` | Optional per-account connected-source status and mechanically evaluable freshness. A connected source reporting `current` supplies `last_successful_sync_at` and `stale_after_seconds`. |
 
 Each change record names the changed resource, action, server-derived origin,
 optional changed paths and revision, and an allowlisted read-only
@@ -107,7 +107,15 @@ prior pages. A filtered empty page still advances across scanned nonmatching
 records, so persist every returned cursor.
 
 A cursor is scoped to the authenticated principal, resolved account, and
-normalized filters. Do not move it between credentials or filter sets.
+normalized filters. Do not move it between credentials or filter sets. Sellers
+MUST reject a principal, account, or filter mismatch with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) at
+`cursor`; applying new filters at an old position could permanently skip
+history.
+
+The cursor also binds an authorization-scope epoch. If visible resources for
+the principal expand or contract, the seller returns [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired) with
+`details.reason: "authorization_scope_changed"`. Rebootstrap snapshots so
+changes skipped under the old visibility cannot become an invisible gap.
 
 Sellers retain changes for at least 90 days. An expired cursor returns
 [`CURSOR_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-cursor-expired); it never silently restarts. Recovery is to obtain a new
@@ -129,6 +137,19 @@ after the checkpoint.
 
 The webhook's optional `through_cursor` is only a target watermark. Do not
 install it without reading all intervening pages.
+
+## Change granularity
+
+The feed contains at least one record per independently repairable identity.
+Several package or assignment changes may coalesce under their media buy when
+[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) repairs the complete changed closure; changes to independent
+creatives require separate records. Records from one operation may share
+`batch_id`, but retain independent `change_id` values and notifications.
+
+For seller-mediated mutations, snapshot and records commit atomically. For an
+external platform, records commit with the seller's ingestion of the observed
+change. A pass-through authoritative read may lead the feed only within the
+source's declared `stale_after_seconds` freshness bound.
 
 ## Shared-account example
 
