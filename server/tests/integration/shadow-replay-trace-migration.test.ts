@@ -40,11 +40,11 @@ describe('migration 552: shadow replay traces', () => {
       `INSERT INTO addie_threads (
          channel, external_id, user_type, flagged, flag_reason, context
        ) VALUES (
-         'slack', $1, 'slack', TRUE, $2,
+         'slack', $1, 'slack', TRUE, $2::text,
          jsonb_build_object(
            'shadow_eval_status', 'error',
-           'shadow_eval_question', $2,
-           'shadow_eval_router_decision', jsonb_build_object('reason', $2),
+           'shadow_eval_question', $2::text,
+           'shadow_eval_router_decision', jsonb_build_object('reason', $2::text),
            'unrelated_key', 'preserved'
          )
        ) RETURNING thread_id`,
