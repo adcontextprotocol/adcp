@@ -472,7 +472,7 @@ export async function runShadowEvaluatorJob(
       result.skipped++;
     } catch (error) {
       logger.error(
-        { threadId: thread.thread_id },
+        { error, threadId: thread.thread_id },
         'Shadow evaluator: Signed trace processing failed',
       );
       try {
