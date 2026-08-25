@@ -2,8 +2,8 @@
 /**
  * Build the Addie tool-reference page.
  *
- * Walks `server/src/addie/mcp/*-tools.ts` (plus `knowledge-search.ts`,
- * `docs-search.ts`) for AddieTool definitions, cross-references them against
+ * Walks `server/src/addie/mcp/*-tools.ts` (plus the actively registered
+ * `knowledge-search.ts`) for AddieTool definitions, cross-references them against
  * the curated TOOL_SETS in `server/src/addie/tool-sets.ts`, and writes the
  * combined reference to `docs/aao/addie-tools.mdx`.
  *
@@ -352,10 +352,11 @@ export const ADDIE_TOOL_CATALOG = \`${escaped}\`;
 function main() {
   const checkMode = process.argv.includes('--check');
 
-  // Discover all *-tools.ts files plus the two non-suffix files that also
-  // export tool arrays.
+  // Discover all *-tools.ts files plus the active non-suffix search module.
+  // docs-search.ts is a legacy, unregistered implementation whose duplicate
+  // search_docs/get_doc names must not override the runtime definitions.
   const toolFiles = fs.readdirSync(MCP_DIR)
-    .filter(f => f.endsWith('-tools.ts') || f === 'knowledge-search.ts' || f === 'docs-search.ts')
+    .filter(f => f.endsWith('-tools.ts') || f === 'knowledge-search.ts')
     .map(f => path.join(MCP_DIR, f))
     .sort();
 
