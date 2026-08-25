@@ -31,7 +31,11 @@ import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
 import { validateAdagentsDocument } from '../services/adagents-schema-validator.js';
 import { registryReadRateLimiter, brandCreationRateLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger.js';
-import { resolveCallerOrgId } from './helpers/resolve-caller-org.js';
+import {
+  resolveCallerOrganization,
+  type CallerOrganizationResolution,
+} from './helpers/resolve-caller-org.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import {
   notifyCommunityMirrorProposalReviewed,
   notifyPendingCommunityMirrorProposal,
@@ -97,14 +101,17 @@ async function canManageMirrors(userId: string): Promise<boolean> {
 }
 
 async function resolveManager(
-  req: { user?: { id?: string } },
+  req: { user?: { id?: string; authWorkosUserId?: string } },
   res: Response
 ): Promise<string | null> {
-  const userId = req.user?.id;
-  if (!userId) {
+  if (!req.user?.id) {
     res.status(401).json({ error: 'Authentication required' });
     return null;
   }
+  const userId = getOrganizationAuthorizationUserId({
+    id: req.user.id,
+    authWorkosUserId: req.user.authWorkosUserId,
+  });
   if (!(await canManageMirrors(userId))) {
     res.status(403).json({
       error: 'Only registry moderators or AgenticAdvertising.org administrators can manage community mirrors',
@@ -114,9 +121,11 @@ async function resolveManager(
   return userId;
 }
 
-async function callerOrganizationId(req: Request): Promise<string | null> {
+async function callerOrganization(req: Request): Promise<CallerOrganizationResolution> {
   const attached = (req as Request & { apiKey?: { organizationId?: string } }).apiKey?.organizationId;
-  return attached ?? resolveCallerOrgId(req);
+  return attached
+    ? { status: 'authorized', organizationId: attached }
+    : resolveCallerOrganization(req);
 }
 
 function reviewedContentDigest(document: Record<string, unknown>): string {
@@ -209,7 +218,11 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     if (reviewQueue && !isManager) {
       return res.status(403).json({ error: 'Registry moderator access is required for the review queue' });
     }
-    const organizationId = isManager ? null : await callerOrganizationId(req);
+    const organization = isManager ? { status: 'missing' as const } : await callerOrganization(req);
+    if (organization.status === 'forbidden') {
+      return res.status(403).json({ error: 'Organization access denied' });
+    }
+    const organizationId = organization.status === 'authorized' ? organization.organizationId : null;
     const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : undefined;
     const offset = req.query.offset ? parseInt(String(req.query.offset), 10) : undefined;
     try {
@@ -242,7 +255,11 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
       const proposal = await mirrorDb.getProposalById(proposalId);
       if (!proposal) return res.status(404).json({ error: 'Community mirror proposal not found' });
       const isManager = await canManageMirrors(userId);
-      const organizationId = isManager ? null : await callerOrganizationId(req);
+      const organization = isManager ? { status: 'missing' as const } : await callerOrganization(req);
+      if (organization.status === 'forbidden') {
+        return res.status(403).json({ error: 'Organization access denied' });
+      }
+      const organizationId = organization.status === 'authorized' ? organization.organizationId : null;
       const ownsProposal = organizationId
         ? proposal.proposed_by_organization_id === organizationId
         : proposal.proposed_by_user_id === userId;
@@ -455,7 +472,11 @@ export function createCommunityMirrorRouter(config: CommunityMirrorRouterConfig)
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: 'Authentication required' });
     const isManager = await canManageMirrors(userId);
-    const organizationId = isManager ? null : await callerOrganizationId(req);
+    const organization = isManager ? { status: 'missing' as const } : await callerOrganization(req);
+    if (organization.status === 'forbidden') {
+      return res.status(403).json({ error: 'Organization access denied' });
+    }
+    const organizationId = organization.status === 'authorized' ? organization.organizationId : null;
     if (!isManager && !organizationId) {
       return res.status(403).json({ error: 'Organization context is required to propose a community mirror' });
     }

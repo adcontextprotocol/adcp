@@ -33,6 +33,11 @@ const mocks = vi.hoisted(() => ({
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
   notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
   notifyBrandLogoReviewed: vi.fn().mockResolvedValue(null),
+  resolveUserOrgMembership: vi.fn(),
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: (...args: unknown[]) => mocks.resolveUserOrgMembership(...args),
 }));
 
 vi.mock('../../src/notifications/registry.js', () => ({
@@ -107,6 +112,11 @@ function makeApp(opts: {
 }) {
   mocks.isVerifiedOwner.mockReset();
   mocks.isVerifiedOwner.mockResolvedValue(opts.isOwner);
+  mocks.resolveUserOrgMembership.mockResolvedValue({
+    organizationId: 'org_test',
+    role: 'member',
+    source: 'workos',
+  });
 
   const brandDb = {
     getHostedBrandByDomain: vi.fn().mockResolvedValue(opts.hostedBrand ?? null),
@@ -140,6 +150,7 @@ describe('Wedge A — per-user pending-queue threshold', () => {
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(429);
@@ -159,6 +170,7 @@ describe('Wedge A — per-user pending-queue threshold', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -170,6 +182,7 @@ describe('Wedge A — per-user pending-queue threshold', () => {
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -194,6 +207,7 @@ describe('Wedge B — per-brand reserved owner slots', () => {
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(400);
@@ -211,6 +225,7 @@ describe('Wedge B — per-brand reserved owner slots', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -226,6 +241,7 @@ describe('Wedge B — per-brand reserved owner slots', () => {
     });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(400);
@@ -258,6 +274,7 @@ describe('Wedge C — threaded approve/reject Slack replies', () => {
     const app = makeApp({ hostedBrand: null, isOwner: false });
     const res = await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
@@ -271,6 +288,7 @@ describe('Wedge C — threaded approve/reject Slack replies', () => {
     const app = makeApp({ hostedBrand: null, isOwner: false });
     await request(app)
       .post('/api/brands/example.com/logos')
+      .field('organization_id', 'org_test')
       .field('tags', 'primary')
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     await new Promise((r) => setImmediate(r));

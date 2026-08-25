@@ -4,8 +4,8 @@
  * Exercises POST /api/admin/users/:userId/linked-emails:
  *   - Creates a fresh WorkOS user for the new email (mocked).
  *   - Inserts into local users (trigger fires, creating a singleton identity).
- *   - mergeUsers re-points the new user's binding to the existing user's
- *     identity as is_primary = FALSE; drops the orphan singleton.
+ *   - The state-empty attach operation re-points only the new credential's
+ *     binding as is_primary = FALSE; drops the orphan singleton.
  *
  * After this, the existing user has two bound WorkOS users; the auth
  * middleware will id-swap a non-primary login to the canonical id.
@@ -229,11 +229,22 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
 
   it('rolls back the WorkOS user when local bind fails after createUser succeeded', async () => {
     // Pre-create the new WorkOS user id locally so the post-createUser INSERT
-    // would succeed, but force mergeUsers to fail by deleting the trigger-
+    // would succeed, but force the state-empty attach to fail by deleting the trigger-
     // created identity binding for the existing user (Phase 1 trigger
     // guarantees normally — we break the invariant to simulate a partial
     // failure path).
-    await pool.query(`DELETE FROM identity_workos_users WHERE workos_user_id = $1`, [EXISTING_USER_ID]);
+    await pool.query(
+      `DELETE FROM identities
+        WHERE id = (SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1)`,
+      [EXISTING_USER_ID],
+    );
+    const orphanBaseline = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM identities i
+        WHERE NOT EXISTS (
+          SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+        )`,
+    );
 
     const response = await request(app)
       .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
@@ -243,5 +254,18 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
     expect(response.body.error).toMatch(/failed to bind/i);
     expect(response.body.message).toMatch(/rolled back|retry/i);
     expect(mockDeleteUser).toHaveBeenCalledWith(MOCK_NEW_WORKOS_USER_ID);
+    const local = await pool.query(
+      `SELECT 1 FROM users WHERE workos_user_id = $1`,
+      [MOCK_NEW_WORKOS_USER_ID],
+    );
+    expect(local.rows).toEqual([]);
+    const orphanIdentities = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM identities i
+        WHERE NOT EXISTS (
+          SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+        )`,
+    );
+    expect(Number(orphanIdentities.rows[0].count)).toBe(Number(orphanBaseline.rows[0].count));
   });
 });

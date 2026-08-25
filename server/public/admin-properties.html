@@ -650,7 +650,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             publisher_domain: domain,
-            adagents_json: adagentsJson
+            adagents_json: adagentsJson,
+            organization_id: localStorage.getItem('selectedOrgId') || ''
           })
         });
 
@@ -708,7 +709,8 @@
       }
 
       try {
-        const response = await fetch(`/api/properties/hosted/${encodeURIComponent(domain)}`, {
+        const selectedOrgId = localStorage.getItem('selectedOrgId') || '';
+        const response = await fetch(`/api/properties/hosted/${encodeURIComponent(domain)}?org=${encodeURIComponent(selectedOrgId)}`, {
           method: 'DELETE'
         });
 

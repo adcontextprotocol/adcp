@@ -56,6 +56,9 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   let app: express.Application;
   let memberDb: MemberDatabase;
   let orgDb: OrganizationDatabase;
+  const selectedOrgByUser = new Map<string, string>();
+  let revokeAfterFirstMembershipCheck = false;
+  let membershipLookupCount = 0;
 
   beforeAll(async () => {
     pool = initializeDatabase({
@@ -82,6 +85,10 @@ describe('Per-agent REST API (/api/me/agents)', () => {
         firstName: 'Test',
         lastName: 'User',
       };
+      const selectedOrg = selectedOrgByUser.get(currentUserId);
+      if (selectedOrg && !req.url.includes('?org=')) {
+        req.url += `${req.url.includes('?') ? '&' : '?'}org=${encodeURIComponent(selectedOrg)}`;
+      }
       next();
     });
 
@@ -100,6 +107,10 @@ describe('Per-agent REST API (/api/me/agents)', () => {
           userId: string;
           organizationId?: string;
         }) => {
+          membershipLookupCount += 1;
+          if (revokeAfterFirstMembershipCheck && membershipLookupCount > 1) {
+            return { data: [] };
+          }
           const args: unknown[] = [userId];
           let where = `workos_user_id = $1`;
           if (organizationId) {
@@ -152,6 +163,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   });
 
   async function provisionUser(userId: string, orgId: string) {
+    selectedOrgByUser.set(userId, orgId);
     await pool.query(
       `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
        VALUES ($1, $2, $3, NOW(), NOW())
@@ -215,6 +227,9 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   }
 
   beforeEach(async () => {
+    selectedOrgByUser.clear();
+    revokeAfterFirstMembershipCheck = false;
+    membershipLookupCount = 0;
     await pool.query(
       `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -451,6 +466,25 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const res = await request(app)
       .get(`/api/me/agents?org=${strangerOrg}`);
     expect(res.status).toBe(403);
+  });
+
+  it('rechecks membership after locking and aborts when access is revoked before write', async () => {
+    const orgId = `${TEST_PREFIX}_revoked_during_write`;
+    const userId = `${TEST_PREFIX}_revoked_during_write_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'revokedduringwrite');
+    (app as any).setCurrentUser(userId);
+    revokeAfterFirstMembershipCheck = true;
+
+    const response = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://revoked.example.test/mcp', type: 'sales', visibility: 'private' });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatch(/revoked/i);
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.agents.some((agent) => agent.url === 'https://revoked.example.test/mcp')).toBe(false);
   });
 
   it('POST resolves type server-side from capability snapshot, ignoring smuggled client value', async () => {

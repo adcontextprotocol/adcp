@@ -20,6 +20,45 @@ vi.hoisted(() => {
   process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://adcp:localdev@localhost:5432/adcp_test';
 });
 
+const { MEMBER_ORG, mockListOrganizationMemberships } = vi.hoisted(() => {
+  const memberOrg = 'org_save_identity_member';
+  return {
+    MEMBER_ORG: memberOrg,
+    mockListOrganizationMemberships: vi.fn().mockImplementation(async ({
+      userId,
+      organizationId,
+    }: {
+      userId: string;
+      organizationId?: string;
+    }) => ({
+      data: userId === 'user_save_test' && organizationId === memberOrg
+        ? [{
+            id: 'om_save_identity',
+            userId: 'user_save_test',
+            organizationId: memberOrg,
+            role: { slug: 'member' },
+            status: 'active',
+          }]
+        : [],
+    })),
+  };
+});
+
+vi.mock('../../src/auth/workos-client.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/auth/workos-client.js')>(
+    '../../src/auth/workos-client.js',
+  );
+  const mockWorkos = {
+    userManagement: {
+      listOrganizationMemberships: mockListOrganizationMemberships,
+    },
+  };
+  return {
+    ...actual,
+    getWorkos: () => mockWorkos,
+  };
+});
+
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/auth.js');
   const pass = (req: { user: unknown }, _res: unknown, next: () => void) => {
@@ -102,6 +141,17 @@ describe('POST /api/properties/save — identity, not authorization', () => {
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });
     await runMigrations();
+    await pool.query(
+      `INSERT INTO organizations (
+         workos_organization_id, name, is_personal, membership_tier,
+         subscription_status, created_at, updated_at
+       ) VALUES ($1, 'Save Identity Member Org', false, 'individual_professional', 'active', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET
+         membership_tier = EXCLUDED.membership_tier,
+         subscription_status = EXCLUDED.subscription_status,
+         subscription_canceled_at = NULL`,
+      [MEMBER_ORG],
+    );
     propertyDb = new PropertyDatabase();
     server = new HTTPServer();
     await server.start(0);
@@ -110,6 +160,7 @@ describe('POST /api/properties/save — identity, not authorization', () => {
 
   afterAll(async () => {
     await clearFixtures();
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [MEMBER_ORG]);
     await server?.stop();
     await closeDatabase();
   }, 30000);
@@ -209,7 +260,7 @@ describe('POST /api/properties/save — identity, not authorization', () => {
 
   it('scrubs caller authorization on the member community-property create route', async () => {
     const res = await request(app)
-      .post('/api/properties/hosted/community')
+      .post(`/api/properties/hosted/community?org=${MEMBER_ORG}`)
       .send({
         publisher_domain: HTTP_COMMUNITY_DOMAIN,
         adagents_json: {
@@ -233,7 +284,7 @@ describe('POST /api/properties/save — identity, not authorization', () => {
     });
 
     const res = await request(app)
-      .put(`/api/properties/hosted/${encodeURIComponent(HTTP_EDIT_DOMAIN)}`)
+      .put(`/api/properties/hosted/${encodeURIComponent(HTTP_EDIT_DOMAIN)}?org=${MEMBER_ORG}`)
       .send({
         edit_summary: 'Identity-only edit',
         adagents_json: {

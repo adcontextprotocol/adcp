@@ -1248,7 +1248,7 @@
       const encoded = encodeURIComponent(agent.url);
       const orgQuery = organizationId ? `?org=${encodeURIComponent(organizationId)}` : '';
       const endpoints = [
-        `/api/registry/agents/${encoded}/compliance`,
+        `/api/registry/agents/${encoded}/compliance${orgQuery}`,
         `/api/registry/agents/${encoded}/compliance/history?limit=10`,
         `/api/registry/agents/${encoded}/auth-status${orgQuery}`,
       ];
@@ -1564,7 +1564,7 @@
       const previous = agent.visibility || 'private';
       if (previous === target) return;
       try {
-        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility`, {
+        const resp = await fetch(`/api/me/member-profile/agents/${index}/visibility?org=${encodeURIComponent(pageState.orgId)}`, {
           method: 'PATCH',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -1772,7 +1772,7 @@
       let rows = cachedStoryboardStatuses(agentUrl);
       if (rows.length === 0) {
         try {
-          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard-status', { credentials: 'include' });
+          const res = await fetch('/api/registry/agents/' + encodeURIComponent(agentUrl) + '/storyboard-status?org=' + encodeURIComponent(pageState.orgId), { credentials: 'include' });
           if (res.ok) {
             const data = await res.json();
             rows = Array.isArray(data.storyboards) ? data.storyboards : [];
@@ -2526,7 +2526,7 @@
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ opt_out: !checkbox.checked }),
+          body: JSON.stringify({ opt_out: !checkbox.checked, organization_id: pageState.orgId }),
         });
         if (!res.ok) {
           checkbox.checked = !checkbox.checked;
@@ -3189,7 +3189,7 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ paused: toggle.checked }),
+            body: JSON.stringify({ paused: toggle.checked, organization_id: pageState.orgId }),
           });
           if (!res.ok) {
             toggle.checked = !toggle.checked;
@@ -3239,7 +3239,7 @@
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ interval_hours: parseInt(select.value, 10) }),
+            body: JSON.stringify({ interval_hours: parseInt(select.value, 10), organization_id: pageState.orgId }),
           });
           if (!res.ok) {
             select.value = previousValue;
@@ -3390,6 +3390,7 @@
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ organization_id: pageState.orgId }),
         });
         const data = await res.json().catch(() => ({}));
 
@@ -3449,7 +3450,7 @@
       panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
       try {
-        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50`, {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/monitoring/requests?limit=50&org=${encodeURIComponent(pageState.orgId)}`, {
           credentials: 'include',
         });
         if (!res.ok) throw new Error('Failed to load');

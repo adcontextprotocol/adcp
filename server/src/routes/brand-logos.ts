@@ -10,8 +10,6 @@ import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
 import { canReviewBrandLogos, isRegistryModerator, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
-import { enrichUserWithMembership } from '../utils/html-config.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import {
   validateLogoTags,
   detectContentType,
@@ -24,6 +22,9 @@ import { getBrandAssetUrl } from '../services/logo-cdn.js';
 import { createLogger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
 import { notifyPendingBrandLogo, notifyBrandLogoReviewed } from '../notifications/registry.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
+import { getWorkos } from '../auth/workos-client.js';
 
 const PENDING_REVIEW_SLA_HOURS = 48;
 // Per-user pending-queue threshold: how many distinct brand domains a
@@ -75,6 +76,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
       try {
         const domain = req.params.domain.toLowerCase();
         const user = (req as any).user;
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
         const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
         const isStaticAdmin = Boolean(
           (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey,
@@ -84,12 +86,13 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'Invalid domain' });
         }
 
-        // Membership check
-        if (!isStaticAdmin && !user.isMember) {
-          const enriched = await enrichUserWithMembership(user);
-          if (!enriched?.isMember) {
-            return res.status(403).json({ error: 'Membership required to upload logos' });
-          }
+        const selectedOrgId = apiKey?.organizationId
+          ?? (typeof req.body.organization_id === 'string' ? req.body.organization_id.trim() : '');
+        if (!isStaticAdmin && !selectedOrgId) {
+          return res.status(400).json({ error: 'organization_id is required' });
+        }
+        if (!isStaticAdmin && !await resolveUserOrgMembership(getWorkos(), user, selectedOrgId)) {
+          return res.status(403).json({ error: 'You do not have access to the selected organization' });
         }
 
         // Ban check
@@ -111,7 +114,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           hostedForOwnership.workos_organization_id === apiKey.organizationId
         );
         const isOwner = !isStaticAdmin
-          && (isApiKeyOwner || (await isVerifiedBrandOwner(user.id, domain, brandDb)));
+          && (isApiKeyOwner || (await isVerifiedBrandOwner(authorizationUserId, domain, brandDb)));
         // Static-admin uploads are support actions, not owner attestations.
         // They bypass the community queue, but attribution below remains tied
         // to a hosted member org when one exists.
@@ -224,10 +227,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const uploaderOrgId = isTrustedUploader
           ? hostedForOwnership?.workos_organization_id
             ?? (isOwner ? apiKey?.organizationId ?? null : null)
-          : apiKey?.organizationId ?? (await resolvePrimaryOrganization(user.id).catch((err) => {
-              logger.warn({ err, userId: user.id }, 'Failed to resolve uploader org for brand-logo provenance');
-              return null;
-            }));
+          : selectedOrgId || null;
 
         // Verified owners and authenticated support actions are auto-approved.
         // Only the former are owner-attested; `source` preserves that distinction.
@@ -240,6 +240,23 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const source = isAttributedToMemberOrg ? 'brand_owner' : 'community';
         const reviewStatus = isTrustedUploader ? 'approved' : 'pending';
 
+        if (!isStaticAdmin && !await resolveUserOrgMembership(getWorkos(), user, selectedOrgId)) {
+          return res.status(403).json({ error: 'Your organization authorization was revoked' });
+        }
+        if (isOwner) {
+          const currentHostedBrand = await brandDb.getHostedBrandByDomain(domain);
+          const remainsApiKeyOwner = Boolean(
+            apiKey?.organizationId
+            && currentHostedBrand?.domain_verified
+            && currentHostedBrand.workos_organization_id === apiKey.organizationId
+          );
+          const remainsUserOwner = !apiKey
+            && await isVerifiedBrandOwner(authorizationUserId, domain, brandDb);
+          if (!remainsApiKeyOwner && !remainsUserOwner) {
+            return res.status(403).json({ error: 'Your organization authorization was revoked' });
+          }
+        }
+
         // Insert
         const logo = await brandLogoDb.insertBrandLogo({
           domain,
@@ -251,7 +268,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           height,
           source,
           review_status: reviewStatus,
-          uploaded_by_user_id: user.id,
+          uploaded_by_user_id: authorizationUserId,
           uploaded_by_org_id: uploaderOrgId ?? undefined,
           uploaded_by_email: user.email,
           upload_note: note,
@@ -291,7 +308,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
                 source_type: 'community',
               },
               {
-                user_id: user.id,
+                user_id: authorizationUserId,
                 email: user.email,
                 name: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : undefined,
               }
@@ -317,14 +334,14 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
               : 'community — pending review';
           await brandDb.editDiscoveredBrand(domain, {
             edit_summary: `Logo uploaded by ${user.email} (${reviewNote})`,
-            editor_user_id: user.id,
+            editor_user_id: authorizationUserId,
             editor_email: user.email,
           });
         } catch (err) {
           // Audit-revision write failed — the logo is saved regardless, but
           // log so we can spot drift between brand_revisions and the logo
           // table (e.g. a brand that's pending review can't take revisions).
-          logger.debug({ err, domain, userId: user.id }, 'Logo upload audit revision skipped');
+          logger.debug({ err, domain, userId: authorizationUserId }, 'Logo upload audit revision skipped');
         }
 
         // Fire-and-forget Slack notification for pending uploads. Owners
@@ -394,7 +411,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Reviewers see all statuses (pending, rejected) for brands they manage
         const user = (req as any).user;
-        const canReview = user?.id ? await canReviewBrandLogos(user.id, domain, brandDb) : false;
+        const canReview = user?.id
+          ? await canReviewBrandLogos(getOrganizationAuthorizationUserId(user), domain, brandDb)
+          : false;
 
         const logos = await brandLogoDb.listBrandLogos(domain, {
           tags: filterTags,
@@ -441,6 +460,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const domain = req.params.domain.toLowerCase();
         const logoId = req.params.id;
         const user = (req as any).user;
+        const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
         if (!logoDomainPattern.test(domain)) {
           return res.status(400).json({ error: 'Invalid domain' });
@@ -450,7 +470,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         // Authorization: registry moderator or verified brand owner
-        const authorized = await canReviewBrandLogos(user.id, domain, brandDb);
+        const authorized = await canReviewBrandLogos(authorizationUserId, domain, brandDb);
         if (!authorized) {
           return res.status(403).json({ error: 'Only registry moderators or verified brand owners can review logos' });
         }
@@ -472,11 +492,14 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // no separate pre-fetch needed. Saves a round-trip and removes a
         // TOCTOU window where the row could be deleted between fetch
         // and update.
+        if (!await canReviewBrandLogos(authorizationUserId, domain, brandDb)) {
+          return res.status(403).json({ error: 'Your review authorization was revoked' });
+        }
         const updated = await brandLogoDb.updateLogoReviewStatus(
           logoId,
           domain,
           status,
-          user.id,
+          authorizationUserId,
           note,
         );
 
@@ -496,7 +519,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         try {
           await brandDb.editDiscoveredBrand(domain, {
             edit_summary: `Logo ${action}d by ${user.email}`,
-            editor_user_id: user.id,
+            editor_user_id: authorizationUserId,
             editor_email: user.email,
           });
         } catch {
@@ -544,7 +567,7 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const user = (req as any).user;
         const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
           .isStaticAdminApiKey === true;
-        const moderator = isStaticAdmin || await isRegistryModerator(user.id);
+        const moderator = isStaticAdmin || await isRegistryModerator(getOrganizationAuthorizationUserId(user));
         if (!moderator) {
           return res.status(403).json({ error: 'Brand-registry moderators only' });
         }
@@ -606,8 +629,10 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         const row = await brandLogoDb.getBrandLogoById(logoId);
         const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
           .isStaticAdminApiKey === true;
-        const moderator = isStaticAdmin || await isRegistryModerator(user.id);
-        const owner = row ? await isVerifiedBrandOwner(user.id, row.domain, brandDb) : false;
+        const moderator = isStaticAdmin || await isRegistryModerator(getOrganizationAuthorizationUserId(user));
+        const owner = row
+          ? await isVerifiedBrandOwner(getOrganizationAuthorizationUserId(user), row.domain, brandDb)
+          : false;
 
         // Conflate not-found and not-authorized for unauthorized callers
         // so a UUID guesser can't distinguish "this id doesn't exist" from

@@ -27,6 +27,7 @@ import { resolveSlackUserDisplayName } from '../slack/client.js';
 import { PERSONA_LABELS } from '../config/personas.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getAgentTestingContext } from '../db/agent-test-db.js';
 import { wrapUntrustedInput } from './mcp/untrusted-input.js';
 
@@ -155,9 +156,19 @@ async function resolveAddieOrganization(
   context?: MemberContext,
 ): Promise<{ organizationId: string; userRole: string; userJoinedAt: Date | null } | null> {
   try {
+    if (!selectedOrganizationId) {
+      logger.info({ workosUserId }, `${logPrefix}: waiting for explicit org selection`);
+      return null;
+    }
+    const exactMembership = await resolveUserOrgMembership(
+      getWorkos(),
+      { id: workosUserId },
+      selectedOrganizationId,
+    );
+    if (!exactMembership) return null;
     const activeMemberships = await listActiveWorkosMembershipsForUser(workosUserId, selectedOrganizationId);
 
-    if (selectedOrganizationId && activeMemberships.length === 0) {
+    if (activeMemberships.length === 0 && !exactMembership.via_credential_grant) {
       logger.warn(
         { workosUserId, organizationId: selectedOrganizationId },
         `${logPrefix}: selected org is not backed by active WorkOS membership`,
@@ -165,22 +176,9 @@ async function resolveAddieOrganization(
       return null;
     }
 
-    const uniqueActiveOrgIds = [...new Set(activeMemberships.map((m) => m.organizationId).filter(Boolean))];
-    if (uniqueActiveOrgIds.length === 0) return null;
-    if (uniqueActiveOrgIds.length > 1) {
-      if (context) {
-        context.available_organizations = await resolveAvailableOrganizationChoices(activeMemberships);
-      }
-      logger.info(
-        { workosUserId, orgCount: uniqueActiveOrgIds.length },
-        `${logPrefix}: multiple active organizations; waiting for explicit org selection`,
-      );
-      return null;
-    }
-
-    const organizationId = uniqueActiveOrgIds[0];
+    const organizationId = selectedOrganizationId;
     const selectedOrgMemberships = activeMemberships.filter((m) => m.organizationId === organizationId);
-    const userRole = resolveUserRole(selectedOrgMemberships) || 'member';
+    const userRole = exactMembership.role;
     const activeMembership = selectedOrgMemberships[0];
     const userJoinedAt = activeMembership?.createdAt ? new Date(activeMembership.createdAt) : null;
 

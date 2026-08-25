@@ -24,7 +24,11 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
 
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { resolveUserOrgMembership } from '../../src/utils/resolve-user-org-membership.js';
+import {
+  evaluateUserOrgRoleAuthorization,
+  resolveUserOrgAuthorization,
+  resolveUserOrgMembership,
+} from '../../src/utils/resolve-user-org-membership.js';
 import type { Pool } from 'pg';
 import type { WorkOS } from '@workos-inc/node';
 
@@ -60,13 +64,14 @@ describe('resolveUserOrgMembership', () => {
       await seedMembership(pool, DEV_ADMIN_USER, DEV_ORG, 'owner');
 
       // workos arg is a no-op in dev path — pass null to prove it.
-      const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_ADMIN_USER }, DEV_ORG);
 
       expect(result).toEqual({
         organizationId: DEV_ORG,
         role: 'owner',
         status: 'active',
         via_dev_bypass: true,
+        via_credential_grant: false,
       });
     });
 
@@ -74,7 +79,7 @@ describe('resolveUserOrgMembership', () => {
       await seedOrg(pool, DEV_ORG);
       // Don't seed membership.
 
-      const result = await resolveUserOrgMembership(null, DEV_ADMIN_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_ADMIN_USER }, DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -83,13 +88,14 @@ describe('resolveUserOrgMembership', () => {
       await seedOrg(pool, DEV_ORG);
       await seedMembership(pool, DEV_MEMBER_USER, DEV_ORG, 'weirdRole');
 
-      const result = await resolveUserOrgMembership(null, DEV_MEMBER_USER, DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: DEV_MEMBER_USER }, DEV_ORG);
 
       expect(result).toEqual({
         organizationId: DEV_ORG,
         role: 'member',
         status: 'active',
         via_dev_bypass: true,
+        via_credential_grant: false,
       });
     });
 
@@ -103,13 +109,14 @@ describe('resolveUserOrgMembership', () => {
       } as unknown as WorkOS;
 
       // NON_DEV_USER isn't in DEV_USERS, so we hit WorkOS even in dev mode.
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toEqual({
         organizationId: NON_DEV_ORG,
         role: 'admin',
         status: 'active',
         via_dev_bypass: false,
+        via_credential_grant: false,
       });
       expect(mockWorkos.userManagement.listOrganizationMemberships).toHaveBeenCalledWith({
         userId: NON_DEV_USER,
@@ -119,6 +126,26 @@ describe('resolveUserOrgMembership', () => {
   });
 
   describe('WorkOS path', () => {
+    it('authorizes the authenticated credential instead of the canonical person-state user', async () => {
+      const listOrganizationMemberships = vi.fn().mockResolvedValue({
+        data: [{ organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'member' } }],
+      });
+      const mockWorkos = {
+        userManagement: { listOrganizationMemberships },
+      } as unknown as WorkOS;
+
+      await resolveUserOrgMembership(
+        mockWorkos,
+        { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+        NON_DEV_ORG,
+      );
+
+      expect(listOrganizationMemberships).toHaveBeenCalledWith({
+        userId: 'user_authenticated',
+        organizationId: NON_DEV_ORG,
+      });
+    });
+
     it('returns the highest-privilege active role from WorkOS memberships', async () => {
       const mockWorkos = {
         userManagement: {
@@ -132,7 +159,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       // 'admin' is the highest active role; pending 'owner' is filtered out.
       expect(result?.role).toBe('admin');
@@ -146,7 +173,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -163,7 +190,7 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
@@ -180,16 +207,106 @@ describe('resolveUserOrgMembership', () => {
         },
       } as unknown as WorkOS;
 
-      const result = await resolveUserOrgMembership(mockWorkos, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(mockWorkos, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
     });
 
     it('returns null when the WorkOS client is missing', async () => {
       // Use a non-DEV user so the dev-mode path doesn't bypass.
-      const result = await resolveUserOrgMembership(null, NON_DEV_USER, NON_DEV_ORG);
+      const result = await resolveUserOrgMembership(null, { id: NON_DEV_USER }, NON_DEV_ORG);
 
       expect(result).toBeNull();
+    });
+
+    it('distinguishes a missing WorkOS client from a definitive denial', async () => {
+      const result = await resolveUserOrgAuthorization(
+        null,
+        { id: NON_DEV_USER },
+        NON_DEV_ORG,
+      );
+
+      expect(result).toEqual({
+        status: 'unavailable',
+        complete: false,
+        unavailableSources: ['workos'],
+      });
+      expect(evaluateUserOrgRoleAuthorization(result)).toEqual({
+        status: 'unavailable',
+        unavailableSources: ['workos'],
+      });
+    });
+
+    it('returns a definitive denial when all authority sources are available', async () => {
+      const mockWorkos = {
+        userManagement: {
+          listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [] }),
+        },
+      } as unknown as WorkOS;
+
+      const result = await resolveUserOrgAuthorization(
+        mockWorkos,
+        { id: NON_DEV_USER },
+        NON_DEV_ORG,
+      );
+
+      expect(result).toEqual({ status: 'forbidden', complete: true, unavailableSources: [] });
+      expect(evaluateUserOrgRoleAuthorization(result)).toEqual({ status: 'forbidden' });
+    });
+
+    it('accepts a sufficient grant during WorkOS failure but does not understate role uncertainty', async () => {
+      await seedOrg(pool, NON_DEV_ORG);
+      await seedUser(pool, NON_DEV_USER);
+      await pool.query(
+        `INSERT INTO organization_credential_grants (
+           workos_organization_id, workos_user_id, role, granted_by_workos_user_id
+         ) VALUES ($1, $2, 'member', 'user_grant_admin')`,
+        [NON_DEV_ORG, NON_DEV_USER],
+      );
+      const mockWorkos = {
+        userManagement: {
+          listOrganizationMemberships: vi.fn().mockRejectedValue(new Error('WorkOS unavailable')),
+        },
+      } as unknown as WorkOS;
+
+      const result = await resolveUserOrgAuthorization(
+        mockWorkos,
+        { id: NON_DEV_USER },
+        NON_DEV_ORG,
+      );
+
+      expect(result).toMatchObject({
+        status: 'authorized',
+        complete: false,
+        unavailableSources: ['workos'],
+        membership: { role: 'member', via_credential_grant: true },
+      });
+      expect(evaluateUserOrgRoleAuthorization(result, 'member')).toMatchObject({
+        status: 'authorized',
+        membership: { role: 'member' },
+      });
+      expect(evaluateUserOrgRoleAuthorization(result, 'admin')).toEqual({
+        status: 'unavailable',
+        unavailableSources: ['workos'],
+      });
+    });
+
+    it('returns forbidden for an insufficient role when every source is complete', async () => {
+      const mockWorkos = {
+        userManagement: {
+          listOrganizationMemberships: vi.fn().mockResolvedValue({
+            data: [{ organizationId: NON_DEV_ORG, status: 'active', role: { slug: 'member' } }],
+          }),
+        },
+      } as unknown as WorkOS;
+
+      const result = await resolveUserOrgAuthorization(
+        mockWorkos,
+        { id: NON_DEV_USER },
+        NON_DEV_ORG,
+      );
+
+      expect(evaluateUserOrgRoleAuthorization(result, 'admin')).toEqual({ status: 'forbidden' });
     });
   });
 });
@@ -203,6 +320,7 @@ async function cleanup(pool: Pool) {
     'DELETE FROM organizations WHERE workos_organization_id = ANY($1)',
     [[DEV_ORG, NON_DEV_ORG]],
   );
+  await pool.query('DELETE FROM users WHERE workos_user_id = $1', [NON_DEV_USER]);
 }
 
 async function seedOrg(pool: Pool, orgId: string) {
@@ -211,6 +329,15 @@ async function seedOrg(pool: Pool, orgId: string) {
      VALUES ($1, $1, NOW(), NOW())
      ON CONFLICT (workos_organization_id) DO NOTHING`,
     [orgId],
+  );
+}
+
+async function seedUser(pool: Pool, userId: string) {
+  await pool.query(
+    `INSERT INTO users (workos_user_id, email, first_name, last_name, created_at, updated_at)
+     VALUES ($1, $2, 'Test', 'User', NOW(), NOW())
+     ON CONFLICT (workos_user_id) DO NOTHING`,
+    [userId, `${userId}@test.com`],
   );
 }
 

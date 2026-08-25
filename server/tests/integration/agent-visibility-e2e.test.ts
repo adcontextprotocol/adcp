@@ -80,9 +80,9 @@ describe('Agent visibility E2E', () => {
     app = express();
     app.use(express.json());
 
-    // Route stubs a user onto the request so requireAuth-backed routes
-    // resolve the test user's primary organization. We swap the user +
-    // its declared org per test via middleware state.
+    // Route stubs a user onto the request so requireAuth-backed routes can
+    // authenticate the caller. Organization scope is selected explicitly on
+    // each request below.
     let currentUserId = 'user_e2e';
     (app as any).setCurrentUser = (id: string, orgId?: string | null) => {
       currentUserId = id;
@@ -289,16 +289,22 @@ describe('Agent visibility E2E', () => {
     await request(app)
       .put('/api/me/member-profile/visibility')
       .send({ is_public: false })
-      .expect(403);
+      .expect(400, {
+        error: 'The org query parameter is required',
+      });
 
     await request(app)
       .put('/api/me/member-profile')
       .send({ show_in_carousel: false })
-      .expect(403);
+      .expect(400, {
+        error: 'The org query parameter is required',
+      });
 
     await request(app)
       .delete('/api/me/member-profile')
-      .expect(403);
+      .expect(400, {
+        error: 'The org query parameter is required',
+      });
 
     const profile = await memberDb.getProfileByOrgId(orgId);
     expect(profile).not.toBeNull();
@@ -314,7 +320,7 @@ describe('Agent visibility E2E', () => {
     (app as any).setCurrentUser(userId);
 
     const response = await request(app)
-      .put('/api/me/member-profile')
+      .put(`/api/me/member-profile?org=${orgId}`)
       .send({ linkedin_url: 'javascript:alert(document.domain)' })
       .expect(400);
 
@@ -335,7 +341,7 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId);
     const res = await request(app)
-      .patch('/api/me/member-profile/agents/0/visibility')
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
       .send({ visibility: 'public' });
 
     expect(res.status).toBe(403);
@@ -351,7 +357,7 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId);
     const res = await request(app)
-      .patch('/api/me/member-profile/agents/0/visibility')
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
       .send({ visibility: 'members_only' });
 
     expect(res.status).toBe(200);
@@ -439,7 +445,7 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId);
     const res = await request(app)
-      .patch('/api/me/member-profile/agents/0/visibility')
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
       .send({ visibility: 'public' });
 
     expect(res.status).toBe(200);
@@ -457,12 +463,12 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId);
     const pubRes = await request(app)
-      .patch('/api/me/member-profile/agents/0/visibility')
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
       .send({ visibility: 'public' });
     expect(pubRes.status).toBe(403);
 
     const memRes = await request(app)
-      .patch('/api/me/member-profile/agents/0/visibility')
+      .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
       .send({ visibility: 'members_only' });
     expect(memRes.status).toBe(200);
   });
@@ -562,7 +568,7 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId, orgId);
     const res = await request(app)
-      .put('/api/me/member-profile')
+      .put(`/api/me/member-profile?org=${orgId}`)
       .send({
         agents: [
           { url: 'https://smuggled.putbypass.example', visibility: 'public' },
@@ -595,7 +601,7 @@ describe('Agent visibility E2E', () => {
 
     (app as any).setCurrentUser(userId, orgId);
     const res = await request(app)
-      .put('/api/me/member-profile')
+      .put(`/api/me/member-profile?org=${orgId}`)
       .send({
         agents: [
           { url: 'https://pro-pub.putpro.example', visibility: 'public' },
@@ -735,7 +741,9 @@ describe('Agent visibility E2E', () => {
 
     try {
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+      const res = await request(app).post(
+        `/api/me/member-profile/agents/0/publish?org=${orgId}`,
+      );
 
       // Response should still be 200 — the profile update is
       // authoritative; manifest drift logs but doesn't fail the request.
@@ -787,7 +795,9 @@ describe('Agent visibility E2E', () => {
     const updateSpy = vi.spyOn(brandDb, 'updateManifestAgents');
     try {
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+      const res = await request(app).post(
+        `/api/me/member-profile/agents/0/publish?org=${orgId}`,
+      );
 
       expect(res.status).toBe(200);
       expect(res.body.visibility).toBe('public');
@@ -814,7 +824,7 @@ describe('Agent visibility E2E', () => {
       await createProfile(orgId, 'gateok');
 
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).get('/api/me/member-profile');
+      const res = await request(app).get(`/api/me/member-profile?org=${orgId}`);
 
       expect(res.status).toBe(200);
       expect(res.body.has_api_access).toBe(true);
@@ -835,7 +845,7 @@ describe('Agent visibility E2E', () => {
       await createProfile(orgId, 'gatetier');
 
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).get('/api/me/member-profile');
+      const res = await request(app).get(`/api/me/member-profile?org=${orgId}`);
 
       expect(res.status).toBe(200);
       expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
@@ -857,7 +867,7 @@ describe('Agent visibility E2E', () => {
       // Deliberately no seedBrandPrimary — the org has no is_primary row.
 
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).get('/api/me/member-profile');
+      const res = await request(app).get(`/api/me/member-profile?org=${orgId}`);
 
       expect(res.status).toBe(200);
       expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
@@ -879,7 +889,7 @@ describe('Agent visibility E2E', () => {
       });
 
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).get('/api/me/member-profile');
+      const res = await request(app).get(`/api/me/member-profile?org=${orgId}`);
 
       expect(res.status).toBe(200);
       expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
@@ -906,7 +916,7 @@ describe('Agent visibility E2E', () => {
       await seedBrandPrimaryUnverified(orgId, 'gateunverified.example');
 
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).get('/api/me/member-profile');
+      const res = await request(app).get(`/api/me/member-profile?org=${orgId}`);
 
       expect(res.status).toBe(200);
       expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
@@ -939,7 +949,9 @@ describe('Agent visibility E2E', () => {
     it('POST /publish returns 400 brand_domain_unverified when primary domain is not DNS-verified', async () => {
       const { userId, orgId } = await setupUnverifiedOrg('pub');
       (app as any).setCurrentUser(userId, orgId);
-      const res = await request(app).post('/api/me/member-profile/agents/0/publish');
+      const res = await request(app).post(
+        `/api/me/member-profile/agents/0/publish?org=${orgId}`,
+      );
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('brand_domain_unverified');
     });
@@ -948,7 +960,7 @@ describe('Agent visibility E2E', () => {
       const { userId, orgId } = await setupUnverifiedOrg('patch');
       (app as any).setCurrentUser(userId, orgId);
       const res = await request(app)
-        .patch('/api/me/member-profile/agents/0/visibility')
+        .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
         .send({ visibility: 'public' });
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('brand_domain_unverified');
@@ -958,7 +970,7 @@ describe('Agent visibility E2E', () => {
       const { userId, orgId, domain } = await setupUnverifiedOrg('put');
       (app as any).setCurrentUser(userId, orgId);
       const res = await request(app)
-        .put('/api/me/member-profile')
+        .put(`/api/me/member-profile?org=${orgId}`)
         .send({ agents: [{ url: `https://agent.${domain}`, visibility: 'public' }] });
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('brand_domain_unverified');
@@ -981,7 +993,7 @@ describe('Agent visibility E2E', () => {
 
       (app as any).setCurrentUser(userId, orgId);
       const res = await request(app)
-        .put('/api/me/member-profile')
+        .put(`/api/me/member-profile?org=${orgId}`)
         .send({
           agents: [
             { url: 'https://existing.putrogue.example', visibility: 'private' },
@@ -1015,7 +1027,7 @@ describe('Agent visibility E2E', () => {
       (app as any).setCurrentUser(userId, orgId);
       // Same legacy URL — should pass the gate as a grandfather.
       const res = await request(app)
-        .put('/api/me/member-profile')
+        .put(`/api/me/member-profile?org=${orgId}`)
         .send({
           agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private', name: 'updated' }],
         });
@@ -1055,7 +1067,7 @@ describe('Agent visibility E2E', () => {
       // trailing slash. The grandfather check has to compare canonicalized
       // values on both sides.
       const res = await request(app)
-        .put('/api/me/member-profile')
+        .put(`/api/me/member-profile?org=${orgId}`)
         .send({
           agents: [
             { url: 'https://Legacy.Unrelated.Example/', visibility: 'private', name: 'still here' },
@@ -1084,21 +1096,21 @@ describe('Agent visibility E2E', () => {
 
       // members_only flip — should reject.
       const membersRes = await request(app)
-        .patch('/api/me/member-profile/agents/0/visibility')
+        .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
         .send({ visibility: 'members_only' });
       expect(membersRes.status).toBe(400);
       expect(membersRes.body.error).toBe('unverified_hostname');
 
       // public flip — should also reject.
       const publicRes = await request(app)
-        .patch('/api/me/member-profile/agents/0/visibility')
+        .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
         .send({ visibility: 'public' });
       expect(publicRes.status).toBe(400);
       expect(publicRes.body.error).toBe('unverified_hostname');
 
       // private (demotion) — always allowed.
       const privateRes = await request(app)
-        .patch('/api/me/member-profile/agents/0/visibility')
+        .patch(`/api/me/member-profile/agents/0/visibility?org=${orgId}`)
         .send({ visibility: 'private' });
       expect(privateRes.status).toBe(200);
     });

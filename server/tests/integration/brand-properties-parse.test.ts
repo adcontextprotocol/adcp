@@ -24,9 +24,34 @@ import type { Pool } from 'pg';
 // Shared mocks accessed by both vi.mock factories and assertion blocks.
 const mocks = vi.hoisted(() => ({
   currentUserId: 'user_parse_owner',
+  currentOrganizationId: 'org_parse_owner',
   anthropicCreate: vi.fn(),
   validateFetchUrl: vi.fn(),
   safeFetch: vi.fn(),
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/resolve-user-org-membership.js')>()),
+  resolveUserOrgMembership: vi.fn(async (
+    _workos: unknown,
+    principal: { id?: string; authWorkosUserId?: string },
+    organizationId: string,
+  ) => {
+    const authorizationUserId = principal.authWorkosUserId ?? principal.id;
+    if (
+      authorizationUserId !== mocks.currentUserId
+      || organizationId !== mocks.currentOrganizationId
+    ) {
+      return null;
+    }
+    return {
+      organizationId,
+      role: 'admin',
+      status: 'active',
+      via_credential_grant: false,
+      via_dev_bypass: false,
+    };
+  }),
 }));
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
@@ -73,6 +98,10 @@ const OWNER_ORG = `org_parse_owner_${SUFFIX}`;
 const OUTSIDER_ORG = `org_parse_outsider_${SUFFIX}`;
 const OWNER_USER = `user_parse_owner_${SUFFIX}`;
 const OUTSIDER_USER = `user_parse_outsider_${SUFFIX}`;
+
+function parsePropertiesPath(domain = TEST_DOMAIN) {
+  return `/api/brands/${domain}/properties/parse?org=${encodeURIComponent(mocks.currentOrganizationId)}`;
+}
 
 // Build a Messages.create response that looks like the model invoked
 // `extract_properties` with the supplied args. The route reads
@@ -149,6 +178,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     mocks.currentUserId = OWNER_USER;
+    mocks.currentOrganizationId = OWNER_ORG;
     mocks.anthropicCreate.mockReset();
     mocks.validateFetchUrl.mockReset();
     mocks.safeFetch.mockReset();
@@ -165,7 +195,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('400s on missing input', async () => {
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input_type: 'text' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('input required');
@@ -175,7 +205,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('400s on whitespace-only input', async () => {
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: '   \n\t ', input_type: 'text' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('input required');
@@ -184,7 +214,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('400s on bad input_type', async () => {
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com', input_type: 'binary' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/input_type/);
@@ -192,7 +222,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('400s on bad relationship value', async () => {
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com', input_type: 'text', relationship: 'spousal' });
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/relationship/);
@@ -202,9 +232,10 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('403s an outsider trying URL parse — never invokes safeFetch or Anthropic', async () => {
     mocks.currentUserId = OUTSIDER_USER;
+    mocks.currentOrganizationId = OUTSIDER_ORG;
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://attacker.example/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(403);
@@ -216,9 +247,10 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('403s an outsider trying text parse — never invokes Anthropic', async () => {
     mocks.currentUserId = OUTSIDER_USER;
+    mocks.currentOrganizationId = OUTSIDER_ORG;
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com\nexample.org', input_type: 'text' });
 
     expect(res.status).toBe(403);
@@ -227,7 +259,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('404s a missing brand without invoking the LLM', async () => {
     const res = await request(app)
-      .post(`/api/brands/does-not-exist.example/properties/parse`)
+      .post(parsePropertiesPath('does-not-exist.example'))
       .send({ input: 'example.com', input_type: 'text' });
 
     expect(res.status).toBe(404);
@@ -242,7 +274,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://internal.example/x', input_type: 'url' });
 
     expect(res.status).toBe(400);
@@ -255,7 +287,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
   it('400s an invalid URL string before any DNS work', async () => {
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'not a url', input_type: 'url' });
 
     expect(res.status).toBe(400);
@@ -270,7 +302,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: [] }));
 
     await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com', input_type: 'text' });
 
     expect(mocks.anthropicCreate).toHaveBeenCalledOnce();
@@ -292,7 +324,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: [] }));
 
     await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com', input_type: 'text' });
 
     const callArgs = mocks.anthropicCreate.mock.calls[0][0];
@@ -306,7 +338,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     });
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'example.com', input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -327,7 +359,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'Example.com\ncom.example.app', input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -346,7 +378,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'x.example', input_type: 'text', relationship: 'owned' });
 
     expect(res.status).toBe(200);
@@ -367,7 +399,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'list', input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -389,7 +421,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'list', input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -405,7 +437,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: props }));
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'list', input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -422,7 +454,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
 
     const huge = 'a.example\n'.repeat(6_000); // 60_000 chars
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: huge, input_type: 'text' });
 
     expect(res.status).toBe(200);
@@ -447,7 +479,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
       );
 
       const res = await request(app)
-        .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+        .post(parsePropertiesPath())
         .send({ input: 'a.example', input_type: 'text', relationship: rel });
 
       expect(res.status).toBe(200);
@@ -490,7 +522,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(200);
@@ -504,7 +536,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(400);
@@ -519,7 +551,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(400);
@@ -532,7 +564,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.safeFetch.mockRejectedValueOnce(new Error('ECONNREFUSED 10.0.0.1:443'));
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(400);
@@ -551,7 +583,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
       );
 
       const res = await request(app)
-        .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+        .post(parsePropertiesPath())
         .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
       expect(res.status).toBe(400);
@@ -568,7 +600,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: [] }));
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(200);
@@ -580,7 +612,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     mocks.anthropicCreate.mockResolvedValueOnce(toolUseResponse({ properties: [] }));
 
     await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(mocks.safeFetch).toHaveBeenCalledWith(
@@ -607,7 +639,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
     );
 
     const res = await request(app)
-      .post(`/api/brands/${TEST_DOMAIN}/properties/parse`)
+      .post(parsePropertiesPath())
       .send({ input: 'https://example.org/list.csv', input_type: 'url' });
 
     expect(res.status).toBe(200);

@@ -360,14 +360,21 @@ describe('User Context API Tests', () => {
       expect(response.body.org_membership).toBeUndefined();
     });
 
-    it('should default org context for a user with exactly one active WorkOS organization', async () => {
+    it('should require explicit org context even for a user with exactly one active WorkOS organization', async () => {
       const response = await request(app)
         .get(`/api/admin/users/${TEST_SINGLE_ORG_WORKOS_USER_ID}/context?type=workos`)
         .expect(200);
 
       expect(response.body.workos_user.workos_user_id).toBe(TEST_SINGLE_ORG_WORKOS_USER_ID);
-      expect(response.body.organization.workos_organization_id).toBe(TEST_ORG_ID);
-      expect(response.body.org_membership.role).toBe('member');
+      expect(response.body.organization).toBeUndefined();
+      expect(response.body.org_membership).toBeUndefined();
+
+      const selectedResponse = await request(app)
+        .get(`/api/admin/users/${TEST_SINGLE_ORG_WORKOS_USER_ID}/context?type=workos&org=${TEST_ORG_ID}`)
+        .expect(200);
+
+      expect(selectedResponse.body.organization.workos_organization_id).toBe(TEST_ORG_ID);
+      expect(selectedResponse.body.org_membership.role).toBe('member');
     });
 
     it('should preserve member engagement when relationship engagement is present', async () => {

@@ -4,9 +4,11 @@ import { getReferralCode, acceptReferralCode, getAcceptedReferralForOrg } from '
 import { MemberDatabase } from '../db/member-db.js';
 import { BrandDatabase, resolveBrandFromJson } from '../db/brand-db.js';
 import { requireAuth } from '../middleware/auth.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { getBrandPrimaryDomain } from '../services/brand-domain-resolver.js';
 import { emailPrefsDb } from '../db/email-preferences-db.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
+import { getWorkos } from '../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 
 const logger = createLogger('referral-routes');
 const memberDb = new MemberDatabase();
@@ -90,13 +92,17 @@ export function createReferralsRouter(): Router {
   router.post('/referral/:code/accept', requireAuth, async (req, res) => {
     try {
       const { code } = req.params;
-      const { marketing_opt_in } = req.body || {};
-      const userId = req.user!.id;
+      const { marketing_opt_in, organization_id } = req.body || {};
+      const userId = getOrganizationAuthorizationUserId(req.user!);
 
-      const orgId = await resolvePrimaryOrganization(userId);
-      if (!orgId) {
-        return res.status(400).json({ error: 'No organization associated with your account' });
+      if (typeof organization_id !== 'string' || !organization_id.trim()) {
+        return res.status(400).json({ error: 'organization_id is required' });
       }
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, organization_id);
+      if (!membership) {
+        return res.status(403).json({ error: 'Not authorized for the selected organization' });
+      }
+      const orgId = membership.organizationId;
 
       // Check if this org already has an active accepted referral
       const existing = await getAcceptedReferralForOrg(orgId);
@@ -109,6 +115,9 @@ export function createReferralsRouter(): Router {
         });
       }
 
+      if (!await resolveUserOrgMembership(getWorkos(), req.user!, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const referral = await acceptReferralCode(code, orgId, userId);
 
       if (!referral) {
@@ -160,14 +169,18 @@ export function createReferralsRouter(): Router {
   // Returns null referral if none exists
   router.get('/me/referral', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
-
-      const orgId = await resolvePrimaryOrganization(userId);
+      const orgId = typeof req.query.org === 'string' && req.query.org.trim()
+        ? req.query.org
+        : null;
       if (!orgId) {
-        return res.json({ referral: null });
+        return res.status(400).json({ error: 'org query parameter is required' });
+      }
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, orgId);
+      if (!membership) {
+        return res.status(403).json({ error: 'Not authorized for the selected organization' });
       }
 
-      const referral = await getAcceptedReferralForOrg(orgId);
+      const referral = await getAcceptedReferralForOrg(membership.organizationId);
       res.json({
         referral: referral || null,
         discount_percent: referral?.discount_percent ?? null,

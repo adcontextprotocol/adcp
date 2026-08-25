@@ -98,7 +98,7 @@ async function verifyOrgMembership(
 ): Promise<UserOrgMembership | null> {
   const membership = await resolveUserOrgMembership(
     workos,
-    req.user!.id,
+    req.user!,
     organizationId,
   );
 

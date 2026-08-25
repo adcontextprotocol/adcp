@@ -3,6 +3,7 @@ import type { IncrementResponse, Options, Store } from 'express-rate-limit';
 import type { Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { CachedPostgresStore, PostgresStore, type WeightedIncrementStore } from './pg-rate-limit-store.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 
 const logger = createLogger('rate-limit');
 
@@ -100,7 +101,12 @@ export const agentCardValidationRateLimiter = rateLimit({
  * env var for emergency access, matching requireAdmin semantics.
  */
 async function skipForAdmins(req: Request): Promise<boolean> {
-  const user = (req as any).user as { id?: string; email?: string; isAdmin?: boolean } | undefined;
+  const user = (req as any).user as {
+    id?: string;
+    authWorkosUserId?: string;
+    email?: string;
+    isAdmin?: boolean;
+  } | undefined;
   if (!user) return false;
 
   if (user.isAdmin === true) return true;
@@ -114,7 +120,10 @@ async function skipForAdmins(req: Request): Promise<boolean> {
 
   try {
     const { isWebUserAAOAdmin } = await import('../addie/mcp/admin-tools.js');
-    return await isWebUserAAOAdmin(user.id);
+    return await isWebUserAAOAdmin(getOrganizationAuthorizationUserId({
+      id: user.id,
+      authWorkosUserId: user.authWorkosUserId,
+    }));
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'admin check failed in rate limiter; applying limit');
     return false;

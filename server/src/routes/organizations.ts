@@ -47,6 +47,7 @@ import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { performCreateOrganization } from "../services/organization-bootstrap.js";
 import { collectWorkOSPages } from "../services/workos-pagination.js";
 import { canManageOrganizationBilling } from "../billing/billing-authorization.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 
 const logger = createLogger("organization-routes");
 
@@ -71,7 +72,9 @@ const orgDb = new OrganizationDatabase();
  * Create organization routes
  * Returns a router for API routes (/api/organizations/*)
  */
-export function createOrganizationsRouter(): Router {
+export function createOrganizationsRouter(
+  credentialGrantWorkos: WorkOS | null = workos,
+): Router {
   const router = Router();
 
   // =========================================================================
@@ -90,15 +93,16 @@ export function createOrganizationsRouter(): Router {
       }
 
       const joinRequestDb = new JoinRequestDatabase();
+      const authorizationUserId = getOrganizationAuthorizationUserId(user);
 
       // Get user's current org memberships to exclude
       const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-        userId: user.id,
+        userId: authorizationUserId,
       });
       const userOrgIds = userMemberships.data.map(m => m.organizationId);
 
       // Get user's pending join requests
-      const pendingRequests = await joinRequestDb.getUserPendingRequests(user.id);
+      const pendingRequests = await joinRequestDb.getUserPendingRequests(authorizationUserId);
       const pendingOrgIds = new Set(pendingRequests.map(r => r.workos_organization_id));
 
       // Search organizations
@@ -211,7 +215,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -255,7 +259,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -296,7 +300,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -338,6 +342,11 @@ export function createOrganizationsRouter(): Router {
           message: 'This join request has already been processed',
         });
       }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
+      const currentApprovalMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentApprovalMembership || !['admin', 'owner'].includes(currentApprovalMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
 
       // Directly add the user to the organization — join requests are only
       // created by users who have already signed up, so we always have their
@@ -352,8 +361,8 @@ export function createOrganizationsRouter(): Router {
         if (membershipError?.code === 'organization_membership_already_exists') {
           // Previous approval attempt succeeded in WorkOS but failed before the DB
           // update. Clear the stale pending row and surface the error.
-          logger.info({ adminId: user.id, requestId, orgId }, 'Join request resolved — membership already existed in WorkOS');
-          await joinRequestDb.approveRequest(requestId, user.id);
+          logger.info({ adminId: actorCredentialId, requestId, orgId }, 'Join request resolved — membership already existed in WorkOS');
+          await joinRequestDb.approveRequest(requestId, actorCredentialId);
           return res.status(400).json({
             error: 'User already a member',
             message: 'This user is already a member of the organization',
@@ -372,10 +381,10 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Mark request as approved
-      await joinRequestDb.approveRequest(requestId, user.id);
+      await joinRequestDb.approveRequest(requestId, actorCredentialId);
 
       logger.info({
-        adminId: user.id,
+        adminId: actorCredentialId,
         requestId,
         orgId,
         requesterId: request.workos_user_id,
@@ -385,7 +394,7 @@ export function createOrganizationsRouter(): Router {
       // Record audit log for join request approval
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'join_request_approved',
         resource_type: 'join_request',
         resource_id: requestId,
@@ -466,7 +475,7 @@ export function createOrganizationsRouter(): Router {
       const { reason } = req.body;
 
       // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -499,12 +508,17 @@ export function createOrganizationsRouter(): Router {
           message: 'This join request has already been processed',
         });
       }
+      const currentRejectionMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentRejectionMembership || !['admin', 'owner'].includes(currentRejectionMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Mark request as rejected
-      await joinRequestDb.rejectRequest(requestId, user.id, reason);
+      await joinRequestDb.rejectRequest(requestId, actorCredentialId, reason);
 
       logger.info({
-        adminId: user.id,
+        adminId: actorCredentialId,
         requestId,
         orgId,
         requesterId: request.workos_user_id,
@@ -514,7 +528,7 @@ export function createOrganizationsRouter(): Router {
       // Record audit log for join request rejection
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'join_request_rejected',
         resource_type: 'join_request',
         resource_id: requestId,
@@ -548,7 +562,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -722,14 +736,17 @@ export function createOrganizationsRouter(): Router {
 
       // Member of the org can flag — broader than admin/owner, since the
       // report is informational and the corrective action is admin-side.
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'Access denied', message: 'You are not a member of this organization' });
       }
 
+      if (!await resolveUserOrgMembership(workos, user, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: getOrganizationAuthorizationUserId(user),
         action: 'brand_classification_report_filed',
         resource_type: 'brand',
         resource_id: subject_domain.toLowerCase(),
@@ -754,7 +771,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is admin/owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -882,6 +899,7 @@ export function createOrganizationsRouter(): Router {
       const adminUser = req.user!;
       const { orgId } = req.params;
       const { email, role } = req.body;
+      const actorCredentialId = getOrganizationAuthorizationUserId(adminUser);
 
       if (!email || typeof email !== 'string') {
         return res.status(400).json({
@@ -909,7 +927,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is admin/owner of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, adminUser.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, adminUser, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -977,14 +995,19 @@ export function createOrganizationsRouter(): Router {
 
       if (!slackUser.workos_user_id) {
         // User exists in Slack but hasn't signed up yet - send invitation instead
+        const currentCallerMembership = await resolveUserOrgMembership(workos, adminUser, orgId);
+        if (!currentCallerMembership
+          || (currentCallerMembership.role !== 'admin' && currentCallerMembership.role !== 'owner')) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         const invitation = await workos!.userManagement.sendInvitation({
           email,
           organizationId: orgId,
-          inviterUserId: adminUser.id,
+          inviterUserId: actorCredentialId,
           roleSlug: roleToAssign,
         });
 
-        logger.info({ orgId, email, inviterId: adminUser.id }, 'Domain user invited (no WorkOS account yet)');
+        logger.info({ orgId, email, inviterId: actorCredentialId }, 'Domain user invited (no WorkOS account yet)');
 
         return res.json({
           success: true,
@@ -1020,6 +1043,11 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Directly add user to organization
+      const currentCallerMembership = await resolveUserOrgMembership(workos, adminUser, orgId);
+      if (!currentCallerMembership
+        || (currentCallerMembership.role !== 'admin' && currentCallerMembership.role !== 'owner')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const membership = await workos!.userManagement.createOrganizationMembership({
         userId: slackUser.workos_user_id,
         organizationId: orgId,
@@ -1030,13 +1058,13 @@ export function createOrganizationsRouter(): Router {
         orgId,
         email,
         userId: slackUser.workos_user_id,
-        addedBy: adminUser.id,
+        addedBy: actorCredentialId,
       }, 'Domain user directly added to organization');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: adminUser.id,
+        workos_user_id: actorCredentialId,
         action: 'member_added',
         resource_type: 'membership',
         resource_id: membership.id,
@@ -1050,7 +1078,7 @@ export function createOrganizationsRouter(): Router {
          WHERE workos_organization_id = $2
            AND LOWER(user_email) = LOWER($3)
            AND status = 'pending'`,
-        [adminUser.id, orgId, email]
+        [actorCredentialId, orgId, email]
       );
 
       // Notify via Slack (fire-and-forget)
@@ -1141,7 +1169,7 @@ export function createOrganizationsRouter(): Router {
       // Domain verification changes organization-wide identity and automatic
       // membership behavior. Keep it aligned with the canonical domain
       // add/verify routes: owners and admins only.
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1165,12 +1193,17 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Generate portal link for domain verification
+      const currentMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentMembership
+        || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const { link } = await workos!.adminPortal.generateLink({
         organization: orgId,
         intent: 'domain_verification' as any,
       });
 
-      logger.info({ organizationId: orgId, userId: user.id }, 'Generated domain verification portal link');
+      logger.info({ organizationId: orgId, userId: getOrganizationAuthorizationUserId(user) }, 'Generated domain verification portal link');
 
       res.json({ link });
     } catch (error) {
@@ -1212,7 +1245,7 @@ export function createOrganizationsRouter(): Router {
 
       const outcome = await performCreateOrganization(
         {
-          user: { id: user.id, email: user.email },
+          user: { id: getOrganizationAuthorizationUserId(user), email: user.email },
           organization_name,
           is_personal: !!is_personal,
           company_type,
@@ -1329,7 +1362,7 @@ export function createOrganizationsRouter(): Router {
       const trimmedName = name.trim();
 
       // Verify user is member of this organization with owner or admin role
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1345,6 +1378,11 @@ export function createOrganizationsRouter(): Router {
           message: 'Only organization owners and admins can rename the organization',
         });
       }
+      const currentRenameMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentRenameMembership || !['admin', 'owner'].includes(currentRenameMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Update in WorkOS
       const updatedOrg = await workos!.organizations.updateOrganization({
@@ -1359,7 +1397,7 @@ export function createOrganizationsRouter(): Router {
       // distinguish them from real-user writes.
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'organization_renamed',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1369,7 +1407,7 @@ export function createOrganizationsRouter(): Router {
         },
       });
 
-      logger.info({ orgId, newName: trimmedName, userId: user.id }, 'Organization renamed');
+      logger.info({ orgId, newName: trimmedName, userId: actorCredentialId }, 'Organization renamed');
 
       res.json({
         success: true,
@@ -1401,7 +1439,7 @@ export function createOrganizationsRouter(): Router {
       } = req.body;
 
       // Verify user is member of this organization with owner or admin role
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1480,7 +1518,8 @@ export function createOrganizationsRouter(): Router {
       if (isPrivilegeGrant && userRole !== 'owner') {
         const isStaticAdminApiKey =
           (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
-        const isAAOAdmin = isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+        const isAAOAdmin = isStaticAdminApiKey
+          || (await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user)));
         if (!isAAOAdmin) {
           return res.status(403).json({
             error: 'Insufficient permissions',
@@ -1515,6 +1554,18 @@ export function createOrganizationsRouter(): Router {
           message: 'Provide company_type, revenue_tier, auto_provision_verified_domain, or auto_provision_brand_hierarchy_children to update',
         });
       }
+      const currentSettingsMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentSettingsMembership || !['admin', 'owner'].includes(currentSettingsMembership.role)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      if (isPrivilegeGrant && currentSettingsMembership.role !== 'owner') {
+        const isStaticAdminApiKey =
+          (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+        if (!isStaticAdminApiKey
+          && !await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user))) {
+          return res.status(403).json({ error: 'Organization owner authorization was revoked' });
+        }
+      }
 
       // Update in our database
       await orgDb.updateOrganization(orgId, updates);
@@ -1525,7 +1576,7 @@ export function createOrganizationsRouter(): Router {
       const rawUA = req.get('user-agent');
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: getOrganizationAuthorizationUserId(user),
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1567,7 +1618,7 @@ export function createOrganizationsRouter(): Router {
       const { confirmation } = req.body;
 
       // Verify user is owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1636,11 +1687,15 @@ export function createOrganizationsRouter(): Router {
           organization_name: org.name,
         });
       }
+      const currentDeletionMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentDeletionMembership || currentDeletionMembership.role !== 'owner') {
+        return res.status(403).json({ error: 'Organization owner authorization was revoked' });
+      }
 
       // Record audit log before deletion (while org still exists)
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: getOrganizationAuthorizationUserId(user),
         action: 'organization_deleted',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1686,7 +1741,7 @@ export function createOrganizationsRouter(): Router {
       // The Stripe Customer Portal can change payment methods, tiers, and
       // cancellation. Bind that authority to an active owner/admin role in
       // this exact organization before any database or Stripe work.
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!canManageOrganizationBilling(membership, orgId)) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1725,7 +1780,7 @@ export function createOrganizationsRouter(): Router {
       // Re-resolve immediately before the first operation that can call
       // Stripe. A cached/earlier owner role must not survive a concurrent
       // demotion or membership revocation.
-      const currentMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const currentMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!canManageOrganizationBilling(currentMembership, orgId)) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1804,7 +1859,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1830,6 +1885,11 @@ export function createOrganizationsRouter(): Router {
           message: 'Could not find or sync organization',
         });
       }
+      const currentAgreementMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentAgreementMembership) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Store pending agreement info in organization record using the
       // server-validated version (not the raw client string) so the audit
@@ -1837,12 +1897,12 @@ export function createOrganizationsRouter(): Router {
       await orgDb.updateOrganization(orgId, {
         pending_agreement_version: currentAgreement.version,
         pending_agreement_accepted_at: agreement_accepted_at ? new Date(agreement_accepted_at) : new Date(),
-        pending_agreement_user_id: user.id,
+        pending_agreement_user_id: actorCredentialId,
       });
 
       logger.info({
         orgId,
-        userId: user.id,
+        userId: actorCredentialId,
         version: currentAgreement.version
       }, 'Pending agreement info stored (will be recorded on payment success)');
 
@@ -1867,7 +1927,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1891,6 +1951,10 @@ export function createOrganizationsRouter(): Router {
           message: 'This workspace is already a team workspace',
         });
       }
+      const currentConversionMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentConversionMembership || currentConversionMembership.role !== 'owner') {
+        return res.status(403).json({ error: 'Organization owner authorization was revoked' });
+      }
 
       // Convert to team by setting is_personal to false
       await orgDb.updateOrganization(orgId, { is_personal: false });
@@ -1898,7 +1962,7 @@ export function createOrganizationsRouter(): Router {
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: getOrganizationAuthorizationUserId(user),
         action: 'convert_to_team',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1929,7 +1993,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is owner of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -1976,6 +2040,10 @@ export function createOrganizationsRouter(): Router {
           member_count: totalMembers,
         });
       }
+      const currentConversionMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentConversionMembership || currentConversionMembership.role !== 'owner') {
+        return res.status(403).json({ error: 'Organization owner authorization was revoked' });
+      }
 
       // Convert to individual by setting is_personal to true
       await orgDb.updateOrganization(orgId, { is_personal: true });
@@ -1983,7 +2051,7 @@ export function createOrganizationsRouter(): Router {
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: getOrganizationAuthorizationUserId(user),
         action: 'convert_to_individual',
         resource_type: 'organization',
         resource_id: orgId,
@@ -2153,7 +2221,7 @@ export function createOrganizationsRouter(): Router {
               let workosFailed = false;
               try {
                 await workos.userManagement.createOrganizationMembership({
-                  userId: user.id,
+                  userId: getOrganizationAuthorizationUserId(user),
                   organizationId: orgId,
                   roleSlug: 'admin',
                 });
@@ -2162,7 +2230,7 @@ export function createOrganizationsRouter(): Router {
                 if (code === 'organization_membership_already_exists') {
                   // Benign — they're already a member. Treat as success.
                 } else {
-                  logger.error({ err, orgId, userId: user.id }, 'WorkOS createOrganizationMembership failed during claim');
+                  logger.error({ err, orgId, userId: getOrganizationAuthorizationUserId(user) }, 'WorkOS createOrganizationMembership failed during claim');
                   workosFailed = true;
                 }
               }
@@ -2201,7 +2269,7 @@ export function createOrganizationsRouter(): Router {
 
     await orgDb.recordAuditLog({
       workos_organization_id: orgId,
-      workos_user_id: user.id,
+      workos_user_id: getOrganizationAuthorizationUserId(user),
       action: 'organization_claimed',
       resource_type: 'organization',
       resource_id: orgId,
@@ -2212,7 +2280,7 @@ export function createOrganizationsRouter(): Router {
     });
 
     logger.info(
-      { orgId, userId: user.id, email: user.email },
+      { orgId, userId: getOrganizationAuthorizationUserId(user), email: user.email },
       'User claimed prospect org',
     );
 
@@ -2251,7 +2319,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -2434,7 +2502,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -2468,12 +2536,17 @@ export function createOrganizationsRouter(): Router {
           message: seatCheck.reason,
         });
       }
+      const currentInviteMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentInviteMembership || !['admin', 'owner'].includes(currentInviteMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Send invitation via WorkOS
       const invitation = await workos!.userManagement.sendInvitation({
         email,
         organizationId: orgId,
-        inviterUserId: user.id,
+        inviterUserId: actorCredentialId,
         roleSlug: role || 'member',
       });
 
@@ -2485,12 +2558,12 @@ export function createOrganizationsRouter(): Router {
         [invitation.id, orgId, email, seatType]
       );
 
-      logger.info({ orgId, email, inviterId: user.id, seatType }, 'Invitation sent');
+      logger.info({ orgId, email, inviterId: actorCredentialId, seatType }, 'Invitation sent');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'member_invited',
         resource_type: 'invitation',
         resource_id: invitation.id,
@@ -2539,7 +2612,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId, invitationId } = req.params;
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -2564,6 +2637,11 @@ export function createOrganizationsRouter(): Router {
           message: 'This invitation does not belong to this organization',
         });
       }
+      const currentRevokeMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentRevokeMembership || !['admin', 'owner'].includes(currentRevokeMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Revoke the invitation
       await workos!.userManagement.revokeInvitation(invitationId);
@@ -2571,12 +2649,12 @@ export function createOrganizationsRouter(): Router {
       // Clean up seat_type intent
       await query('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1', [invitationId]);
 
-      logger.info({ orgId, invitationId, revokerId: user.id }, 'Invitation revoked');
+      logger.info({ orgId, invitationId, revokerId: actorCredentialId }, 'Invitation revoked');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'invitation_revoked',
         resource_type: 'invitation',
         resource_id: invitationId,
@@ -2602,7 +2680,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId, invitationId } = req.params;
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -2627,6 +2705,11 @@ export function createOrganizationsRouter(): Router {
           message: 'This invitation does not belong to this organization',
         });
       }
+      const currentResendMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentResendMembership || !['admin', 'owner'].includes(currentResendMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Preserve seat_type from old invitation before revoking
       const oldSeatResult = await query<{ seat_type: string }>(
@@ -2640,7 +2723,7 @@ export function createOrganizationsRouter(): Router {
       const newInvitation = await workos!.userManagement.sendInvitation({
         email: invitation.email,
         organizationId: orgId,
-        inviterUserId: user.id,
+        inviterUserId: actorCredentialId,
         roleSlug: 'member',
       });
 
@@ -2651,12 +2734,12 @@ export function createOrganizationsRouter(): Router {
         [newInvitation.id, orgId, invitation.email, preservedSeatType]
       );
 
-      logger.info({ orgId, email: invitation.email, inviterId: user.id, seatType: preservedSeatType }, 'Invitation resent');
+      logger.info({ orgId, email: invitation.email, inviterId: actorCredentialId, seatType: preservedSeatType }, 'Invitation resent');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'invitation_resent',
         resource_type: 'invitation',
         resource_id: newInvitation.id,
@@ -2771,16 +2854,30 @@ export function createOrganizationsRouter(): Router {
       // verified the key matches ADMIN_API_KEY before reaching this point.
       const isStaticAdminApiKey =
         (req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey === true;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
+
+      const hasCurrentMemberMutationAuthority = async (requiresOwner: boolean): Promise<boolean> => {
+        if (isStaticAdminApiKey) return true;
+        const [currentMembership, currentIsAAOAdmin] = await Promise.all([
+          resolveUserOrgMembership(workos, user, orgId),
+          isWebUserAAOAdmin(actorCredentialId),
+        ]);
+        if (currentIsAAOAdmin) return true;
+        if (!currentMembership) return false;
+        return requiresOwner
+          ? currentMembership.role === 'owner'
+          : currentMembership.role === 'owner' || currentMembership.role === 'admin';
+      };
 
       // Resolve caller authority: org role + AAO super-admin override.
       // Skip membership lookup for the static admin API key — 'admin_api_key'
       // is a synthetic user id and won't have memberships.
       const callerMembership = isStaticAdminApiKey
         ? null
-        : await resolveUserOrgMembership(workos, user.id, orgId);
+        : await resolveUserOrgMembership(workos, user, orgId);
       const callerOrgRole = callerMembership?.role ?? null;
-      const isAAOAdmin =
-        isStaticAdminApiKey || (await isWebUserAAOAdmin(user.id));
+      const isAAOAdmin = isStaticAdminApiKey
+        || (await isWebUserAAOAdmin(actorCredentialId));
 
       const isOrgAdminOrOwner = callerOrgRole === 'admin' || callerOrgRole === 'owner';
       const isOrgOwner = callerOrgRole === 'owner';
@@ -2820,6 +2917,9 @@ export function createOrganizationsRouter(): Router {
         if (!seatCheck.allowed) {
           return res.status(403).json({ error: 'Seat limit reached', message: seatCheck.reason });
         }
+        if (!(await hasCurrentMemberMutationAuthority(role === 'owner'))) {
+          return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+        }
 
         // The static ADMIN_API_KEY auth path uses a synthetic user id
         // ('admin_api_key') that WorkOS does not recognize; passing it as
@@ -2828,7 +2928,7 @@ export function createOrganizationsRouter(): Router {
         const invitation = await workos!.userManagement.sendInvitation({
           email: normalizedEmail,
           organizationId: orgId,
-          ...(isStaticAdminApiKey ? {} : { inviterUserId: user.id }),
+          ...(isStaticAdminApiKey ? {} : { inviterUserId: actorCredentialId }),
           roleSlug: 'member',
         });
 
@@ -2844,7 +2944,7 @@ export function createOrganizationsRouter(): Router {
 
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
-          workos_user_id: user.id,
+          workos_user_id: actorCredentialId,
           action: 'member_invited',
           resource_type: 'invitation',
           resource_id: invitation.id,
@@ -2859,7 +2959,7 @@ export function createOrganizationsRouter(): Router {
         });
 
         logger.info(
-          { orgId, email: normalizedEmail, requestedRole: role, seatType, inviterId: user.id },
+          { orgId, email: normalizedEmail, requestedRole: role, seatType, inviterId: actorCredentialId },
           'Invited member by email (no WorkOS account yet)',
         );
 
@@ -2902,6 +3002,9 @@ export function createOrganizationsRouter(): Router {
         if (!seatCheck.allowed) {
           return res.status(403).json({ error: 'Seat limit reached', message: seatCheck.reason });
         }
+        if (!(await hasCurrentMemberMutationAuthority(role === 'owner'))) {
+          return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+        }
 
         // Stage seat_type for the membership.created webhook handler to consume.
         //
@@ -2925,6 +3028,10 @@ export function createOrganizationsRouter(): Router {
 
         let membership;
         try {
+          if (!(await hasCurrentMemberMutationAuthority(role === 'owner'))) {
+            await query('DELETE FROM invitation_seat_types WHERE workos_invitation_id = $1', [stagingKey]);
+            return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+          }
           membership = await workos!.userManagement.createOrganizationMembership({
             userId: targetUserId,
             organizationId: orgId,
@@ -2958,7 +3065,7 @@ export function createOrganizationsRouter(): Router {
 
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
-          workos_user_id: user.id,
+          workos_user_id: actorCredentialId,
           action: 'member_added',
           resource_type: 'membership',
           resource_id: membership.id,
@@ -2973,7 +3080,7 @@ export function createOrganizationsRouter(): Router {
         });
 
         logger.info(
-          { orgId, targetUserId, email: normalizedEmail, role, seatType, actorId: user.id },
+          { orgId, targetUserId, email: normalizedEmail, role, seatType, actorId: actorCredentialId },
           'Added member by email',
         );
 
@@ -2996,7 +3103,7 @@ export function createOrganizationsRouter(): Router {
       // mirroring it here closes the parallel path. AAO super-admins are
       // permitted to act on themselves only when they're not also an org
       // member of this org (handled by the org-member check above).
-      if (targetUserId === user.id) {
+      if (targetUserId === actorCredentialId) {
         return res.status(400).json({
           error: 'Cannot change own role',
           message: 'You cannot change your own role',
@@ -3073,6 +3180,9 @@ export function createOrganizationsRouter(): Router {
         }
       }
 
+      if (!(await hasCurrentMemberMutationAuthority(role === 'owner' || targetIsOwner))) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
       await workos!.userManagement.updateOrganizationMembership(membershipId, { roleSlug: role });
 
       await pool.query(
@@ -3084,7 +3194,7 @@ export function createOrganizationsRouter(): Router {
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'member_role_changed',
         resource_type: 'membership',
         resource_id: membershipId,
@@ -3099,7 +3209,7 @@ export function createOrganizationsRouter(): Router {
       });
 
       logger.info(
-        { orgId, targetUserId, email: normalizedEmail, oldRole: rawCurrentRole, newRole: role, actorId: user.id },
+        { orgId, targetUserId, email: normalizedEmail, oldRole: rawCurrentRole, newRole: role, actorId: actorCredentialId },
         'Updated member role by email',
       );
 
@@ -3128,6 +3238,7 @@ export function createOrganizationsRouter(): Router {
   router.patch('/:orgId/members/:membershipId', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
       const { orgId, membershipId } = req.params;
       const { role, seat_type } = req.body;
 
@@ -3155,7 +3266,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -3189,7 +3300,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Cannot change own role
-      if (role && membership.userId === user.id) {
+      if (role && membership.userId === actorCredentialId) {
         return res.status(400).json({
           error: 'Cannot change own role',
           message: 'You cannot change your own role',
@@ -3232,6 +3343,13 @@ export function createOrganizationsRouter(): Router {
       // Update role via WorkOS if requested
       let updatedRole = membership.role?.slug || 'member';
       if (role) {
+        const currentMutationMembership = await resolveUserOrgMembership(workos, user, orgId);
+        const requiresOwner = role === 'owner' || (membership.role?.slug || 'member') === 'owner';
+        if (!currentMutationMembership || (requiresOwner
+          ? currentMutationMembership.role !== 'owner'
+          : !['admin', 'owner'].includes(currentMutationMembership.role))) {
+          return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+        }
         const updatedMembership = await workos!.userManagement.updateOrganizationMembership(
           membershipId,
           { roleSlug: role }
@@ -3249,6 +3367,11 @@ export function createOrganizationsRouter(): Router {
         );
         const oldSeatType = oldResult.rows[0]?.seat_type || 'community_only';
 
+        const currentSeatMembership = await resolveUserOrgMembership(workos, user, orgId);
+        if (!currentSeatMembership || !['admin', 'owner'].includes(currentSeatMembership.role)) {
+          return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+        }
+
         await query(
           `UPDATE organization_memberships SET seat_type = $1, updated_at = NOW()
            WHERE workos_organization_id = $2 AND workos_user_id = $3`,
@@ -3259,7 +3382,7 @@ export function createOrganizationsRouter(): Router {
         if (oldSeatType !== seat_type) {
           await orgDb.recordAuditLog({
             workos_organization_id: orgId,
-            workos_user_id: user.id,
+            workos_user_id: actorCredentialId,
             action: 'member_seat_type_changed',
             resource_type: 'membership',
             resource_id: membershipId,
@@ -3308,11 +3431,11 @@ export function createOrganizationsRouter(): Router {
       }
 
       if (role) {
-        logger.info({ orgId, membershipId, newRole: role, changedBy: user.id }, 'Member role updated');
+        logger.info({ orgId, membershipId, newRole: role, changedBy: actorCredentialId }, 'Member role updated');
 
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
-          workos_user_id: user.id,
+          workos_user_id: actorCredentialId,
           action: 'member_role_changed',
           resource_type: 'membership',
           resource_id: membershipId,
@@ -3347,10 +3470,11 @@ export function createOrganizationsRouter(): Router {
   router.delete('/:orgId/members/:membershipId', requireAuth, async (req, res) => {
     try {
       const user = req.user!;
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
       const { orgId, membershipId } = req.params;
 
       // Verify user is member of this organization
-      const callerMembership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const callerMembership = await resolveUserOrgMembership(workos, user, orgId);
       if (!callerMembership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -3377,7 +3501,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Cannot remove self
-      if (membership.userId === user.id) {
+      if (membership.userId === actorCredentialId) {
         return res.status(400).json({
           error: 'Cannot remove self',
           message: 'You cannot remove yourself from the organization',
@@ -3411,6 +3535,14 @@ export function createOrganizationsRouter(): Router {
       }
       const removedSeatType = await getUserSeatType(membership.userId);
 
+      const currentRemovalMembership = await resolveUserOrgMembership(workos, user, orgId);
+      const removalRequiresOwner = targetRole === 'admin';
+      if (!currentRemovalMembership || (removalRequiresOwner
+        ? currentRemovalMembership.role !== 'owner'
+        : !['admin', 'owner'].includes(currentRemovalMembership.role))) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+
       // Delete the membership from WorkOS
       await workos!.userManagement.deleteOrganizationMembership(membershipId);
 
@@ -3431,12 +3563,12 @@ export function createOrganizationsRouter(): Router {
         logger.warn({ error: cleanupError, userId: membership.userId, orgId }, 'Failed to clean up local organization_memberships');
       }
 
-      logger.info({ orgId, membershipId, removedBy: user.id }, 'Member removed');
+      logger.info({ orgId, membershipId, removedBy: actorCredentialId }, 'Member removed');
 
       // Record audit log
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'member_removed',
         resource_type: 'membership',
         resource_id: membershipId,
@@ -3490,7 +3622,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is member of this organization
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -3542,7 +3674,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
       const { target_org_id } = req.body;
 
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
@@ -3572,10 +3704,14 @@ export function createOrganizationsRouter(): Router {
 
       // Hardcode: single-use, 30-day expiry
       const expires_at = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      if (!await resolveUserOrgMembership(workos, user, orgId)) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       const code = await referralDb.createReferralCode({
         referrer_org_id: orgId,
-        referrer_user_id: user.id,
+        referrer_user_id: actorCredentialId,
         referrer_user_name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email,
         referrer_user_email: user.email,
         target_company_name,
@@ -3593,7 +3729,7 @@ export function createOrganizationsRouter(): Router {
           `INSERT INTO org_stakeholders (organization_id, user_id, user_name, user_email, role, notes)
            VALUES ($1, $2, $3, $4, 'interested', $5)
            ON CONFLICT (organization_id, user_id) DO NOTHING`,
-          [target_org_id, user.id, userName, user.email || null, notes]
+          [target_org_id, actorCredentialId, userName, user.email || null, notes]
         ).catch(err => logger.warn({ err }, 'Failed to add stakeholder on referral code creation'));
       }
 
@@ -3610,7 +3746,7 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId } = req.params;
 
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
       }
@@ -3675,9 +3811,12 @@ export function createOrganizationsRouter(): Router {
       const user = req.user!;
       const { orgId, codeId } = req.params;
 
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'You are not a member of this organization' });
+      }
+      if (!await resolveUserOrgMembership(workos, user, orgId)) {
+        return res.status(403).json({ error: 'Your organization authorization was revoked' });
       }
 
       const revoked = await referralDb.revokeReferralCode(parseInt(codeId, 10), orgId);
@@ -3721,16 +3860,17 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Verify user is a member of this org
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
           message: 'You are not a member of this organization',
         });
       }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Verify user is community_only
-      const seatType = await getUserSeatType(user.id);
+      const seatType = await getUserSeatType(actorCredentialId);
       if (seatType === 'contributor') {
         return res.status(400).json({
           error: 'Already a contributor',
@@ -3739,7 +3879,7 @@ export function createOrganizationsRouter(): Router {
       }
 
       // Check for existing pending request for this resource
-      const hasPending = await hasPendingSeatRequest(orgId, user.id, resource_type, resource_id);
+      const hasPending = await hasPendingSeatRequest(orgId, actorCredentialId, resource_type, resource_id);
       if (hasPending) {
         return res.status(409).json({
           error: 'Request already pending',
@@ -3747,9 +3887,12 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      if (!await resolveUserOrgMembership(workos, user, orgId)) {
+        return res.status(403).json({ error: 'Your organization authorization was revoked' });
+      }
       const request = await createSeatUpgradeRequest({
         orgId,
-        userId: user.id,
+        userId: actorCredentialId,
         resourceType: resource_type,
         resourceId: resource_id,
         resourceName: resource_name,
@@ -3764,7 +3907,7 @@ export function createOrganizationsRouter(): Router {
 
           let memberName = user.email;
           try {
-            const workosUser = await workos!.userManagement.getUser(user.id);
+            const workosUser = await workos!.userManagement.getUser(actorCredentialId);
             if (workosUser.firstName && workosUser.lastName) {
               memberName = `${workosUser.firstName} ${workosUser.lastName}`;
             }
@@ -3788,7 +3931,7 @@ export function createOrganizationsRouter(): Router {
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'seat_upgrade_requested',
         resource_type: 'seat_upgrade_request',
         resource_id: request.id,
@@ -3816,7 +3959,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId } = req.params;
 
       // Verify user is a member of this org
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({
           error: 'Access denied',
@@ -3830,7 +3973,7 @@ export function createOrganizationsRouter(): Router {
       // Admins see all pending requests; members see their own
       const requests = isAdmin
         ? await listSeatUpgradeRequests(orgId, { status: 'pending' })
-        : await listSeatUpgradeRequests(orgId, { userId: user.id });
+        : await listSeatUpgradeRequests(orgId, { userId: getOrganizationAuthorizationUserId(user) });
 
       res.json({ requests });
     } catch (error) {
@@ -3846,7 +3989,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -3871,9 +4014,14 @@ export function createOrganizationsRouter(): Router {
           message: seatCheck.reason,
         });
       }
+      const currentApprovalMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentApprovalMembership || !['admin', 'owner'].includes(currentApprovalMembership.role)) {
+        return res.status(403).json({ error: 'Your organization authorization was revoked' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
       // Approve the request (atomic: only succeeds if still pending)
-      const resolved = await resolveSeatUpgradeRequest(requestId, 'approved', user.id);
+      const resolved = await resolveSeatUpgradeRequest(requestId, 'approved', actorCredentialId);
       if (!resolved) {
         return res.status(409).json({ error: 'Request was already resolved' });
       }
@@ -3887,7 +4035,7 @@ export function createOrganizationsRouter(): Router {
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'seat_upgrade_approved',
         resource_type: 'seat_upgrade_request',
         resource_id: requestId,
@@ -3937,7 +4085,7 @@ export function createOrganizationsRouter(): Router {
       const { orgId, requestId } = req.params;
 
       // Verify admin/owner
-      const membership = await resolveUserOrgMembership(workos, user.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, user, orgId);
       if (!membership) {
         return res.status(403).json({ error: 'Access denied' });
       }
@@ -3953,15 +4101,20 @@ export function createOrganizationsRouter(): Router {
       if (request.status !== 'pending') {
         return res.status(400).json({ error: 'Request already resolved' });
       }
+      const currentDenialMembership = await resolveUserOrgMembership(workos, user, orgId);
+      if (!currentDenialMembership || !['admin', 'owner'].includes(currentDenialMembership.role)) {
+        return res.status(403).json({ error: 'Access denied', message: 'Your organization authority changed. Please try again.' });
+      }
+      const actorCredentialId = getOrganizationAuthorizationUserId(user);
 
-      const resolved = await resolveSeatUpgradeRequest(requestId, 'denied', user.id);
+      const resolved = await resolveSeatUpgradeRequest(requestId, 'denied', actorCredentialId);
       if (!resolved) {
         return res.status(409).json({ error: 'Request was already resolved' });
       }
 
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
-        workos_user_id: user.id,
+        workos_user_id: actorCredentialId,
         action: 'seat_upgrade_denied',
         resource_type: 'seat_upgrade_request',
         resource_id: requestId,
@@ -3979,6 +4132,174 @@ export function createOrganizationsRouter(): Router {
     } catch (error) {
       logger.error({ err: error }, 'Deny seat upgrade request error');
       res.status(500).json({ error: 'Failed to deny seat upgrade request' });
+    }
+  });
+
+  // POST /api/organizations/:orgId/credential-grants
+  // Grant one exact WorkOS credential access without copying or rewriting
+  // any WorkOS organization membership.
+  router.post('/:orgId/credential-grants', requireAuth, async (req, res) => {
+    const { orgId } = req.params;
+    const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+    const targetCredentialId = req.body?.workos_user_id;
+    const role = req.body?.role ?? 'member';
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : null;
+    const effectiveUntil = req.body?.effective_until;
+
+    if (typeof targetCredentialId !== 'string' || !targetCredentialId.startsWith('user_')) {
+      return res.status(400).json({ error: 'workos_user_id is required' });
+    }
+    if (!['member', 'admin', 'owner'].includes(role)) {
+      return res.status(400).json({ error: 'role must be member, admin, or owner' });
+    }
+    let effectiveUntilDate: Date | null = null;
+    if (effectiveUntil !== undefined && effectiveUntil !== null) {
+      effectiveUntilDate = new Date(effectiveUntil);
+      if (!Number.isFinite(effectiveUntilDate.getTime()) || effectiveUntilDate <= new Date()) {
+        return res.status(400).json({ error: 'effective_until must be a future timestamp' });
+      }
+    }
+
+    const actorMembership = await resolveUserOrgMembership(credentialGrantWorkos, req.user!, orgId);
+    if (!actorMembership || !['admin', 'owner'].includes(actorMembership.role)) {
+      return res.status(403).json({ error: 'Only organization owners and admins can grant credential access' });
+    }
+    if (role === 'owner' && actorMembership.role !== 'owner') {
+      return res.status(403).json({ error: 'Only an organization owner can grant owner access' });
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const target = await client.query(
+        `SELECT 1 FROM users WHERE workos_user_id = $1 FOR UPDATE`,
+        [targetCredentialId],
+      );
+      if (target.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Credential not found' });
+      }
+      const active = await client.query(
+        `SELECT 1 FROM organization_credential_grants
+          WHERE workos_organization_id = $1 AND workos_user_id = $2 AND revoked_at IS NULL
+          FOR UPDATE`,
+        [orgId, targetCredentialId],
+      );
+      if (active.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'An active credential grant already exists' });
+      }
+      const currentActorMembership = await resolveUserOrgMembership(credentialGrantWorkos, req.user!, orgId);
+      if (!currentActorMembership || !['admin', 'owner'].includes(currentActorMembership.role)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      if (role === 'owner' && currentActorMembership.role !== 'owner') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only an organization owner can grant owner access' });
+      }
+      const grant = await client.query<{ id: string }>(
+        `INSERT INTO organization_credential_grants (
+           workos_organization_id, workos_user_id, role,
+           granted_by_workos_user_id, reason, effective_until
+         ) VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id`,
+        [orgId, targetCredentialId, role, actorCredentialId, reason, effectiveUntilDate],
+      );
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+        [actorCredentialId],
+      );
+      await client.query(
+        `INSERT INTO registry_audit_log (
+           workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+         ) VALUES ($1, $2, 'credential_grant_created', 'credential_grant', $3, $4)`,
+        [orgId, actorCredentialId, grant.rows[0].id, JSON.stringify({
+          authenticated_credential_id: actorCredentialId,
+          resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
+          target_credential_id: targetCredentialId,
+          role,
+          effective_until: effectiveUntilDate?.toISOString() ?? null,
+        })],
+      );
+      await client.query('COMMIT');
+      return res.status(201).json({ grant_id: grant.rows[0].id, workos_user_id: targetCredentialId, role });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      logger.error({ error, orgId, targetCredentialId }, 'Failed to create credential grant');
+      return res.status(500).json({ error: 'Failed to create credential grant' });
+    } finally {
+      client.release();
+    }
+  });
+
+  // DELETE /api/organizations/:orgId/credential-grants/:grantId
+  // Revocation is an update so original grant provenance remains durable.
+  router.delete('/:orgId/credential-grants/:grantId', requireAuth, async (req, res) => {
+    const { orgId, grantId } = req.params;
+    const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+    const actorMembership = await resolveUserOrgMembership(credentialGrantWorkos, req.user!, orgId);
+    if (!actorMembership || !['admin', 'owner'].includes(actorMembership.role)) {
+      return res.status(403).json({ error: 'Only organization owners and admins can revoke credential access' });
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const grant = await client.query<{ workos_user_id: string; role: string }>(
+        `SELECT workos_user_id, role
+           FROM organization_credential_grants
+          WHERE id = $1 AND workos_organization_id = $2 AND revoked_at IS NULL
+          FOR UPDATE`,
+        [grantId, orgId],
+      );
+      if (!grant.rows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Active credential grant not found' });
+      }
+      if (grant.rows[0].role === 'owner' && actorMembership.role !== 'owner') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only an organization owner can revoke owner access' });
+      }
+      const currentActorMembership = await resolveUserOrgMembership(credentialGrantWorkos, req.user!, orgId);
+      if (!currentActorMembership || !['admin', 'owner'].includes(currentActorMembership.role)) {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
+      if (grant.rows[0].role === 'owner' && currentActorMembership.role !== 'owner') {
+        await client.query('ROLLBACK');
+        return res.status(403).json({ error: 'Only an organization owner can revoke owner access' });
+      }
+      await client.query(
+        `UPDATE organization_credential_grants
+            SET revoked_at = NOW(), revoked_by_workos_user_id = $1, updated_at = NOW()
+          WHERE id = $2`,
+        [actorCredentialId, grantId],
+      );
+      const actorIdentity = await client.query<{ identity_id: string }>(
+        `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+        [actorCredentialId],
+      );
+      await client.query(
+        `INSERT INTO registry_audit_log (
+           workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+         ) VALUES ($1, $2, 'credential_grant_revoked', 'credential_grant', $3, $4)`,
+        [orgId, actorCredentialId, grantId, JSON.stringify({
+          authenticated_credential_id: actorCredentialId,
+          resolved_identity_id: actorIdentity.rows[0]?.identity_id ?? null,
+          target_credential_id: grant.rows[0].workos_user_id,
+        })],
+      );
+      await client.query('COMMIT');
+      return res.json({ revoked: true, grant_id: grantId });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      logger.error({ error, orgId, grantId }, 'Failed to revoke credential grant');
+      return res.status(500).json({ error: 'Failed to revoke credential grant' });
+    } finally {
+      client.release();
     }
   });
 

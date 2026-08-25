@@ -1579,7 +1579,8 @@
     // Load referral banner — shows discount countdown for users who accepted a referral invitation
     async function loadReferralBanner() {
       try {
-        const res = await fetch('/api/me/referral', { credentials: 'include' });
+        if (!currentOrg?.id) return;
+        const res = await fetch('/api/me/referral?org=' + encodeURIComponent(currentOrg.id), { credentials: 'include' });
         if (!res.ok) return;
         const data = await res.json();
         if (!data.referral || data.days_remaining === null) return;

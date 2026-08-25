@@ -21,6 +21,7 @@ import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import { eventsDb } from "../db/events-db.js";
 import { invalidateMemberContextCache } from "../addie/index.js";
 import { invalidateWebAdminStatusCache, isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
 import { notifyUser } from "../notifications/notification-service.js";
@@ -1011,7 +1012,9 @@ export function createCommitteeRouters(): {
       // Private subgroups show up only for people who are direct members of
       // that subgroup, or for AAO admins. Parent membership alone does not
       // unlock private subgroup visibility.
-      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const isAAOAdmin = user?.id
+        ? await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user))
+        : false;
       const allSubgroups = await workingGroupDb.listSubgroups(group.id);
       const visibleSubgroups: typeof allSubgroups = [];
       for (const sg of allSubgroups) {
@@ -1096,7 +1099,9 @@ export function createCommitteeRouters(): {
       // Aggregate from the group plus its subgroups the caller may see.
       // Private subgroups the caller isn't a member of are filtered out.
       const includeSubgroups = req.query.include_subgroups !== 'false';
-      const isAAOAdmin = user?.id ? await isWebUserAAOAdmin(user.id) : false;
+      const isAAOAdmin = user?.id
+        ? await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user))
+        : false;
       const targetIds = includeSubgroups
         ? await workingGroupDb.getVisibleDescendantIds(group.id, user?.id ?? null, { isAdmin: isAAOAdmin })
         : [group.id];

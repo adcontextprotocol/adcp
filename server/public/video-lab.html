@@ -729,6 +729,7 @@
       // so this user's settings shape this Tavus session only.
       const formSettings = readSettingsFromForm();
       const body = {
+        organization_id: localStorage.getItem('selectedOrgId') || undefined,
         greeting: formSettings.greeting || undefined,
         extraContext: formSettings.extraContext || undefined,
         maxDurationSec: formSettings.durationMin ? formSettings.durationMin * 60 : undefined,

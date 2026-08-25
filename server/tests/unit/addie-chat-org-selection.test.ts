@@ -211,6 +211,7 @@ describe('mounted Addie web-thread ownership', () => {
       .set('x-test-user-id', 'attacker')
       .send({
         message: 'hello',
+        organization_id: 'org_attacker',
         conversation_id: '11111111-1111-4111-8111-111111111111',
       })
       .expect(404);

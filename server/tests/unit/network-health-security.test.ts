@@ -189,6 +189,17 @@ describe('network-health global authorization boundary', () => {
           rowCount: 1,
         });
       }
+      if (sql.includes('FROM identity_workos_users')) {
+        return Promise.resolve({
+          rows: [{
+            identity_id: 'identity_sso_user',
+            primary_workos_user_id: null,
+            identity_authorization_epoch: '1',
+            credential_authorization_epoch: '1',
+          }],
+          rowCount: 1,
+        });
+      }
       return Promise.resolve({ rows: [], rowCount: 0 });
     });
     mocks.getNetworkSummaries.mockResolvedValue([]);

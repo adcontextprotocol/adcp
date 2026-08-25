@@ -966,6 +966,9 @@ export function createAddieChatRouter(options?: {
       }
 
       const { message, conversation_id, user_name, message_source: rawMessageSource, attachments: rawAttachments, organization_id } = req.body;
+      if (req.user && (typeof organization_id !== 'string' || organization_id.trim().length === 0)) {
+        return res.status(400).json({ error: 'organization_id is required for authenticated chat' });
+      }
       const attachments = validateChatAttachments(rawAttachments);
 
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
@@ -1124,7 +1127,7 @@ export function createAddieChatRouter(options?: {
         hasThreadCertificationContext,
       } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
-        req.user?.id,
+        req.user ? (req.user.authWorkosUserId ?? req.user.id) : undefined,
         externalId,
         isAuth,
         thread.thread_id,
@@ -1327,6 +1330,9 @@ export function createAddieChatRouter(options?: {
         client_request_id,
         retry,
       } = req.body;
+      if (req.user && (typeof organization_id !== 'string' || organization_id.trim().length === 0)) {
+        return res.status(400).json({ error: 'organization_id is required for authenticated chat' });
+      }
       const attachments = validateChatAttachments(rawAttachmentsStream);
       const clientRequestId = typeof client_request_id === 'string' ? client_request_id : null;
       const retryRequested = retry === true;
@@ -1581,7 +1587,7 @@ export function createAddieChatRouter(options?: {
         certificationProgress,
       } = await prepareRequestWithMemberTools(
         messageForModel,
-        req.user?.id,
+        req.user ? (req.user.authWorkosUserId ?? req.user.id) : undefined,
         externalId,
         isAuth,
         thread.thread_id,

@@ -95,6 +95,12 @@ describe('admin link / unlink credential', () => {
   });
 
   async function cleanup() {
+    await pool.query(
+      `DELETE FROM registry_audit_log
+        WHERE resource_id = ANY($1)
+          AND action IN ('attach_state_empty_credential', 'unbind_credential')`,
+      [[HOST_USER_ID, TARGET_USER_ID]],
+    );
     await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [HOST_USER_ID, TARGET_USER_ID]);
   }
 
@@ -215,7 +221,7 @@ describe('admin link / unlink credential', () => {
       expect(response.body.error).toMatch(/not found/i);
     });
 
-    it('refuses to consolidate a cred with existing app-state without explicit opt-in', async () => {
+    it('refuses to consolidate a credential with state even when consolidate is requested', async () => {
       // Insert cred locally + give it an organization_membership (real AAO data)
       await pool.query(
         `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
@@ -239,23 +245,20 @@ describe('admin link / unlink credential', () => {
       try {
         const refused = await request(app)
           .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
-          .send({ workos_user_id: TARGET_USER_ID })
-          .expect(409);
-        expect(refused.body.consolidate_confirmation_required).toBe(true);
-        expect(refused.body.message).toMatch(/consolidate/i);
-
-        // Same call with consolidate: true succeeds and moves the membership
-        await request(app)
-          .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
           .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
-          .expect(201);
+          .expect(409);
+        expect(refused.body.error).toBe('credential_has_state');
+        expect(refused.body.references).toContainEqual({
+          table: 'organization_memberships',
+          column: 'workos_user_id',
+        });
 
-        const moved = await pool.query(
+        const unchanged = await pool.query(
           `SELECT workos_user_id FROM organization_memberships WHERE workos_organization_id = $1`,
           [orgId]
         );
-        expect(moved.rows).toHaveLength(1);
-        expect(moved.rows[0].workos_user_id).toBe(HOST_USER_ID);
+        expect(unchanged.rows).toHaveLength(1);
+        expect(unchanged.rows[0].workos_user_id).toBe(TARGET_USER_ID);
       } finally {
         await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id = $1`, [orgId]);
         await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [orgId]);
@@ -342,6 +345,49 @@ describe('admin link / unlink credential', () => {
       expect(audit.rows[0].details.host_user_id).toBe(HOST_USER_ID);
     });
 
+    it('leaves credential-scoped membership provenance unchanged when unbinding', async () => {
+      const orgId = 'org_test_unlink_provenance';
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Unlink Provenance Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [orgId],
+      );
+      await pool.query(
+        `INSERT INTO organization_memberships
+           (workos_user_id, workos_organization_id, workos_membership_id, email, role,
+            seat_type, provisioning_source, created_at, updated_at)
+         VALUES ($1, $2, 'om_unlink_provenance', 'target@test.example', 'admin',
+                 'contributor', 'admin_added', NOW(), NOW())`,
+        [TARGET_USER_ID, orgId],
+      );
+      try {
+        const before = await pool.query(
+          `SELECT id, workos_user_id, workos_organization_id, workos_membership_id,
+                  email, role, seat_type, provisioning_source, created_at
+             FROM organization_memberships
+            WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [TARGET_USER_ID, orgId],
+        );
+
+        await request(app)
+          .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
+          .expect(200);
+
+        const after = await pool.query(
+          `SELECT id, workos_user_id, workos_organization_id, workos_membership_id,
+                  email, role, seat_type, provisioning_source, created_at
+             FROM organization_memberships
+            WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [TARGET_USER_ID, orgId],
+        );
+        expect(after.rows).toEqual(before.rows);
+      } finally {
+        await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id = $1`, [orgId]);
+        await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [orgId]);
+      }
+    });
+
     it('refuses to remove the primary credential', async () => {
       const response = await request(app)
         .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${HOST_USER_ID}`)
@@ -380,6 +426,50 @@ describe('admin link / unlink credential', () => {
         .delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`)
         .expect(404);
       expect(response.body.error).toMatch(/not bound/i);
+    });
+
+    it('serializes concurrent unlink replays without orphan identities or duplicate success audits', async () => {
+      const orphanBaseline = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM identities i
+          WHERE NOT EXISTS (
+            SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+          )`,
+      );
+      const hostIdentity = await pool.query<{ identity_id: string }>(
+        `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+        [HOST_USER_ID],
+      );
+      const responses = await Promise.all([
+        request(app).delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`),
+        request(app).delete(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}`),
+      ]);
+      expect(responses.map((response) => response.status).sort()).toEqual([200, 404]);
+
+      const targetBinding = await pool.query<{ identity_id: string; is_primary: boolean }>(
+        `SELECT identity_id, is_primary FROM identity_workos_users WHERE workos_user_id = $1`,
+        [TARGET_USER_ID],
+      );
+      expect(targetBinding.rows).toHaveLength(1);
+      expect(targetBinding.rows[0].is_primary).toBe(true);
+      expect(targetBinding.rows[0].identity_id).not.toBe(hostIdentity.rows[0].identity_id);
+
+      const orphanCount = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM identities i
+          WHERE NOT EXISTS (
+            SELECT 1 FROM identity_workos_users iwu WHERE iwu.identity_id = i.id
+          )`,
+      );
+      expect(Number(orphanCount.rows[0].count)).toBe(Number(orphanBaseline.rows[0].count));
+
+      const audits = await pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count
+           FROM registry_audit_log
+          WHERE action = 'unbind_credential' AND resource_id = $1`,
+        [TARGET_USER_ID],
+      );
+      expect(Number(audits.rows[0].count)).toBe(1);
     });
   });
 });

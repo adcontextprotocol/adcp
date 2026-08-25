@@ -15,21 +15,48 @@ import express from 'express';
 import request from 'supertest';
 import type { Pool } from 'pg';
 
-let currentUserId: string | null = null;
+const authState = vi.hoisted(() => ({
+  currentUserId: null as string | null,
+  currentOrganizationId: null as string | null,
+}));
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/resolve-user-org-membership.js')>()),
+  resolveUserOrgMembership: vi.fn(async (
+    _workos: unknown,
+    principal: { id?: string; authWorkosUserId?: string },
+    organizationId: string,
+  ) => {
+    const authorizationUserId = principal.authWorkosUserId ?? principal.id;
+    if (
+      authorizationUserId !== authState.currentUserId
+      || organizationId !== authState.currentOrganizationId
+    ) {
+      return null;
+    }
+    return {
+      organizationId,
+      role: 'admin',
+      status: 'active',
+      via_credential_grant: false,
+      via_dev_bypass: false,
+    };
+  }),
+}));
 
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/middleware/auth.js')>();
   return {
     ...actual,
     optionalAuth: (req: { user?: unknown }, _res: unknown, next: () => void) => {
-      if (currentUserId !== null) {
-        req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+      if (authState.currentUserId !== null) {
+        req.user = { id: authState.currentUserId, email: `${authState.currentUserId}@test.com` };
       }
       next();
     },
     requireAuth: (req: { user?: unknown }, res: { status: (n: number) => { json: (b: unknown) => void } }, next: () => void) => {
-      if (currentUserId === null) return res.status(401).json({ error: 'auth required' });
-      req.user = { id: currentUserId, email: `${currentUserId}@test.com` };
+      if (authState.currentUserId === null) return res.status(401).json({ error: 'auth required' });
+      req.user = { id: authState.currentUserId, email: `${authState.currentUserId}@test.com` };
       next();
     },
   };
@@ -50,6 +77,13 @@ const VERIFIED_DOMAIN = `verified-${RUN_SUFFIX}.example.com`;
 const COMMUNITY_DOMAIN = `community-${RUN_SUFFIX}.example.com`;
 const ORPHANED_DOMAIN = `orphaned-${RUN_SUFFIX}.example.com`;
 const MISSING_DOMAIN = `missing-${RUN_SUFFIX}.example.com`;
+
+function ownershipPath(domain: string) {
+  const organizationQuery = authState.currentOrganizationId
+    ? `?org=${encodeURIComponent(authState.currentOrganizationId)}`
+    : '';
+  return `/api/brands/${domain}/ownership${organizationQuery}`;
+}
 
 describe('GET /api/brands/:domain/ownership', () => {
   let pool: Pool;
@@ -113,7 +147,8 @@ describe('GET /api/brands/:domain/ownership', () => {
   });
 
   beforeEach(async () => {
-    currentUserId = null;
+    authState.currentUserId = null;
+    authState.currentOrganizationId = null;
     await pool.query(`DELETE FROM brands WHERE domain IN ($1, $2, $3, $4)`,
       [VERIFIED_DOMAIN, COMMUNITY_DOMAIN, ORPHANED_DOMAIN, MISSING_DOMAIN]);
   });
@@ -167,8 +202,9 @@ describe('GET /api/brands/:domain/ownership', () => {
       workos_organization_id: OWNER_ORG_ID,
       domain_verified: true,
     });
-    currentUserId = OWNER_USER_ID;
-    const res = await request(app).get(`/api/brands/${VERIFIED_DOMAIN}/ownership`);
+    authState.currentUserId = OWNER_USER_ID;
+    authState.currentOrganizationId = OWNER_ORG_ID;
+    const res = await request(app).get(ownershipPath(VERIFIED_DOMAIN));
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('verified');
     expect(res.body.can_manage).toBe(true);
@@ -182,8 +218,9 @@ describe('GET /api/brands/:domain/ownership', () => {
       workos_organization_id: OWNER_ORG_ID,
       domain_verified: true,
     });
-    currentUserId = OTHER_USER_ID;
-    const res = await request(app).get(`/api/brands/${VERIFIED_DOMAIN}/ownership`);
+    authState.currentUserId = OTHER_USER_ID;
+    authState.currentOrganizationId = OTHER_ORG_ID;
+    const res = await request(app).get(ownershipPath(VERIFIED_DOMAIN));
     expect(res.status).toBe(200);
     expect(res.body.can_manage).toBe(false);
     // A verified brand is not claimable by another org through this UX path.
@@ -192,8 +229,9 @@ describe('GET /api/brands/:domain/ownership', () => {
 
   it('lets any authenticated user claim a community brand', async () => {
     await seedBrand(COMMUNITY_DOMAIN, {});
-    currentUserId = OTHER_USER_ID;
-    const res = await request(app).get(`/api/brands/${COMMUNITY_DOMAIN}/ownership`);
+    authState.currentUserId = OTHER_USER_ID;
+    authState.currentOrganizationId = OTHER_ORG_ID;
+    const res = await request(app).get(ownershipPath(COMMUNITY_DOMAIN));
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('community');
     expect(res.body.can_claim).toBe(true);
@@ -205,8 +243,9 @@ describe('GET /api/brands/:domain/ownership', () => {
       manifest_orphaned: true,
       prior_owner_org_id: OWNER_ORG_ID,
     });
-    currentUserId = OTHER_USER_ID;
-    const res = await request(app).get(`/api/brands/${ORPHANED_DOMAIN}/ownership`);
+    authState.currentUserId = OTHER_USER_ID;
+    authState.currentOrganizationId = OTHER_ORG_ID;
+    const res = await request(app).get(ownershipPath(ORPHANED_DOMAIN));
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('orphaned');
     // Owner is null for orphaned brands — prior_owner_org_id is internal state.

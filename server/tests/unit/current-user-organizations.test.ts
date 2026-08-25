@@ -18,14 +18,16 @@ import {
 describe('current user organization resolution', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.query.mockResolvedValue({
-      rows: [{
-        workos_organization_id: 'org_cached',
-        name: 'Cached Org',
-        role: 'admin',
-        is_personal: false,
-      }],
-    });
+    mocks.query.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('FROM organization_credential_grants')
+        ? []
+        : [{
+            workos_organization_id: 'org_cached',
+            name: 'Cached Org',
+            role: 'admin',
+            is_personal: false,
+          }],
+    }));
   });
 
   it('does not trust cached local memberships when WorkOS membership lookup fails', async () => {
@@ -39,7 +41,7 @@ describe('current user organization resolution', () => {
     } as any;
 
     await expect(getCurrentUserOrganizations({
-      userId: 'user_123',
+      principal: { id: 'user_123' },
       email: 'user@example.com',
       workos,
       orgDb: { getOrganization: vi.fn() },
@@ -51,7 +53,7 @@ describe('current user organization resolution', () => {
 
   it('uses cached local memberships when WorkOS is not configured', async () => {
     const organizations = await getCurrentUserOrganizations({
-      userId: 'user_123',
+      principal: { id: 'user_123' },
       email: 'user@example.com',
       workos: null,
       orgDb: { getOrganization: vi.fn() },
@@ -66,6 +68,27 @@ describe('current user organization resolution', () => {
       is_personal: false,
     }]);
     expect(mocks.query).toHaveBeenCalledWith(expect.stringContaining('FROM organization_memberships om'), ['user_123']);
+  });
+
+  it('lists organizations for the authenticated credential, not the canonical user', async () => {
+    const listOrganizationMemberships = vi.fn().mockResolvedValue({ data: [] });
+    const workos = {
+      userManagement: { listOrganizationMemberships },
+      organizations: { getOrganization: vi.fn() },
+    } as any;
+
+    await getCurrentUserOrganizations({
+      principal: { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
+      email: 'user@example.com',
+      workos,
+      orgDb: { getOrganization: vi.fn() },
+      autoLinkByVerifiedDomain: vi.fn(),
+    });
+
+    expect(listOrganizationMemberships).toHaveBeenCalledWith({
+      userId: 'user_authenticated',
+      statuses: ['active'],
+    });
   });
 
   it('uses local organization details when WorkOS org detail lookup fails', async () => {
@@ -114,7 +137,7 @@ describe('current user organization resolution', () => {
     } as any;
 
     const organizations = await getCurrentUserOrganizations({
-      userId: 'user_123',
+      principal: { id: 'user_123' },
       email: 'user@example.com',
       workos,
       orgDb: { getOrganization: vi.fn().mockResolvedValue({ is_personal: false }) },
@@ -129,6 +152,42 @@ describe('current user organization resolution', () => {
       status: 'active',
       is_personal: false,
     }]);
+  });
+
+  it('includes active exact-credential grants in the organization selector', async () => {
+    mocks.query.mockImplementation(async (sql: string, params: unknown[]) => ({
+      rows: sql.includes('FROM organization_credential_grants')
+        ? [{
+            workos_organization_id: 'org_granted',
+            name: 'Granted Org',
+            role: 'admin',
+            is_personal: false,
+          }]
+        : [],
+      params,
+    }));
+    const workos = {
+      userManagement: { listOrganizationMemberships: vi.fn().mockResolvedValue({ data: [] }) },
+      organizations: { getOrganization: vi.fn() },
+    } as any;
+
+    await expect(getCurrentUserOrganizations({
+      principal: { id: 'user_primary', authWorkosUserId: 'user_credential' },
+      email: 'user@example.com',
+      workos,
+      orgDb: { getOrganization: vi.fn() },
+      autoLinkByVerifiedDomain: vi.fn().mockResolvedValue(null),
+    })).resolves.toEqual([{
+      id: 'org_granted',
+      name: 'Granted Org',
+      role: 'admin',
+      status: 'active',
+      is_personal: false,
+    }]);
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM organization_credential_grants'),
+      ['user_credential'],
+    );
   });
 
   it('normalizes missing or blank membership roles to member', () => {

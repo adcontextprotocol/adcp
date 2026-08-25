@@ -8,17 +8,18 @@
  *   2. WorkOS API key (sk_* / wos_api_key_* prefixes) — server-to-server
  *      integrations. Validated via the existing `validateWorkOSApiKey` helper.
  *   3. Sealed session — web/native app sessions whose cookie or bearer
- *      unsealed in `optionalAuth`, producing `req.user`. Organization is
- *      resolved via `resolvePrimaryOrganization`, which falls back to the
- *      user's organization_memberships when the cached column is NULL.
+ *      unsealed in `optionalAuth`, producing `req.user`. These callers must
+ *      explicitly select `x-organization-id`; the selected organization is
+ *      checked against the credential that authenticated the session.
  */
 
 import type { Request } from 'express';
 import { createRemoteJWKSet, decodeJwt, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { isWorkOSApiKeyFormat } from '../../middleware/api-key-format.js';
 import { validateWorkOSApiKey } from '../../middleware/auth.js';
-import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { createLogger } from '../../logger.js';
+import { getWorkos } from '../../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../../utils/resolve-user-org-membership.js';
 
 const logger = createLogger('resolve-caller-org');
 
@@ -42,23 +43,18 @@ function jwksForIssuer(iss: string): { jwks: JWTVerifyGetKey; clientId: string }
   return { jwks, clientId };
 }
 
-export type MinimalReq = Pick<Request, 'headers'> & { user?: { id?: string } };
+export type MinimalReq = Pick<Request, 'headers'> & {
+  user?: { id?: string; authWorkosUserId?: string };
+};
 
-/**
- * Extract and verify a WorkOS OIDC access token. Returns the `org_id` claim
- * on success, or `null` for API keys, sealed sessions, missing tokens, or
- * failed verification. Never throws.
- */
-export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null> {
+type VerifiedBearerOrg = { organizationId: string; userId: string };
+
+async function verifiedOrgFromBearerJwt(req: MinimalReq): Promise<VerifiedBearerOrg | null> {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) return null;
   const token = auth.slice(7);
-  if (isWorkOSApiKeyFormat(token)) return null;
-  // Sealed sessions are not JWTs — skip verification to avoid JWKS noise.
-  if (!token.startsWith('eyJ')) return null;
+  if (isWorkOSApiKeyFormat(token) || !token.startsWith('eyJ')) return null;
   try {
-    // Decode unverified to pick the right JWKS. `jwtVerify` below re-checks
-    // the signature and pins `issuer`, so an attacker can't swap iss.
     const unverified = decodeJwt(token);
     if (typeof unverified.iss !== 'string') {
       logger.warn('bearer JWT rejected: missing iss claim');
@@ -70,11 +66,11 @@ export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null
       return null;
     }
     const { payload } = await jwtVerify(token, resolved.jwks, { issuer: unverified.iss });
-    if (typeof payload.org_id !== 'string') {
-      logger.warn({ clientId: resolved.clientId, sub: payload.sub }, 'bearer JWT verified but has no org_id claim');
+    if (typeof payload.org_id !== 'string' || typeof payload.sub !== 'string') {
+      logger.warn({ clientId: resolved.clientId, sub: payload.sub }, 'bearer JWT verified but has no org_id or sub claim');
       return null;
     }
-    return payload.org_id;
+    return { organizationId: payload.org_id, userId: payload.sub };
   } catch (err) {
     logger.warn({ err }, 'bearer JWT verification failed');
     return null;
@@ -82,25 +78,75 @@ export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null
 }
 
 /**
- * Resolve the caller's organization via (in order) OIDC JWT → API key →
- * sealed-session user lookup. Returns `null` when no auth shape resolves.
+ * Extract and verify a WorkOS OIDC access token. Returns the `org_id` claim
+ * on success, or `null` for API keys, sealed sessions, missing tokens, or
+ * failed verification. Never throws.
  */
-export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
-  const jwtOrg = await orgIdFromBearerJwt(req);
-  if (jwtOrg) return jwtOrg;
+export async function orgIdFromBearerJwt(req: MinimalReq): Promise<string | null> {
+  return (await verifiedOrgFromBearerJwt(req))?.organizationId ?? null;
+}
 
-  const apiKey = await validateWorkOSApiKey(req as Request);
-  if (apiKey) return apiKey.organizationId;
+export type CallerOrganizationResolution =
+  | { status: 'authorized'; organizationId: string }
+  | { status: 'missing' }
+  | { status: 'forbidden' };
 
-  if (req.user?.id) {
+/**
+ * Resolve the caller's organization via (in order) OIDC JWT → API key →
+ * explicitly selected sealed-session organization. The discriminated result
+ * keeps a missing selection distinct from an unauthorized explicit one.
+ */
+export async function resolveCallerOrganization(req: MinimalReq): Promise<CallerOrganizationResolution> {
+  const jwtOrg = await verifiedOrgFromBearerJwt(req);
+  if (jwtOrg) {
     try {
-      return await resolvePrimaryOrganization(req.user.id);
+      const membership = await resolveUserOrgMembership(
+        getWorkos(),
+        { id: jwtOrg.userId },
+        jwtOrg.organizationId,
+      );
+      return membership
+        ? { status: 'authorized', organizationId: membership.organizationId }
+        : { status: 'forbidden' };
     } catch (err) {
-      logger.warn({ err, userId: req.user.id }, 'caller org resolution failed — falling back to public-only');
+      logger.warn({ err, selectedOrganizationId: jwtOrg.organizationId }, 'bearer organization membership revalidation failed');
+      return { status: 'forbidden' };
     }
   }
 
-  return null;
+  const apiKey = await validateWorkOSApiKey(req as Request);
+  if (apiKey) return { status: 'authorized', organizationId: apiKey.organizationId };
+
+  const selectedHeader = req.headers['x-organization-id'];
+  const selectedOrganizationId = typeof selectedHeader === 'string' && selectedHeader.trim()
+    ? selectedHeader.trim()
+    : null;
+
+  if (req.user?.id && selectedOrganizationId) {
+    try {
+      const membership = await resolveUserOrgMembership(
+        getWorkos(),
+        { id: req.user.id, authWorkosUserId: req.user.authWorkosUserId },
+        selectedOrganizationId,
+      );
+      return membership
+        ? { status: 'authorized', organizationId: membership.organizationId }
+        : { status: 'forbidden' };
+    } catch (err) {
+      logger.warn(
+        { err, selectedOrganizationId },
+        'caller org resolution failed — falling back to public-only',
+      );
+      return { status: 'forbidden' };
+    }
+  }
+
+  return { status: 'missing' };
+}
+
+export async function resolveCallerOrgId(req: MinimalReq): Promise<string | null> {
+  const resolution = await resolveCallerOrganization(req);
+  return resolution.status === 'authorized' ? resolution.organizationId : null;
 }
 
 /** Test hook: reset the per-client JWKS cache. */

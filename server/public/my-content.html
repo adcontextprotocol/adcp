@@ -1375,14 +1375,22 @@
           response = await fetch(`/api/me/content/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...data, status: statusValue })
+            body: JSON.stringify({
+              ...data,
+              status: statusValue,
+              organization_id: localStorage.getItem('selectedOrgId') || '',
+            })
           });
         } else {
           // Create new via propose endpoint
           response = await fetch('/api/content/propose', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...data, status: statusValue })
+            body: JSON.stringify({
+              ...data,
+              status: statusValue,
+              organization_id: localStorage.getItem('selectedOrgId') || '',
+            })
           });
         }
 

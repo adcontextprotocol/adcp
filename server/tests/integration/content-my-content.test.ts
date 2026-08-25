@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 
 // Mock WorkOS client before any imports that depend on it
-vi.mock('../../src/auth/workos-client.js', () => ({
-  workos: {
+vi.mock('../../src/auth/workos-client.js', () => {
+  const workos = {
     userManagement: {
       getUser: vi.fn().mockResolvedValue({ id: 'user_my_content', email: 'mc@example.com', firstName: 'Mary', lastName: 'Content' }),
       listUsers: vi.fn().mockResolvedValue({ data: [], listMetadata: {} }),
@@ -10,7 +10,16 @@ vi.mock('../../src/auth/workos-client.js', () => ({
     organizations: {
       getOrganization: vi.fn().mockResolvedValue({ id: 'org_test', name: 'Test Org' }),
     },
-  },
+  };
+  return { workos, getWorkos: () => workos };
+});
+
+vi.mock('../../src/utils/resolve-user-org-membership.js', () => ({
+  resolveUserOrgMembership: vi.fn(async (_workos, user, organizationId) =>
+    organizationId === 'org_my_content_professional'
+      && user.id !== 'user_my_content_ineligible'
+      ? { organizationId, role: 'member', source: 'workos' }
+      : null),
 }));
 
 // Dynamic admin flag so each test can flip the current user between admin and
@@ -309,6 +318,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-unsafe-link',
           content_type: 'link',
           external_url: 'javascript:alert(document.domain)',
@@ -349,6 +359,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-active-wg-proposal',
           content: 'body',
           content_type: 'article',
@@ -365,6 +376,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const archivedProposal = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-archived-wg-proposal',
           content: 'body',
           content_type: 'article',
@@ -378,6 +390,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-review-draft',
           content: 'draft body',
           content_type: 'article',
@@ -400,6 +413,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-lead-draft',
           content: 'draft body',
           content_type: 'article',
@@ -415,6 +429,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-lead-default',
           content: 'body',
           content_type: 'article',
@@ -436,6 +451,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-lead-publish',
           content: 'body',
           content_type: 'article',
@@ -455,6 +471,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-escalate',
           content: 'body',
           content_type: 'article',
@@ -483,6 +500,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'mc-test-ineligible',
           content: 'body',
           content_type: 'article',
@@ -498,6 +516,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'A'.repeat(501),
           content: 'body',
           content_type: 'article',
@@ -513,6 +532,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'B'.repeat(500),
           content: 'body',
           content_type: 'article',
@@ -527,6 +547,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const response = await request(app)
         .post('/api/content/propose')
         .send({
+          organization_id: ELIGIBLE_ORG_ID,
           title: 'short title',
           subtitle: 'C'.repeat(1001),
           content: 'body',
@@ -549,6 +570,7 @@ describe('My Content — body, admin scope, status, delete', () => {
       const results: Array<{ success: boolean; error?: string }> = [];
       for (let i = 0; i < 21; i++) {
         const r = await proposeContentForUser(testUser, {
+          organization_id: ELIGIBLE_ORG_ID,
           title: `mc-test-ratelimit-${i}`,
           content: 'body',
           content_type: 'article',

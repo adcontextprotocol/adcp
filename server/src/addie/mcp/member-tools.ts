@@ -129,7 +129,6 @@ import { isValidAgentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
-import { resolvePrimaryOrganization } from '../../db/users-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { checkMilestones } from '../services/journey-computation.js';
 import { PERSONA_LABELS } from '../../config/personas.js';
@@ -142,7 +141,7 @@ import { getGitHubAccessToken } from '../../services/pipes.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import { issueDomainChallenge, verifyDomainChallenge } from '../../services/brand-claim.js';
 import { getWorkos } from '../../auth/workos-client.js';
-import { resolveUserRole } from '../../utils/resolve-user-role.js';
+import { resolveUserOrgMembership } from '../../utils/resolve-user-org-membership.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
 import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 import {
@@ -1292,8 +1291,12 @@ async function resolveSaveAgentOrganization(
         message: `This feature requires an organization. If you belong to multiple organizations, say which one to ${actionLabel}, or use the organization_id / organization_name field.`,
       };
     }
-    const activeMemberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, contextOrgId);
-    if (activeMemberships.length === 0) {
+    const effectiveMembership = await resolveUserOrgMembership(
+      getWorkos(),
+      { id: workosUserId },
+      contextOrgId,
+    );
+    if (!effectiveMembership) {
       return {
         ok: false,
         message: `I can't ${actionLabel} ${contextOrgId} because your account is not an active member of that organization.`,
@@ -1307,15 +1310,13 @@ async function resolveSaveAgentOrganization(
     };
   }
 
-  const memberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId, requestedOrgId);
-  const activeOrgIds = [...new Set(
-    memberships
-      .map((m) => m.organizationId)
-      .filter(Boolean),
-  )];
-
   if (requestedOrgId) {
-    if (activeOrgIds.length === 0) {
+    const effectiveMembership = await resolveUserOrgMembership(
+      getWorkos(),
+      { id: workosUserId },
+      requestedOrgId,
+    );
+    if (!effectiveMembership) {
       return {
         ok: false,
         message: `I can't ${actionLabel} ${requestedOrgId} because your account is not an active member of that organization.`,
@@ -1334,7 +1335,26 @@ async function resolveSaveAgentOrganization(
     };
   }
 
-  const candidates = await Promise.all(activeOrgIds.map(async (organizationId) => {
+  const memberships = await listActiveWorkosMembershipsForSaveAgent(workosUserId);
+  const activeOrgIds = new Set(
+    memberships.map((membership) => membership.organizationId).filter(Boolean),
+  );
+  try {
+    const grants = await query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id
+         FROM organization_credential_grants
+        WHERE workos_user_id = $1
+          AND revoked_at IS NULL
+          AND effective_from <= NOW()
+          AND (effective_until IS NULL OR effective_until > NOW())`,
+      [workosUserId],
+    );
+    for (const grant of grants.rows) activeOrgIds.add(grant.workos_organization_id);
+  } catch (err) {
+    logger.warn({ err, workosUserId }, 'Could not enumerate credential grants for organization-name selection');
+  }
+
+  const candidates = await Promise.all([...activeOrgIds].map(async (organizationId) => {
     const localOrg = await orgDb.getOrganization(organizationId).catch(() => null);
     let name = localOrg?.name ?? null;
     if (!name) {
@@ -1351,6 +1371,12 @@ async function resolveSaveAgentOrganization(
   );
 
   if (matches.length === 1) {
+    if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, matches[0].organizationId)) {
+      return {
+        ok: false,
+        message: `I can't ${actionLabel} ${matches[0].organizationId} because your account no longer has access to that organization.`,
+      };
+    }
     return {
       ok: true,
       organizationId: matches[0].organizationId,
@@ -1593,8 +1619,10 @@ export const MEMBER_TOOLS: AddieTool[] = [
     usage_hints: 'use for "what\'s our company listing?", "our tagline", "company profile", "our directory entry"',
     input_schema: {
       type: 'object',
-      properties: {},
-      required: [],
+      properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
+      },
+      required: ['organization_id'],
     },
   },
   {
@@ -1605,6 +1633,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
         tagline: { type: 'string', description: 'Short tagline shown on directory card and used by Addie for search matching. Omit to leave unchanged.' },
         description: { type: 'string', description: 'Longer company description' },
         offerings: {
@@ -1622,7 +1651,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         twitter_url: { type: 'string', description: 'Twitter/X profile URL' },
         headquarters: { type: 'string', description: 'Headquarters location (e.g., "New York, NY")' },
       },
-      required: [],
+      required: ['organization_id'],
     },
   },
   {
@@ -1633,6 +1662,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     input_schema: {
       type: 'object',
       properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
         logo_url: {
           type: 'string',
           description: 'Public HTTPS URL to the logo image (PNG, JPG, SVG, WebP). Omit to leave unchanged.',
@@ -1646,7 +1676,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           description: 'Required only when the brand was previously registered by another org. true = keep the prior brand identity (logos, colors, agents) as a starting point (acquisition / handoff case). false = start fresh. Omit on first call; set explicitly after the user picks.',
         },
       },
-      required: [],
+      required: ['organization_id'],
     },
   },
   {
@@ -3031,15 +3061,18 @@ export function createMemberToolHandlers(
   // ============================================
   // COMPANY LISTING (the org's directory entry)
   // ============================================
-  handlers.set('get_company_listing', async () => {
+  handlers.set('get_company_listing', async (input) => {
     if (!memberContext?.workos_user?.workos_user_id) {
       return 'You need to be logged in to see your company listing. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const orgId = await resolvePrimaryOrganization(userId);
-    if (!orgId) {
-      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one!";
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
+    if (!orgId || memberContext.organization?.workos_organization_id !== orgId) {
+      return 'organization_id must match the explicitly selected organization.';
+    }
+    if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, orgId)) {
+      return 'Organization authorization was revoked.';
     }
 
     const profileResult = await query<{
@@ -3133,9 +3166,12 @@ export function createMemberToolHandlers(
     }
 
     const userId = memberContext.workos_user.workos_user_id;
-    const orgId = await resolvePrimaryOrganization(userId);
-    if (!orgId) {
-      return "Your organization doesn't have a directory listing yet. Visit https://agenticadvertising.org/member-profile to create one first!";
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
+    if (!orgId || memberContext.organization?.workos_organization_id !== orgId) {
+      return 'organization_id must match the explicitly selected organization.';
+    }
+    if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, orgId)) {
+      return 'Organization authorization was revoked.';
     }
 
     // Build parameterized UPDATE query with explicit column allowlist
@@ -3157,6 +3193,9 @@ export function createMemberToolHandlers(
     values.push(orgId);
 
     try {
+      if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, orgId)) {
+        return 'Organization authorization was revoked.';
+      }
       const updateResult = await query(
         `UPDATE member_profiles SET ${setClauses.join(', ')}, updated_at = NOW()
          WHERE workos_organization_id = $${paramIdx}
@@ -3187,9 +3226,13 @@ export function createMemberToolHandlers(
       return 'Provide a logo_url or brand_color to update.';
     }
 
-    const orgId = memberContext.organization?.workos_organization_id;
-    if (!orgId) {
-      return "Your account isn't linked to an organization yet. Visit https://agenticadvertising.org/member-profile to set up your company listing.";
+    const userId = memberContext.workos_user.workos_user_id;
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
+    if (!orgId || memberContext.organization?.workos_organization_id !== orgId) {
+      return 'organization_id must match the explicitly selected organization.';
+    }
+    if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, orgId)) {
+      return 'Organization authorization was revoked.';
     }
 
     const profile = await memberDb.getProfileByOrgId(orgId);
@@ -3210,6 +3253,9 @@ export function createMemberToolHandlers(
       : undefined;
 
     try {
+      if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, orgId)) {
+        return 'Organization authorization was revoked.';
+      }
       const result = await updateBrandIdentity({
         workosOrganizationId: orgId,
         displayName: profile.display_name,
@@ -3277,21 +3323,18 @@ export function createMemberToolHandlers(
   });
 
   /**
-   * Lookup the caller's role on their org via WorkOS. Brand-claim is org-state
-   * mutation and only active admins/owners should run it. Filters via
-   * resolveUserRole so an inactive/pending membership row that still carries
-   * an admin slug cannot pass — a removed admin must not be able to claim a
-   * brand on the org that removed them. (Matches /brand-claim/issue + /verify
-   * route gate.)
+   * Resolve the exact credential's effective role, including an explicit
+   * organization credential grant. Brand-claim is org-state mutation and only
+   * active admins/owners should run it.
    */
   async function callerIsOrgAdmin(workosUserId: string, orgId: string): Promise<boolean> {
     try {
-      const memberships = await getWorkos().userManagement.listOrganizationMemberships({
-        userId: workosUserId,
-        organizationId: orgId,
-      });
-      const role = resolveUserRole(memberships.data);
-      return role === 'admin' || role === 'owner';
+      const membership = await resolveUserOrgMembership(
+        getWorkos(),
+        { id: workosUserId },
+        orgId,
+      );
+      return membership?.role === 'admin' || membership?.role === 'owner';
     } catch (err) {
       logger.error({ err, workosUserId, orgId }, 'brand-claim chat tool: role lookup failed');
       return false;
@@ -3582,6 +3625,7 @@ export function createMemberToolHandlers(
         email: memberContext.workos_user.email,
       },
       {
+        organization_id: memberContext.organization?.workos_organization_id,
         title,
         subtitle,
         content: contentBody,
@@ -7080,6 +7124,14 @@ export function createMemberToolHandlers(
       : '';
     const saveOrgProfileName = saveOrg.organizationName;
     const saveOrgLabel = saveOrgNameForDisplay ? `${saveOrgNameForDisplay} (${saveOrgId})` : saveOrgId;
+    const saveActorCredentialId = memberContext.workos_user.workos_user_id;
+    const hasLiveSaveAuthorization = async (): Promise<boolean> => Boolean(
+      await resolveUserOrgMembership(
+        getWorkos(),
+        { id: saveActorCredentialId },
+        saveOrgId,
+      )
+    );
 
     const rawAgentUrl = input.agent_url as string;
     try {
@@ -7206,6 +7258,9 @@ export function createMemberToolHandlers(
     async function ensureAgentInProfile(displayName: string): Promise<ProfileWriteStatus> {
       if (!saveOrgId) return { ok: false, reason: 'no-org-id' };
       try {
+        if (!await hasLiveSaveAuthorization()) {
+          return { ok: false, reason: 'organization authorization was revoked' };
+        }
         let profile = await memberDb.getProfileByOrgId(saveOrgId);
         let createdProfile = false;
         if (!profile) {
@@ -7290,6 +7345,9 @@ export function createMemberToolHandlers(
     try {
       // Check if agent already exists for this org
       let context = await agentContextDb.getByOrgAndUrl(saveOrgId, agentUrl);
+      if (!await hasLiveSaveAuthorization()) {
+        return `I can't save this agent because your access to ${saveOrgLabel} changed. Please select the organization again and retry.`;
+      }
 
       if (context) {
         // Update existing context
@@ -7297,9 +7355,15 @@ export function createMemberToolHandlers(
           await agentContextDb.update(context.id, { agent_name: agentName, protocol });
         }
         if (storedAuthToken) {
+          if (!await hasLiveSaveAuthorization()) {
+            return `I can't save credentials because your access to ${saveOrgLabel} was revoked.`;
+          }
           await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
         }
         if (clientCredentials) {
+          if (!await hasLiveSaveAuthorization()) {
+            return `I can't save credentials because your access to ${saveOrgLabel} was revoked.`;
+          }
           await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
         }
         context = await agentContextDb.getById(context.id);
@@ -7324,18 +7388,27 @@ export function createMemberToolHandlers(
       }
 
       // Create new context
+      if (!await hasLiveSaveAuthorization()) {
+        return `I can't save this agent because your access to ${saveOrgLabel} was revoked.`;
+      }
       context = await agentContextDb.create({
         organization_id: saveOrgId,
         agent_url: agentUrl,
         agent_name: agentName,
         protocol,
-        created_by: memberContext.workos_user.workos_user_id,
+        created_by: saveActorCredentialId,
       });
 
       if (storedAuthToken) {
+        if (!await hasLiveSaveAuthorization()) {
+          return `I can't save credentials because your access to ${saveOrgLabel} was revoked.`;
+        }
         await agentContextDb.saveAuthToken(context.id, storedAuthToken, authType);
       }
       if (clientCredentials) {
+        if (!await hasLiveSaveAuthorization()) {
+          return `I can't save credentials because your access to ${saveOrgLabel} was revoked.`;
+        }
         await agentContextDb.saveOAuthClientCredentials(context.id, clientCredentials);
       }
       if (storedAuthToken || clientCredentials) {
@@ -7382,6 +7455,14 @@ export function createMemberToolHandlers(
     }
 
     try {
+      const membership = await resolveUserOrgMembership(
+        getWorkos(),
+        { id: memberContext.workos_user.workos_user_id },
+        listOrgId,
+      );
+      if (!membership) {
+        return `I can't list saved agents because your access to this organization is no longer active.`;
+      }
       const agents = await agentContextDb.getByOrganization(listOrgId);
 
       if (agents.length === 0) {
@@ -7487,9 +7568,25 @@ export function createMemberToolHandlers(
         if (entry && (entry as any).visibility === 'public') {
           return `Can't remove **${context.agent_name || agentUrl}** — it's listed publicly. Make it private first, then remove.`;
         }
+        const membership = await resolveUserOrgMembership(
+          getWorkos(),
+          { id: memberContext.workos_user.workos_user_id },
+          removeOrgId,
+        );
+        if (!membership) {
+          return `I can't remove this agent because your access to this organization is no longer active.`;
+        }
         await agentContextDb.delete(context.id);
       }
 
+      const membership = await resolveUserOrgMembership(
+        getWorkos(),
+        { id: memberContext.workos_user.workos_user_id },
+        removeOrgId,
+      );
+      if (!membership) {
+        return `I can't update this agent because your access to this organization is no longer active.`;
+      }
       const profileResult = await removeAgentFromProfile();
 
       if (!context && profileResult.ok && !profileResult.removedFromProfile) {
@@ -7537,6 +7634,17 @@ export function createMemberToolHandlers(
     // If user has an org, save credentials so the whole team can use them
     if (setupOrgId) {
       try {
+        const actorCredentialId = memberContext.workos_user.workos_user_id;
+        const hasLiveSetupAuthorization = async (): Promise<boolean> => Boolean(
+          await resolveUserOrgMembership(
+            getWorkos(),
+            { id: actorCredentialId },
+            setupOrgId,
+          )
+        );
+        if (!await hasLiveSetupAuthorization()) {
+          return `I can't set up organization credentials because your access to this organization is no longer active.`;
+        }
         let context = await agentContextDb.getByOrgAndUrl(setupOrgId, PUBLIC_TEST_AGENT.url);
 
         if (context && context.has_auth_token) {
@@ -7544,15 +7652,24 @@ export function createMemberToolHandlers(
         }
 
         if (context) {
+          if (!await hasLiveSetupAuthorization()) {
+            return `I can't save organization credentials because your access to this organization was revoked.`;
+          }
           await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
         } else {
+          if (!await hasLiveSetupAuthorization()) {
+            return `I can't set up this agent because your access to this organization was revoked.`;
+          }
           context = await agentContextDb.create({
             organization_id: setupOrgId,
             agent_url: PUBLIC_TEST_AGENT.url,
             agent_name: PUBLIC_TEST_AGENT.name,
             protocol: 'mcp',
-            created_by: memberContext.workos_user.workos_user_id,
+            created_by: actorCredentialId,
           });
+          if (!await hasLiveSetupAuthorization()) {
+            return `I can't save organization credentials because your access to this organization was revoked.`;
+          }
           await agentContextDb.saveAuthToken(context.id, PUBLIC_TEST_AGENT.token);
         }
         credentialsSaved = true;

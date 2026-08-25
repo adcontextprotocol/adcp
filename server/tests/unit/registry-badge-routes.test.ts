@@ -131,7 +131,7 @@ describe('registry badge routes', () => {
     complianceMocks.revokeAllBadges.mockResolvedValue([]);
     notificationMocks.notifyVerificationChange.mockReset();
     notificationMocks.notifyVerificationChange.mockResolvedValue(undefined);
-    ownershipMocks.findOwnerOrgForUser.mockResolvedValue('org_badge_owner');
+    ownershipMocks.resolveOwnerOrgForUser.mockResolvedValue('org_badge_owner');
     ownershipMocks.findOwnedAgentVisibility.mockResolvedValue('public');
   });
 
@@ -319,7 +319,7 @@ describe('registry badge routes', () => {
 
     const response = await request(buildApp('private', true))
       .put(`/api/registry/agents/${encodedUrl}/compliance/opt-out`)
-      .send({ opt_out: true });
+      .send({ opt_out: true, organization_id: 'org_badge_owner' });
 
     expect(response.status).toBe(200);
     expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(
@@ -346,12 +346,13 @@ describe('registry badge routes', () => {
 
     const response = await request(buildApp('private', true))
       .put(`/api/registry/agents/${encodeURIComponent(rawAgentUrl)}/compliance/opt-out`)
-      .send({ opt_out: true });
+      .send({ opt_out: true, organization_id: 'org_badge_owner' });
 
     expect(response.status).toBe(200);
-    expect(ownershipMocks.findOwnerOrgForUser).toHaveBeenCalledWith(
-      'user_badge_owner',
+    expect(ownershipMocks.resolveOwnerOrgForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'user_badge_owner' }),
       canonicalAgentUrl,
+      'org_badge_owner',
     );
     expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(
       canonicalAgentUrl,
@@ -370,7 +371,7 @@ describe('registry badge routes', () => {
 
     const response = await request(buildApp('private', true))
       .put(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/opt-out`)
-      .send({ opt_out: true });
+      .send({ opt_out: true, organization_id: 'org_badge_owner' });
 
     expect(response.status).toBe(200);
     expect(complianceMocks.setComplianceOptOut).toHaveBeenCalledWith(

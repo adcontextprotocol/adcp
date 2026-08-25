@@ -8,6 +8,8 @@ import { WorkingGroupDatabase } from '../db/working-group-db.js';
 import { checkMilestones } from '../addie/services/journey-computation.js';
 import { getRecommendedGroupsForOrg } from '../addie/services/group-recommendations.js';
 import { notifyAssessmentCompleted } from '../notifications/assessment.js';
+import { getWorkos } from '../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 
 const VALID_PERSONAS: Persona[] = ['molecule_builder', 'data_decoder', 'pureblood_protector', 'resops_integrator', 'ladder_climber', 'simple_starter', 'pragmatic_builder'];
 
@@ -25,48 +27,16 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
   // GET /api/me/engagement - Member engagement dashboard data
   router.get('/', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
       const rawOrg = req.query.org;
-      const requestedOrgId = typeof rawOrg === 'string' ? rawOrg : undefined;
-
-      let orgId: string | undefined;
-
-      if (requestedOrgId) {
-        // Validate the user belongs to the requested org
-        const memberCheck = await query<{ workos_organization_id: string }>(
-          `SELECT workos_organization_id FROM organization_memberships
-           WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-          [userId, requestedOrgId]
-        );
-        if (memberCheck.rows.length > 0) {
-          orgId = requestedOrgId;
-        } else {
-          return res.status(403).json({ error: 'Not a member of the requested organization' });
-        }
+      const requestedOrgId = typeof rawOrg === 'string' && rawOrg.length > 0 ? rawOrg : null;
+      if (!requestedOrgId) {
+        return res.status(400).json({ error: 'organization_selection_required', message: 'org query parameter is required' });
       }
-
-      if (!orgId) {
-        // Fallback: resolve from memberships (no explicit org requested)
-        const membershipResult = await query<{ workos_organization_id: string }>(
-          `SELECT workos_organization_id FROM (
-             SELECT om.workos_organization_id, 1 AS priority
-             FROM organization_memberships om
-             WHERE om.workos_user_id = $1
-             UNION ALL
-             SELECT u.primary_organization_id, 2 AS priority
-             FROM users u
-             WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
-           ) ranked
-           ORDER BY priority, workos_organization_id
-           LIMIT 1`,
-          [userId]
-        );
-        orgId = membershipResult.rows[0]?.workos_organization_id;
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, requestedOrgId);
+      if (!membership) {
+        return res.status(403).json({ error: 'Not a member of the requested organization' });
       }
-
-      if (!orgId) {
-        return res.status(404).json({ error: 'No organization found for user' });
-      }
+      const orgId = membership.organizationId;
 
       // Parallel-fetch all dashboard data with individual error isolation
       const [
@@ -225,8 +195,8 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
   // POST /api/me/persona-assessment - Save persona diagnostic result
   router.post('/persona-assessment', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
-      const { persona, scores } = req.body;
+      const userId = req.user!.authWorkosUserId ?? req.user!.id;
+      const { persona, scores, organization_id: requestedOrgId } = req.body;
 
       if (!persona || !VALID_PERSONAS.includes(persona)) {
         return res.status(400).json({ error: 'Invalid persona', valid: VALID_PERSONAS });
@@ -244,23 +214,17 @@ export function createEngagementRouter(config: EngagementRoutesConfig): Router {
         }
       }
 
-      const membershipResult = await query<{ workos_organization_id: string }>(
-        `SELECT workos_organization_id FROM (
-           SELECT om.workos_organization_id, 1 AS priority
-           FROM organization_memberships om WHERE om.workos_user_id = $1
-           UNION ALL
-           SELECT u.primary_organization_id, 2 AS priority FROM users u
-           WHERE u.workos_user_id = $1 AND u.primary_organization_id IS NOT NULL
-         ) ranked
-         ORDER BY priority, workos_organization_id
-         LIMIT 1`,
-        [userId]
-      );
-
-      const orgId = membershipResult.rows[0]?.workos_organization_id;
-      if (!orgId) {
-        return res.status(404).json({ error: 'No organization found for user' });
+      if (typeof requestedOrgId !== 'string' || requestedOrgId.length === 0) {
+        return res.status(400).json({ error: 'organization_selection_required', message: 'organization_id is required' });
       }
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, requestedOrgId);
+      if (!membership) return res.status(403).json({ error: 'Not authorized for the requested organization' });
+      const orgId = membership.organizationId;
+
+      // Recheck the exact credential/org context immediately before the
+      // mutation so a revocation during validation fails closed.
+      const currentMembership = await resolveUserOrgMembership(getWorkos(), req.user!, orgId);
+      if (!currentMembership) return res.status(403).json({ error: 'Organization authorization was revoked' });
 
       await config.orgKnowledgeDb.setPersona(orgId, persona as Persona, 'diagnostic', {
         set_by_user_id: userId,

@@ -14,7 +14,6 @@ import { Router } from 'express';
 import type { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
 import {
@@ -96,24 +95,23 @@ export function createMeOrganizationDomainsRouter(
       ? req.query.org
       : null;
 
-    if (requested) {
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, requested);
-      if (!membership) {
-        res.status(403).json({
-          error: 'Not authorized',
-          message: 'User is not a member of the requested organization',
-        });
-        return null;
-      }
-      return requested;
-    }
-
-    const primary = await resolvePrimaryOrganization(req.user!.id);
-    if (!primary) {
-      res.status(400).json({ error: 'No organization associated with this account' });
+    if (!requested) {
+      res.status(400).json({
+        error: 'organization_selection_required',
+        message: 'org query parameter is required',
+      });
       return null;
     }
-    return primary;
+
+    const membership = await resolveUserOrgMembership(workos, req.user!, requested);
+    if (!membership) {
+      res.status(403).json({
+        error: 'Not authorized',
+        message: 'User is not a member of the requested organization',
+      });
+      return null;
+    }
+    return membership.organizationId;
   }
 
   // GET /api/me/organization/domains — list verified domains for the caller's org.
@@ -176,7 +174,7 @@ export function createMeOrganizationDomainsRouter(
       if (!orgId) return;
 
       // Role gate: owners/admins only. Members can read but not change.
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, req.user!, orgId);
       if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
         return res.status(403).json({
           error: 'Not authorized',
@@ -204,6 +202,10 @@ export function createMeOrganizationDomainsRouter(
       // Admin-imported / manual rows aren't DNS-proof-of-control claims and
       // pending rows are pre-verification — the source allowlist below is
       // the security gate.
+      const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       const result = await setPrimaryDomain({
         orgId,
         domain: normalizedDomain,
@@ -262,7 +264,7 @@ export function createMeOrganizationDomainsRouter(
       const orgId = await resolveTargetOrgId(req, res);
       if (!orgId) return;
 
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, req.user!, orgId);
       if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
         return res.status(403).json({
           error: 'Not authorized',
@@ -314,6 +316,10 @@ export function createMeOrganizationDomainsRouter(
           // WorkOS confirms DNS proof for THIS org. That's the documented
           // contract for transfer-on-conflict, so upsertWorkosDomain is safe
           // even if a cross-org local row exists.
+          const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+          if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           await upsertWorkosDomain({ orgId, domain: normalizedDomain, verified: true });
           invalidateMemberContextCache();
           return res.json({
@@ -336,6 +342,10 @@ export function createMeOrganizationDomainsRouter(
               message: 'This domain is already linked to another organization.',
             });
           }
+          const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+          if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           await linkDomain({
             orgId,
             domain: normalizedDomain,
@@ -355,6 +365,10 @@ export function createMeOrganizationDomainsRouter(
         // Broken state: pending but no token. Delete + recreate so the user
         // gets a usable record. Same pattern as brand-claim.ts.
         try {
+          const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+          if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           await workos.organizationDomains.deleteOrganizationDomain(existingEntry.id);
         } catch (err) {
           logger.error({ err, orgId, domain: normalizedDomain }, 'Failed to delete broken pending domain');
@@ -382,6 +396,10 @@ export function createMeOrganizationDomainsRouter(
       }
 
       try {
+        const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+        if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+          return res.status(403).json({ error: 'Organization authorization was revoked' });
+        }
         const created = await workos.organizationDomains.createOrganizationDomain({
           organizationId: orgId,
           domain: normalizedDomain,
@@ -449,7 +467,7 @@ export function createMeOrganizationDomainsRouter(
       const orgId = await resolveTargetOrgId(req, res);
       if (!orgId) return;
 
-      const membership = await resolveUserOrgMembership(workos, req.user!.id, orgId);
+      const membership = await resolveUserOrgMembership(workos, req.user!, orgId);
       if (!membership || (membership.role !== 'owner' && membership.role !== 'admin')) {
         return res.status(403).json({
           error: 'Not authorized',
@@ -509,6 +527,10 @@ export function createMeOrganizationDomainsRouter(
       let verifiedState = stateStr;
       if (!alreadyVerified) {
         try {
+          const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+          if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+            return res.status(403).json({ error: 'Organization authorization was revoked' });
+          }
           const verified = await workos.organizationDomains.verifyOrganizationDomain(entry.id);
           verifiedState = String(verified.state);
         } catch (err: any) {
@@ -535,6 +557,10 @@ export function createMeOrganizationDomainsRouter(
         });
       }
 
+      const currentMembership = await resolveUserOrgMembership(workos, req.user!, orgId);
+      if (!currentMembership || (currentMembership.role !== 'owner' && currentMembership.role !== 'admin')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await upsertWorkosDomain({
         orgId,
         domain: normalizedDomain,

@@ -74,6 +74,28 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+vi.mock('../../src/utils/resolve-user-org-membership.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/resolve-user-org-membership.js')>()),
+  resolveUserOrgMembership: vi.fn(async (
+    _workos: unknown,
+    principal: { id?: string; authWorkosUserId?: string },
+    organizationId: string,
+  ) => {
+    const authorizationUserId = principal.authWorkosUserId ?? principal.id;
+    const hasExactMembership =
+      (authorizationUserId === OWNER_USER_ID && organizationId === OWNER_ORG_ID)
+      || (authorizationUserId === CROSS_ORG_USER_ID && organizationId === CROSS_ORG_ID);
+    if (!hasExactMembership) return null;
+    return {
+      organizationId,
+      role: 'admin',
+      status: 'active',
+      via_credential_grant: false,
+      via_dev_bypass: false,
+    };
+  }),
+}));
+
 vi.mock('../../src/middleware/csrf.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/csrf.js');
   return {
@@ -303,7 +325,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
 
   it('cross-org caller: shape is intact, owner-only fields are null/false', async () => {
     currentUserId = CROSS_ORG_USER_ID;
-    const res = await request(app).get(endpoint);
+    const res = await request(app).get(endpoint).query({ org: CROSS_ORG_ID });
     expect(res.status).toBe(200);
     for (const key of OWNER_ONLY_KEYS) {
       expect(res.body).toHaveProperty(key);
@@ -318,7 +340,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
 
   it('owner caller: verdict_source + membership tier populated', async () => {
     currentUserId = OWNER_USER_ID;
-    const res = await request(app).get(endpoint);
+    const res = await request(app).get(endpoint).query({ org: OWNER_ORG_ID });
     expect(res.status).toBe(200);
     expect(res.body.verdict_source).toBe('owner_test');
     expect(res.body.membership_tier).toBe('company_standard');
@@ -338,7 +360,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     );
     try {
       currentUserId = OWNER_USER_ID;
-      const res = await request(app).get(endpoint);
+      const res = await request(app).get(endpoint).query({ org: OWNER_ORG_ID });
       expect(res.status).toBe(200);
       expect(res.body.verdict_source).toBe('owner_test');
       expect(res.body.is_api_access_tier).toBe(false);
@@ -374,7 +396,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
 
   it('owner caller can read storyboard status diagnostics', async () => {
     currentUserId = OWNER_USER_ID;
-    const res = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`);
+    const res = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`)
+      .query({ org: OWNER_ORG_ID });
     expect(res.status).toBe(200);
     expect(res.body.storyboards).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -391,7 +415,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
 
   it('cross-org member sees storyboard status counts but not diagnostics', async () => {
     currentUserId = CROSS_ORG_USER_ID;
-    const res = await request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`);
+    const res = await request(app)
+      .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`)
+      .query({ org: CROSS_ORG_ID });
     expect(res.status).toBe(200);
     expect(res.body.storyboards).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -407,6 +433,25 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failure_message: null,
       }),
     ]));
+  });
+
+  it('an unauthorized explicit organization cannot unlock owner fields or storyboard detail', async () => {
+    currentUserId = OWNER_USER_ID;
+    const [complianceRes, storyboardRes] = await Promise.all([
+      request(app).get(endpoint).query({ org: CROSS_ORG_ID }),
+      request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/storyboard-status`)
+        .query({ org: CROSS_ORG_ID }),
+    ]);
+
+    // Compliance is public, so an unauthorized selector degrades to the
+    // public projection instead of revealing whether the org exists.
+    expect(complianceRes.status).toBe(200);
+    expect(complianceRes.body.verdict_source).toBeNull();
+    expectPublicStoryboardStatus(complianceRes.body);
+
+    // The member-only storyboard endpoint fails closed.
+    expect(storyboardRes.status).toBe(403);
   });
 
   it('static admin API key can read bulk storyboard status through real Postgres SQL', async () => {
@@ -434,7 +479,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
     currentUserId = CROSS_ORG_USER_ID;
     const res = await request(app)
       .post('/api/registry/agents/storyboard-status')
-      .send({ agent_urls: [AGENT_URL] });
+      .send({ agent_urls: [AGENT_URL], organization_id: CROSS_ORG_ID });
 
     expect(res.status).toBe(200);
     expect(res.body.agents[AGENT_URL]).toEqual(expect.arrayContaining([
@@ -495,8 +540,12 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
   it('cross-org caller still cannot read owner diagnostics or monitoring requests', async () => {
     currentUserId = CROSS_ORG_USER_ID;
     const [diagnosticsRes, monitoringRes] = await Promise.all([
-      request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics`),
-      request(app).get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/monitoring/requests`),
+      request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/compliance/diagnostics`)
+        .query({ org: CROSS_ORG_ID }),
+      request(app)
+        .get(`/api/registry/agents/${encodeURIComponent(AGENT_URL)}/monitoring/requests`)
+        .query({ org: CROSS_ORG_ID }),
     ]);
     expect(diagnosticsRes.status).toBe(403);
     expect(monitoringRes.status).toBe(403);

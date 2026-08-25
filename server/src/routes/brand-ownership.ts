@@ -16,9 +16,10 @@ import { Router, type Request, type Response } from 'express';
 import { optionalAuth } from '../middleware/auth.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { OrganizationDatabase } from '../db/organization-db.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
 import { createLogger } from '../logger.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
+import { getWorkos } from '../auth/workos-client.js';
 
 const logger = createLogger('brand-ownership');
 
@@ -56,7 +57,7 @@ export function createBrandOwnershipRouter(config: { brandDb: BrandDatabase; org
 
     try {
       const brand = await brandDb.getDiscoveredBrandByDomain(domain);
-      const user = (req as any).user as { id: string } | undefined;
+      const user = (req as any).user as { id: string; authWorkosUserId?: string } | undefined;
 
       const verified = !!brand && brand.domain_verified === true && !!brand.workos_organization_id;
       const orphaned = !!brand && brand.manifest_orphaned === true;
@@ -77,18 +78,19 @@ export function createBrandOwnershipRouter(config: { brandDb: BrandDatabase; org
       let canManage = false;
       let canClaim = false;
       if (user?.id) {
-        let userOrgId: string | null = null;
-        try {
-          userOrgId = await resolvePrimaryOrganization(user.id);
-        } catch (err) {
-          logger.warn({ err, userId: user.id }, 'Failed to resolve user primary org');
-        }
-        if (verified) {
-          canManage = !!userOrgId && userOrgId === ownerOrgId;
-          canClaim = false;
-        } else {
-          canManage = false;
-          canClaim = true;
+        const selectedOrgId = typeof req.query.org === 'string' && req.query.org.trim()
+          ? req.query.org.trim()
+          : null;
+        if (selectedOrgId) {
+          const membership = await resolveUserOrgMembership(getWorkos(), user, selectedOrgId);
+          if (!membership) {
+            return res.status(403).json({ error: 'You do not have access to the selected organization' });
+          }
+          if (verified) {
+            canManage = selectedOrgId === ownerOrgId;
+          } else {
+            canClaim = true;
+          }
         }
       }
 

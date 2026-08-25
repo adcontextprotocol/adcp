@@ -14,7 +14,7 @@
  *     list and merges it into the brand manifest by identifier.
  *
  * Both tools enforce the same ownership check as the HTTP route via
- * getBrandForEdit — the calling user's primary org must own the brand
+ * getBrandForEdit — the explicitly selected organization must own the brand
  * domain (verified row on organization_domains).
  */
 
@@ -28,6 +28,8 @@ import {
   VALID_RELATIONSHIPS,
   type Relationship,
 } from '../../services/brand-property-parse.js';
+import { getWorkos } from '../../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../../utils/resolve-user-org-membership.js';
 
 const brandDb = new BrandDatabase();
 
@@ -58,6 +60,10 @@ export const BRAND_PROPERTY_TOOLS: AddieTool[] = [
           type: 'string',
           description: "The brand domain to import properties into (e.g. 'paste-demo.example'). Caller's org must own it.",
         },
+        organization_id: {
+          type: 'string',
+          description: 'The explicitly selected WorkOS organization id. It must match the active organization context.',
+        },
         input: {
           type: 'string',
           description: 'Either pasted text containing domains/bundle IDs, or an https:// URL to fetch (set input_type accordingly).',
@@ -73,7 +79,7 @@ export const BRAND_PROPERTY_TOOLS: AddieTool[] = [
           description: "Stamped onto each parsed property. Defaults to 'delegated'.",
         },
       },
-      required: ['domain', 'input'],
+      required: ['domain', 'organization_id', 'input'],
     },
   },
   {
@@ -89,6 +95,10 @@ export const BRAND_PROPERTY_TOOLS: AddieTool[] = [
           type: 'string',
           description: 'The brand domain to import properties into.',
         },
+        organization_id: {
+          type: 'string',
+          description: 'The explicitly selected WorkOS organization id. It must match the active organization context.',
+        },
         properties: {
           type: 'array',
           description: 'Property objects to merge. Each must have identifier (string) and type (one of the property type allowlist). relationship is optional but recommended.',
@@ -103,7 +113,7 @@ export const BRAND_PROPERTY_TOOLS: AddieTool[] = [
           },
         },
       },
-      required: ['domain', 'properties'],
+      required: ['domain', 'organization_id', 'properties'],
     },
   },
 ];
@@ -120,6 +130,14 @@ export function createBrandPropertyToolHandlers(
   const handlers = new Map<string, (args: Record<string, unknown>) => Promise<string>>();
   const userId = memberContext?.workos_user?.workos_user_id ?? null;
 
+  function selectedOrganizationId(args: Record<string, unknown>): string | null {
+    const requested = args.organization_id;
+    if (typeof requested !== 'string' || requested.length === 0) return null;
+    return memberContext?.organization?.workos_organization_id === requested
+      ? requested
+      : null;
+  }
+
   handlers.set('parse_brand_properties', async (args) => {
     if (!userId) {
       return JSON.stringify({
@@ -128,6 +146,10 @@ export function createBrandPropertyToolHandlers(
     }
     const rawDomain = args.domain;
     const input = args.input;
+    const organizationId = selectedOrganizationId(args);
+    if (!organizationId) {
+      return JSON.stringify({ error: 'organization_id must match the explicitly selected active organization' });
+    }
     if (typeof rawDomain !== 'string' || rawDomain.trim().length === 0) {
       return JSON.stringify({ error: 'domain is required' });
     }
@@ -138,10 +160,13 @@ export function createBrandPropertyToolHandlers(
     const inputType = (args.input_type as string) ?? 'text';
     const relationship = args.relationship as Relationship | undefined;
 
+    if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, organizationId)) {
+      return JSON.stringify({ error: 'Organization authorization was revoked', status: 403 });
+    }
     const result = await parsePropertyInputForBrand({
       brandDb,
       domain,
-      userId,
+      organizationId,
       input,
       inputType: inputType as 'text' | 'url',
       relationship,
@@ -177,6 +202,10 @@ export function createBrandPropertyToolHandlers(
     }
     const rawDomain = args.domain;
     const properties = args.properties;
+    const organizationId = selectedOrganizationId(args);
+    if (!organizationId) {
+      return JSON.stringify({ error: 'organization_id must match the explicitly selected active organization' });
+    }
     if (typeof rawDomain !== 'string' || rawDomain.trim().length === 0) {
       return JSON.stringify({ error: 'domain is required' });
     }
@@ -185,10 +214,14 @@ export function createBrandPropertyToolHandlers(
     }
     const domain = normalizeDomain(rawDomain);
 
+    if (!await resolveUserOrgMembership(getWorkos(), { id: userId }, organizationId)) {
+      return JSON.stringify({ error: 'Organization authorization was revoked', status: 403 });
+    }
+
     const result = await mergeBrandProperties({
       brandDb,
       domain,
-      userId,
+      organizationId,
       properties: properties as Array<Record<string, unknown>>,
     });
 

@@ -12,9 +12,11 @@ import { promises as fs } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { resolveEffectiveMembership } from "../db/org-filters.js";
-import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { createLogger } from "../logger.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
+import { resolveUserOrgMembership } from "./resolve-user-org-membership.js";
+import { getWorkos } from "../auth/workos-client.js";
 
 const logger = createLogger('html-config');
 
@@ -34,6 +36,7 @@ const POSTHOG_HOST = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 interface AppUser {
   id?: string;
+  authWorkosUserId?: string;
   email: string;
   firstName?: string | null;
   lastName?: string | null;
@@ -179,7 +182,10 @@ export async function enrichUserWithAdmin(user: AppUser | null | undefined): Pro
 
   if (user.id) {
     try {
-      user.isAdmin = await isWebUserAAOAdmin(user.id);
+      user.isAdmin = await isWebUserAAOAdmin(getOrganizationAuthorizationUserId({
+        id: user.id,
+        authWorkosUserId: user.authWorkosUserId,
+      }));
     } catch (error) {
       logger.warn({ error, userId: user.id }, 'Failed to resolve isAdmin via working group; defaulting to false');
       user.isAdmin = false;
@@ -194,12 +200,20 @@ export async function enrichUserWithAdmin(user: AppUser | null | undefined): Pro
  * Enrich a user object with membership status from the database.
  * Checks both direct and inherited membership via the brand registry hierarchy.
  */
-export async function enrichUserWithMembership(user: AppUser | null | undefined): Promise<AppUser | null | undefined> {
-  if (!user?.id || user.isMember !== undefined) return user;
+export async function enrichUserWithMembership(
+  user: AppUser | null | undefined,
+  selectedOrganizationId?: string | null,
+): Promise<AppUser | null | undefined> {
+  if (!user?.id) return user;
+  if (!selectedOrganizationId) {
+    user.isMember = false;
+    return user;
+  }
   try {
-    const orgId = await resolvePrimaryOrganization(user.id);
-    if (orgId) {
-      const membership = await resolveEffectiveMembership(orgId);
+    const principal = { id: user.id, authWorkosUserId: user.authWorkosUserId };
+    const directAccess = await resolveUserOrgMembership(getWorkos(), principal, selectedOrganizationId);
+    if (directAccess) {
+      const membership = await resolveEffectiveMembership(selectedOrganizationId);
       user.isMember = membership.is_member;
     } else {
       user.isMember = false;

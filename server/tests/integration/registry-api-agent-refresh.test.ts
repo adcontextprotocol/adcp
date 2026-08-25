@@ -80,6 +80,30 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+vi.mock('../../src/utils/resolve-user-org-membership.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/utils/resolve-user-org-membership.js')>()),
+  resolveUserOrgMembership: vi.fn(async (
+    _workos: unknown,
+    principal: { id?: string; authWorkosUserId?: string },
+    organizationId: string,
+  ) => {
+    const authorizationUserId = principal.authWorkosUserId ?? principal.id;
+    if (
+      authorizationUserId !== OWNER_USER_ID
+      || (organizationId !== TEST_ORG_ID && organizationId !== SECOND_ORG_ID)
+    ) {
+      return null;
+    }
+    return {
+      organizationId,
+      role: 'admin',
+      status: 'active',
+      via_credential_grant: false,
+      via_dev_bypass: false,
+    };
+  }),
+}));
+
 vi.mock('../../src/middleware/csrf.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('../../src/middleware/csrf.js');
   return {
@@ -304,10 +328,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   });
 
   const url = (agentUrl: string) => `/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`;
+  const selectedOrganization = (organizationId = TEST_ORG_ID) => ({ organization_id: organizationId });
 
   it('owner can refresh and gets the snapshot back', async () => {
     const agentUrl = ownedAgentUrl('owner');
-    const res = await request(app).post(url(agentUrl)).send();
+    const res = await request(app).post(url(agentUrl)).send(selectedOrganization());
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       online: true,
@@ -374,7 +399,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   it('public compliance bounds notice output while retaining the raw private record', async () => {
     const agentUrl = ownedAgentUrl('public-notices');
-    const refresh = await request(app).post(url(agentUrl)).send();
+    const refresh = await request(app).post(url(agentUrl)).send(selectedOrganization());
     expect(refresh.status).toBe(200);
 
     const rawNotices = [
@@ -446,7 +471,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   it('admin can refresh an agent they do not own', async () => {
     currentUserId = ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('admin');
-    const res = await request(app).post(url(agentUrl)).send();
+    const res = await request(app).post(url(agentUrl)).send(selectedOrganization());
     expect(res.status).toBe(200);
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
   });
@@ -455,7 +480,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('static-admin');
 
-    const res = await request(app).post(url(agentUrl)).send();
+    const res = await request(app).post(url(agentUrl)).send(selectedOrganization());
 
     expect(res.status).toBe(200);
     expect(res.body.compliance).toMatchObject({
@@ -489,50 +514,50 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
   it('non-owner non-admin gets 403', async () => {
     currentUserId = OTHER_USER_ID;
-    const res = await request(app).post(url(OTHER_AGENT_URL)).send();
+    const res = await request(app).post(url(OTHER_AGENT_URL)).send(selectedOrganization());
     expect(res.status).toBe(403);
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
   });
 
   it('unauthenticated request gets 401', async () => {
     currentUserId = null;
-    const res = await request(app).post(url(ownedAgentUrl('owner'))).send();
+    const res = await request(app).post(url(ownedAgentUrl('owner'))).send(selectedOrganization());
     expect(res.status).toBe(401);
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 for a malformed agent URL', async () => {
-    const res = await request(app).post(url('not-a-valid-url')).send();
+    const res = await request(app).post(url('not-a-valid-url')).send(selectedOrganization());
     expect(res.status).toBe(400);
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 for a private-IP URL (SSRF guard)', async () => {
-    const res = await request(app).post(url('http://169.254.169.254/mcp')).send();
+    const res = await request(app).post(url('http://169.254.169.254/mcp')).send(selectedOrganization());
     expect(res.status).toBe(400);
     expect(refreshSingleAgentMock).not.toHaveBeenCalled();
   });
 
   it('returns 502 when the probe throws', async () => {
     refreshSingleAgentMock.mockRejectedValue(new Error('Probe timeout'));
-    const res = await request(app).post(url(ownedAgentUrl('probe-fail'))).send();
+    const res = await request(app).post(url(ownedAgentUrl('probe-fail'))).send(selectedOrganization());
     expect(res.status).toBe(502);
     expect(res.body.error).toMatch(/Probe timeout/);
   });
 
   it('returns 409 when monitoring is paused', async () => {
     refreshSingleAgentMock.mockRejectedValue(new Error('Monitoring paused for this agent'));
-    const res = await request(app).post(url(ownedAgentUrl('paused'))).send();
+    const res = await request(app).post(url(ownedAgentUrl('paused'))).send(selectedOrganization());
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/Monitoring paused/);
   });
 
   it('rate-limits a second refresh of the same agent within the window', async () => {
     const agentUrl = ownedAgentUrl('rate-limit');
-    const first = await request(app).post(url(agentUrl)).send();
+    const first = await request(app).post(url(agentUrl)).send(selectedOrganization());
     expect(first.status).toBe(200);
 
-    const second = await request(app).post(url(agentUrl)).send();
+    const second = await request(app).post(url(agentUrl)).send(selectedOrganization());
     expect(second.status).toBe(429);
     expect(second.body.retry_after).toBeGreaterThan(0);
   });
@@ -555,7 +580,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
 
     try {
-      const res = await request(app).post(url(agentUrl)).send();
+      const res = await request(app).post(url(agentUrl)).send(selectedOrganization());
       expect(res.status).toBe(200);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
         agentUrl,
@@ -585,7 +610,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
 
     try {
-      const res = await request(app).post(url(requestedUrl)).send();
+      const res = await request(app).post(url(requestedUrl)).send(selectedOrganization());
       expect(res.status).toBe(200);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
         agentUrl,
@@ -617,7 +642,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     try {
       const res = await request(app)
         .get(`/api/registry/agents/${encodeURIComponent(agentUrl)}/applicable-storyboards`)
-        .send();
+        .query({ org: TEST_ORG_ID });
 
       expect(res.status).toBe(200);
       expect(testCapabilityDiscoveryMock).toHaveBeenCalledWith(
@@ -649,7 +674,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     try {
       const res = await request(app)
         .post(url(agentUrl))
-        .send({ organization_id: SECOND_ORG_ID });
+        .send(selectedOrganization(SECOND_ORG_ID));
 
       expect(res.status).toBe(200);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
@@ -701,7 +726,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       storyboardId: 'sales_broadcast_tv',
     }));
 
-    const res = await request(app).post(url(agentUrl)).send();
+    const res = await request(app).post(url(agentUrl)).send(selectedOrganization());
 
     expect(res.status).toBe(200);
     expect(res.body.compliance).toMatchObject({

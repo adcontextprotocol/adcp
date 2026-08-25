@@ -2907,6 +2907,7 @@
         const fd = new FormData();
         fd.append('file', file);
         fd.append('tags', 'primary');
+        fd.append('organization_id', getOrgIdFromUrl() || '');
         const resp = await fetch(`/api/brands/${encodeURIComponent(brandDomain)}/logos`, {
           method: 'POST',
           body: fd,

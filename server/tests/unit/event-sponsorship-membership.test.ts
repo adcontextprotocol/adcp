@@ -56,7 +56,7 @@ describe('event sponsorship organization authorization', () => {
     expect(response.body.error).toBe('Organization access denied');
     expect(mocks.resolveUserOrgMembership).toHaveBeenCalledWith(
       mocks.getWorkos.mock.results[0]?.value,
-      'user_123',
+      expect.objectContaining({ id: 'user_123' }),
       'org_other',
     );
     expect(mocks.getEventBySlug).not.toHaveBeenCalled();

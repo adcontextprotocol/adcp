@@ -2,9 +2,12 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { resolveOrgAccess, assembleOrgHealth } from '../services/org-health.js';
+import { assembleOrgHealth } from '../services/org-health.js';
 import { query } from '../db/client.js';
 import { recordEvent } from '../db/person-events-db.js';
+import { getWorkos } from '../auth/workos-client.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 
 const logger = createLogger('org-health-routes');
 
@@ -21,19 +24,23 @@ export function createOrgHealthRouter(): Router {
   // GET /api/me/org-health — org health aggregation
   router.get('/', requireAuth, async (req, res) => {
     try {
-      const userId = req.user!.id;
-
-      const access = await resolveOrgAccess(userId);
-      if (!access) {
-        return res.status(404).json({ error: 'No organization found' });
+      const orgId = typeof req.query.org === 'string' && req.query.org.trim()
+        ? req.query.org
+        : null;
+      if (!orgId) {
+        return res.status(400).json({ error: 'org query parameter is required' });
+      }
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, orgId);
+      if (!membership) {
+        return res.status(403).json({ error: 'Not authorized for the selected organization' });
       }
 
       // Restrict to admin/owner — people table contains PII (emails)
-      if (access.role !== 'admin' && access.role !== 'owner') {
+      if (membership.role !== 'admin' && membership.role !== 'owner') {
         return res.status(403).json({ error: 'Org admin access required' });
       }
 
-      const health = await assembleOrgHealth(access.orgId);
+      const health = await assembleOrgHealth(membership.organizationId);
       res.json(health);
     } catch (error) {
       logger.error({ error }, 'Failed to load org health');
@@ -44,15 +51,21 @@ export function createOrgHealthRouter(): Router {
   // POST /api/me/org-health/nudge — admin requests Addie outreach for a team member
   router.post('/nudge', requireAuth, nudgeRateLimiter, async (req, res) => {
     try {
-      const userId = req.user!.id;
+      const userId = getOrganizationAuthorizationUserId(req.user!);
       const { target_user_id, topic } = req.body;
+      const orgId = typeof req.query.org === 'string' && req.query.org.trim()
+        ? req.query.org
+        : null;
 
       if (!target_user_id || typeof target_user_id !== 'string') {
         return res.status(400).json({ error: 'target_user_id required' });
       }
+      if (!orgId) {
+        return res.status(400).json({ error: 'org query parameter is required' });
+      }
 
-      const access = await resolveOrgAccess(userId);
-      if (!access || (access.role !== 'admin' && access.role !== 'owner')) {
+      const membership = await resolveUserOrgMembership(getWorkos(), req.user!, orgId);
+      if (!membership || (membership.role !== 'admin' && membership.role !== 'owner')) {
         return res.status(403).json({ error: 'Org admin access required' });
       }
 
@@ -60,7 +73,7 @@ export function createOrgHealthRouter(): Router {
       const memberCheck = await query<{ workos_user_id: string }>(
         `SELECT workos_user_id FROM organization_memberships
          WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-        [target_user_id, access.orgId]
+        [target_user_id, membership.organizationId]
       );
       if (memberCheck.rows.length === 0) {
         return res.status(404).json({ error: 'User not found in your organization' });
@@ -76,6 +89,10 @@ export function createOrgHealthRouter(): Router {
         return res.status(404).json({ error: 'No relationship record found for this user' });
       }
 
+      const currentMembership = await resolveUserOrgMembership(getWorkos(), req.user!, orgId);
+      if (!currentMembership || (currentMembership.role !== 'admin' && currentMembership.role !== 'owner')) {
+        return res.status(403).json({ error: 'Organization authorization was revoked' });
+      }
       await recordEvent(personResult.rows[0].id, 'admin_nudge_requested', {
         channel: 'system',
         data: {

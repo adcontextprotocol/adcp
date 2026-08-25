@@ -43,6 +43,7 @@ import { EmailPreferencesDatabase } from "../db/email-preferences-db.js";
 import { isWebUserAAOAdmin } from "../addie/mcp/admin-tools.js";
 import { getWorkos } from "../auth/workos-client.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
+import { getOrganizationAuthorizationUserId } from "../auth/organization-principal.js";
 
 /**
  * Validate a speakers array. Returns an error response object if invalid, or
@@ -1743,7 +1744,7 @@ export function createEventsRouter(): {
         const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
         const isAdmin = !!user && (
           adminEmails.includes(user.email.toLowerCase()) ||
-          await isWebUserAAOAdmin(user.id)
+          await isWebUserAAOAdmin(getOrganizationAuthorizationUserId(user))
         );
         if (!isAdmin) {
           return res.status(404).json({
@@ -2129,7 +2130,7 @@ export function createEventsRouter(): {
       // org_id is caller-controlled. Bind the purchase to the user's current,
       // active membership instead of trusting the requested organization or a
       // historical organization claim from their session.
-      const membership = await resolveUserOrgMembership(getWorkos(), user.id, org_id);
+      const membership = await resolveUserOrgMembership(getWorkos(), user, org_id);
       if (!membership || membership.organizationId !== org_id || membership.status !== "active") {
         return res.status(403).json({
           error: "Organization access denied",

@@ -915,7 +915,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             brand_domain: domain,
-            brand_json: brandJson
+            brand_json: brandJson,
+            organization_id: localStorage.getItem('selectedOrgId') || ''
           })
         });
 
@@ -973,7 +974,8 @@
       }
 
       try {
-        const response = await fetch(`/api/brands/hosted/${encodeURIComponent(domain)}`, {
+        const selectedOrgId = localStorage.getItem('selectedOrgId') || '';
+        const response = await fetch(`/api/brands/hosted/${encodeURIComponent(domain)}?org=${encodeURIComponent(selectedOrgId)}`, {
           method: 'DELETE'
         });
 

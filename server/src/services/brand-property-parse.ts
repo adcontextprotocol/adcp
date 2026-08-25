@@ -16,8 +16,6 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
-import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 import { validateFetchUrl, safeFetch, sanitizeUrl } from '../utils/url-security.js';
 import { ModelConfig } from '../config/models.js';
 
@@ -79,7 +77,7 @@ function getAnthropicClient(): Anthropic {
 export async function getBrandForEdit(
   brandDb: BrandDatabase,
   domain: string,
-  userId: string,
+  organizationId: string,
 ): Promise<
   | { ok: true; brand: NonNullable<Awaited<ReturnType<BrandDatabase['getDiscoveredBrandByDomain']>>> }
   | { ok: false; status: number; error: string }
@@ -97,24 +95,12 @@ export async function getBrandForEdit(
     };
   }
 
-  const orgId = await resolvePrimaryOrganization(userId);
-  if (!orgId) {
-    return { ok: false, status: 403, error: 'No organization associated with your account' };
-  }
-
-  // Same TODO(#4159) trust gap as brand-feeds.ts: orgDomains walk doesn't
-  // filter on verified=true, and the resolver fallback path uses
-  // member_profiles for orgs Stage 0 missed. Stage 2 should add the
-  // verified gate when the column drops.
   const orgDomains = await query<{ domain: string }>(
-    'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
-    [orgId],
+    `SELECT domain FROM organization_domains
+      WHERE workos_organization_id = $1 AND verified = TRUE`,
+    [organizationId],
   );
-  const brandPrimary = await getBrandPrimaryDomain(orgId);
-  const ownedDomains = new Set([
-    ...orgDomains.rows.map((r) => r.domain.toLowerCase()),
-    ...(brandPrimary ? [brandPrimary.toLowerCase()] : []),
-  ]);
+  const ownedDomains = new Set(orgDomains.rows.map((r) => r.domain.toLowerCase()));
   if (!ownedDomains.has(domain.toLowerCase())) {
     return { ok: false, status: 403, error: 'You do not own this brand domain' };
   }
@@ -308,12 +294,12 @@ export async function fetchUrlForParse(
 export async function parsePropertyInputForBrand(args: {
   brandDb: BrandDatabase;
   domain: string;
-  userId: string;
+  organizationId: string;
   input: string;
   inputType: 'text' | 'url';
   relationship?: Relationship;
 }): Promise<ParseResult> {
-  const { brandDb, domain, userId, input, inputType } = args;
+  const { brandDb, domain, organizationId, input, inputType } = args;
   if (typeof input !== 'string' || input.trim().length === 0) {
     return { ok: false, status: 400, error: 'input required' };
   }
@@ -330,7 +316,7 @@ export async function parsePropertyInputForBrand(args: {
   const relationship: Relationship = args.relationship ?? 'delegated';
 
   // Verify brand ownership before any outbound fetch or LLM spend.
-  const auth = await getBrandForEdit(brandDb, domain, userId);
+  const auth = await getBrandForEdit(brandDb, domain, organizationId);
   if (!auth.ok) return auth;
 
   let rawText = input.trim();
@@ -368,10 +354,10 @@ export interface MergeReport {
 export async function mergeBrandProperties(args: {
   brandDb: BrandDatabase;
   domain: string;
-  userId: string;
+  organizationId: string;
   properties: Array<{ identifier?: unknown; type?: unknown; relationship?: unknown; [k: string]: unknown }>;
 }): Promise<{ ok: true; report: MergeReport } | { ok: false; status: number; error: string }> {
-  const { brandDb, domain, userId, properties } = args;
+  const { brandDb, domain, organizationId, properties } = args;
   if (!Array.isArray(properties)) {
     return { ok: false, status: 400, error: 'properties array required' };
   }
@@ -379,7 +365,7 @@ export async function mergeBrandProperties(args: {
     return { ok: false, status: 400, error: `Maximum ${MAX_PROPERTIES} properties per request` };
   }
 
-  const auth = await getBrandForEdit(brandDb, domain, userId);
+  const auth = await getBrandForEdit(brandDb, domain, organizationId);
   if (!auth.ok) return auth;
   const brand = auth.brand;
 

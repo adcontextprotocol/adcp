@@ -149,12 +149,13 @@ This tool cannot generate payment links on behalf of other people or organizatio
     input_schema: {
       type: 'object' as const,
       properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
         },
       },
-      required: ['lookup_key'],
+      required: ['organization_id', 'lookup_key'],
     },
   },
   {
@@ -166,6 +167,7 @@ call confirm_send_invoice to send.`,
     input_schema: {
       type: 'object' as const,
       properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
@@ -180,7 +182,7 @@ call confirm_send_invoice to send.`,
           description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
         },
       },
-      required: ['lookup_key'],
+      required: ['organization_id', 'lookup_key'],
     },
   },
   {
@@ -192,6 +194,7 @@ on file (set via the dashboard or invite-acceptance flow).`,
     input_schema: {
       type: 'object' as const,
       properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
         lookup_key: {
           type: 'string',
           description: 'The product lookup key from find_membership_products',
@@ -206,7 +209,7 @@ on file (set via the dashboard or invite-acceptance flow).`,
           description: 'Payment terms in days (net-30, net-45, net-60, net-90). Defaults to 30.',
         },
       },
-      required: ['lookup_key'],
+      required: ['organization_id', 'lookup_key'],
     },
   },
   {
@@ -216,8 +219,10 @@ Use this when an owner or admin asks about receipts, invoices, billing history, 
 The user must be signed in and have an active owner or admin role in the selected organization.`,
     input_schema: {
       type: 'object' as const,
-      properties: {},
-      required: [],
+      properties: {
+        organization_id: { type: 'string', description: 'Explicit selected WorkOS organization ID.' },
+      },
+      required: ['organization_id'],
     },
   },
 ];
@@ -326,7 +331,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     const memberEmail = memberContext?.workos_user?.email;
-    const orgId = memberContext?.organization?.workos_organization_id;
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
 
     if (!workosUserId || !memberEmail) {
       await recordToolError(memberContext, 'create_payment_link', 'not_signed_in', { lookup_key: lookupKey });
@@ -335,7 +340,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         error: 'Cannot create a payment link without a signed-in account. Ask the user to sign in at https://agenticadvertising.org first, then try again.',
       });
     }
-    if (!orgId) {
+    if (!orgId || memberContext?.organization?.workos_organization_id !== orgId) {
       await recordToolError(memberContext, 'create_payment_link', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
@@ -346,6 +351,10 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     logger.info({ lookupKey, orgId, workosUserId }, 'Addie: Creating payment link for signed-in member');
 
     try {
+      const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
+      if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId)) {
+        return JSON.stringify({ success: false, error: 'Organization authorization was revoked.' });
+      }
       const priceId = await getPriceByLookupKey(lookupKey);
       if (!priceId) {
         await recordToolError(memberContext, 'create_payment_link', 'unknown_lookup_key', { lookup_key: lookupKey, org_id: orgId });
@@ -359,6 +368,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
       // Ensure a Stripe customer exists with org metadata before creating the
       // checkout session so the subscription webhook can link back to the org.
+      if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId)) {
+        return JSON.stringify({ success: false, error: 'Organization authorization was revoked.' });
+      }
       const customerId = (await orgDb.getOrCreateStripeCustomer(orgId, () =>
         createStripeCustomer({
           email: memberEmail,
@@ -367,6 +379,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         })
       )) || undefined;
 
+      if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId)) {
+        return JSON.stringify({ success: false, error: 'Organization authorization was revoked.' });
+      }
       const session = await createCheckoutSession({
         priceId,
         customerId,
@@ -413,7 +428,8 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const paymentTerms = input.payment_terms as number | undefined;
 
     const memberEmail = memberContext?.workos_user?.email;
-    const orgId = memberContext?.organization?.workos_organization_id;
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
     if (!memberEmail) {
       await recordToolError(memberContext, 'send_invoice', 'not_signed_in', { lookup_key: lookupKey });
       return JSON.stringify({
@@ -421,7 +437,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
       });
     }
-    if (!orgId) {
+    if (!workosUserId || !orgId || memberContext?.organization?.workos_organization_id !== orgId) {
       await recordToolError(memberContext, 'send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
@@ -434,6 +450,10 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     let companyName: string | undefined;
 
     try {
+      const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
+      if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId)) {
+        return JSON.stringify({ success: false, error: 'Organization authorization was revoked.' });
+      }
       const org = await orgDb.getOrganization(orgId);
       if (org) {
         companyName = org.name;
@@ -504,7 +524,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const memberEmail = memberContext?.workos_user?.email;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
-    const orgId = memberContext?.organization?.workos_organization_id;
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
     if (!memberEmail || !workosUserId) {
       await recordToolError(memberContext, 'confirm_send_invoice', 'not_signed_in', { lookup_key: lookupKey });
       return JSON.stringify({
@@ -512,7 +532,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
       });
     }
-    if (!orgId) {
+    if (!orgId || memberContext?.organization?.workos_organization_id !== orgId) {
       await recordToolError(memberContext, 'confirm_send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
@@ -565,6 +585,10 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     );
 
     try {
+      const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
+      if (!await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId)) {
+        return JSON.stringify({ success: false, error: 'Organization authorization was revoked.' });
+      }
       const result = await createAndSendInvoice({
         lookupKey,
         companyName: org.name,
@@ -605,9 +629,9 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
   });
 
   // Get billing portal link for active organization billing managers
-  handlers.set('get_billing_portal', async (_input) => {
-    const orgId = memberContext?.organization?.workos_organization_id;
-    if (!orgId) {
+  handlers.set('get_billing_portal', async (input) => {
+    const orgId = typeof input.organization_id === 'string' ? input.organization_id : null;
+    if (!orgId || memberContext?.organization?.workos_organization_id !== orgId) {
       return JSON.stringify({
         success: false,
         error: 'You need to be signed in with a linked account to access billing. Visit https://agenticadvertising.org/dashboard/membership to manage your billing.',
@@ -630,7 +654,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       // auth middleware for the dev-user bypass, whose WorkOS constructor must
       // not run while unrelated billing tools are being initialized.
       const { resolveUserOrgMembership } = await import('../../utils/resolve-user-org-membership.js');
-      const membership = await resolveUserOrgMembership(getWorkos(), workosUserId, orgId);
+      const membership = await resolveUserOrgMembership(getWorkos(), { id: workosUserId }, orgId);
       if (!canManageOrganizationBilling(membership, orgId)) {
         return JSON.stringify({
           success: false,

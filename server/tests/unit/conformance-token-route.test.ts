@@ -12,7 +12,9 @@ vi.mock('../../src/middleware/auth.js', () => ({
 }));
 
 vi.mock('../../src/routes/helpers/resolve-caller-org.js', () => ({
-  resolveCallerOrgId: vi.fn(async (req: any) => req.headers['x-test-org'] ?? null),
+  resolveCallerOrganization: vi.fn(async (req: any) => req.headers['x-test-org']
+    ? { status: 'authorized', organizationId: req.headers['x-test-org'] }
+    : { status: 'missing' }),
 }));
 
 async function buildApp() {
