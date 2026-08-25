@@ -49,6 +49,7 @@ import {
   canonicalizeAccountRef,
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
+import { satisfiesAll, resolveRequestedMetrics, narrowMetricsRecord } from './metric-subsumption.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -7964,6 +7965,13 @@ async function handleGetProductsUnlocked(
     if (pricingStructures?.length) {
       products = applyPricingStructuresFilterToProducts(products, pricingStructures);
     }
+    const requiredMetrics = (req.filters as { required_metrics?: string[] }).required_metrics;
+    if (requiredMetrics?.length) {
+      products = products.filter(p => {
+        const declared = (p.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? [];
+        return satisfiesAll(declared, requiredMetrics);
+      });
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {
@@ -12688,7 +12696,13 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string };
+  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string; requested_metrics?: string[] };
+  // requested_metrics narrows every metrics-bearing object in the response
+  // (totals, by_package, breakdown rows) to the resolved carrier set, always
+  // including impressions and spend. undefined means no narrowing requested.
+  const requestedMetricsKeep = req.requested_metrics?.length
+    ? resolveRequestedMetrics(req.requested_metrics)
+    : undefined;
   let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),
@@ -12787,7 +12801,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     const deliverySuppressed = mediaBuyPaused || packagePaused || pkg.canceled;
     if (deliverySuppressed) {
       const { model, rate } = derivePricing(pkg, productMap);
-      return {
+      return narrowMetricsRecord({
         package_id: pkg.packageId,
         spend: 0,
         impressions: 0,
@@ -12798,7 +12812,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         currency: mb.currency,
         paused: packagePaused,
         delivery_status: 'delivering' as const,
-      };
+      }, requestedMetricsKeep);
     }
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
@@ -12871,12 +12885,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
           const spendRemainderCents = Math.round((spend - (spendBase * pkg.creativeAssignments.length)) * 100);
-          return {
+          return narrowMetricsRecord({
             creative_id: creativeId,
             impressions: impressionBase + (index < impressionRemainder ? 1 : 0),
             spend: Math.round((spendBase + (index < spendRemainderCents ? 0.01 : 0)) * 100) / 100,
             conversions: base + (index < remainder ? 1 : 0),
-          };
+          }, requestedMetricsKeep);
         }),
       }
       : {};
@@ -12944,6 +12958,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
       ...byCreative,
       ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
+      // Sellers may report per-package viewability; the training agent's
+      // simulate_delivery viewability param is buy-scoped (mirrors totals),
+      // so it applies to every package uniformly.
+      ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
     };
     const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {
       if (metric.scope === 'standard') {
@@ -12975,7 +12993,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';
     }
 
-    return {
+    return narrowMetricsRecord({
       package_id: pkg.packageId,
       ...packageDeliveryMetrics,
       ...(isRevenueShare && simDelivery ? {
@@ -12997,7 +13015,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
-    };
+    }, requestedMetricsKeep);
   });
 
   // Add simulated delivery data from comply_test_controller
@@ -13118,7 +13136,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       status: deriveStatus(mb, session),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
-      totals: {
+      totals: narrowMetricsRecord({
         impressions: totalImpressions,
         spend: roundedSpend,
         clicks: totalClicks,
@@ -13139,7 +13157,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         ...conversionTotals,
         ...conversionValueTotals,
         ...simulatedViewability,
-      },
+      }, requestedMetricsKeep),
       by_package: byPackage,
     }],
   };
