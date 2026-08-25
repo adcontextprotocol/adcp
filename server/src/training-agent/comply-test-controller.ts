@@ -55,7 +55,11 @@ import {
   seedAccountFixture,
 } from './account-handlers.js';
 import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
-import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
+import {
+  verifyGovernanceToken as inspectGovernanceTokenForTraining,
+  mintRevokedDemoToken,
+  mintWrongAudDemoToken,
+} from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import {
   getSharedAccountCreative,
@@ -1571,7 +1575,7 @@ async function handleInspectGovernanceTokenFixture(rawArgs: Record<string, unkno
   }
   const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
   if (tamper) token = tamperGovernanceToken(token, tamper);
-  const result = await verifyGovernanceToken(token);
+  const result = await inspectGovernanceTokenForTraining(token);
   return {
     success: true,
     verdict: result.verdict,
