@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 
 vi.hoisted(() => {
-  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test';
-  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+  vi.stubEnv('WORKOS_API_KEY', process.env.WORKOS_API_KEY ?? 'sk_test');
+  vi.stubEnv('WORKOS_CLIENT_ID', process.env.WORKOS_CLIENT_ID ?? 'client_test');
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 vi.mock('../../src/db/agent-snapshot-db.js', () => ({
