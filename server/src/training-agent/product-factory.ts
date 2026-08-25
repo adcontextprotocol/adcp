@@ -828,6 +828,9 @@ function buildProduct(
       preferred_method: { pattern: 'sync_audiences' },
       notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
     },
+    overlay_support: {
+      geo_countries: true,
+    },
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     // Vendor-metric optimization is a publisher/inventory capability, not
