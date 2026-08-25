@@ -99,6 +99,7 @@ test('a timed-out child group is reported without losing successful siblings', a
 
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /storyboards: 2\/3 clean/);
+  assert.match(result.stdout, /selection: 3 applicable \| 1 not applicable \| 1 quarantined \| 5 corpus/);
   assert.match(result.stdout, /healthy_after/);
   assert.deepEqual(results.map(entry => entry.storyboard_id), ['healthy_before', 'healthy_after']);
   const hang = telemetry.find(entry => entry.storyboard_id === 'hang');
@@ -113,6 +114,7 @@ test('a result is persisted before a post-result child group is killed', async (
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /storyboards: 2\/2 clean/);
+  assert.match(result.stdout, /selection: 2 applicable \| 1 not applicable \| 1 quarantined \| 4 corpus/);
   assert.deepEqual(results.map(entry => entry.storyboard_id), ['post_result_hang', 'healthy_after']);
   const hanging = telemetry.find(entry => entry.storyboard_id === 'post_result_hang');
   assert.equal(hanging.result_received, true);

@@ -12,6 +12,7 @@ on:
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
+      - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
@@ -32,6 +33,7 @@ on:
       - 'scripts/build-compliance.cjs'
       - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
+      - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
@@ -69,87 +71,66 @@ jobs:
           - surface: current
             tenant: sales
         include:
-          # #3965 Class C closed by per-tenant /<tenant>/mcp-strict route
-          # restoration. The 6.0.0 multi-tenant migration (#3713) dropped the
-          # legacy /mcp-strict; the signed_requests conformance storyboard
-          # (gated on request_signing.supported and required_for) failed at
-          # discovery on every tenant. Per-tenant strict mounts share one v5
-          # monolith handler stamped with ctx.strict — request-signing is a
-          # transport-layer property, not specialism-specific. The strict
-          # authenticator carries STRICT_REQUIRED_FOR + mcpToolNameResolver
-          # and is wrapped by enforceSigningWhenWebhookAuthPresent so vectors
-          # 001 (request_signature_required) and 027 (webhook auth unsigned)
-          # both fire correctly. On the current beta.6 surface, the storyboard
-          # runs the 21 vectors compatible with required content-digest
-          # coverage; the frozen 3.0 matrix retains the legacy profiles.
-          # Re-baseline after fixing missing v6 SalesPlatform handlers
-          # (syncEventSources/logEvent), missing expect_error markers on
-          # phantom-rejection vectors (audience_buy_flow / performance_buy_flow),
-          # and the asap-timing scenario's IO_REQUIRED gap. +1-clean buffer
-          # below observed counts for flake tolerance.
+          # Floors are ratcheted from the first capability-resolved replay.
+          # Selection comes from each tenant's live get_adcp_capabilities
+          # declaration; out-of-scope and quarantined storyboards are reported
+          # separately from the result rows graded by these floors.
           - surface: current
             tenant: signals
-            min_clean_storyboards: 163
-            # Observed after the beta.6 signing-profile migration: 84 passing.
-            min_passing_steps: 83
+            min_clean_storyboards: 45
+            min_passing_steps: 80
           - surface: current
             tenant: governance
-            min_clean_storyboards: 73
-            min_passing_steps: 151
+            min_clean_storyboards: 47
+            min_passing_steps: 157
           - surface: current
             tenant: creative
-            min_clean_storyboards: 73
-            min_passing_steps: 169
+            min_clean_storyboards: 49
+            min_passing_steps: 209
           - surface: current
             tenant: creative-builder
-            min_clean_storyboards: 70
-            min_passing_steps: 146
+            min_clean_storyboards: 50
+            min_passing_steps: 184
           - surface: current
             tenant: brand
-            min_clean_storyboards: 73
-            min_passing_steps: 96
-          # /si runs through the SDK's first-class SponsoredIntelligencePlatform.
-          # AdCP 3.2 permits only required content-digest coverage; legacy
-          # either/forbidden vectors remain covered by the 3.0-compat matrix.
-          # Observed current baseline: 168 clean / 53 passing; the floor keeps
-          # one-count tolerance while required-clean gates below protect both
-          # graded SI protocol storyboards directly.
+            min_clean_storyboards: 45
+            min_passing_steps: 116
           - surface: current
             tenant: si
-            min_clean_storyboards: 167
-            min_passing_steps: 52
+            min_clean_storyboards: 42
+            min_passing_steps: 50
           - surface: 3.0-compat
             tenant: signals
-            min_clean_storyboards: 65
-            min_passing_steps: 94
+            min_clean_storyboards: 24
+            min_passing_steps: 98
           - surface: 3.0-compat
             tenant: sales
-            min_clean_storyboards: 65
-            min_passing_steps: 209
+            min_clean_storyboards: 40
+            min_passing_steps: 224
           - surface: 3.0-compat
             tenant: governance
-            min_clean_storyboards: 65
-            min_passing_steps: 135
+            min_clean_storyboards: 27
+            min_passing_steps: 147
           - surface: 3.0-compat
             tenant: creative
-            min_clean_storyboards: 65
-            min_passing_steps: 137
+            min_clean_storyboards: 22
+            min_passing_steps: 109
           - surface: 3.0-compat
             tenant: creative-builder
-            min_clean_storyboards: 65
-            min_passing_steps: 121
+            min_clean_storyboards: 24
+            min_passing_steps: 112
           - surface: 3.0-compat
             tenant: brand
-            min_clean_storyboards: 65
-            min_passing_steps: 78
+            min_clean_storyboards: 23
+            min_passing_steps: 76
           # 3.0 predates the sponsored-intelligence specialism enum and its
           # response projection therefore omits that newer claim. Keep the
           # frozen surface as a non-regression floor, not a claim of current
-          # SI specialism conformance. Observed: 64 clean / 78 passing.
+          # SI specialism conformance.
           - surface: 3.0-compat
             tenant: si
-            min_clean_storyboards: 63
-            min_passing_steps: 77
+            min_clean_storyboards: 21
+            min_passing_steps: 72
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -262,24 +243,63 @@ jobs:
           ADCP_SCHEMA_ROOT: ${{ steps.compat-bundle.outputs.schema_dir }}
         run: |
           set -uo pipefail
-          # The runner exits 1 when any storyboard step fails (intentional —
-          # dev ergonomics). CI grades pass/fail via the floor check below,
-          # not the runner's exit code. `|| true` keeps the step alive past
-          # the runner so the parse + regression-check stages can run.
-          npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log || true
+          # Creative-builder retains a large generated-schema graph after its
+          # result is complete on some Node/V8 builds. Run each storyboard in
+          # a bounded child so teardown cannot retain the whole job. Other
+          # matrix tenants remain monolithic; current /sales has its separate
+          # isolated aggregate jobs below.
+          isolated_orchestrator_failure=0
+          if [ "${{ matrix.tenant }}" = "creative-builder" ]; then
+            bash scripts/run-storyboards-isolated-shards.sh \
+              --shard-count 8 --max-parallel 4 2>&1 \
+              | tee /tmp/storyboards.log || isolated_orchestrator_failure=1
+          else
+            # The runner exits 1 when any storyboard step fails (intentional —
+            # dev ergonomics). CI grades pass/fail via the floor check below,
+            # not the runner's exit code. `|| true` keeps the step alive past
+            # the runner so the parse + regression-check stages can run.
+            npx tsx server/tests/manual/run-storyboards.ts 2>&1 | tee /tmp/storyboards.log || true
+          fi
           # `grep` returning empty is not a fatal error here — we want to
           # detect that explicitly below.
-          clean=$(grep -oE 'storyboards: [0-9]+/[0-9]+' /tmp/storyboards.log | tail -1 | grep -oE '^storyboards: [0-9]+' | grep -oE '[0-9]+$')
-          passed=$(grep -oE 'steps: [0-9]+ passed' /tmp/storyboards.log | tail -1 | grep -oE '[0-9]+')
+          storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' /tmp/storyboards.log | tail -1)
+          selection_totals=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' /tmp/storyboards.log | tail -1)
+          step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' /tmp/storyboards.log | tail -1)
           set -e
-          if [ -z "${clean}" ] || [ -z "${passed}" ]; then
+          if [ -z "${storyboard_totals}" ] || [ -z "${selection_totals}" ] || [ -z "${step_totals}" ]; then
             echo "::error::Failed to parse storyboard count from log — the runner's output format may have changed. Download the storyboards-log-${{ matrix.surface }}-${{ matrix.tenant }} artifact from this run to inspect the raw output and update the grep patterns in this workflow."
             exit 1
           fi
+          read -r clean total <<< "${storyboard_totals}"
+          read -r applicable scope_not_applicable quarantined corpus <<< "${selection_totals}"
+          read -r passed failed skipped not_applicable <<< "${step_totals}"
           {
             echo "clean=${clean}"
+            echo "total=${total}"
+            echo "applicable=${applicable}"
+            echo "scope_not_applicable=${scope_not_applicable}"
+            echo "quarantined=${quarantined}"
+            echo "corpus=${corpus}"
             echo "passed=${passed}"
+            echo "failed=${failed}"
+            echo "skipped=${skipped}"
+            echo "not_applicable=${not_applicable}"
           } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Training agent · ${{ matrix.surface }} /${{ matrix.tenant }}"
+            echo
+            echo '| Clean result rows | Result rows | Applicable storyboards | Out of scope | Quarantined | Passed steps | Failed steps | Skipped steps | N/A steps |'
+            echo '|---:|---:|---:|---:|---:|---:|---:|---:|---:|'
+            echo "| ${clean} | ${total} | ${applicable} | ${scope_not_applicable} | ${quarantined} | ${passed} | ${failed} | ${skipped} | ${not_applicable} |"
+            echo
+            echo '> Capability-resolved regression evidence; whole-storyboard quarantines and step-level runner skips remain visible and prevent this from being a badge verdict.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "${isolated_orchestrator_failure}" -ne 0 ]; then
+            echo "::error::One or more isolated creative-builder orchestrators failed. Counts above are diagnostic only."
+            exit 1
+          fi
 
       - name: Upload storyboards log on failure
         if: failure()
@@ -473,6 +493,7 @@ jobs:
             --results-file "/tmp/storyboards-sales-${{ matrix.orchestrator }}.results.jsonl" \
             2>&1 | tee "${log}"
           if ! grep -Eq '^[[:space:]]*storyboards: [0-9]+/[0-9]+ clean$' "${log}" ||
+             ! grep -Eq '^[[:space:]]*selection: [0-9]+ applicable \| [0-9]+ not applicable \| [0-9]+ quarantined \| [0-9]+ corpus$' "${log}" ||
              ! grep -Eq '^[[:space:]]*steps: [0-9]+ passed \| [0-9]+ failed \| [0-9]+ skipped \| [0-9]+ not applicable$' "${log}"; then
             echo "::error::Storyboard orchestrator ${{ matrix.orchestrator }}/${SALES_ORCHESTRATOR_COUNT} did not emit a complete totals block"
             exit 1
@@ -530,13 +551,21 @@ jobs:
           failed_sum=0
           skipped_sum=0
           not_applicable_sum=0
+          selection_expected=""
           for log in "${logs[@]}"; do
             cat "${log}" >> /tmp/storyboards.log
             echo >> /tmp/storyboards.log
             storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${log}" | tail -1)
+            selection_totals=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' "${log}" | tail -1)
             step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${log}" | tail -1)
-            if [ -z "${storyboard_totals}" ] || [ -z "${step_totals}" ]; then
+            if [ -z "${storyboard_totals}" ] || [ -z "${selection_totals}" ] || [ -z "${step_totals}" ]; then
               echo "::error::Incomplete totals in ${log}"
+              exit 1
+            fi
+            if [ -z "${selection_expected}" ]; then
+              selection_expected="${selection_totals}"
+            elif [ "${selection_totals}" != "${selection_expected}" ]; then
+              echo "::error::Inconsistent capability selection in ${log}"
               exit 1
             fi
             read -r shard_clean shard_total <<< "${storyboard_totals}"
@@ -548,16 +577,36 @@ jobs:
             skipped_sum=$((skipped_sum + shard_skipped))
             not_applicable_sum=$((not_applicable_sum + shard_not_applicable))
           done
+          read -r applicable scope_not_applicable quarantined corpus <<< "${selection_expected}"
 
           {
             echo "--- Aggregate totals ---"
             echo "  storyboards: ${clean_sum}/${total_sum} clean"
+            echo "  selection: ${applicable} applicable | ${scope_not_applicable} not applicable | ${quarantined} quarantined | ${corpus} corpus"
             echo "  steps: ${passed_sum} passed | ${failed_sum} failed | ${skipped_sum} skipped | ${not_applicable_sum} not applicable"
           } | tee -a /tmp/storyboards.log
           {
             echo "clean=${clean_sum}"
+            echo "total=${total_sum}"
+            echo "applicable=${applicable}"
+            echo "scope_not_applicable=${scope_not_applicable}"
+            echo "quarantined=${quarantined}"
+            echo "corpus=${corpus}"
             echo "passed=${passed_sum}"
+            echo "failed=${failed_sum}"
+            echo "skipped=${skipped_sum}"
+            echo "not_applicable=${not_applicable_sum}"
           } >> "$GITHUB_OUTPUT"
+
+          {
+            echo '### Training agent · current /sales'
+            echo
+            echo '| Clean result rows | Result rows | Applicable storyboards | Out of scope | Quarantined | Passed steps | Failed steps | Skipped steps | N/A steps |'
+            echo '|---:|---:|---:|---:|---:|---:|---:|---:|---:|'
+            echo "| ${clean_sum} | ${total_sum} | ${applicable} | ${scope_not_applicable} | ${quarantined} | ${passed_sum} | ${failed_sum} | ${skipped_sum} | ${not_applicable_sum} |"
+            echo
+            echo '> Capability-resolved regression evidence; quarantines and runner coverage skips remain visible and prevent this from being a badge verdict.'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload aggregate /sales log on failure
         if: failure()
@@ -572,8 +621,11 @@ jobs:
         env:
           CLEAN: ${{ steps.aggregate.outputs.clean }}
           PASSED: ${{ steps.aggregate.outputs.passed }}
-          MIN_CLEAN: 120
-          MIN_PASSED: 534
+          # First capability-resolved replay. Result-row totals include the
+          # three signed-request route profiles; storyboard applicability is
+          # reported separately in the aggregate summary.
+          MIN_CLEAN: 126
+          MIN_PASSED: 556
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"

@@ -126,7 +126,9 @@ phases:
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_get_products_brief"
           buying_mode: "brief"
-          brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $25K budget. Adults 25-54, US."
+          brief: "Display and video inventory on outdoor lifestyle content. Q2 flight, $30K budget. Adults 25-54, US."
+          filters:
+            is_fixed_price: true
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -175,7 +177,7 @@ phases:
               budget: 15000
               pricing_option_id: "$context.pricing_option_1_id"
             - product_id: "$context.product_2_id"
-              budget: 10000
+              budget: 15000
               pricing_option_id: "$context.pricing_option_2_id"
           idempotency_key: "$generate:uuid_v4#media_buy_seller_delivery_reporting_setup_create_media_buy"
         context_outputs:

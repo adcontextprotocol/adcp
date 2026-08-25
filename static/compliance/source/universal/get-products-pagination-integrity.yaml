@@ -66,6 +66,7 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
+          selection_type: "all"
       format_options:
         - format_option_id: "get_products_pagination_integrity_display"
           format_kind: "image"
@@ -79,6 +80,7 @@ fixtures:
       channels: ["display"]
       publisher_properties:
         - publisher_domain: "acmeoutdoor.example"
+          selection_type: "all"
       format_options:
         - format_option_id: "get_products_pagination_integrity_display"
           format_kind: "image"

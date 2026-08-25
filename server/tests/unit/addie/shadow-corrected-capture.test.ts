@@ -84,6 +84,23 @@ describe('extractKatiePattern', () => {
     expect(result!.humanResponses[0]).toContain('TLDR');
   });
 
+  it('anchors the latest answer to the immediately preceding question', () => {
+    const messages = [
+      HUMAN('1.0', 'Q1: How does private directory visibility work for a new organization?'),
+      ADDIE('2.0', 'A1: Private directory visibility follows organization settings.'),
+      HUMAN('3.0', 'Q2: What does the current release require for public agent registration?'),
+      ADDIE('4.0', 'A2: Public registration uses the current release registration workflow.'),
+      HUMAN('5.0', 'Correction: the answer also needs to distinguish listing from registration.'),
+    ];
+    const result = extractKatiePattern(
+      messages,
+      'A2: Public registration uses the current release registration workflow.',
+    );
+    expect(result?.question).toContain('Q2');
+    expect(result?.question).not.toContain('Q1');
+    expect(result?.addieResponse).toContain('A2');
+  });
+
   it('handles out-of-order Slack messages by sorting on ts', () => {
     // Slack sometimes returns thread replies out of order; the extractor
     // sorts by ts before pattern-matching.
@@ -107,6 +124,28 @@ describe('extractKatiePattern', () => {
       { user: 'U_OTHER_BOT', bot_id: 'B_OTHER', text: 'A linked PR was just merged in adcontextprotocol/adcp', ts: '3.0' },
     ];
     expect(extractKatiePattern(messages)).toBeNull();
+  });
+
+  it('rejects an ambiguous follow-up after a different bot posts', () => {
+    const messages: SlackMsg[] = [
+      HUMAN('1.0', 'How does an agent get registered in the public directory?'),
+      ADDIE('2.0', "Here is Addie's attributable production answer."),
+      { user: 'U_OTHER_BOT', bot_id: 'B_OTHER', text: 'A different bot supplied unrelated automation output.', ts: '3.0' },
+      HUMAN('4.0', 'This follow-up is responding after the other bot, so attribution is ambiguous.'),
+    ];
+    expect(
+      extractKatiePattern(messages, "Here is Addie's attributable production answer."),
+    ).toBeNull();
+  });
+
+  it('matches the persisted Addie answer through Slack URL wrapping', () => {
+    const persisted = 'Read https://example.invalid/docs for the complete answer.';
+    const messages: SlackMsg[] = [
+      HUMAN('1.0', 'Where can I find the complete implementation documentation?'),
+      ADDIE('2.0', 'Read <https://example.invalid/docs> for the complete answer.'),
+      HUMAN('3.0', 'The missing detail is that this applies only to the current release.'),
+    ];
+    expect(extractKatiePattern(messages, persisted)?.addieResponse).toContain('example.invalid');
   });
 
   it('captures multiple substantive human follow-ups when present', () => {

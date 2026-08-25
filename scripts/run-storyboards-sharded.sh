@@ -48,9 +48,9 @@ trap cleanup EXIT
 run_shard() {
   local index="$1"
   if [ -n "${STORYBOARD_RUNNER_BIN:-}" ]; then
-    "${STORYBOARD_RUNNER_BIN}" "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    "${STORYBOARD_RUNNER_BIN}" ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   else
-    npx tsx server/tests/manual/run-storyboards.ts "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    npx tsx server/tests/manual/run-storyboards.ts ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   fi
 }
 
@@ -60,6 +60,7 @@ passed_sum=0
 failed_sum=0
 skipped_sum=0
 not_applicable_sum=0
+selection_expected=""
 
 for ((index = 0; index < SHARD_COUNT; index += 1)); do
   shard_number=$((index + 1))
@@ -72,14 +73,21 @@ for ((index = 0; index < SHARD_COUNT; index += 1)); do
   # ensures only the final aggregate matches the graders' patterns.
   run_shard "${index}" 2>&1 \
     | tee "${shard_log}" \
-    | perl -pe 'BEGIN { $| = 1 } s/^(\s*)--- Totals ---/$1--- Shard result ---/; s/^(\s*)storyboards: ([0-9]+\/[0-9]+ clean)$/$1shard result: $2/; s/^(\s*)steps: (.*)$/$1shard step result: $2/'
+    | perl -pe 'BEGIN { $| = 1 } s/^(\s*)--- Totals ---/$1--- Shard result ---/; s/^(\s*)storyboards: ([0-9]+\/[0-9]+ clean)$/$1shard result: $2/; s/^(\s*)selection: (.*)$/$1shard selection: $2/; s/^(\s*)steps: (.*)$/$1shard step result: $2/'
   runner_status=${PIPESTATUS[0]}
 
   storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${shard_log}" | tail -1)
   step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${shard_log}" | tail -1)
+  selection_totals=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' "${shard_log}" | tail -1)
 
-  if [ -z "${storyboard_totals}" ] || [ -z "${step_totals}" ]; then
+  if [ -z "${storyboard_totals}" ] || [ -z "${step_totals}" ] || [ -z "${selection_totals}" ]; then
     echo "::error::Storyboard shard ${shard_number}/${SHARD_COUNT} exited ${runner_status} without a complete totals block" >&2
+    exit 1
+  fi
+  if [ -z "${selection_expected}" ]; then
+    selection_expected="${selection_totals}"
+  elif [ "${selection_totals}" != "${selection_expected}" ]; then
+    echo "::error::Storyboard shard ${shard_number}/${SHARD_COUNT} reported inconsistent capability selection" >&2
     exit 1
   fi
 
@@ -96,4 +104,6 @@ done
 echo ""
 echo "--- Totals ---"
 echo "  storyboards: ${clean_sum}/${total_sum} clean"
+read -r selected_total scope_not_applicable quarantined_total corpus_total <<< "${selection_expected}"
+echo "  selection: ${selected_total} applicable | ${scope_not_applicable} not applicable | ${quarantined_total} quarantined | ${corpus_total} corpus"
 echo "  steps: ${passed_sum} passed | ${failed_sum} failed | ${skipped_sum} skipped | ${not_applicable_sum} not applicable"

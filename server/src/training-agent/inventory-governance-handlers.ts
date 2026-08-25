@@ -11,7 +11,7 @@ import type { TrainingContext, ToolArgs, CollectionListState } from './types.js'
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
-import { validateWebhookUrl } from './webhook-fetch.js';
+import { isWebhookTestOrDevelopment, validateWebhookUrl } from './webhook-fetch.js';
 
 const MAX_ARRAY_INPUT = 100;
 
@@ -215,7 +215,9 @@ export async function handleUpdateCollectionList(args: ToolArgs, ctx: TrainingCo
   if (!list) return { errors: [{ code: 'NOT_FOUND', message: `Collection list ${input.list_id} not found` }] };
 
   if (input.webhook_url !== undefined && input.webhook_url !== '') {
-    const webhookError = await validateWebhookUrl(input.webhook_url);
+    const webhookError = await validateWebhookUrl(input.webhook_url, {
+      allowLoopback: isWebhookTestOrDevelopment(process.env.NODE_ENV),
+    });
     if (webhookError) return { errors: [webhookError] };
   }
 

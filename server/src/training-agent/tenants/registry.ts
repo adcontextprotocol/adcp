@@ -281,7 +281,7 @@ export function createRegistryHolder(options: {
         });
         const tCreate = Date.now();
         const configs = [
-          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options) },
+          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options, taskRegistry) },
           { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options, taskRegistry) },
           { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
           { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },

@@ -330,6 +330,10 @@ export interface SeededProductAvailability {
 export interface ComplyExtensions {
   accountStatuses: Map<string, string>;
   siSessions: Map<string, { status: string; terminationReason?: string }>;
+  /** Terminal controller states retained only within the owning sandbox
+   * session so repeated transition probes cannot cross account boundaries. */
+  forcedCreativeTerminalStates: Map<string, string>;
+  forcedMediaBuyTerminalStates: Map<string, string>;
   deliverySimulations: Map<string, ComplyDeliveryAccumulator>;
   budgetSimulations: Map<string, ComplyBudgetSimulation>;
   /** Products seeded via comply_test_controller.seed_product. Session-scoped overlay
@@ -372,6 +376,12 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot submitted response for the next brief-mode get_signals call. */
+  forcedGetSignalsArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
   /** Single-shot rejected response for the principal's next brief/refine request. */
   forcedGetProductsRejections: Map<string, {
     reason: string;
@@ -383,6 +393,7 @@ export interface ComplyExtensions {
   forcedUpstreamUnavailable?: {
     tool: string;
     upstreamName?: string;
+    cacheAgeSeconds?: number;
     createdAt: string;
   };
 }
@@ -721,6 +732,7 @@ export interface CreativeState {
   formatOptionRef?: Record<string, unknown>;
   assets?: Record<string, ManifestAsset | ManifestAsset[]>;
   componentAssets?: Record<string, Record<string, ManifestAsset | ManifestAsset[]>>;
+  localization?: Record<string, unknown>;
   name?: string;
   status: string;
   syncedAt: string;

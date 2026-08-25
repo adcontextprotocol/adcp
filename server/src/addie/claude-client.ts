@@ -6,6 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-claude-client');
@@ -36,6 +37,83 @@ import {
 } from './security.js';
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+export type AddieExecutionMode = 'production' | 'evaluation' | 'replay';
+
+export interface ToolExecutionPolicyRequest {
+  toolName: string;
+  input: Readonly<Record<string, unknown>>;
+  tool?: Readonly<AddieTool>;
+  executionMode: AddieExecutionMode;
+}
+
+export interface ToolExecutionPolicyDecision {
+  allowed: boolean;
+}
+
+/**
+ * A policy is fail-closed: only an explicit `{ allowed: true }` dispatches the
+ * handler. A rejection, exception, or malformed decision produces a stable
+ * blocked receipt instead.
+ */
+export type ToolExecutionPolicy = (
+  request: ToolExecutionPolicyRequest,
+) => ToolExecutionPolicyDecision | Promise<ToolExecutionPolicyDecision>;
+
+export interface InvocationPreparedSnapshot {
+  execution_mode: AddieExecutionMode;
+  model: string;
+  iteration: number;
+  attempt: number;
+  system_blocks: Array<{ index: number; sha256: string }>;
+  tool_schemas: Array<{ index: number; name: string; sha256: string }>;
+  message_payloads: Array<{ index: number; sha256: string }>;
+  message_count: number;
+  /** HMAC/SHA-256 of the exact object handed to the Anthropic SDK. */
+  provider_request_sha256: string;
+}
+
+interface PreparedProviderRequest {
+  model: string;
+  max_tokens: number;
+  system: Anthropic.TextBlockParam[];
+  tools: Array<Record<string, unknown>>;
+  messages: Anthropic.MessageParam[];
+  betas?: readonly string[];
+}
+
+const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
+
+function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
+  return options?.executionMode === 'evaluation' || options?.executionMode === 'replay';
+}
+
+function hashPreparedPayload(
+  value: string,
+  executionMode: AddieExecutionMode,
+  key?: string,
+  domain?: string,
+): string {
+  const hasKey = typeof key === 'string' && key.length > 0;
+  const hasDomain = typeof domain === 'string' && domain.length > 0;
+
+  // Evaluation provenance is only attributable when both caller-owned HMAC
+  // inputs are present. A partial configuration must never silently fall back
+  // to an unkeyed digest. Production callers that do not request HMAC hashing
+  // retain the historical SHA-256 behavior.
+  if (hasKey || hasDomain || executionMode === 'evaluation' || executionMode === 'replay') {
+    if (!hasKey || !hasDomain) return 'unavailable';
+    return createHmac('sha256', key)
+      .update('addie-invocation\0', 'utf8')
+      .update(String(Buffer.byteLength(domain, 'utf8')), 'utf8')
+      .update('\0', 'utf8')
+      .update(domain, 'utf8')
+      .update('\0', 'utf8')
+      .update(value, 'utf8')
+      .digest('hex');
+  }
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
 
 type StopAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
 
@@ -405,6 +483,8 @@ function reportEmptyResponseFallback(
   model: string,
   iteration: number,
 ): void {
+  if (isEvaluationExecution(options)) return;
+
   const successful = toolExecutions.filter(t => !t.is_error).length;
   const errored = toolExecutions.length - successful;
   const toolNames = toolsUsed.length > 0 ? toolsUsed.join(', ') : 'none';
@@ -476,6 +556,29 @@ export interface UserScopedToolsResult {
  * Options for message processing
  */
 export interface ProcessMessageOptions {
+  /** Request-local execution mode. Evaluation/replay suppress operational side effects. */
+  executionMode?: AddieExecutionMode;
+  /** Exclude provider-managed tools such as web search for this request only. */
+  disableServerTools?: boolean;
+  /**
+   * Exact request-local custom-tool allowlist. When present, global and
+   * request-scoped tools outside this list are omitted before prompt sizing,
+   * schema construction, and handler dispatch.
+   */
+  allowedToolNames?: readonly string[];
+  /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
+  invocationHashKey?: string;
+  /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
+  invocationHashDomain?: string;
+  /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
+  toolExecutionPolicy?: ToolExecutionPolicy;
+  /**
+   * Called immediately before an Anthropic invocation with hashes of the exact,
+   * ordered system and tool payloads. Transcript content is intentionally absent.
+   */
+  onInvocationPrepared?: (
+    snapshot: InvocationPreparedSnapshot,
+  ) => void | Promise<void>;
   /** Maximum tool iterations (default: DEFAULT_MAX_ITERATIONS) */
   maxIterations?: number;
   /** Override the default model for this request (e.g., for billing queries requiring precision) */
@@ -543,6 +646,7 @@ export interface ToolExecution {
   is_error: boolean;
   duration_ms: number;
   sequence: number;
+  blocked_by_policy?: true;
 }
 
 export interface AddieResponse {
@@ -630,6 +734,10 @@ export class AddieClaudeClient {
    */
   setWebSearchEnabled(enabled: boolean): void {
     this.webSearchEnabled = enabled;
+  }
+
+  isWebSearchEnabled(): boolean {
+    return this.webSearchEnabled;
   }
 
   /**
@@ -755,6 +863,99 @@ export class AddieClaudeClient {
     );
   }
 
+  private buildInvocationPreparedSnapshot(
+    options: ProcessMessageOptions | undefined,
+    providerRequest: PreparedProviderRequest,
+    iteration: number,
+    attempt: number,
+  ): InvocationPreparedSnapshot {
+    const executionMode = options?.executionMode ?? 'production';
+    const hash = (value: unknown) => hashPreparedPayload(
+      JSON.stringify(value),
+      executionMode,
+      options?.invocationHashKey,
+      options?.invocationHashDomain,
+    );
+    return {
+      execution_mode: executionMode,
+      model: providerRequest.model,
+      iteration,
+      attempt,
+      system_blocks: providerRequest.system.map((block, index) => ({
+        index,
+        sha256: hash(block),
+      })),
+      tool_schemas: providerRequest.tools.map((tool, index) => ({
+        index,
+        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
+        sha256: hash(tool),
+      })),
+      message_payloads: providerRequest.messages.map((message, index) => ({
+        index,
+        sha256: hash(message),
+      })),
+      message_count: providerRequest.messages.length,
+      provider_request_sha256: hash(providerRequest),
+    };
+  }
+
+  private async notifyInvocationPrepared(
+    options: ProcessMessageOptions | undefined,
+    providerRequest: PreparedProviderRequest,
+    iteration: number,
+    attempt: number,
+  ): Promise<void> {
+    if (!options?.onInvocationPrepared) return;
+    await options.onInvocationPrepared(this.buildInvocationPreparedSnapshot(
+      options,
+      providerRequest,
+      iteration,
+      attempt,
+    ));
+  }
+
+  private async isToolExecutionAllowed(
+    options: ProcessMessageOptions | undefined,
+    toolName: string,
+    toolInput: Record<string, unknown>,
+    tool: AddieTool | undefined,
+  ): Promise<boolean> {
+    if (!options?.toolExecutionPolicy) return !isEvaluationExecution(options);
+
+    try {
+      const decision = await options.toolExecutionPolicy({
+        toolName,
+        input: toolInput,
+        tool,
+        executionMode: options.executionMode ?? 'production',
+      });
+      return decision?.allowed === true;
+    } catch {
+      logger.warn(
+        { toolName, executionMode: options.executionMode ?? 'production' },
+        'Addie: Tool execution policy failed closed',
+      );
+      return false;
+    }
+  }
+
+  private recordedToolParameters(
+    options: ProcessMessageOptions | undefined,
+    toolInput: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return isEvaluationExecution(options) ? {} : toolInput;
+  }
+
+  private recordedToolResult(
+    options: ProcessMessageOptions | undefined,
+    result: string,
+    kind: 'success' | 'error' | 'blocked',
+  ): string {
+    if (!isEvaluationExecution(options)) return result;
+    if (kind === 'blocked') return BLOCKED_TOOL_RESULT;
+    return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
+  }
+
   /**
    * Invalidate the cached system prompt (forces re-read of rule files)
    */
@@ -768,6 +969,156 @@ export class AddieClaudeClient {
   registerTool(tool: AddieTool, handler: ToolHandler): void {
     this.tools.push(tool);
     this.toolHandlers.set(tool.name, handler);
+  }
+
+  /** Confirm a production client has every definition and handler in a bounded profile. */
+  hasRegisteredTools(toolNames: readonly string[]): boolean {
+    const definitions = new Set(this.tools.map((tool) => tool.name));
+    return toolNames.every((name) => definitions.has(name) && this.toolHandlers.has(name));
+  }
+
+  private prepareFirstNonStreamingInvocation(
+    userMessage: string,
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools,
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions,
+  ) {
+    const requestWebSearchEnabled = this.webSearchEnabled
+      && !isEvaluationExecution(options)
+      && options?.disableServerTools !== true;
+    const effectiveModel = options?.modelOverride ?? this.model;
+
+    const promptStart = Date.now();
+    const systemPrompt = rulesOverride
+      ? rulesOverride.systemPrompt
+      : this.getSystemPrompt().prompt;
+    const systemPromptMs = Date.now() - promptStart;
+
+    const systemBlocks: Anthropic.TextBlockParam[] = [
+      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
+    ];
+    if (options?.requestContext?.trim()) {
+      systemBlocks.push({ type: 'text', text: options.requestContext });
+    }
+
+    const allowedToolNames = options?.allowedToolNames
+      ? new Set(options.allowedToolNames)
+      : null;
+    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
+    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()]
+      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allHandlers = new Map(
+      [...this.toolHandlers, ...(requestTools?.handlers || [])]
+        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
+    );
+    const toolCount = allTools.length + (requestWebSearchEnabled ? 1 : 0);
+    const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
+    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
+      model: effectiveModel,
+      toolCount,
+      maxMessages: options?.maxMessages,
+      compactToolResults: true,
+      currentSpeakerName: options?.currentSpeakerName,
+    });
+
+    if (messageTurnsResult.wasTrimmed && messageTurnsResult.messagesRemoved > 10) {
+      const summary = messageTurnsResult.droppedMessages
+        ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
+        : null;
+      const contextWarning = summary
+        || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
+      systemBlocks.push({ type: 'text', text: contextWarning });
+    }
+
+    const messages: Anthropic.MessageParam[] = appendInputAttachments(
+      toAnthropicMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
+    const customTools: Anthropic.Tool[] = allTools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.input_schema as Anthropic.Tool['input_schema'],
+    }));
+    if (customTools.length > 0) {
+      customTools[customTools.length - 1] = {
+        ...customTools[customTools.length - 1],
+        cache_control: { type: 'ephemeral' },
+      };
+    }
+
+    const firstInvocationTools = [
+      ...customTools,
+      ...(requestWebSearchEnabled ? [{
+        type: 'web_search_20250305' as const,
+        name: 'web_search' as const,
+      }] : []),
+    ];
+
+    return {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      customTools,
+      firstInvocationTools,
+      requestWebSearchEnabled,
+      systemPromptMs,
+    };
+  }
+
+  private buildProviderRequest(
+    effectiveModel: string,
+    systemBlocks: Anthropic.TextBlockParam[],
+    tools: Array<Record<string, unknown>>,
+    messages: Anthropic.MessageParam[],
+  ) {
+    return {
+      model: effectiveModel,
+      // Sonnet 5 uses adaptive thinking by default; leave room for its
+      // thinking summary plus the user-visible answer/tool calls.
+      max_tokens: 8192,
+      system: systemBlocks,
+      tools,
+      messages,
+      betas: ['web-search-2025-03-05'] as const,
+    };
+  }
+
+  /**
+   * Prepare provenance for the exact first non-streaming model invocation.
+   * This performs prompt/tool/message assembly only: it does not call the
+   * provider, invoke tools, run cost/config tracking, or fire the callback.
+   */
+  prepareMessageInvocation(
+    userMessage: string,
+    threadContext?: Array<{ user: string; text: string }>,
+    requestTools?: RequestTools,
+    rulesOverride?: RulesOverride,
+    options?: ProcessMessageOptions,
+  ): InvocationPreparedSnapshot {
+    const prepared = this.prepareFirstNonStreamingInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      rulesOverride,
+      options,
+    );
+    const providerRequest = this.buildProviderRequest(
+      prepared.effectiveModel,
+      prepared.systemBlocks,
+      prepared.firstInvocationTools as unknown as Array<Record<string, unknown>>,
+      prepared.messages,
+    );
+    return this.buildInvocationPreparedSnapshot(
+      options,
+      providerRequest,
+      1,
+      1,
+    );
   }
 
   /**
@@ -787,13 +1138,15 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
+    const operationalExecution = !isEvaluationExecution(options);
+
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
     // caller could ship uncapped and nobody would notice — this log
     // turns that into an observability signal. A hard throw would
     // break legitimate callers we haven't migrated yet; loud-log
     // lets audit rules alert on the event.
-    if (!options?.costScope && !options?.uncapped) {
+    if (operationalExecution && !options?.costScope && !options?.uncapped) {
       logger.warn(
         { event: 'cost_cap_unwired', method: 'processMessage' },
         'claude-client called without costScope or uncapped:true — cost cap silently bypassed',
@@ -806,7 +1159,7 @@ export class AddieClaudeClient {
     // (billable) Claude call. The caller's ProcessMessageOptions
     // carries both `userId` and `tier` so we don't have to resolve
     // the subscription tier here.
-    if (options?.costScope) {
+    if (operationalExecution && options?.costScope) {
       const capResult = await checkCostCap(
         options.costScope.userId,
         options.costScope.tier,
@@ -849,58 +1202,42 @@ export class AddieClaudeClient {
     let totalCacheCreationTokens = 0;
     let totalCacheReadTokens = 0;
 
-    // Get system prompt - use override if provided, otherwise from rule files
-    const promptStart = Date.now();
-    let systemPrompt: string;
+    const prepared = this.prepareFirstNonStreamingInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      rulesOverride,
+      options,
+    );
+    const {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      customTools,
+      firstInvocationTools,
+      requestWebSearchEnabled,
+    } = prepared;
+    systemPromptMs = prepared.systemPromptMs;
 
     if (rulesOverride) {
-      systemPrompt = rulesOverride.systemPrompt;
       logger.debug('Addie: Using rules override');
-    } else {
-      const promptResult = this.getSystemPrompt();
-      systemPrompt = promptResult.prompt;
-    }
-    systemPromptMs = Date.now() - promptStart;
-
-    // Build system content as array: base prompt is cached, requestContext is not.
-    // Separating them lets Anthropic cache the stable base while the dynamic
-    // per-user context (member profile, channel, goals) is sent fresh each call.
-    const systemBlocks: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-    ];
-    if (options?.requestContext?.trim()) {
-      systemBlocks.push({ type: 'text', text: options.requestContext });
     }
 
     // Get config version ID for this interaction (skip for eval mode)
-    const configVersionId = rulesOverride ? undefined : await getCurrentConfigVersionId();
+    const configVersionId = rulesOverride || !operationalExecution
+      ? undefined
+      : await getCurrentConfigVersionId();
 
     const maxIterations = options?.maxIterations ?? 10;
-    const effectiveModel = options?.modelOverride ?? this.model;
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie: Using precision model for billing/financial query');
     }
-
-    // Combine global tools with per-request tools, deduplicating by name (last wins)
-    // Calculate tool count first to inform token budget for conversation history
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
-    const toolCount = allTools.length + (this.webSearchEnabled ? 1 : 0);
-
-    // Build proper message turns from thread context
-    // This sends conversation history as actual user/assistant turns, not flattened text
-    // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Compact old tool results in all conversations to reclaim context
-    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: effectiveModel,
-      toolCount,
-      maxMessages: options?.maxMessages,
-      compactToolResults: true,
-      currentSpeakerName: options?.currentSpeakerName,
-    });
 
     if (messageTurnsResult.wasTrimmed) {
       logger.info(
@@ -912,34 +1249,6 @@ export class AddieClaudeClient {
         },
         'Addie: Trimmed conversation history to fit context limit'
       );
-      // Inject dropped conversation summary so Addie has context from earlier turns
-      if (messageTurnsResult.messagesRemoved > 10) {
-        const summary = messageTurnsResult.droppedMessages
-          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
-          : null;
-        const contextWarning = summary
-          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
-        systemBlocks.push({ type: 'text', text: contextWarning });
-      }
-    }
-
-    const messages: Anthropic.MessageParam[] = appendInputAttachments(
-      toAnthropicMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-
-    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
-    // Mark the last custom tool with cache_control so Anthropic caches all tool definitions.
-    const customTools: Anthropic.Tool[] = allTools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
     }
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
@@ -951,31 +1260,50 @@ export class AddieClaudeClient {
       // Use beta API to access web search
       const llmStart = Date.now();
       let response;
+      const invocationTools = retriedEmptyPostToolResponse ? [] : firstInvocationTools;
+      let invocationAttempt = 0;
       try {
-        response = await withRetry(
-          () => this.client.beta.messages.create({
-            model: effectiveModel,
-            // Sonnet 5 uses adaptive thinking by default; leave room for its
-            // thinking summary plus the user-visible answer/tool calls.
-            max_tokens: 8192,
-            system: systemBlocks,
-            tools: retriedEmptyPostToolResponse ? [] : [
-              ...customTools,
-              // Add web search tool via beta API
-              ...(this.webSearchEnabled ? [{
-                type: 'web_search_20250305' as const,
-                name: 'web_search' as const,
-              }] : []),
-            ],
+        const invokeProvider = async (sdkMaxRetries?: number) => {
+          invocationAttempt++;
+          const providerRequest = this.buildProviderRequest(
+            effectiveModel,
+            systemBlocks,
+            invocationTools as unknown as Array<Record<string, unknown>>,
             messages,
-            betas: ['web-search-2025-03-05'],
-          }),
-          { maxRetries: 3, initialDelayMs: 1000 },
-          'processMessage'
-        );
+          );
+          await this.notifyInvocationPrepared(
+            options,
+            providerRequest,
+            iteration,
+            invocationAttempt,
+          );
+          return this.client.beta.messages.create(
+            providerRequest as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming,
+            sdkMaxRetries === undefined ? undefined : { maxRetries: sdkMaxRetries },
+          );
+        };
+        // A replay is an exactly-once paid experiment. A timeout can occur
+        // after provider acceptance, so neither our outer retry helper nor the
+        // Anthropic SDK may submit the request again.
+        response = options?.executionMode === 'replay'
+          ? await invokeProvider(0)
+          : await withRetry(
+            () => invokeProvider(),
+            { maxRetries: 3, initialDelayMs: 1000 },
+            'processMessage',
+          );
       } catch (error) {
-        const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, this.webSearchEnabled ? 1 : 0);
-        this.logPromptOverflow(error, stats, 'processMessage');
+        const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, requestWebSearchEnabled ? 1 : 0);
+        if (options?.executionMode === 'replay') {
+          // Provider errors may echo request text. Replay logs only categorical
+          // metadata; the signed ledger records the terminal outcome.
+          logger.error(
+            { source: 'processMessage', payload: stats },
+            'Addie: Replay provider invocation failed',
+          );
+        } else {
+          this.logPromptOverflow(error, stats, 'processMessage');
+        }
         throw error;
       }
 
@@ -1053,15 +1381,18 @@ export class AddieClaudeClient {
 
           toolExecutions.push({
             tool_name: 'web_search',
-            parameters: params,
-            result: detailedResult,
-            result_summary: resultSummary,
+            parameters: this.recordedToolParameters(options, params),
+            result: this.recordedToolResult(options, detailedResult, 'success'),
+            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
             is_error: false,
             duration_ms: 0,
             sequence: executionSequence,
           });
 
-          logger.debug({ resultCount, query: params.query }, 'Addie: Web search completed');
+          logger.debug(
+            { resultCount, ...(operationalExecution && { query: params.query }) },
+            'Addie: Web search completed',
+          );
         }
       }
 
@@ -1111,7 +1442,7 @@ export class AddieClaudeClient {
           },
           'Addie: Anthropic stopped before response completion',
         );
-        if (options?.costScope) {
+        if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
             options.modelOverride ?? AddieModelConfig.chat,
@@ -1195,7 +1526,7 @@ export class AddieClaudeClient {
         // Runs after the response is built so a successful charge
         // counts even if a downstream flag/logging failure occurs.
         // recordCost no-ops for missing userId / system users.
-        if (options?.costScope) {
+        if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
             options?.modelOverride ?? AddieModelConfig.chat,
@@ -1278,9 +1609,9 @@ export class AddieClaudeClient {
 
           toolExecutions.push({
             tool_name: serverBlock.name,
-            parameters: params,
-            result: detailedResult,
-            result_summary: resultSummary,
+            parameters: this.recordedToolParameters(options, params),
+            result: this.recordedToolResult(options, detailedResult, 'success'),
+            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
             is_error: false,
             duration_ms: 0, // Server-managed, we don't have timing
             sequence: executionSequence,
@@ -1288,7 +1619,7 @@ export class AddieClaudeClient {
 
           logger.debug({
             toolName: serverBlock.name,
-            input: serverBlock.input,
+            ...(operationalExecution && { input: serverBlock.input }),
             resultCount
           }, 'Addie: Server tool executed (web_search)');
         }
@@ -1323,7 +1654,7 @@ export class AddieClaudeClient {
               'Addie: Normally completed response exceeded output cap',
             );
           }
-          if (options?.costScope) {
+          if (operationalExecution && options?.costScope) {
             await recordCost(options.costScope.userId, options.modelOverride ?? AddieModelConfig.chat, terminalUsage);
           }
           return {
@@ -1363,7 +1694,10 @@ export class AddieClaudeClient {
           const toolUseId = block.id;
           const startTime = Date.now();
 
-          logger.debug({ toolName, toolInput }, 'Addie: Calling tool');
+          logger.debug(
+            { toolName, ...(operationalExecution && { toolInput }) },
+            'Addie: Calling tool',
+          );
           toolsUsed.push(toolName);
           executionSequence++;
 
@@ -1377,11 +1711,36 @@ export class AddieClaudeClient {
             });
             toolExecutions.push({
               tool_name: toolName,
-              parameters: toolInput,
-              result: `Error: Unknown tool "${toolName}"`,
+              parameters: this.recordedToolParameters(options, toolInput),
+              result: this.recordedToolResult(options, `Error: Unknown tool "${toolName}"`, 'error'),
               is_error: true,
               duration_ms: durationMs,
               sequence: executionSequence,
+            });
+            continue;
+          }
+
+          const allowed = await this.isToolExecutionAllowed(
+            options,
+            toolName,
+            toolInput,
+            toolsByName.get(toolName),
+          );
+          if (!allowed) {
+            toolResults.push({
+              tool_use_id: toolUseId,
+              content: BLOCKED_TOOL_RESULT,
+              is_error: true,
+            });
+            toolExecutions.push({
+              tool_name: toolName,
+              parameters: this.recordedToolParameters(options, toolInput),
+              result: BLOCKED_TOOL_RESULT,
+              result_summary: 'Blocked by tool execution policy',
+              is_error: true,
+              duration_ms: 0,
+              sequence: executionSequence,
+              blocked_by_policy: true,
             });
             continue;
           }
@@ -1399,21 +1758,25 @@ export class AddieClaudeClient {
                 toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                 toolExecutions.push({
                   tool_name: toolName,
-                  parameters: toolInput,
-                  result: multimodalBlocks.summary,
-                  result_summary: multimodalBlocks.summary,
+                  parameters: this.recordedToolParameters(options, toolInput),
+                  result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
+                  result_summary: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
                   is_error: false,
                   duration_ms: durationMs,
                   sequence: executionSequence,
                 });
-                logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie: Processed multimodal tool result');
+                logger.info({
+                  toolName,
+                  multimodalType: multimodal?.type,
+                  ...(operationalExecution && { filename: multimodal?.filename }),
+                }, 'Addie: Processed multimodal tool result');
               } else {
                 // Failed to parse or validate multimodal content
                 toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
                 toolExecutions.push({
                   tool_name: toolName,
-                  parameters: toolInput,
-                  result: 'Error: Failed to process file content',
+                  parameters: this.recordedToolParameters(options, toolInput),
+                  result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
                   is_error: true,
                   duration_ms: durationMs,
                   sequence: executionSequence,
@@ -1424,9 +1787,9 @@ export class AddieClaudeClient {
               toolResults.push({ tool_use_id: toolUseId, content: result });
               toolExecutions.push({
                 tool_name: toolName,
-                parameters: toolInput,
-                result,
-                result_summary: this.summarizeToolResult(toolName, result),
+                parameters: this.recordedToolParameters(options, toolInput),
+                result: this.recordedToolResult(options, result, 'success'),
+                result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
                 is_error: false,
                 duration_ms: durationMs,
                 sequence: executionSequence,
@@ -1438,10 +1801,12 @@ export class AddieClaudeClient {
             const isExpected = error instanceof ToolError;
             const errorResult = `Error: ${errorMessage}`;
             if (isExpected) {
-              logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool returned expected error');
+              logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie: Tool returned expected error');
             } else {
-              logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie: Tool threw unexpected exception');
-              notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+              logger.error({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie: Tool threw unexpected exception');
+              if (operationalExecution) {
+                notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+              }
             }
             toolResults.push({
               tool_use_id: toolUseId,
@@ -1450,8 +1815,8 @@ export class AddieClaudeClient {
             });
             toolExecutions.push({
               tool_name: toolName,
-              parameters: toolInput,
-              result: errorResult,
+              parameters: this.recordedToolParameters(options, toolInput),
+              result: this.recordedToolResult(options, errorResult, 'error'),
               is_error: true,
               duration_ms: durationMs,
               sequence: executionSequence,
@@ -1484,7 +1849,7 @@ export class AddieClaudeClient {
     // Still charge the user for tokens actually consumed on the way
     // to hitting max-iterations — those bytes DID go to Anthropic
     // and DID cost money, regardless of whether the session converged.
-    if (options?.costScope) {
+    if (operationalExecution && options?.costScope) {
       await recordCost(
         options.costScope.userId,
         options?.modelOverride ?? AddieModelConfig.chat,
@@ -1526,8 +1891,10 @@ export class AddieClaudeClient {
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
+    const operationalExecution = !isEvaluationExecution(options);
+
     // #2950: matching fail-closed warn on the stream path.
-    if (!options?.costScope && !options?.uncapped) {
+    if (operationalExecution && !options?.costScope && !options?.uncapped) {
       logger.warn(
         { event: 'cost_cap_unwired', method: 'processMessageStream' },
         'claude-client stream called without costScope or uncapped:true — cost cap silently bypassed',
@@ -1541,7 +1908,7 @@ export class AddieClaudeClient {
     let certificationReserveUsed = false;
     let certificationLeaseId: string | undefined;
     let certificationLeaseHeartbeat: ReturnType<typeof setInterval> | undefined;
-    if (options?.costScope) {
+    if (operationalExecution && options?.costScope) {
       const capResult = await checkCostCap(
         options.costScope.userId,
         options.costScope.tier,
@@ -1615,7 +1982,9 @@ export class AddieClaudeClient {
     }
 
     // Get config version ID for this interaction (for tracking/analysis)
-    const configVersionId = await getCurrentConfigVersionId();
+    const configVersionId = operationalExecution
+      ? await getCurrentConfigVersionId()
+      : undefined;
 
     // Determine effective model (support precision mode override for billing/financial)
     const effectiveModel = options?.modelOverride ?? this.model;
@@ -1625,9 +1994,17 @@ export class AddieClaudeClient {
 
     // Combine global tools with per-request tools, deduplicating by name (last wins)
     // Calculate tool count first to inform token budget for conversation history
+    const allowedToolNames = options?.allowedToolNames
+      ? new Set(options.allowedToolNames)
+      : null;
     const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()];
-    const allHandlers = new Map([...this.toolHandlers, ...(requestTools?.handlers || [])]);
+    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()]
+      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allHandlers = new Map(
+      [...this.toolHandlers, ...(requestTools?.handlers || [])]
+        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
+    );
+    const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
     const toolCount = allTools.length; // Note: streaming doesn't use web search
 
     // Build proper message turns from thread context
@@ -1705,15 +2082,25 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           try {
-            const stream = this.client.beta.messages.stream({
+            const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
+            const providerRequest: PreparedProviderRequest = {
               model: effectiveModel,
-              // Sonnet 5 uses adaptive thinking by default; leave room for its
-              // thinking summary plus the user-visible answer/tool calls.
               max_tokens: 8192,
               system: systemBlocks,
-              tools: retriedEmptyPostToolResponse ? [] : customTools,
+              tools: invocationTools as unknown as Array<Record<string, unknown>>,
               messages,
-            });
+            };
+            await this.notifyInvocationPrepared(
+              options,
+              providerRequest,
+              iteration,
+              streamRetryCount + 1,
+            );
+            const stream = this.client.beta.messages.stream(
+              providerRequest as unknown as Parameters<
+                typeof this.client.beta.messages.stream
+              >[0],
+            );
 
             // Process stream events
             for await (const event of stream) {
@@ -1859,7 +2246,7 @@ export class AddieClaudeClient {
           ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
         });
         const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
-          if (options?.costScope) {
+          if (operationalExecution && options?.costScope) {
             await recordCost(
               options.costScope.userId,
               options?.modelOverride ?? AddieModelConfig.chat,
@@ -2063,12 +2450,19 @@ export class AddieClaudeClient {
             const toolUseId = block.id;
             const startTime = Date.now();
 
-            logger.debug({ toolName, toolInput }, 'Addie Stream: Calling tool');
+            logger.debug(
+              { toolName, ...(operationalExecution && { toolInput }) },
+              'Addie Stream: Calling tool',
+            );
             toolsUsed.push(toolName);
             executionSequence++;
 
             // Emit tool start event
-            yield { type: 'tool_start', tool_name: toolName, parameters: toolInput };
+            yield {
+              type: 'tool_start',
+              tool_name: toolName,
+              parameters: this.recordedToolParameters(options, toolInput),
+            };
 
             const handler = allHandlers.get(toolName);
             if (!handler) {
@@ -2081,13 +2475,49 @@ export class AddieClaudeClient {
               });
               toolExecutions.push({
                 tool_name: toolName,
-                parameters: toolInput,
-                result: errorResult,
+                parameters: this.recordedToolParameters(options, toolInput),
+                result: this.recordedToolResult(options, errorResult, 'error'),
                 is_error: true,
                 duration_ms: durationMs,
                 sequence: executionSequence,
               });
-              yield { type: 'tool_end', tool_name: toolName, result: errorResult, is_error: true };
+              yield {
+                type: 'tool_end',
+                tool_name: toolName,
+                result: this.recordedToolResult(options, errorResult, 'error'),
+                is_error: true,
+              };
+              continue;
+            }
+
+            const allowed = await this.isToolExecutionAllowed(
+              options,
+              toolName,
+              toolInput,
+              toolsByName.get(toolName),
+            );
+            if (!allowed) {
+              toolResults.push({
+                tool_use_id: toolUseId,
+                content: BLOCKED_TOOL_RESULT,
+                is_error: true,
+              });
+              toolExecutions.push({
+                tool_name: toolName,
+                parameters: this.recordedToolParameters(options, toolInput),
+                result: BLOCKED_TOOL_RESULT,
+                result_summary: 'Blocked by tool execution policy',
+                is_error: true,
+                duration_ms: 0,
+                sequence: executionSequence,
+                blocked_by_policy: true,
+              });
+              yield {
+                type: 'tool_end',
+                tool_name: toolName,
+                result: BLOCKED_TOOL_RESULT,
+                is_error: true,
+              };
               continue;
             }
 
@@ -2104,40 +2534,44 @@ export class AddieClaudeClient {
                   toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                   toolExecutions.push({
                     tool_name: toolName,
-                    parameters: toolInput,
-                    result: multimodalBlocks.summary,
-                    result_summary: multimodalBlocks.summary,
+                    parameters: this.recordedToolParameters(options, toolInput),
+                    result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
+                    result_summary: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
                     is_error: false,
                     duration_ms: durationMs,
                     sequence: executionSequence,
                   });
-                  yield { type: 'tool_end', tool_name: toolName, result: multimodalBlocks.summary, is_error: false };
-                  logger.info({ toolName, multimodalType: multimodal?.type, filename: multimodal?.filename }, 'Addie Stream: Processed multimodal tool result');
+                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'), is_error: false };
+                  logger.info({
+                    toolName,
+                    multimodalType: multimodal?.type,
+                    ...(operationalExecution && { filename: multimodal?.filename }),
+                  }, 'Addie Stream: Processed multimodal tool result');
                 } else {
                   toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
                   toolExecutions.push({
                     tool_name: toolName,
-                    parameters: toolInput,
-                    result: 'Error: Failed to process file content',
+                    parameters: this.recordedToolParameters(options, toolInput),
+                    result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
                     is_error: true,
                     duration_ms: durationMs,
                     sequence: executionSequence,
                   });
-                  yield { type: 'tool_end', tool_name: toolName, result: 'Error: Failed to process file content', is_error: true };
+                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'), is_error: true };
                 }
               } else {
                 // Regular text result — always a success since tools throw on failure
                 toolResults.push({ tool_use_id: toolUseId, content: result });
                 toolExecutions.push({
                   tool_name: toolName,
-                  parameters: toolInput,
-                  result,
-                  result_summary: this.summarizeToolResult(toolName, result),
+                  parameters: this.recordedToolParameters(options, toolInput),
+                  result: this.recordedToolResult(options, result, 'success'),
+                  result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
                   is_error: false,
                   duration_ms: durationMs,
                   sequence: executionSequence,
                 });
-                yield { type: 'tool_end', tool_name: toolName, result, is_error: false };
+                yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, result, 'success'), is_error: false };
               }
             } catch (error) {
               const durationMs = Date.now() - startTime;
@@ -2145,10 +2579,12 @@ export class AddieClaudeClient {
               const isExpected = error instanceof ToolError;
               const errorResult = `Error: ${errorMessage}`;
               if (isExpected) {
-                logger.warn({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool returned expected error');
+                logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie Stream: Tool returned expected error');
               } else {
-                logger.error({ toolName, toolInput, error: errorMessage, durationMs }, 'Addie Stream: Tool threw unexpected exception');
-                notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+                logger.error({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie Stream: Tool threw unexpected exception');
+                if (operationalExecution) {
+                  notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
+                }
               }
               toolResults.push({
                 tool_use_id: toolUseId,
@@ -2157,13 +2593,13 @@ export class AddieClaudeClient {
               });
               toolExecutions.push({
                 tool_name: toolName,
-                parameters: toolInput,
-                result: errorResult,
+                parameters: this.recordedToolParameters(options, toolInput),
+                result: this.recordedToolResult(options, errorResult, 'error'),
                 is_error: true,
                 duration_ms: durationMs,
                 sequence: executionSequence,
               });
-              yield { type: 'tool_end', tool_name: toolName, result: errorResult, is_error: true };
+              yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, errorResult, 'error'), is_error: true };
             }
           }
 
@@ -2198,7 +2634,7 @@ export class AddieClaudeClient {
       };
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
-      if (options?.costScope) {
+      if (operationalExecution && options?.costScope) {
         await recordCost(
           options.costScope.userId,
           options?.modelOverride ?? AddieModelConfig.chat,
@@ -2250,7 +2686,9 @@ export class AddieClaudeClient {
       }
     } finally {
       if (certificationLeaseHeartbeat) clearInterval(certificationLeaseHeartbeat);
-      await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+      if (operationalExecution) {
+        await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+      }
     }
   }
 

@@ -191,6 +191,7 @@ export function searchDocsContent(
 export const KNOWLEDGE_TOOLS: AddieTool[] = [
   {
     name: 'search_docs',
+    replaySafety: 'pure_local',
     description:
       'Search official AdCP docs, extracted schema facts, and working group documents. Protocol results are isolated by release and always name their version. Pass version when the user names one; omission means stable, never beta. Website and working group results are version-independent. Use one specific query. Verify exact fields and enums with get_schema at the same version, use list_schemas for schema availability, and use get_doc for full content.',
     usage_hints: 'use for learning, understanding concepts, "how does X work?", "what is X?", "explain X", brand guidelines, working group documents',
@@ -231,6 +232,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
   },
   {
     name: 'get_doc',
+    replaySafety: 'pure_local',
     description:
       'Get the full content of a specific documentation page by ID. Canonical IDs returned by search_docs already include the version. For a legacy unversioned ID, pass version; omitted version means stable default.',
     usage_hints: 'use after search_docs to read complete doc details',
@@ -549,11 +551,14 @@ function extractSmartExcerpt(content: string, query: string, maxLength: number =
  *   and strip Addie-generated notes. Anonymous web/MCP callers should pass true
  *   so attacker-controlled URLs queued via `bookmark_resource` (Slack-authenticated
  *   path) cannot become a prompt-injection vector for unauthenticated sessions.
+ * @param options.disableSearchTelemetry - Skip asynchronous search analytics and
+ *   related diagnostic logging. Evaluation/replay callers should pass true.
  */
 export function createKnowledgeToolHandlers(
   options: {
     anonymous?: boolean;
     slackAccess?: SlackKnowledgeAccess;
+    disableSearchTelemetry?: boolean;
   } = {}
 ): Map<
   string,
@@ -561,6 +566,7 @@ export function createKnowledgeToolHandlers(
 > {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
   const anonymous = options.anonymous === true;
+  const searchTelemetryEnabled = options.disableSearchTelemetry !== true;
   const slackUserId = options.slackAccess?.kind === 'slack-user'
     ? options.slackAccess.slackUserId
     : undefined;
@@ -605,22 +611,26 @@ export function createKnowledgeToolHandlers(
     const latencyMs = Date.now() - startTime;
 
     // Log search for pattern analysis (async, don't block response)
-    addieDb.logSearch({
-      query,
-      tool_name: 'search_docs',
-      category,
-      limit_requested: limit,
-      results_count: results.length,
-      result_ids: results.map(r => r.id),
-      search_latency_ms: latencyMs,
-      channel: 'tool',
-    }).catch(err => logger.warn({ err }, 'Failed to log search'));
+    if (searchTelemetryEnabled) {
+      addieDb.logSearch({
+        query,
+        tool_name: 'search_docs',
+        category,
+        limit_requested: limit,
+        results_count: results.length,
+        result_ids: results.map(r => r.id),
+        search_latency_ms: latencyMs,
+        channel: 'tool',
+      }).catch(err => logger.warn({ err }, 'Failed to log search'));
+    }
 
     if (results.length === 0) {
-      logger.warn(
-        { query, category, indexReady: isDocsIndexReady(), docCount: getDocCount() },
-        'Addie search_docs: zero results'
-      );
+      if (searchTelemetryEnabled) {
+        logger.warn(
+          { query, category, indexReady: isDocsIndexReady(), docCount: getDocCount() },
+          'Addie search_docs: zero results'
+        );
+      }
       return `No documentation found in AdCP ${formatDocsVersion(selectedVersion)} for: "${query}"${category ? ` in category: ${category}` : ''}\n\nTry another supported protocol version, web_search for external sources, or search_slack for community discussions.`;
     }
 
@@ -718,16 +728,18 @@ ${content}`;
     const totalResults = headingResults.length + additionalDocs.length;
 
     // Log search for pattern analysis
-    addieDb.logSearch({
-      query,
-      tool_name: 'search_repos',
-      category: repoId,
-      limit_requested: limit,
-      results_count: totalResults,
-      result_ids: [...headingResults.map(h => h.id), ...additionalDocs.map(d => d.id)],
-      search_latency_ms: latencyMs,
-      channel: 'tool',
-    }).catch(err => logger.warn({ err }, 'Failed to log search'));
+    if (searchTelemetryEnabled) {
+      addieDb.logSearch({
+        query,
+        tool_name: 'search_repos',
+        category: repoId,
+        limit_requested: limit,
+        results_count: totalResults,
+        result_ids: [...headingResults.map(h => h.id), ...additionalDocs.map(d => d.id)],
+        search_latency_ms: latencyMs,
+        channel: 'tool',
+      }).catch(err => logger.warn({ err }, 'Failed to log search'));
+    }
 
     if (totalResults === 0) {
       const repos = getConfiguredRepos();

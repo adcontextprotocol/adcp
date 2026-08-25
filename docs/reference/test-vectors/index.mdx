@@ -18,7 +18,7 @@ Vectors are not the conformance specification — the [storyboards](/docs/buildi
 
 ## Versioning
 
-Vector sets published under `static/compliance/source/test-vectors/` are versioned alongside the spec. The copy served at `/compliance/{version}/test-vectors/{set}` is frozen for that release; fixes that change a vector's bytes ship in a later AdCP release. `/compliance/latest/test-vectors/{set}` tracks the current development snapshot and may change before release.
+Every set under `static/compliance/source/test-vectors/` is versioned alongside the spec. The copy served at `/compliance/{version}/test-vectors/{set}/` is frozen at the GA release of that version; fixes that change a vector's bytes ship in the next AdCP minor release. `/compliance/latest/test-vectors/{set}/` follows the current development snapshot and can move ahead of the most recent GA, so production consumers should pin an immutable version path.
 
 Vector sets served under `/test-vectors/` are currently unversioned: each file is overwritten in place when it changes. SDKs that consume these fixtures SHOULD vendor a commit-pinned copy, for example fetching from `https://raw.githubusercontent.com/adcontextprotocol/adcp/<sha>/static/test-vectors/<name>.json` and recording `<sha>` in their lockfile, until these files are rolled into the versioned compliance tree.
 

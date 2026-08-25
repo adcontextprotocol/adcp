@@ -212,6 +212,40 @@ describe('createWebhookFetch — SSRF guard', () => {
       expect(dnsLookup).toHaveBeenCalledOnce();
     });
 
+    it.each(['test', 'development'])('allows an explicit loopback receiver in %s mode', async (environment) => {
+      vi.stubEnv('NODE_ENV', environment);
+      await expect(validateWebhookUrl('http://127.0.0.1:9999/hook', { allowLoopback: true }))
+        .resolves.toBeUndefined();
+    });
+
+    it('the loopback override still rejects other private and encoded targets', async () => {
+      vi.stubEnv('NODE_ENV', 'test');
+      for (const target of [
+        'https://169.254.169.254/latest/meta-data',
+        'https://10.0.0.1/private',
+        'https://2852039166/latest/meta-data',
+        'https://2130706433/private',
+        'https://0x7f000001/private',
+        'https://0177.0.0.1/private',
+      ]) {
+        await expect(validateWebhookUrl(target, { allowLoopback: true })).resolves.toEqual({
+          code: 'VALIDATION_ERROR',
+          message: 'webhook_url must target a public network address',
+          field: 'webhook_url',
+        });
+      }
+    });
+
+    it('does not honor the private-target override outside test or development', async () => {
+      vi.stubEnv('NODE_ENV', 'staging');
+      await expect(validateWebhookUrl('https://127.0.0.1/hook', { allowPrivateIp: true }))
+        .resolves.toEqual({
+          code: 'VALIDATION_ERROR',
+          message: 'webhook_url must target a public network address',
+          field: 'webhook_url',
+        });
+    });
+
     it.each([
       ['private target', 'https://169.254.169.254/latest/meta-data'],
       ['decimal-encoded target', 'https://2852039166/latest/meta-data'],

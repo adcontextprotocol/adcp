@@ -1179,6 +1179,11 @@
           "type": "string",
           "description": "Human-readable identifier for the upstream dependency to force unavailable (e.g., 'inventory-service', 'creative-agent'). Used by force_upstream_unavailable. When omitted, the seller marks its default upstream for the specified tool as unavailable. Sellers MUST include the same name in STALE_RESPONSE error.details.upstream.name on the affected response."
         },
+        "cache_age_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Deterministic age of the stale cache entry used by force_upstream_unavailable. When supplied, the seller MUST emit this exact value in the matching STALE_RESPONSE error.details.cache_age_seconds on the next affected response. This lets the conformance runner bind the advisory code and its required detail fields to the same errors[] entry without assuming array order."
+        },
         "result": {
           "$ref": "/schemas/compliance/task-completion-data.json",
           "description": "Completion payload to record against the task. force_task_completion supports the bounded get_products, get_signals, and create_media_buy completion union; polling and production SDKs resolve all task results through the originating task's manifest response mapping instead of embedding a global result union. The seller MUST deliver this verbatim to the buyer's push_notification_config.url, preserving caller-supplied fields. Sellers MUST emit INVALID_PARAMS when the payload does not match the original task response branch and MAY reject payloads exceeding 256 KB."

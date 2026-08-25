@@ -222,5 +222,21 @@ export function createNativeAuthRouter(options: NativeAuthRouterOptions): Router
   return router;
 }
 
-const cleanupTimer = setInterval(() => nativeAuthDb.cleanupExpired(), CLEANUP_INTERVAL_MS);
-cleanupTimer.unref();
+// Start the expired-pending/grant sweep once per process. Guarded on
+// `globalThis` rather than a module-scope flag: under vitest, this module
+// is re-evaluated fresh for every test file (isolate resets the module
+// registry between files), so a plain `let`/module-scope guard would reset
+// to unarmed each time and this would register one more `setInterval` per
+// file that imports native-auth.ts — each holding a stale closure over
+// that file's `nativeAuthDb` binding for the remaining life of the worker
+// process. `globalThis` survives the per-file reset, so the guard actually
+// enforces "once per process" here too.
+const CLEANUP_TIMER_STARTED_KEY = '__adcp_native_auth_cleanup_started__';
+const globalWithNativeAuthCleanup = globalThis as typeof globalThis & {
+  [CLEANUP_TIMER_STARTED_KEY]?: boolean;
+};
+if (!globalWithNativeAuthCleanup[CLEANUP_TIMER_STARTED_KEY]) {
+  globalWithNativeAuthCleanup[CLEANUP_TIMER_STARTED_KEY] = true;
+  const cleanupTimer = setInterval(() => nativeAuthDb.cleanupExpired(), CLEANUP_INTERVAL_MS);
+  cleanupTimer.unref();
+}
