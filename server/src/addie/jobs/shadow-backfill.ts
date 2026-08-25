@@ -167,6 +167,7 @@ async function backfill() {
             sourceKind: 'production',
             sourceModel: thread.source_answer_model,
             sourceConfigVersionId: thread.source_config_version_id,
+            sourceMessageId: thread.source_message_id,
             judgeModel: comparisonDisposition.executedJudgeModel,
             toolMode: thread.source_message_id ? 'production_trace' : 'none',
             traceOrFixtureId: thread.source_message_id,

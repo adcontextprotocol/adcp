@@ -128,6 +128,11 @@ export interface AddieTool {
    * This helps the router distinguish intent (learning vs validation).
    */
   usage_hints?: string;
+  /**
+   * Explicit replay safety classification. Tools without a classification are
+   * blocked by read-only evaluation runs.
+   */
+  replaySafety?: 'pure_local' | 'public_read' | 'principal_read' | 'external_read' | 'mutation';
   input_schema: {
     type: 'object';
     properties: Record<string, unknown>;
