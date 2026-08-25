@@ -130,7 +130,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
   try {
     // This branch controls only which observe-only telemetry event is emitted;
     // it is not an authorization guard and never changes the response.
-    if (!selector.organizationId) { // lgtm[js/user-controlled-bypass]
+    if (!selector.organizationId) {
       captureEvent('server-metrics', 'org_authorization_shadow', {
         route,
         method: req.method,
