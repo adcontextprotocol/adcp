@@ -256,8 +256,8 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
   assert.match(workflow, /MIN_CLEAN: 126/);
-  assert.match(workflow, /MIN_PASSED: 556/);
-  assert.match(matrixRunner, /"sales:126:556"/);
+  assert.match(workflow, /MIN_PASSED: 571/);
+  assert.match(matrixRunner, /"sales:126:571"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
@@ -290,8 +290,8 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
     ['signals', 45, 80],
-    ['sales', 126, 556],
-    ['governance', 47, 157],
+    ['sales', 126, 571],
+    ['governance', 47, 161],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
     ['brand', 45, 116],
