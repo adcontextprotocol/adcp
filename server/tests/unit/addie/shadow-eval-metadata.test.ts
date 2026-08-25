@@ -172,4 +172,5 @@ describe('shadow evaluation metadata', () => {
       source_opportunity: { config_version_id: 41 },
     }, { authorizationVerified: true })).toBe(false);
   });
+
 });
