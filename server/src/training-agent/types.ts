@@ -22,6 +22,12 @@ export type TalentRole = typeof TALENT_ROLES[number];
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
+/**
+ * First wire checkpoint that may carry the standardized seller-governance
+ * discovery fields added after the immutable 3.2-beta.6 bundle.
+ */
+export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.7' as const;
+
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
   'typed-negotiation',
@@ -42,6 +48,20 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
   if (!qualifier || qualifier === 'rc') return true;
   const prerelease = Number.parseInt(match[4] ?? '0', 10);
   return qualifier === 'beta' && prerelease >= 2;
+}
+
+export function supportsSellerGovernanceDiscovery(servedVersion: string | undefined): boolean {
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  if (major > 3 || (major === 3 && minor > 2)) return true;
+  if (major !== 3 || minor !== 2) return false;
+  const qualifier = match[3];
+  if (!qualifier || qualifier === 'rc') return true;
+  const prerelease = Number.parseInt(match[4] ?? '0', 10);
+  return qualifier === 'beta' && prerelease >= 7;
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */

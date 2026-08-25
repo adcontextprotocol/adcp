@@ -12,6 +12,7 @@ import {
 import { clearSessions } from '../../src/training-agent/state.js';
 import {
   clearAccountStore,
+  handleSyncGovernance,
   MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC,
 } from '../../src/training-agent/account-handlers.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
@@ -1055,6 +1056,33 @@ describe('sync_governance', () => {
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
     expect(agents[0].url).toBe('https://test-agent.adcontextprotocol.org/');
+  });
+
+  it('enforces the advertised governance-agent criteria at the post-beta.6 boundary', async () => {
+    await createSandboxAccount();
+
+    const credential = 'tok_unaccepted_governance_agent';
+    const result = handleSyncGovernance({
+      accounts: [{
+        account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
+        governance_agents: [{
+          url: 'https://untrusted-governance.example/mcp',
+          authentication: { schemes: ['bearer'], credentials: credential },
+        }],
+      }],
+    }, { ...DEFAULT_CTX, servedAdcpVersion: '3.2-beta.7' });
+
+    const account = (result.accounts as Record<string, unknown>[])[0];
+    expect(account).toMatchObject({
+      status: 'failed',
+      errors: [{
+        code: 'GOVERNANCE_AGENT_NOT_ACCEPTED',
+        details: { disclosure: 'opaque' },
+      }],
+    });
+    expect(account).not.toHaveProperty('governance_agents');
+    expect(JSON.stringify(result)).not.toContain('untrusted-governance');
+    expect(JSON.stringify(result)).not.toContain(credential);
   });
 
   it('rejects payloads carrying more than one governance agent at the request-shape layer (maxItems: 1)', async () => {

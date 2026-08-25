@@ -31,7 +31,7 @@ import {
   TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
   TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
+import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -790,7 +790,9 @@ function projectTenantCapabilities(
           ...structured.adcp,
           governance_enforcement: {
             tasks,
-            accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+            ...(supportsSellerGovernanceDiscovery(servedVersion) && {
+              accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+            }),
           },
         };
         const experimentalFeatures = Array.isArray(structured.experimental_features)
@@ -842,7 +844,7 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
-        ...(supportsGetProductsRejected(servedVersion) && {
+        ...(supportsSellerGovernanceDiscovery(servedVersion) && {
           acceptance_policy_discovery: {
             catalog_url: `${getCanonicalBase()}${TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH}`,
             catalog_digest: TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,

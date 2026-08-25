@@ -42,7 +42,7 @@ import {
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
+import { supportsGetProductsRejected, supportsSellerGovernanceDiscovery, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -15172,7 +15172,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(governanceEnforcementTasks.length > 0 && {
         governance_enforcement: {
           tasks: governanceEnforcementTasks,
-          accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+          ...(supportsSellerGovernanceDiscovery(servedAdcpVersion) && {
+            accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+          }),
         },
       }),
     },
@@ -15212,7 +15214,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     }),
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
-      ...((ctx.tenantId === 'sales' || ctx.tenantId == null) && supportsGetProductsRejected(servedAdcpVersion) && {
+      ...((ctx.tenantId === 'sales' || ctx.tenantId == null) && supportsSellerGovernanceDiscovery(servedAdcpVersion) && {
         acceptance_policy_discovery: {
           catalog_url: `${getCanonicalBase()}${TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH}`,
           catalog_digest: TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,

@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
-import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { supportsSellerGovernanceDiscovery, type TrainingContext, type ToolArgs, type AccountRef, type OperatorUnit } from './types.js';
 import { accountScopeFromRef } from './account-scope.js';
 import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
@@ -1588,7 +1588,10 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
     const acceptedUrls = new Set(
       TRAINING_ACCEPTED_GOVERNANCE_AGENT_URLS.map(url => canonicalTargetUri(url)),
     );
-    if (!acceptedUrls.has(canonicalAgentUrl)) {
+    // beta.6 and earlier predate the acceptance declaration. Preserve their
+    // legacy accept-any behavior; otherwise an omitted capability would hide
+    // a binding restriction that buyers cannot discover on that wire version.
+    if (supportsSellerGovernanceDiscovery(ctx.servedAdcpVersion) && !acceptedUrls.has(canonicalAgentUrl)) {
       results.push({
         account: acctRef,
         status: 'failed',

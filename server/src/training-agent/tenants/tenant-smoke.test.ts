@@ -459,7 +459,7 @@ describe('tenant routing smoke', () => {
       expect(rejectedJson).not.toContain(rejectedCredential);
       expect(rejected.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
 
-      const unaccepted = await callTenantTool(url, 12, 'sync_governance', {
+      const legacyBinding = await callTenantTool(url, 12, 'sync_governance', {
         accounts: [{
           account,
           governance_agents: [{
@@ -472,12 +472,12 @@ describe('tenant routing smoke', () => {
         }],
         idempotency_key: 'tenant-sync-governance-not-accepted',
       }) as { result?: { structuredContent?: { accounts?: Array<Record<string, unknown>> } } };
-      const unacceptedJson = JSON.stringify(unaccepted.result?.structuredContent);
-      expect(unacceptedJson).toContain('GOVERNANCE_AGENT_NOT_ACCEPTED');
-      expect(unacceptedJson).toContain('"disclosure":"opaque"');
-      expect(unacceptedJson).not.toContain('untrusted-governance');
-      expect(unacceptedJson).not.toContain(rejectedCredential);
-      expect(unaccepted.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
+      const legacyBindingJson = JSON.stringify(legacyBinding.result?.structuredContent);
+      expect(legacyBinding.result?.structuredContent?.accounts?.[0]).toMatchObject({
+        status: 'synced',
+        governance_agents: [{ url: 'https://untrusted-governance.example/mcp' }],
+      });
+      expect(legacyBindingJson).not.toContain(rejectedCredential);
 
       const retainedBinding = await callTenantTool(url, 14, 'comply_test_controller', {
         account: { ...account, sandbox: true },
@@ -485,7 +485,7 @@ describe('tenant routing smoke', () => {
         params: { account },
       }) as { result?: { structuredContent?: { simulated?: { governance_agents?: Array<{ url?: string }> } } } };
       expect(retainedBinding.result?.structuredContent?.simulated?.governance_agents).toEqual([
-        { url: 'https://governance.example/mcp' },
+        { url: 'https://untrusted-governance.example/mcp' },
       ]);
 
       const rebound = await callTenantTool(url, 13, 'sync_governance', {
@@ -537,10 +537,9 @@ describe('tenant routing smoke', () => {
         expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
           tasks.map(task => ({ task, modes: ['signed_context'] })),
         );
-        expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents?.any_of).toContainEqual({
-          kind: 'agent_url',
-          agent_url: 'https://governance.example/mcp',
-        });
+        // The standardized acceptance declaration was added after the
+        // immutable beta.6 checkpoint and must not leak into this response.
+        expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents).toBeUndefined();
         expect(capabilities?.experimental_features).toContain('governance.campaign');
         if (tenant === 'creative-builder') {
           expect(capabilities?.specialisms).toContain('creative-transformers');
@@ -609,12 +608,7 @@ describe('tenant routing smoke', () => {
         ],
         max_alternatives: 3,
       });
-      expect(mediaBuy?.acceptance_policy_discovery).toEqual({
-        catalog_url: `${getCanonicalBase()}/registry/acceptance-policy-catalog.json`,
-        catalog_digest: 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a',
-        default_profile_ids: ['meta_political_advertising_acceptance'],
-        acceptance_context: true,
-      });
+      expect(mediaBuy?.acceptance_policy_discovery).toBeUndefined();
 
       for (const [id, adcpVersion] of [[31, '3.2'], [32, '3.0']] as const) {
         const nonBetaCapabilities = await callTenantTool(url, id, 'get_adcp_capabilities', {

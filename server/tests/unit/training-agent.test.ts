@@ -23,6 +23,7 @@ import {
 import {
   createTrainingAgentServer,
   executeTrainingAgentTool,
+  handleGetAdcpCapabilities,
   handleBuildCreative,
   handleListTransformers,
   handleControlMediaBuy,
@@ -64,7 +65,10 @@ function futureFlight(): { start_time: string; end_time: string } {
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
-import type { TrainingContext } from '../../src/training-agent/types.js';
+import {
+  supportsSellerGovernanceDiscovery,
+  type TrainingContext,
+} from '../../src/training-agent/types.js';
 import {
   HUMAN_REVIEW_CATEGORIES,
   HUMAN_REVIEW_POLICY_IDS,
@@ -15557,9 +15561,10 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
-    const server = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
-    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
-      adcp_version: CURRENT_ADCP_VERSION,
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.2-beta.7',
     });
     const discovery = (result.media_buy as Record<string, any>).acceptance_policy_discovery;
     expect(discovery).toMatchObject({
@@ -15717,9 +15722,10 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('advertises the governed commitment tasks the training seller enforces', async () => {
-    const server = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
-    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
-      adcp_version: CURRENT_ADCP_VERSION,
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.2-beta.7',
     });
 
     expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
@@ -15740,12 +15746,12 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('scopes governance enforcement claims to the receiving tenant', async () => {
-    const signals = await simulateCallTool(
-      createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'signals' }),
-      'get_adcp_capabilities',
-      {},
-    );
-    expect((signals.result.adcp as Record<string, any>).governance_enforcement).toEqual({
+    const signals = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'signals',
+      servedAdcpVersion: '3.2-beta.7',
+    });
+    expect((signals.adcp as Record<string, any>).governance_enforcement).toEqual({
       tasks: [{ task: 'activate_signal', modes: ['signed_context'] }],
       accepted_governance_agents: {
         any_of: [
@@ -15755,7 +15761,7 @@ describe('get_adcp_capabilities handler', () => {
         ],
       },
     });
-    expect(signals.result.experimental_features).toContain('governance.campaign');
+    expect(signals.experimental_features).toContain('governance.campaign');
 
     const legacy = await simulateCallTool(
       createTrainingAgentServer(DEFAULT_CTX),
@@ -15763,6 +15769,26 @@ describe('get_adcp_capabilities handler', () => {
       {},
     );
     expect((legacy.result.adcp as Record<string, any>).governance_enforcement).toBeUndefined();
+  });
+
+  it('does not project post-checkpoint seller-governance discovery into beta.6', async () => {
+    expect(supportsSellerGovernanceDiscovery('3.2-beta.6')).toBe(false);
+    expect(supportsSellerGovernanceDiscovery('3.2-beta.7')).toBe(true);
+    expect(supportsSellerGovernanceDiscovery('3.2')).toBe(true);
+
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: CURRENT_ADCP_VERSION,
+    });
+    expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
+      tasks: [
+        { task: 'buy_products', modes: ['signed_context'] },
+        { task: 'accept_proposal', modes: ['signed_context'] },
+        { task: 'control_media_buy', modes: ['signed_context'] },
+      ],
+    });
+    expect((result.media_buy as Record<string, unknown>).acceptance_policy_discovery).toBeUndefined();
   });
 
   it('advertises the compliance test controller scenarios it implements', async () => {
