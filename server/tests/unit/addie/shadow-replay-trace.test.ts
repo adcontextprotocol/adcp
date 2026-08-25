@@ -8,7 +8,9 @@ import {
   completeShadowReplayGeneration,
   createShadowReplayCaptureIdentity,
   getShadowReplayCaptureSummary,
+  getShadowReplayFunnelSummary,
   getShadowReplayGenerationSummary,
+  getShadowReplayJudgmentSummary,
   listPendingShadowReplayCaptures,
   purgeRetainedShadowReplayTraces,
   queueShadowReplayTrace,
@@ -16,6 +18,7 @@ import {
   renewShadowReplayGenerationLease,
   resolveShadowReplayTrace,
   verifyShadowReplayFirstInvocation,
+  verifyShadowReplayHumanEvidence,
   verifyShadowReplayTraceContext,
 } from '../../../src/addie/jobs/shadow-replay-trace.js';
 import {
@@ -29,6 +32,7 @@ const TRACE_KEY = 'trace-test-key-that-is-at-least-thirty-two-bytes';
 const TRACE_KEY_VERSION = 'test-v1';
 const NOW = new Date('2026-08-25T08:00:00.000Z');
 const QUESTION = 'private.person@example.test secret-question-sentinel';
+const HUMAN_RESPONSE = 'A private exact human answer with enough substantive bytes.';
 
 function snapshot(): InvocationPreparedSnapshot {
   return {
@@ -152,10 +156,13 @@ async function persistedTrace(input = captureInput()) {
     tool_schema_hmacs: JSON.parse(p[25] as string),
     message_payload_hmacs: JSON.parse(p[26] as string),
     provider_request_hmac: p[27],
-    authorization_hmac: p[28],
-    created_at: p[29],
-    expires_at: p[30],
-    retained_until: p[31],
+    human_response_slack_message_ts: p[28],
+    human_response_user_hmac: p[29],
+    human_response_content_hmac: p[30],
+    authorization_hmac: p[31],
+    created_at: p[32],
+    expires_at: p[33],
+    retained_until: p[34],
     revoked_at: null,
     question: input.question,
     source_user_id: input.sourceUserId,
@@ -166,8 +173,8 @@ async function persistedTrace(input = captureInput()) {
   return { calls, input, row };
 }
 
-async function authorizedTrace() {
-  const persisted = await persistedTrace();
+async function authorizedTrace(input = captureInput()) {
+  const persisted = await persistedTrace(input);
   const resolved = await resolveShadowReplayTrace(persisted.input.identity.traceId, {
     query: vi.fn(async () => ({ rows: [persisted.row], rowCount: 1 })) as never,
     keyConfig: { key: TRACE_KEY, version: TRACE_KEY_VERSION },
@@ -203,7 +210,8 @@ describe('shadow replay trace authorization', () => {
     expect(attemptId).toMatch(/^[0-9a-f-]{36}$/);
     expect(beginQuery.mock.calls[0][0]).toContain("'shadow_eval_trace_id'");
     expect(beginQuery.mock.calls[0][0]).toContain("'shadow_eval_capture_parity_verified'");
-    expect(JSON.parse(beginQuery.mock.calls[0][1][6] as string)).toMatchObject({
+    expect(beginQuery.mock.calls[0][1][4]).toBe(3);
+    expect(JSON.parse(beginQuery.mock.calls[0][1][7] as string)).toMatchObject({
       shadow_eval_status: 'pending',
       shadow_eval_capture_attempt_id: attemptId,
     });
@@ -229,7 +237,14 @@ describe('shadow replay trace authorization', () => {
   });
 
   it('atomically queues only references and keyed digests, never copied private payloads', async () => {
-    const { calls, row } = await persistedTrace();
+    const { calls, row } = await persistedTrace({
+      ...captureInput(),
+      humanEvidence: {
+        slackMessageTs: '1000.0003',
+        userId: 'U_PRIVATE_HUMAN',
+        content: HUMAN_RESPONSE,
+      },
+    });
     const serializedWrites = JSON.stringify(calls);
 
     expect(serializedWrites).not.toContain(QUESTION);
@@ -237,6 +252,8 @@ describe('shadow replay trace authorization', () => {
     expect(serializedWrites).not.toContain('channel-topic-sentinel');
     expect(serializedWrites).not.toContain('request-context-sentinel');
     expect(serializedWrites).not.toContain('docs-corpus-sentinel');
+    expect(serializedWrites).not.toContain(HUMAN_RESPONSE);
+    expect(serializedWrites).not.toContain('U_PRIVATE_HUMAN');
     expect(calls.map((call) => call.sql.trim().split(/\s+/, 1)[0])).toEqual([
       'BEGIN',
       'INSERT',
@@ -251,11 +268,57 @@ describe('shadow replay trace authorization', () => {
     }));
     expect(contextPatch.params[1]).not.toContain('shadow_eval_question');
     expect(row).toMatchObject({
-      capture_version: 2,
+      capture_version: 3,
       capability_profile: OFFICIAL_DOCS_PROFILE,
       capability_policy_version: OFFICIAL_DOCS_POLICY_VERSION,
       approved_tool_names: [...OFFICIAL_DOCS_ALLOWED_TOOLS],
+      human_response_slack_message_ts: '1000.0003',
+      human_response_user_hmac: expect.stringMatching(/^[0-9a-f]{64}$/),
+      human_response_content_hmac: expect.stringMatching(/^[0-9a-f]{64}$/),
     });
+  });
+
+  it('binds and verifies exact bounded later human evidence without returning its payload', async () => {
+    const evidence = {
+      slackMessageTs: '1000.0003',
+      userId: 'U_PRIVATE_HUMAN',
+      content: HUMAN_RESPONSE,
+    };
+    const { trace } = await authorizedTrace({ ...captureInput(), humanEvidence: evidence });
+    expect(trace.humanEvidence).toEqual({
+      slackMessageTs: evidence.slackMessageTs,
+      userHmac: expect.stringMatching(/^[0-9a-f]{64}$/),
+      contentHmac: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(verifyShadowReplayHumanEvidence(trace, evidence)).toEqual({
+      verified: true,
+      reasons: [],
+    });
+    expect(verifyShadowReplayHumanEvidence(trace, {
+      ...evidence,
+      content: `${evidence.content} changed`,
+    })).toEqual({
+      verified: false,
+      reasons: ['human_evidence_content_drift'],
+    });
+    expect(JSON.stringify(trace)).not.toContain(HUMAN_RESPONSE);
+    expect(JSON.stringify(trace)).not.toContain(evidence.userId);
+  });
+
+  it('rejects undersized, oversized, or non-later human evidence before storage', async () => {
+    const clientFactory = vi.fn();
+    for (const humanEvidence of [
+      { slackMessageTs: '1000.0003', userId: 'U_HUMAN', content: 'too short' },
+      { slackMessageTs: '1000.0003', userId: 'U_HUMAN', content: 'x'.repeat(1_501) },
+      { slackMessageTs: '1000.0003', userId: 'U_HUMAN', content: 'é'.repeat(751) },
+      { slackMessageTs: '1000.0002', userId: 'U_HUMAN', content: HUMAN_RESPONSE },
+    ]) {
+      await expect(queueShadowReplayTrace(
+        { ...captureInput(), humanEvidence },
+        { getClient: clientFactory as never },
+      )).rejects.toThrow('shadow_replay_human_evidence_invalid');
+    }
+    expect(clientFactory).not.toHaveBeenCalled();
   });
 
   it('rejects any capture outside the explicit official-docs profile', async () => {
@@ -329,7 +392,14 @@ describe('shadow replay trace authorization', () => {
   });
 
   it('fails closed for expired, revoked, rotated-key, and mutated authorization rows', async () => {
-    const { input, row } = await persistedTrace();
+    const { input, row } = await persistedTrace({
+      ...captureInput(),
+      humanEvidence: {
+        slackMessageTs: '1000.0003',
+        userId: 'U_PRIVATE_HUMAN',
+        content: HUMAN_RESPONSE,
+      },
+    });
     const resolve = (candidate: typeof row, options: Record<string, unknown> = {}) =>
       resolveShadowReplayTrace(input.identity.traceId, {
         query: vi.fn(async () => ({ rows: [candidate], rowCount: 1 })) as never,
@@ -353,6 +423,10 @@ describe('shadow replay trace authorization', () => {
       authorized: false,
       reason: 'trace_authorization_invalid',
     });
+    await expect(resolve({
+      ...row,
+      human_response_content_hmac: '0'.repeat(64),
+    })).resolves.toEqual({ authorized: false, reason: 'trace_authorization_invalid' });
   });
 
   it('rejects captured production provider tools before replay hydration or generation', async () => {
@@ -475,7 +549,7 @@ describe('shadow replay trace authorization', () => {
     const listQuery = vi.fn(async () => ({ rows: pending, rowCount: 2 }));
     await expect(listPendingShadowReplayCaptures(500, { query: listQuery as never }))
       .resolves.toEqual(pending);
-    expect(listQuery.mock.calls[0][1]).toEqual([2, 100]);
+    expect(listQuery.mock.calls[0][1]).toEqual([3, 100]);
 
     const completeQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
     await expect(completeShadowReplayCapture(
@@ -490,9 +564,11 @@ describe('shadow replay trace authorization', () => {
     )).resolves.toBe(true);
     const serialized = JSON.stringify(completeQuery.mock.calls);
     expect(serialized).toContain("capture_status = $3");
+    expect(serialized).toContain('capture_parity_verified = capture_parity_verified OR $6');
     expect(serialized).toContain("context->>'shadow_eval_trace_id'");
     expect(serialized).not.toContain(QUESTION);
-    expect(JSON.parse(completeQuery.mock.calls[0][1][5] as string)).toMatchObject({
+    expect(completeQuery.mock.calls[0][1][5]).toBe(true);
+    expect(JSON.parse(completeQuery.mock.calls[0][1][6] as string)).toMatchObject({
       shadow_eval_status: 'skipped',
       shadow_eval_capture_parity_verified: true,
       shadow_eval_trace_id: pending[0].trace_id,
@@ -508,8 +584,9 @@ describe('shadow replay trace authorization', () => {
     const runQuery = vi.fn(async () => ({ rows, rowCount: 2 }));
     await expect(getShadowReplayCaptureSummary(999, { query: runQuery as never }))
       .resolves.toEqual(rows);
-    expect(runQuery.mock.calls[0][1]).toEqual([2, 7]);
+    expect(runQuery.mock.calls[0][1]).toEqual([3, 7]);
     expect(runQuery.mock.calls[0][0]).toContain('addie_shadow_replay_capture_attempts');
+    expect(runQuery.mock.calls[0][0]).toContain('attempt.capture_version = $1');
   });
 
   it('claims one generation through a database-enforced daily slot quota', async () => {
@@ -524,6 +601,8 @@ describe('shadow replay trace authorization', () => {
     })).resolves.toBe('claimed');
     expect(runQuery.mock.calls[0][0]).toContain('generate_series(1, $10::integer)');
     expect(runQuery.mock.calls[0][0]).toContain('ON CONFLICT DO NOTHING');
+    expect(runQuery.mock.calls[0][0]).toContain('parity_marked AS');
+    expect(runQuery.mock.calls[0][0]).toContain('SET capture_parity_verified = TRUE');
     expect(runQuery.mock.calls[0][1][9]).toBe(100);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
   });
@@ -604,6 +683,235 @@ describe('shadow replay trace authorization', () => {
       shadow_eval_replay_generation_status: 'succeeded',
     });
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
+  });
+
+  it('atomically attaches a fully bound hash-only judgment to generation completion', async () => {
+    const { trace } = await authorizedTrace({
+      ...captureInput(),
+      humanEvidence: {
+        slackMessageTs: '1000.0003',
+        userId: 'U_PRIVATE_HUMAN',
+        content: HUMAN_RESPONSE,
+      },
+    });
+    const outputHmac = '1'.repeat(64);
+    const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac,
+      outputBytes: 128,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+    }, {
+      query: runQuery as never,
+      now: NOW,
+      judgment: {
+        status: 'judged',
+        reason: 'judgment_completed',
+        evaluationValid: true,
+        evaluationSkipped: false,
+        knowledgeGap: false,
+        gapSeverity: 'none',
+        shadowQuality: 'equivalent',
+        deterministicFailureLabels: [],
+        shapeWordCount: 24,
+        shapeExpectedMaxWords: 100,
+        shapeRatioToExpected: 0.24,
+        judgeProvider: 'openai',
+        judgeModel: 'gpt-test',
+        selfJudged: false,
+        judgePromptVersion: 'official-docs-judge:v1',
+        judgePromptHmac: '4'.repeat(64),
+        judgeRequestHmac: '5'.repeat(64),
+        judgeResponseHmac: '6'.repeat(64),
+        sourceOutputHmac: outputHmac,
+        humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
+        inputTokens: 30,
+        outputTokens: 12,
+        startedAt: new Date(NOW.getTime() - 1_000),
+        completedAt: NOW,
+      },
+    })).resolves.toBe(true);
+    expect(runQuery.mock.calls[0][0]).toContain('judgment_inserted AS');
+    expect(runQuery.mock.calls[0][0]).toContain('addie_shadow_replay_judgments');
+    expect(runQuery.mock.calls[0][1][14]).toBe(true);
+    expect(JSON.parse(runQuery.mock.calls[0][1][13] as string)).toMatchObject({
+      shadow_eval_judgment_status: 'judged',
+      shadow_eval_judgment_reason: 'judgment_completed',
+    });
+    expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
+    expect(JSON.stringify(runQuery.mock.calls)).not.toContain(HUMAN_RESPONSE);
+  });
+
+  it('fails closed before generation persistence for judgment provenance mismatch', async () => {
+    const { trace } = await authorizedTrace({
+      ...captureInput(),
+      humanEvidence: {
+        slackMessageTs: '1000.0003',
+        userId: 'U_PRIVATE_HUMAN',
+        content: HUMAN_RESPONSE,
+      },
+    });
+    const runQuery = vi.fn();
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac: '1'.repeat(64),
+      outputBytes: 20,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 1,
+      outputTokens: 1,
+    }, {
+      query: runQuery as never,
+      now: NOW,
+      judgment: {
+        status: 'judged',
+        reason: 'judgment_completed',
+        evaluationValid: true,
+        evaluationSkipped: false,
+        knowledgeGap: true,
+        gapSeverity: 'significant',
+        shadowQuality: 'worse',
+        deterministicFailureLabels: [],
+        shapeWordCount: 20,
+        shapeExpectedMaxWords: 100,
+        shapeRatioToExpected: 0.2,
+        judgeProvider: 'openai',
+        judgeModel: 'gpt-test',
+        selfJudged: false,
+        judgePromptVersion: 'official-docs-judge:v1',
+        judgePromptHmac: '4'.repeat(64),
+        judgeRequestHmac: '5'.repeat(64),
+        judgeResponseHmac: '6'.repeat(64),
+        sourceOutputHmac: '9'.repeat(64),
+        humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
+        inputTokens: 1,
+        outputTokens: 1,
+        startedAt: new Date(NOW.getTime() - 1_000),
+        completedAt: NOW,
+      },
+    })).rejects.toThrow('shadow_replay_judgment_source_binding_invalid');
+    expect(runQuery).not.toHaveBeenCalled();
+
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac: '1'.repeat(64),
+      outputBytes: 20,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 1,
+      outputTokens: 1,
+    }, {
+      query: runQuery as never,
+      now: NOW,
+      judgment: {
+        status: 'judged',
+        reason: 'judgment_completed',
+        evaluationValid: true,
+        evaluationSkipped: false,
+        knowledgeGap: false,
+        gapSeverity: 'none',
+        shadowQuality: 'equivalent',
+        deterministicFailureLabels: [],
+        shapeWordCount: 20,
+        shapeExpectedMaxWords: 100,
+        shapeRatioToExpected: 0.2,
+        judgeProvider: 'anthropic',
+        judgeModel: trace.expected.effective_model,
+        selfJudged: true,
+        judgePromptVersion: 'official-docs-judge:v1',
+        judgePromptHmac: '4'.repeat(64),
+        judgeRequestHmac: '5'.repeat(64),
+        judgeResponseHmac: '6'.repeat(64),
+        sourceOutputHmac: '1'.repeat(64),
+        humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
+        inputTokens: 1,
+        outputTokens: 1,
+        startedAt: new Date(NOW.getTime() - 1_000),
+        completedAt: NOW,
+      },
+    })).rejects.toThrow('shadow_replay_judgment_verdict_invalid');
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('persists a valid deterministic shape failure without calling a provider judge', async () => {
+    const { trace } = await authorizedTrace({
+      ...captureInput(),
+      humanEvidence: {
+        slackMessageTs: '1000.0003',
+        userId: 'U_PRIVATE_HUMAN',
+        content: HUMAN_RESPONSE,
+      },
+    });
+    const outputHmac = '1'.repeat(64);
+    const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac,
+      outputBytes: 100,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 1,
+      outputTokens: 1,
+    }, {
+      query: runQuery as never,
+      now: NOW,
+      judgment: {
+        status: 'deterministic_failure',
+        reason: 'deterministic_shape_failure',
+        evaluationValid: true,
+        evaluationSkipped: false,
+        knowledgeGap: null,
+        gapSeverity: null,
+        shadowQuality: null,
+        deterministicFailureLabels: ['length_cap'],
+        shapeWordCount: 200,
+        shapeExpectedMaxWords: 100,
+        shapeRatioToExpected: 2,
+        judgeProvider: null,
+        judgeModel: null,
+        selfJudged: null,
+        judgePromptVersion: null,
+        judgePromptHmac: null,
+        judgeRequestHmac: null,
+        judgeResponseHmac: null,
+        sourceOutputHmac: outputHmac,
+        humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
+        inputTokens: 0,
+        outputTokens: 0,
+        startedAt: new Date(NOW.getTime() - 1_000),
+        completedAt: NOW,
+      },
+    })).resolves.toBe(true);
+    expect(runQuery.mock.calls[0][1][15]).toBe('deterministic_failure');
+    expect(runQuery.mock.calls[0][1][27]).toBeNull();
+    expect(runQuery.mock.calls[0][1][35]).toBe(outputHmac);
   });
 
   it('rejects unsafe or unbounded generation evidence before persistence', async () => {
@@ -747,7 +1055,65 @@ describe('shadow replay trace authorization', () => {
     const runQuery = vi.fn(async () => ({ rows, rowCount: 1 }));
     await expect(getShadowReplayGenerationSummary(999, { query: runQuery as never }))
       .resolves.toEqual(rows);
-    expect(runQuery.mock.calls[0][1]).toEqual([7]);
-    expect(runQuery.mock.calls[0][0]).not.toContain('trace_id');
+    expect(runQuery.mock.calls[0][1]).toEqual([3, 7]);
+    expect(runQuery.mock.calls[0][0]).not.toContain('question_hmac');
+  });
+
+  it('reports categorical judgment totals and a no-payload opportunity funnel', async () => {
+    const judgments = [{
+      status: 'judged',
+      reason: 'judgment_completed',
+      count: 2,
+      input_tokens: 80,
+      output_tokens: 20,
+    }];
+    const judgmentQuery = vi.fn(async () => ({ rows: judgments, rowCount: 1 }));
+    await expect(getShadowReplayJudgmentSummary(999, { query: judgmentQuery as never }))
+      .resolves.toEqual(judgments);
+    expect(judgmentQuery.mock.calls[0][1]).toEqual([3, 7]);
+
+    const funnel = {
+      opportunities: 5,
+      traces_captured: 4,
+      parity_verified: 3,
+      capture_verified: 2,
+      capture_pending: 0,
+      capture_skipped: 1,
+      capture_error: 1,
+      generation_claimed: 3,
+      generation_succeeded: 2,
+      generation_blocked: 0,
+      generation_error: 0,
+      generation_running: 1,
+      judgment_judged: 1,
+      judgment_deterministic_failure: 1,
+      judgment_skipped: 0,
+      judgment_error: 0,
+      judgment_missing: 0,
+    };
+    const funnelQuery = vi.fn(async () => ({ rows: [funnel], rowCount: 1 }));
+    await expect(getShadowReplayFunnelSummary(999, { query: funnelQuery as never }))
+      .resolves.toEqual(funnel);
+    expect(funnelQuery.mock.calls[0][1]).toEqual([3, 7]);
+    expect(funnelQuery.mock.calls[0][0]).toContain(
+      'AND attempt.capture_version = $1',
+    );
+    expect(funnelQuery.mock.calls[0][0]).not.toMatch(/question|content|user_id/i);
+    expect(funnel.opportunities).toBe(
+      funnel.traces_captured + 1,
+    );
+    expect(funnel.traces_captured).toBe(
+      funnel.capture_verified + funnel.capture_pending
+      + funnel.capture_skipped + funnel.capture_error,
+    );
+    expect(funnel.generation_claimed).toBe(
+      funnel.generation_succeeded + funnel.generation_blocked
+      + funnel.generation_error + funnel.generation_running,
+    );
+    expect(funnel.parity_verified).toBeGreaterThanOrEqual(funnel.generation_claimed);
+    expect(funnel.generation_succeeded).toBe(
+      funnel.judgment_judged + funnel.judgment_deterministic_failure
+      + funnel.judgment_skipped + funnel.judgment_error + funnel.judgment_missing,
+    );
   });
 });

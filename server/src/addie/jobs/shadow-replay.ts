@@ -31,6 +31,7 @@ import {
   type ShadowReplayInvocationEvidence,
   type ShadowReplayToolEvidence,
 } from './shadow-replay-trace.js';
+import type { ShadowReplayJudgeEvidence } from './shadow-replay-judge.js';
 
 type ReplayDisposition = ShadowReplayEvidence['executions'][number]['disposition'];
 
@@ -92,6 +93,15 @@ export interface VerifiedOfficialDocsReplayResult extends ShadowReplayGeneration
   model: string;
   executionPolicyVersion: typeof OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION;
   completeFidelity: boolean;
+  judgment?: ShadowReplayJudgeEvidence;
+}
+
+/** Raw output exists only for the duration of a trusted in-memory consumer. */
+export interface TrustedOfficialDocsReplayOutput {
+  readonly text: string;
+  readonly outputHmac: string;
+  readonly outputBytes: number;
+  readonly generatorModel: string;
 }
 
 export interface VerifiedOfficialDocsReplayDependencies {
@@ -99,6 +109,9 @@ export interface VerifiedOfficialDocsReplayDependencies {
   getDocsFingerprint?: typeof getDocsCorpusFingerprint;
   createKnowledgeHandlers?: typeof createKnowledgeToolHandlers;
   renewLease?: () => Promise<boolean>;
+  outputConsumer?: (
+    output: TrustedOfficialDocsReplayOutput,
+  ) => Promise<ShadowReplayJudgeEvidence>;
 }
 
 export class OfficialDocsReplayBoundaryError extends Error {
@@ -112,6 +125,13 @@ export class OfficialDocsReplayExecutionError extends Error {
   constructor(readonly completion: VerifiedOfficialDocsReplayResult) {
     super(completion.reason);
     this.name = 'OfficialDocsReplayExecutionError';
+  }
+}
+
+export class OfficialDocsReplayOutputConsumerError extends Error {
+  constructor(readonly completion: VerifiedOfficialDocsReplayResult) {
+    super('replay_output_consumer_failed');
+    this.name = 'OfficialDocsReplayOutputConsumerError';
   }
 }
 
@@ -765,7 +785,7 @@ export async function executeVerifiedOfficialDocsReplay(
     && invocations.length > 0
     && toolExecutions.every(({ disposition }) => disposition === 'live_read');
 
-  return {
+  const completion: VerifiedOfficialDocsReplayResult = {
     traceId: input.trace.traceId,
     model: input.invocation.effectiveModel,
     executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
@@ -780,4 +800,20 @@ export async function executeVerifiedOfficialDocsReplay(
     inputTokens: boundedUsage(response.usage?.input_tokens),
     outputTokens: boundedUsage(response.usage?.output_tokens),
   };
+  if (!completeFidelity || !dependencies.outputConsumer) return completion;
+
+  try {
+    const judgment = await dependencies.outputConsumer(Object.freeze({
+      text: validated.sanitized,
+      outputHmac,
+      outputBytes,
+      generatorModel: input.invocation.effectiveModel,
+    }));
+    return { ...completion, judgment };
+  } catch {
+    // Never allow a consumer exception (which may contain raw evidence) to
+    // cross the replay boundary. The safe generation completion remains
+    // available to the caller for atomic terminal persistence.
+    throw new OfficialDocsReplayOutputConsumerError(completion);
+  }
 }
