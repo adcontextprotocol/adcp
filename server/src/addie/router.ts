@@ -25,10 +25,17 @@ import type { AddieTool } from "./types.js";
 import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search.js";
 import { MEMBER_TOOLS } from "./mcp/member-tools.js";
 import { trackApiCall, ApiPurpose } from "./services/api-tracker.js";
-import { collectModelResponse } from "./model-providers/events.js";
+import {
+  collectModelResponse,
+  InvalidModelEventStreamError,
+} from "./model-providers/events.js";
 import type {
   ModelProvider,
   ModelRequest,
+} from "./model-providers/model-provider.js";
+import {
+  UnexpectedModelIdentityError,
+  UnsupportedModelCapabilityError,
 } from "./model-providers/model-provider.js";
 import { AnthropicRouterProvider } from "./model-providers/anthropic-router-provider.js";
 import {
@@ -695,6 +702,23 @@ export function extractRouterResponseText(
     : "";
 }
 
+function classifyRouterError(error: unknown):
+  | "unexpected_model_identity"
+  | "invalid_provider_event_stream"
+  | "unsupported_provider_capability"
+  | "provider_error" {
+  if (error instanceof UnexpectedModelIdentityError) {
+    return "unexpected_model_identity";
+  }
+  if (error instanceof InvalidModelEventStreamError) {
+    return "invalid_provider_event_stream";
+  }
+  if (error instanceof UnsupportedModelCapabilityError) {
+    return "unsupported_provider_capability";
+  }
+  return "provider_error";
+}
+
 /**
  * Partial execution plan without metadata (used during parsing)
  */
@@ -877,9 +901,9 @@ export class AddieRouter {
       });
 
       return plan;
-    } catch {
+    } catch (error) {
       logger.error(
-        { category: "provider_or_normalization_error" },
+        { category: classifyRouterError(error) },
         "Router: Failed to generate execution plan",
       );
       // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
