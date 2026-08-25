@@ -200,6 +200,15 @@ test('Trusted Match receives the immutable package snapshot shape', async () => 
 });
 
 test('creative and legacy projection surfaces reject seller tracker authority', async () => {
+  const creativeOperationSchema = JSON.parse(fs.readFileSync(
+    path.join(SCHEMA_BASE_DIR, 'core/creative-operation-format-declaration.json'), 'utf8'
+  ));
+  assert.equal(
+    JSON.stringify(creativeOperationSchema).includes('/schemas/core/tracker-execution-contract.json'),
+    false,
+    'creative operation declaration must not compile the seller tracker graph'
+  );
+
   const validateCapabilities = await compile('/schemas/protocol/get-adcp-capabilities-response.json');
   assert.equal(validateCapabilities({
     status: 'completed',
@@ -233,6 +242,8 @@ test('creative and legacy projection surfaces reject seller tracker authority', 
 
 test('package snapshot is registered and all package projections reference it', () => {
   const index = JSON.parse(fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'index.json'), 'utf8'));
+  assert.equal(index.schemas.core.schemas['creative-operation-format-declaration'].$ref,
+    '/schemas/core/creative-operation-format-declaration.json');
   assert.equal(index.schemas.core.schemas['package-format-snapshot'].$ref,
     '/schemas/core/package-format-snapshot.json');
 

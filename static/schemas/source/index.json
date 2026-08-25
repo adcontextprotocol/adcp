@@ -53,6 +53,10 @@
           "$ref": "/schemas/core/canonical-format-option.json",
           "description": "Compact canonical format declaration without legacy named-format links"
         },
+        "creative-operation-format-declaration": {
+          "$ref": "/schemas/core/creative-operation-format-declaration.json",
+          "description": "Authority-free canonical declaration for creative-agent build, validation, and preview capabilities"
+        },
         "canonical-placement": {
           "$ref": "/schemas/core/canonical-placement.json",
           "description": "Compact canonical product placement"
