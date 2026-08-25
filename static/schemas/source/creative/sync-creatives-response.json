@@ -33,6 +33,10 @@
                 "description": "Creative ID from the request",
                 "x-entity": "creative"
               },
+              "revision_id": {
+                "$ref": "/schemas/core/creative-revision-id.json",
+                "description": "Exact revision_id from the matching request creative. When the agent advertises creative.supports_revisions, required for accepted created, updated, or unchanged items whose request supplied revision_id. A peer without that capability may ignore the request field. Forbidden on failed or deleted items."
+              },
               "account": {
                 "$ref": "/schemas/core/account.json",
                 "description": "Account that owns this creative"
@@ -95,6 +99,11 @@
                   "type": "string"
                 }
               },
+              "macro_resolution_results": {
+                "type": "array",
+                "items": { "$ref": "/schemas/core/macro-resolution-result.json" },
+                "description": "Per-token result for declared macros. Sellers include this on accepted items when macro declarations were evaluated, and may include it alongside a failed item's structured errors."
+              },
               "preview_url": {
                 "type": "string",
                 "format": "uri",
@@ -148,7 +157,8 @@
                   "not": {
                     "anyOf": [
                       { "required": ["status"] },
-                      { "required": ["localization"] }
+                      { "required": ["localization"] },
+                      { "required": ["revision_id"] }
                     ]
                   }
                 }
@@ -159,6 +169,22 @@
                 },
                 "then": {
                   "required": ["status"]
+                }
+              },
+              {
+                "x-adcp-validation": {
+                  "verifier_constraints": {
+                    "revision_echo": {
+                      "required_capability": "creative.supports_revisions",
+                      "request_match_key": "creative_id",
+                      "request_field": "revision_id",
+                      "accepted_actions": ["created", "updated", "unchanged"],
+                      "required_when_request_field_present": true,
+                      "must_equal_request": true,
+                      "forbidden_actions": ["failed", "deleted"]
+                    }
+                  },
+                  "spec": "docs/creative/task-reference/sync_creatives.mdx#creative-revisions"
                 }
               }
             ]
