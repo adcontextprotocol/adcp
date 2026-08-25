@@ -19,6 +19,7 @@
  */
 
 import { pathToFileURL } from 'node:url';
+import { hasHeadlineEligibleProvenance } from '../../src/addie/jobs/shadow-eval-metadata.js';
 
 export interface ThreadSummary {
   thread_id: string;
@@ -55,11 +56,22 @@ export interface ThreadSummary {
     };
     shadow_eval_provenance?: {
       schema_version?: number;
-      source_answer?: { model?: string | null };
+      source_answer?: { model?: string | null; config_version_id?: number | null };
+      source_opportunity?: { config_version_id?: number | null };
       generator?: { model?: string } | null;
       judge?: { model?: string };
       self_judged?: boolean | null;
-      tools?: { mode?: string; trace_or_fixture_id?: string | null };
+      tools?: {
+        mode?: string;
+        trace_or_fixture_id?: string | null;
+        policy_version?: string | null;
+        complete_fidelity?: boolean;
+        blocked_capabilities?: string[];
+        hash_key_version?: string | null;
+        trace_verified?: boolean;
+        system_block_hashes?: string[];
+        schemas?: unknown[];
+      };
     };
   };
   flag_reason?: string | null;
@@ -118,6 +130,8 @@ export interface Aggregate {
   invalid_evaluations_by_type: Record<string, number>;
   skipped_evaluations_by_type: Record<string, number>;
   provenance_excluded_by_type: Record<string, number>;
+  replay_fidelity: Record<string, number>;
+  blocked_capability_counts: Record<string, number>;
   gap_severities: Record<string, number>;
   shape_violation_counts: Record<string, number>;
   word_counts: number[];
@@ -137,6 +151,8 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
     invalid_evaluations_by_type: {},
     skipped_evaluations_by_type: {},
     provenance_excluded_by_type: {},
+    replay_fidelity: {},
+    blocked_capability_counts: {},
     gap_severities: {},
     shape_violation_counts: {},
     word_counts: [],
@@ -156,6 +172,17 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
           ? 'historical_corrected_answer (legacy inferred)'
           : 'suppressed_opportunity (legacy inferred)');
     out.by_type[evaluationType] = (out.by_type[evaluationType] || 0) + 1;
+    if (ctx.shadow_eval_provenance?.tools?.mode === 'read_only_replay') {
+      const fidelity = ctx.shadow_eval_provenance.tools.complete_fidelity === true
+        ? 'complete'
+        : 'incomplete';
+      out.replay_fidelity[fidelity] = (out.replay_fidelity[fidelity] || 0) + 1;
+      for (const capability of ctx.shadow_eval_provenance.tools.blocked_capabilities || []) {
+        const category = capability.split(':', 1)[0] || 'unknown';
+        out.blocked_capability_counts[category] =
+          (out.blocked_capability_counts[category] || 0) + 1;
+      }
+    }
     if (ctx.shadow_eval_status === 'skipped' || ctx.shadow_eval_result?.evaluation_skipped === true) {
       out.skipped_evaluations_by_type[evaluationType] =
         (out.skipped_evaluations_by_type[evaluationType] || 0) + 1;
@@ -167,16 +194,7 @@ export function aggregate(threads: ThreadSummary[]): Aggregate {
       continue;
     }
     out.completed++;
-    const toolMode = ctx.shadow_eval_provenance?.tools?.mode;
-    const hasReplayableToolEvidence = toolMode === 'production_trace'
-      || toolMode === 'replay_fixture';
-    const hasAttributableSource = Boolean(ctx.shadow_eval_provenance?.source_answer?.model)
-      && Boolean(ctx.shadow_eval_provenance?.tools?.trace_or_fixture_id);
-    if (
-      ctx.shadow_eval_provenance?.self_judged !== false
-      || !hasReplayableToolEvidence
-      || !hasAttributableSource
-    ) {
+    if (!hasHeadlineEligibleProvenance(ctx.shadow_eval_provenance)) {
       out.provenance_excluded_by_type[evaluationType] =
         (out.provenance_excluded_by_type[evaluationType] || 0) + 1;
       continue;
@@ -317,6 +335,16 @@ async function main() {
   }
   console.log(`Structurally valid completions: ${agg.completed}`);
   console.log(`Headline-eligible (valid + independently judged): ${agg.eligible_total}`);
+
+  if (Object.keys(agg.replay_fidelity).length > 0) {
+    console.log('Read-only replay fidelity:');
+    for (const [fidelity, n] of Object.entries(agg.replay_fidelity)) {
+      console.log(`  ${fidelity.padEnd(16)} ${n}`);
+    }
+    for (const [category, n] of Object.entries(agg.blocked_capability_counts)) {
+      console.log(`  blocked:${category.padEnd(8)} ${n}`);
+    }
+  }
 
   console.log('');
   console.log('Source split:');

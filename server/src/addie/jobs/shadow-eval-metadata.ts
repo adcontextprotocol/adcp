@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { AddieModelConfig, ModelConfig } from '../../config/models.js';
 import { CODE_VERSION } from '../config-version.js';
 
-export const SHADOW_EVAL_METADATA_VERSION = 1 as const;
-export const SHADOW_EVALUATOR_VERSION = '2026.08.1' as const;
+export const SHADOW_EVAL_METADATA_VERSION = 2 as const;
+export const SHADOW_EVALUATOR_VERSION = '2026.08.2' as const;
+export const SHADOW_REPLAY_POLICY_VERSION = 'read-only-v1' as const;
 
 export type ShadowEvalType =
   | 'suppressed_opportunity'
@@ -23,6 +24,13 @@ export interface ShadowEvalProvenance {
     provider: ShadowEvalModelRef['provider'] | null;
     model: string | null;
     config_version_id: number | null;
+    message_id: string | null;
+  };
+  source_question: {
+    message_id: string | null;
+  };
+  source_opportunity: {
+    config_version_id: number | null;
   };
   generator: ShadowEvalModelRef | null;
   judge: ShadowEvalModelRef | null;
@@ -32,12 +40,37 @@ export interface ShadowEvalProvenance {
     generation_prompt_hash: string | null;
   };
   tools: {
-    mode: 'descriptions_only' | 'production_trace' | 'replay_fixture' | 'none';
+    mode: 'descriptions_only' | 'production_trace' | 'replay_fixture' | 'read_only_replay' | 'none';
     requested_sets: string[];
     trace_or_fixture_id: string | null;
+    policy_version: string | null;
+    hash_key_version: string | null;
+    trace_verified: boolean;
+    complete_fidelity: boolean;
+    system_block_hashes: string[];
+    schemas: Array<{
+      name: string;
+      sha256: string;
+      replay_safety: string | null;
+    }>;
+    executions: Array<{
+      sequence: number;
+      name: string;
+      schema_sha256: string | null;
+      input_sha256: string;
+      result_sha256: string;
+      disposition: 'live_read' | 'fixture_hit' | 'blocked_mutation' | 'blocked_unknown' | 'error';
+    }>;
+    blocked_capabilities: string[];
   };
   self_judged: boolean | null;
 }
+
+export type ShadowReplayEvidence = Pick<
+  ShadowEvalProvenance['tools'],
+  'complete_fidelity' | 'system_block_hashes' | 'schemas' | 'executions' | 'blocked_capabilities'
+  | 'hash_key_version' | 'trace_verified'
+>;
 
 function resolveModelAlias(value: string): string {
   if (value === 'primary' || value === 'chat') return AddieModelConfig.chat;
@@ -107,15 +140,20 @@ export function buildShadowEvalProvenance(input: {
   sourceKind: 'generated' | 'production';
   sourceModel?: string | null;
   sourceConfigVersionId?: number | null;
+  sourceOpportunityConfigVersionId?: number | null;
+  sourceMessageId?: string | null;
+  sourceQuestionMessageId?: string | null;
   generatorModel?: string | null;
   judgeModel?: string | null;
   promptHash?: string | null;
   toolMode: ShadowEvalProvenance['tools']['mode'];
   requestedToolSets?: string[];
   traceOrFixtureId?: string | null;
+  replayEvidence?: Partial<ShadowReplayEvidence>;
 }): ShadowEvalProvenance {
   const sourceModel = input.sourceModel || null;
   const generatorModel = input.generatorModel || null;
+  const completeByMode = input.toolMode === 'production_trace' || input.toolMode === 'replay_fixture';
   return {
     schema_version: SHADOW_EVAL_METADATA_VERSION,
     evaluation_type: input.evaluationType,
@@ -124,6 +162,13 @@ export function buildShadowEvalProvenance(input: {
       provider: sourceModel ? providerForModel(sourceModel) : null,
       model: sourceModel,
       config_version_id: input.sourceConfigVersionId ?? null,
+      message_id: input.sourceMessageId ?? null,
+    },
+    source_question: {
+      message_id: input.sourceQuestionMessageId ?? null,
+    },
+    source_opportunity: {
+      config_version_id: input.sourceOpportunityConfigVersionId ?? null,
     },
     generator: generatorModel ? modelRef(generatorModel) : null,
     judge: input.judgeModel ? modelRef(input.judgeModel) : null,
@@ -136,9 +181,57 @@ export function buildShadowEvalProvenance(input: {
       mode: input.toolMode,
       requested_sets: [...new Set(input.requestedToolSets || [])].sort(),
       trace_or_fixture_id: input.traceOrFixtureId ?? null,
+      policy_version: input.toolMode === 'read_only_replay'
+        ? SHADOW_REPLAY_POLICY_VERSION
+        : null,
+      hash_key_version: input.replayEvidence?.hash_key_version ?? null,
+      trace_verified: input.replayEvidence?.trace_verified ?? completeByMode,
+      complete_fidelity: input.replayEvidence?.complete_fidelity ?? completeByMode,
+      system_block_hashes: input.replayEvidence?.system_block_hashes ?? [],
+      schemas: input.replayEvidence?.schemas ?? [],
+      executions: input.replayEvidence?.executions ?? [],
+      blocked_capabilities: input.replayEvidence?.blocked_capabilities ?? [],
     },
     self_judged: sourceModel && input.judgeModel
       ? sourceModel === input.judgeModel
       : null,
   };
+}
+
+/** Shared fail-closed gate for metrics and downstream automation. */
+export function hasHeadlineEligibleProvenance(
+  provenance: {
+    self_judged?: boolean | null;
+    source_answer?: { model?: string | null; config_version_id?: number | null };
+    source_opportunity?: { config_version_id?: number | null };
+    tools?: {
+      mode?: string;
+      trace_or_fixture_id?: string | null;
+      policy_version?: string | null;
+      complete_fidelity?: boolean;
+      blocked_capabilities?: string[];
+      system_block_hashes?: string[];
+      schemas?: unknown[];
+      hash_key_version?: string | null;
+      trace_verified?: boolean;
+    };
+  } | null | undefined,
+): boolean {
+  if (!provenance || provenance.self_judged !== false) return false;
+  const tools = provenance.tools;
+  if (!provenance.source_answer?.model || !tools?.trace_or_fixture_id) return false;
+  if (tools.mode === 'production_trace' || tools.mode === 'replay_fixture') {
+    return tools.complete_fidelity !== false;
+  }
+  return tools.mode === 'read_only_replay'
+    && typeof provenance.source_answer?.config_version_id === 'number'
+    && typeof provenance.source_opportunity?.config_version_id === 'number'
+    && provenance.source_answer.config_version_id === provenance.source_opportunity.config_version_id
+    && tools.policy_version === SHADOW_REPLAY_POLICY_VERSION
+    && Boolean(tools.hash_key_version)
+    && tools.trace_verified === true
+    && (tools.system_block_hashes?.length ?? 0) > 0
+    && (tools.schemas?.length ?? 0) > 0
+    && tools.complete_fidelity === true
+    && tools.blocked_capabilities?.length === 0;
 }

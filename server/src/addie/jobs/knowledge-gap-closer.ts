@@ -15,6 +15,10 @@ import { getThreadService } from '../thread-service.js';
 import { ModelConfig } from '../../config/models.js';
 import { fenceShadowEvalInput } from './shadow-evaluator.js';
 import { fileGitHubIssue } from './github-filer.js';
+import {
+  SHADOW_REPLAY_POLICY_VERSION,
+  hasHeadlineEligibleProvenance,
+} from './shadow-eval-metadata.js';
 
 const logger = createLogger('knowledge-gap-closer');
 
@@ -47,6 +51,8 @@ interface GapThread {
       tools?: {
         mode?: string;
         trace_or_fixture_id?: string | null;
+        complete_fidelity?: boolean;
+        blocked_capabilities?: string[];
       };
     };
     shadow_eval_gap_issue_created?: boolean;
@@ -69,8 +75,19 @@ async function findUnresolvedGaps(limit: number): Promise<GapThread[]> {
        AND (context->'shadow_eval_provenance'->>'self_judged')::boolean = FALSE
        AND context->'shadow_eval_provenance'->'source_answer'->>'model' IS NOT NULL
        AND context->'shadow_eval_provenance'->'tools'->>'trace_or_fixture_id' IS NOT NULL
-       AND context->'shadow_eval_provenance'->'tools'->>'mode'
-         IN ('production_trace', 'replay_fixture')
+       AND (
+         context->'shadow_eval_provenance'->'tools'->>'mode'
+           IN ('production_trace', 'replay_fixture')
+         OR (
+           context->'shadow_eval_provenance'->'tools'->>'mode' = 'read_only_replay'
+           AND context->'shadow_eval_provenance'->'tools'->>'policy_version' = $2
+           AND (context->'shadow_eval_provenance'->'tools'->>'complete_fidelity')::boolean = TRUE
+           AND jsonb_array_length(COALESCE(
+             context->'shadow_eval_provenance'->'tools'->'blocked_capabilities',
+             '[]'::jsonb
+           )) = 0
+         )
+       )
        AND context->'shadow_eval_result'->>'gap_severity' IN ('significant', 'critical')
        AND context->>'shadow_eval_type' IN ('corrected_answer', 'historical_corrected_answer')
        AND (context->>'shadow_eval_gap_issue_created') IS NULL
@@ -87,7 +104,7 @@ async function findUnresolvedGaps(limit: number): Promise<GapThread[]> {
        END,
        updated_at DESC
      LIMIT $1`,
-    [limit]
+    [limit, SHADOW_REPLAY_POLICY_VERSION]
   );
   return result.rows;
 }
@@ -95,17 +112,13 @@ async function findUnresolvedGaps(limit: number): Promise<GapThread[]> {
 export function isGapEligibleForPublicIssue(context: GapThread['context']): boolean {
   const result = context.shadow_eval_result;
   const provenance = context.shadow_eval_provenance;
-  const mode = provenance?.tools?.mode;
   return result.knowledge_gap === true
     && result.evaluation_valid === true
     && ['significant', 'critical'].includes(result.gap_severity)
     && ['corrected_answer', 'historical_corrected_answer'].includes(
       context.shadow_eval_type || '',
     )
-    && provenance?.self_judged === false
-    && Boolean(provenance.source_answer?.model)
-    && Boolean(provenance.tools?.trace_or_fixture_id)
-    && (mode === 'production_trace' || mode === 'replay_fixture');
+    && hasHeadlineEligibleProvenance(provenance);
 }
 
 /**

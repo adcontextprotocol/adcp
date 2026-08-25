@@ -18,6 +18,8 @@ import {
   __test_parseComparisonResult as parseComparisonResult,
   getComparisonDisposition,
   hasDeterministicShapeFailure,
+  validateShadowReplayOutput,
+  getReplayPreComparisonError,
   compareResponses,
 } from '../../../src/addie/jobs/shadow-evaluator.js';
 
@@ -124,6 +126,24 @@ describe('deterministic shape failures', () => {
 
   it('passes an Addie response with no violations', () => {
     expect(hasDeterministicShapeFailure({ violationLabels: [] })).toBe(false);
+  });
+});
+
+describe('shadow replay output security', () => {
+  it('withholds output that the production channel validator rejects', () => {
+    expect(validateShadowReplayOutput("I'm Claude, an AI assistant made by Anthropic.")).toEqual({
+      text: '',
+      rejected: true,
+    });
+    expect(validateShadowReplayOutput('AdCP uses task-based protocol messages.')).toEqual({
+      text: 'AdCP uses task-based protocol messages.',
+      rejected: false,
+    });
+  });
+
+  it('invalidates blocked replay before an LLM judge can create a gap verdict', () => {
+    expect(getReplayPreComparisonError(null, false)).toBe('replay_incomplete');
+    expect(getReplayPreComparisonError(null, true)).toBeNull();
   });
 });
 

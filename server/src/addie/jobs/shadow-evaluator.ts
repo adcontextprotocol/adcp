@@ -9,11 +9,11 @@
  *
  * Runs every 10 minutes, processes threads that have settled (>10 min since last activity).
  *
- * The shadow generation loads Addie's actual rule files and tool reference so
- * the response shape approximates production. It does not yet execute tools,
- * so these rows are labelled `descriptions_only` and must not be treated as a
- * production answer-quality rate. Generation defaults to Haiku; judging
- * defaults to an independent precision model.
+ * Generation reuses Addie's production channel invocation and model. A
+ * request-local policy permits only explicitly pure local documentation reads;
+ * mutations, unknown tools, and provider-managed tools are blocked. Until an
+ * attributable restricted trace or exact fixture is available, replay remains
+ * incomplete and is neither judged nor included in answer-quality metrics.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -22,9 +22,12 @@ import { query } from '../../db/client.js';
 import { getThreadReplies } from '../../slack/client.js';
 import { getThreadService } from '../thread-service.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
-import { loadRules, loadResponseStyle } from '../rules/index.js';
-import { ADDIE_TOOL_REFERENCE } from '../prompts.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
+import { getMemberContext } from '../member-context.js';
+import { buildChannelContext, type ChannelRespondPlan } from '../bolt-app.js';
+import { executeShadowReplay } from './shadow-replay.js';
+import type { SIRetrievalResult } from '../services/si-retriever.js';
+import { guardBareJsonEnvelope, validateOutput } from '../security.js';
 import {
   buildShadowEvalProvenance,
   resolveShadowJudgeModel,
@@ -56,14 +59,15 @@ export interface ShadowComparisonResult {
     | 'comparison_input_too_long'
     | 'comparison_output_truncated'
     | 'generation_empty'
-    | 'generation_truncated';
+    | 'generation_truncated'
+    | 'generation_output_rejected'
+    | 'replay_incomplete';
 }
 
 /**
  * Resolve the model used to generate a suppressed-opportunity answer.
  *
- * Default: Haiku (cheap; same prompt as production so the shape signal is
- * still meaningful even though the model differs).
+ * Default: the production Addie chat model.
  * Override: SHADOW_EVAL_MODEL=primary | depth | precision | <full-model-id>
  *
  * Setting `primary` matches the Addie production chat model. The judge is
@@ -72,7 +76,7 @@ export interface ShadowComparisonResult {
  */
 export function resolveShadowModel(): string {
   const override = process.env.SHADOW_EVAL_MODEL?.trim();
-  if (!override) return ModelConfig.fast;
+  if (!override) return AddieModelConfig.chat;
   if (override === 'primary' || override === 'chat') return AddieModelConfig.chat;
   if (override === 'depth') return ModelConfig.depth;
   if (override === 'precision') return ModelConfig.precision;
@@ -115,12 +119,20 @@ export function fenceShadowEvalInput(label: string, body: string): string {
 
 interface PendingThread {
   thread_id: string;
+  user_id: string | null;
   context: {
     shadow_eval_status: string;
     shadow_eval_channel_id: string;
     shadow_eval_thread_ts: string;
+    shadow_eval_question_ts?: string;
     shadow_eval_tool_sets: string[];
     shadow_eval_question: string;
+    shadow_eval_source_question_message_id?: string | null;
+    shadow_eval_source_message_id?: string | null;
+    shadow_eval_source_user_id?: string | null;
+    shadow_eval_source_config_version_id?: number | null;
+    shadow_eval_router_decision?: unknown;
+    shadow_eval_si_retrieval?: SIRetrievalResult | null;
   };
 }
 
@@ -129,7 +141,7 @@ interface PendingThread {
  */
 async function findPendingThreads(limit: number): Promise<PendingThread[]> {
   const result = await query<PendingThread>(
-    `SELECT thread_id, context
+    `SELECT thread_id, user_id, context
      FROM addie_threads
      WHERE context->>'shadow_eval_status' = 'pending'
        AND updated_at < NOW() - INTERVAL '10 minutes'
@@ -368,6 +380,41 @@ export function hasDeterministicShapeFailure(
   return report.violationLabels.length > 0;
 }
 
+export function validateShadowReplayOutput(text: string): {
+  text: string;
+  rejected: boolean;
+} {
+  const guarded = guardBareJsonEnvelope(text, { pathTag: 'shadow-channel-replay' });
+  const validation = validateOutput(guarded.text);
+  return {
+    text: validation.flagged ? '' : validation.sanitized,
+    rejected: validation.flagged,
+  };
+}
+
+export function getReplayPreComparisonError(
+  generationError: ShadowComparisonResult['evaluation_error'] | null,
+  completeFidelity: boolean,
+): ShadowComparisonResult['evaluation_error'] | null {
+  return generationError ?? (completeFidelity ? null : 'replay_incomplete');
+}
+
+function parseQueuedRespondPlan(value: unknown): ChannelRespondPlan | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.action !== 'respond'
+    || !Array.isArray(candidate.tool_sets)
+    || !candidate.tool_sets.every((set) => typeof set === 'string')
+    || !['high', 'suggest', 'low'].includes(String(candidate.confidence))
+    || !['quick_match', 'llm'].includes(String(candidate.decision_method))
+    || typeof candidate.reason !== 'string'
+  ) {
+    return null;
+  }
+  return candidate as unknown as ChannelRespondPlan;
+}
+
 /**
  * Main job runner. Finds pending shadow evaluations, generates shadow responses,
  * compares with human answers, and stores results.
@@ -430,46 +477,81 @@ export async function runShadowEvaluatorJob(
         continue;
       }
 
-      // Extract human responses (after the question)
-      const humanResponses = extractHumanResponses(slackMessages, ctx.shadow_eval_thread_ts);
+      // Extract human responses after the triggering question, not merely
+      // after the root of a multi-turn Slack thread.
+      const humanResponses = extractHumanResponses(
+        slackMessages,
+        ctx.shadow_eval_question_ts ?? ctx.shadow_eval_thread_ts,
+      );
       if (humanResponses.length === 0) {
         // No substantive human replies yet — skip for now, re-check later
         result.skipped++;
         continue;
       }
 
-      // Generate Addie's shadow response with the production rule set so the
-      // response shape is comparable. Default model is Haiku for cost;
-      // SHADOW_EVAL_MODEL=primary upgrades to Sonnet. Tools are not registered
-      // yet, which makes substantive/tool-required verdicts discovery-only.
-      // Provenance records `descriptions_only`, and knowledge-gap-closer
-      // excludes these rows until safe orchestration replay lands.
-      // Mirror claude-client.ts assembly: base rules + tool reference +
-      // response-style.md. Style instructions sit last so the shadow
-      // generation reflects what production emits.
-      let systemPrompt: string;
-      try {
-        systemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
-      } catch (loadError) {
-        logger.warn({ error: loadError }, 'Shadow evaluator: rules failed to load, skipping thread');
-        await threadService.patchThreadContext(thread.thread_id, { shadow_eval_status: 'error' });
+      const queuedPlan = parseQueuedRespondPlan(ctx.shadow_eval_router_decision);
+      const sourceUserId = ctx.shadow_eval_source_user_id ?? thread.user_id;
+      const sourceQuestionMessageId = ctx.shadow_eval_source_question_message_id
+        ?? ctx.shadow_eval_source_message_id;
+      if (!sourceUserId || !sourceQuestionMessageId || !queuedPlan) {
+        logger.warn(
+          {
+            threadId: thread.thread_id,
+            hasUser: Boolean(sourceUserId),
+            hasSourceMessage: Boolean(sourceQuestionMessageId),
+            hasRouterDecision: Boolean(queuedPlan),
+          },
+          'Shadow evaluator: Missing attributable replay context',
+        );
+        await threadService.patchThreadContext(thread.thread_id, {
+          shadow_eval_status: 'error',
+          shadow_eval_result: invalidComparisonResult('generation_empty'),
+          shadow_eval_replay_error: 'missing_attributable_replay_context',
+        });
         result.errors++;
         continue;
       }
 
-      const shadowModel = resolveShadowModel();
-      const shadowResult = await client.messages.create({
-        model: shadowModel,
-        max_tokens: 4096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: ctx.shadow_eval_question }],
+      const [memberContext, channelContext] = await Promise.all([
+        getMemberContext(sourceUserId),
+        buildChannelContext(ctx.shadow_eval_channel_id),
+      ]);
+      const explicitModelOverride = process.env.SHADOW_EVAL_MODEL?.trim()
+        ? resolveShadowModel()
+        : undefined;
+      const replay = await executeShadowReplay({
+        question: ctx.shadow_eval_question,
+        userId: sourceUserId,
+        threadId: thread.thread_id,
+        sourceQuestionMessageId,
+        sourceConfigVersionId: ctx.shadow_eval_source_config_version_id,
+        memberContext,
+        channelContext,
+        plan: queuedPlan,
+        siRetrievalResult: ctx.shadow_eval_si_retrieval,
+        modelOverride: explicitModelOverride,
       });
-      const shadowTextBlock = shadowResult.content.find((block) => block.type === 'text');
-      const shadowResponse = shadowTextBlock?.type === 'text' ? shadowTextBlock.text : '';
-
-      const generationError = !shadowResponse
+      const shadowModel = replay.model;
+      const guardedOutput = validateShadowReplayOutput(replay.response.text);
+      const outputRejected = guardedOutput.rejected;
+      const shadowResponse = guardedOutput.text;
+      const replayEvidence = outputRejected
+        ? {
+            ...replay.evidence,
+            complete_fidelity: false,
+            blocked_capabilities: [
+              ...new Set([
+                ...replay.evidence.blocked_capabilities,
+                'output_security_rejected',
+              ]),
+            ].sort(),
+          }
+        : replay.evidence;
+      const generationError: ShadowComparisonResult['evaluation_error'] | null = outputRejected
+        ? 'generation_output_rejected'
+        : !shadowResponse
         ? 'generation_empty'
-        : shadowResult.stop_reason === 'max_tokens'
+        : replay.response.flagged
           ? 'generation_truncated'
           : null;
 
@@ -492,9 +574,13 @@ export async function runShadowEvaluatorJob(
       // Use a different judge model by default. Same-model generation and
       // judging creates correlated errors and is only allowed behind the
       // explicitly recorded SHADOW_EVAL_ALLOW_SELF_JUDGE experiment flag.
-      const judgeModel = generationError ? null : resolveShadowJudgeModel([shadowModel]);
-      const comparison = generationError
-        ? invalidComparisonResult(generationError)
+      const replayComplete = replayEvidence.complete_fidelity;
+      const preComparisonError = getReplayPreComparisonError(generationError, replayComplete);
+      const judgeModel = preComparisonError
+        ? null
+        : resolveShadowJudgeModel([shadowModel]);
+      const comparison = preComparisonError
+        ? invalidComparisonResult(preComparisonError)
         : await compareResponses(
           client,
           ctx.shadow_eval_question,
@@ -515,11 +601,18 @@ export async function runShadowEvaluatorJob(
           evaluationType: 'suppressed_opportunity',
           sourceKind: 'generated',
           sourceModel: shadowModel,
+          sourceQuestionMessageId,
+          sourceConfigVersionId: replay.configVersionId,
+          sourceOpportunityConfigVersionId: ctx.shadow_eval_source_config_version_id,
           generatorModel: shadowModel,
           judgeModel: comparisonDisposition.executedJudgeModel,
-          promptHash: shadowPromptHash(systemPrompt),
-          toolMode: 'descriptions_only',
+          promptHash: replayEvidence.system_block_hashes.length > 0
+            ? shadowPromptHash(replayEvidence.system_block_hashes.join(':'))
+            : null,
+          toolMode: 'read_only_replay',
           requestedToolSets: ctx.shadow_eval_tool_sets,
+          traceOrFixtureId: replay.traceId,
+          replayEvidence,
         }),
         shadow_eval_result: comparison,
         shadow_eval_shape: summarizedShape,
@@ -541,7 +634,7 @@ export async function runShadowEvaluatorJob(
         flagParts.push(`Knowledge gap (${comparison.gap_severity}): ${comparison.gap_details}`);
         result.knowledge_gaps++;
       }
-      if (shapeRegression) {
+      if (replayComplete && shapeRegression) {
         flagParts.push(`Shape regression: ${shadowShape.violationLabels.join(', ')}`);
         result.shape_regressions++;
       }
@@ -550,7 +643,7 @@ export async function runShadowEvaluatorJob(
       }
       await threadService.flagThread(thread.thread_id, flagParts.join(' | '));
 
-      if (!comparisonDisposition.skipped) result.evaluated++;
+      if (comparison.evaluation_valid) result.evaluated++;
       logger.info({
         threadId: thread.thread_id,
         knowledge_gap: comparison.knowledge_gap,
@@ -561,6 +654,8 @@ export async function runShadowEvaluatorJob(
         human_shape_violations: humanShape.violationLabels,
         shadow_model: shadowModel,
         judge_model: judgeModel,
+        replay_complete_fidelity: replayEvidence.complete_fidelity,
+        replay_blocked_capability_count: replayEvidence.blocked_capabilities.length,
       }, 'Shadow evaluator: Evaluation complete');
 
       // Brief pause between evaluations

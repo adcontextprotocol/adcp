@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AddieModelConfig, ModelConfig } from '../../../src/config/models.js';
 import {
   buildShadowEvalProvenance,
+  hasHeadlineEligibleProvenance,
   providerForModel,
   resolveShadowJudgeModel,
   shadowPromptHash,
@@ -73,24 +74,35 @@ describe('shadow evaluation metadata', () => {
     });
 
     expect(provenance).toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       evaluation_type: 'suppressed_opportunity',
       source_answer: {
         kind: 'generated',
         provider: 'anthropic',
         model: ModelConfig.fast,
         config_version_id: null,
+        message_id: null,
       },
+      source_question: { message_id: null },
+      source_opportunity: { config_version_id: null },
       generator: { provider: 'anthropic', model: ModelConfig.fast },
       judge: { provider: 'anthropic', model: ModelConfig.precision },
       prompt: {
-        evaluator_version: '2026.08.1',
+        evaluator_version: '2026.08.2',
         generation_prompt_hash: null,
       },
       tools: {
         mode: 'descriptions_only',
         requested_sets: ['knowledge', 'member'],
         trace_or_fixture_id: null,
+        policy_version: null,
+        hash_key_version: null,
+        trace_verified: false,
+        complete_fidelity: false,
+        system_block_hashes: [],
+        schemas: [],
+        executions: [],
+        blocked_capabilities: [],
       },
       self_judged: false,
     });
@@ -120,5 +132,41 @@ describe('shadow evaluation metadata', () => {
 
     expect(provenance.source_answer.model).toBeNull();
     expect(provenance.self_judged).toBeNull();
+  });
+
+  it('fails closed for incomplete or blocked read-only replay evidence', () => {
+    const provenance = buildShadowEvalProvenance({
+      evaluationType: 'suppressed_opportunity',
+      sourceKind: 'generated',
+      sourceModel: AddieModelConfig.chat,
+      sourceConfigVersionId: 42,
+      sourceOpportunityConfigVersionId: 42,
+      generatorModel: AddieModelConfig.chat,
+      judgeModel: ModelConfig.precision,
+      toolMode: 'read_only_replay',
+      traceOrFixtureId: 'replay-1',
+      replayEvidence: {
+        complete_fidelity: true,
+        blocked_capabilities: [],
+        hash_key_version: 'test-key-v1',
+        trace_verified: true,
+        system_block_hashes: ['system-hash'],
+        schemas: [{ name: 'search_docs', sha256: 'schema-hash', replay_safety: 'pure_local' }],
+      },
+    });
+
+    expect(hasHeadlineEligibleProvenance(provenance)).toBe(true);
+    expect(hasHeadlineEligibleProvenance({
+      ...provenance,
+      tools: { ...provenance.tools, blocked_capabilities: ['mutation:publish'] },
+    })).toBe(false);
+    expect(hasHeadlineEligibleProvenance({
+      ...provenance,
+      tools: { ...provenance.tools, complete_fidelity: false },
+    })).toBe(false);
+    expect(hasHeadlineEligibleProvenance({
+      ...provenance,
+      source_opportunity: { config_version_id: 41 },
+    })).toBe(false);
   });
 });

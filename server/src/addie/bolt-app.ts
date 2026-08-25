@@ -33,7 +33,7 @@ import { deliverAndRecordDirectMessage } from './direct-message-delivery.js';
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type ProcessMessageOptions, type UserScopedToolsResult } from './claude-client.js';
 import {
   buildSlackCostOptions,
   SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
@@ -99,6 +99,7 @@ import { pickPrompts } from './home/builders/suggested-prompts.js';
 import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
 import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
+import { getCurrentConfigVersionId } from './config-version.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
   sanitizeInput,
@@ -526,11 +527,16 @@ let boltApp: InstanceType<typeof App> | null = null;
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
 
+/** Return the initialized channel client used by production orchestration. */
+export function getChannelClaudeClient(): AddieClaudeClient | null {
+  return claudeClient;
+}
+
 /**
  * Fetch channel info and build a partial ThreadContext with channel details
  * Also looks up any associated working group for the channel
  */
-async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
+export async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
   const context: Partial<ThreadContext> = {
     viewing_channel_id: channelId,
   };
@@ -3212,6 +3218,8 @@ function buildRouterDecision(plan: ExecutionPlan): {
   tokens_input?: number;
   tokens_output?: number;
   model?: string;
+  requires_precision?: boolean;
+  requires_depth?: boolean;
 } {
   const base = {
     action: plan.action,
@@ -3221,6 +3229,8 @@ function buildRouterDecision(plan: ExecutionPlan): {
     tokens_input: plan.tokens_input,
     tokens_output: plan.tokens_output,
     model: plan.model,
+    requires_precision: plan.requires_precision,
+    requires_depth: plan.requires_depth,
   };
 
   if (plan.action === 'respond') {
@@ -3228,6 +3238,130 @@ function buildRouterDecision(plan: ExecutionPlan): {
   }
 
   return base;
+}
+
+export function buildShadowEvalQueueContext(input: {
+  plan: ChannelRespondPlan;
+  channelId: string;
+  threadTs: string;
+  questionTs: string;
+  question: string;
+  sourceQuestionMessageId: string | null;
+  sourceUserId: string;
+  sourceConfigVersionId: number | null;
+  siRetrievalResult?: SIRetrievalResult | null;
+}): Record<string, unknown> {
+  return {
+    shadow_eval_status: 'pending',
+    shadow_eval_requested_at: new Date().toISOString(),
+    shadow_eval_channel_id: input.channelId,
+    shadow_eval_thread_ts: input.threadTs,
+    shadow_eval_question_ts: input.questionTs,
+    shadow_eval_tool_sets: input.plan.tool_sets,
+    shadow_eval_question: input.question,
+    shadow_eval_source_question_message_id: input.sourceQuestionMessageId,
+    shadow_eval_source_user_id: input.sourceUserId,
+    shadow_eval_source_config_version_id: input.sourceConfigVersionId,
+    shadow_eval_router_decision: buildRouterDecision(input.plan),
+    shadow_eval_si_retrieval: input.siRetrievalResult ?? null,
+  };
+}
+
+export type ChannelRespondPlan = Extract<ExecutionPlan, { action: 'respond' }>;
+
+export interface ChannelResponseInvocation {
+  requestTools: RequestTools;
+  processOptions: ProcessMessageOptions;
+  effectiveModel: string;
+  selectedToolSets: string[];
+  isAdmin: boolean;
+}
+
+/**
+ * Build the model invocation used for a proposed channel response. Keeping
+ * this in one place lets read-only evaluation exercise the same prompt,
+ * permission, routing, and tool-selection path as production.
+ */
+export async function buildChannelResponseInvocation(input: {
+  userId: string;
+  threadId: string;
+  memberContext: MemberContext | null;
+  channelContext?: ThreadContext;
+  plan: ChannelRespondPlan;
+  siRetrievalResult?: SIRetrievalResult | null;
+}): Promise<ChannelResponseInvocation> {
+  const {
+    userId,
+    threadId,
+    memberContext,
+    channelContext,
+    plan,
+    siRetrievalResult,
+  } = input;
+  const { requestContext: memberRequestContext } = await buildRequestContext(
+    userId,
+    channelContext,
+    memberContext,
+  );
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
+    memberContext,
+    userId,
+    threadId,
+    channelContext,
+  );
+  const selectedToolSets = [...plan.tool_sets];
+  if (
+    userIsAdmin
+    && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG
+    && !selectedToolSets.includes('admin')
+  ) {
+    selectedToolSets.push('admin');
+  }
+  const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
+  if (userIsAdmin && channelSystemRole) {
+    for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
+      if (!selectedToolSets.includes(set)) selectedToolSets.push(set);
+    }
+  }
+
+  const { filteredTools, unavailableHint } = filterToolsBySet(
+    userTools,
+    selectedToolSets,
+    userIsAdmin,
+    channelContext?.viewing_channel_is_private === false,
+  );
+  const siContext = siRetrievalResult?.agents.length
+    ? siRetriever.formatContext(siRetrievalResult.agents)
+    : '';
+  const requestContext = [
+    memberRequestContext,
+    unavailableHint,
+    siContext,
+    buildConfidenceCalibration(plan.confidence),
+  ].filter(Boolean).join('\n\n');
+
+  const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+  const modelOverride = plan.requires_precision
+    ? ModelConfig.precision
+    : (plan.requires_depth || channelIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
+  const effectiveModel = modelOverride ?? AddieModelConfig.chat;
+
+  return {
+    requestTools: filteredTools,
+    processOptions: {
+      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+      ...(modelOverride ? { modelOverride } : {}),
+      requestContext,
+      slackUserId: userId,
+      threadId,
+      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
+    },
+    effectiveModel,
+    selectedToolSets,
+    isAdmin: userIsAdmin,
+  };
 }
 
 /**
@@ -4276,8 +4410,9 @@ async function handleChannelMessage({
     const inputValidation = sanitizeInput(messageText);
 
     // Log user message to unified thread with router decision
+    let sourceMessageId: string | null = null;
     try {
-      await threadService.addMessage({
+      const sourceMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
         content: messageText,
@@ -4289,6 +4424,7 @@ async function handleChannelMessage({
         user_display_name: resolveSpeakerDisplayName(memberContext),
         message_source: 'typed',
       });
+      sourceMessageId = sourceMessage.message_id;
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
     }
@@ -4353,14 +4489,20 @@ async function handleChannelMessage({
                 thread.thread_id,
                 `Suppressed high-confidence response (humans answering): ${plan.reason}`
               );
-              await threadService.patchThreadContext(thread.thread_id, {
-                shadow_eval_status: 'pending',
-                shadow_eval_requested_at: new Date().toISOString(),
-                shadow_eval_channel_id: channelId,
-                shadow_eval_thread_ts: threadTs,
-                shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
-                shadow_eval_question: messageText,
-              });
+              await threadService.patchThreadContext(
+                thread.thread_id,
+                buildShadowEvalQueueContext({
+                  plan,
+                  channelId,
+                  threadTs,
+                  questionTs: event.ts,
+                  question: messageText,
+                  sourceQuestionMessageId: sourceMessageId,
+                  sourceUserId: userId,
+                  sourceConfigVersionId: await getCurrentConfigVersionId(),
+                  siRetrievalResult,
+                }),
+              );
             } catch (flagError) {
               logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
             }
@@ -4387,14 +4529,20 @@ async function handleChannelMessage({
               thread.thread_id,
               `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
             );
-            await threadService.patchThreadContext(thread.thread_id, {
-              shadow_eval_status: 'pending',
-              shadow_eval_requested_at: new Date().toISOString(),
-              shadow_eval_channel_id: channelId,
-              shadow_eval_thread_ts: threadTs,
-              shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
-              shadow_eval_question: messageText,
-            });
+            await threadService.patchThreadContext(
+              thread.thread_id,
+              buildShadowEvalQueueContext({
+                plan,
+                channelId,
+                threadTs,
+                questionTs: event.ts,
+                question: messageText,
+                sourceQuestionMessageId: sourceMessageId,
+                sourceUserId: userId,
+                sourceConfigVersionId: await getCurrentConfigVersionId(),
+                siRetrievalResult,
+              }),
+            );
           } catch (flagError) {
             logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
           }
@@ -4406,58 +4554,27 @@ async function handleChannelMessage({
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
-    // Build per-request context for system prompt (pass channelContext so public channel guard is included)
-    const { requestContext: memberRequestContext } = await buildRequestContext(userId, channelContext);
-
-    // Get all user-scoped tools then filter by selected tool sets
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
-    const proposedSets = [...plan.tool_sets];
-    if (userIsAdmin && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG && !proposedSets.includes('admin')) {
-      proposedSets.push('admin');
-    }
-    // System channels are operational channels — certification sessions don't happen here,
-    // so no hasCertificationContext guard needed (unlike selectRoutedToolsForSlackResponse).
-    const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-    if (userIsAdmin && channelSystemRole) {
-      for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
-        if (!proposedSets.includes(set)) {
-          proposedSets.push(set);
-        }
-      }
-    }
-    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, proposedSets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
-
-    // Build SI context from retrieved agents
-    const siContext = siRetrievalResult?.agents.length
-      ? siRetriever.formatContext(siRetrievalResult.agents)
-      : '';
-
-    // Combine all context for system prompt (member info, unavailable tool hints, SI agents, confidence calibration)
-    const requestContext = [memberRequestContext, unavailableHint, siContext, buildConfidenceCalibration(plan.confidence)]
-      .filter(Boolean)
-      .join('\n\n');
-
-    // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
-    const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
-    const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
-    const channelModelOverride = plan.requires_precision
-      ? ModelConfig.precision
-      : (plan.requires_depth || channelIsDepthChannel)
-        ? ModelConfig.depth
-        : undefined;
-    const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
+    const invocation = await buildChannelResponseInvocation({
+      userId,
+      threadId: thread.thread_id,
+      memberContext,
+      channelContext,
+      plan,
+      siRetrievalResult,
+    });
     // Public home-workspace discussions use a bounded community budget;
     // private/shared channels stay user-scoped.
     const processOptions = {
-      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
-      requestContext,
-      slackUserId: userId,
-      threadId: thread.thread_id,
+      ...invocation.processOptions,
       ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
-      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
-    const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
+    const response = await claudeClient.processMessage(
+      messageText,
+      undefined,
+      invocation.requestTools,
+      undefined,
+      processOptions,
+    );
 
     if (!response.text || response.text.trim().length === 0) {
       logger.debug({ channelId }, 'Addie Bolt: No response generated');
@@ -4485,7 +4602,7 @@ async function handleChannelMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: effectiveModel,
+      model: invocation.effectiveModel,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
