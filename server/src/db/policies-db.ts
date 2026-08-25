@@ -1,45 +1,147 @@
 import { query, getClient } from './client.js';
 import { z } from 'zod';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+
+const ACCEPTANCE_POLICY_PROFILE_SCHEMA_URI = '/schemas/media-buy/acceptance-policy-profile.json';
+const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
+const PROFILE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
+const POLICY_CATEGORY_RE = /^[a-z][a-z0-9_]*$/;
+const JURISDICTION_RE = /^[A-Z]{2}$/;
+const JURISDICTION_GROUP_RE = /^[A-Z][A-Z0-9_-]*$/;
+
+const RequirementDescriptionSchema = z.string().min(1);
+const RequirementCriteriaSchema = z.array(z.string().regex(/^[a-z][a-z0-9_.:-]*$/)).min(1);
+const AcceptancePolicyRequirementSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('category_declaration'),
+    declaration: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('advertiser_verification'),
+    verification_scheme: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('advertiser_eligibility'),
+    criteria: RequirementCriteriaSchema,
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('funding_restriction'),
+    criteria: RequirementCriteriaSchema,
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('certification'),
+    credential: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('license'),
+    credential: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  ...(['prior_authorization', 'account_setup', 'sales_assisted', 'transparency_reporting'] as const).map(kind =>
+    z.object({ kind: z.literal(kind), description: RequirementDescriptionSchema.optional() }).strict(),
+  ),
+  z.object({
+    kind: z.literal('disclosure'),
+    format: z.string().min(1).optional(),
+    placement: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('targeting_restriction'),
+    restricted_attributes: z.array(z.enum([
+      'racial_ethnic_origin',
+      'political_opinions',
+      'religious_beliefs',
+      'trade_union_membership',
+      'health_data',
+      'sex_life_sexual_orientation',
+      'genetic_data',
+      'biometric_data',
+      'age',
+      'familial_status',
+    ])).min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  ...(['creative_restriction', 'destination_restriction'] as const).map(kind =>
+    z.object({ kind: z.literal(kind), description: RequirementDescriptionSchema }).strict(),
+  ),
+  z.object({
+    kind: z.literal('format_restriction'),
+    format_ids: z.array(z.string().min(1)).min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('time_restriction'),
+    starts_at: z.string().datetime().optional(),
+    ends_at: z.string().datetime().optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('custom'),
+    id: z.string().regex(/^[a-z][a-z0-9_.:-]*$/),
+    description: RequirementDescriptionSchema,
+    ext: z.record(z.string(), z.unknown()).optional(),
+  }).strict(),
+]);
 
 const AcceptancePolicyRuleSchema = z.object({
-  rule_id: z.string(),
-  subject_category: z.string(),
-  subject_facets: z.array(z.string()).optional(),
-  advertiser_roles: z.array(z.string()).optional(),
-  jurisdictions: z.array(z.string()).optional(),
-  jurisdiction_groups: z.array(z.string()).optional(),
-  applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])),
+  rule_id: z.string().regex(PROFILE_ID_RE),
+  subject_category: z.string().regex(POLICY_CATEGORY_RE),
+  subject_facets: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1).optional(),
+  advertiser_roles: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1).optional(),
+  jurisdictions: z.array(z.string().regex(JURISDICTION_RE)).min(1).optional(),
+  jurisdiction_groups: z.array(z.string().regex(JURISDICTION_GROUP_RE)).min(1).optional(),
+  applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])).min(1),
   disposition: z.enum(['allowed', 'conditional', 'prohibited']),
-  requirements: z.array(z.record(z.string(), z.unknown())).optional(),
-  policy_ids: z.array(z.string()).optional(),
-  description: z.string().optional(),
-  effective_at: z.string().optional(),
-  expires_at: z.string().optional(),
+  requirements: z.array(AcceptancePolicyRequirementSchema).min(1).optional(),
+  policy_ids: z.array(z.string().min(1)).min(1).optional(),
+  description: z.string().min(1).max(1000).optional(),
+  effective_at: z.string().datetime().optional(),
+  expires_at: z.string().datetime().optional(),
   ext: z.record(z.string(), z.unknown()).optional(),
-}).strict();
+}).strict().superRefine((rule, ctx) => {
+  if (rule.disposition === 'conditional' && !rule.requirements) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['requirements'], message: 'required for conditional rules' });
+  }
+});
+
+const AcceptancePolicyScopeSchema = z.object({
+  subject_categories: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1),
+  applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])).min(1),
+  jurisdictions: z.array(z.string().regex(JURISDICTION_RE)).min(1).optional(),
+  jurisdiction_groups: z.array(z.string().regex(JURISDICTION_GROUP_RE)).min(1).optional(),
+  all_jurisdictions: z.literal(true).optional(),
+}).strict().superRefine((scope, ctx) => {
+  if (!scope.jurisdictions && !scope.jurisdiction_groups && scope.all_jurisdictions !== true) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'jurisdiction coverage must be explicit' });
+  }
+});
 
 export const AcceptancePolicyProfileSchema = z.object({
-  profile_id: z.string(),
-  version: z.string(),
-  content_digest: z.string(),
+  profile_id: z.string().regex(PROFILE_ID_RE),
+  version: z.string().min(1),
+  content_digest: z.string().regex(SHA256_DIGEST_RE),
   policy_refs: z.array(z.object({
-    policy_id: z.string(),
-    version: z.string(),
-    content_digest: z.string(),
-  }).strict()),
+    policy_id: z.string().min(1),
+    version: z.string().min(1),
+    content_digest: z.string().regex(SHA256_DIGEST_RE),
+  }).strict()).min(1),
   coverage: z.enum(['partial', 'complete']),
-  scope: z.object({
-    subject_categories: z.array(z.string()),
-    applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])),
-    jurisdictions: z.array(z.string()).optional(),
-    jurisdiction_groups: z.array(z.string()).optional(),
-    all_jurisdictions: z.literal(true).optional(),
-  }).strict().optional(),
-  region_aliases: z.record(z.string(), z.array(z.string())).optional(),
-  description: z.string().optional(),
-  rules: z.array(AcceptancePolicyRuleSchema),
+  scope: AcceptancePolicyScopeSchema.optional(),
+  region_aliases: z.record(z.string().regex(JURISDICTION_GROUP_RE), z.array(z.string().regex(JURISDICTION_RE)).min(1)).optional(),
+  description: z.string().min(1).optional(),
+  rules: z.array(AcceptancePolicyRuleSchema).min(1),
   ext: z.record(z.string(), z.unknown()).optional(),
-}).strict();
+}).strict().superRefine((profile, ctx) => {
+  if (profile.coverage === 'complete' && !profile.scope) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['scope'], message: 'required for complete coverage' });
+  }
+});
 export type AcceptancePolicyProfile = z.infer<typeof AcceptancePolicyProfileSchema>;
 
 const CanonicalPolicyDocumentSchema = z.object({
@@ -174,10 +276,22 @@ function parsedJson(value: unknown): unknown {
   return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-function deserializePolicy(row: PolicyRow): Policy {
+async function parseAcceptancePolicyProfile(value: unknown): Promise<AcceptancePolicyProfile> {
+  const parsed = parsedJson(value);
+  const validation = await validateProtocolSchema(ACCEPTANCE_POLICY_PROFILE_SCHEMA_URI, parsed);
+  if (!validation.valid) {
+    const details = validation.errors
+      .map(error => `${error.instancePath || '/'} ${error.message ?? 'is invalid'}`)
+      .join('; ');
+    throw new Error(`Invalid policy acceptance_profile: ${details}`);
+  }
+  return parsed as AcceptancePolicyProfile;
+}
+
+async function deserializePolicy(row: PolicyRow): Promise<Policy> {
   const acceptanceProfile = row.acceptance_profile == null
     ? null
-    : AcceptancePolicyProfileSchema.parse(parsedJson(row.acceptance_profile));
+    : await parseAcceptancePolicyProfile(row.acceptance_profile);
   return {
     ...row,
     jurisdictions: typeof row.jurisdictions === 'string' ? JSON.parse(row.jurisdictions) : (row.jurisdictions || []),
@@ -200,7 +314,7 @@ function deserializePolicy(row: PolicyRow): Policy {
   } as Policy;
 }
 
-function deserializePublishedPolicy(row: PolicyPublicationRow): Policy {
+async function deserializePublishedPolicy(row: PolicyPublicationRow): Promise<Policy> {
   const canonical = CanonicalPolicyDocumentSchema.parse(parsedJson(row.canonical_content));
   const publishedAt = new Date(row.published_at);
   return deserializePolicy({
@@ -220,9 +334,12 @@ function deserializePublishedPolicy(row: PolicyPublicationRow): Policy {
     source_url: canonical.source_url ?? null,
     source_name: canonical.source_name ?? null,
     issuer: canonical.issuer ?? null,
+    // The authoritative canonical JSON Schema is applied by
+    // deserializePolicy below; keep this raw so every source follows the same
+    // validation path and error contract.
     acceptance_profile: row.acceptance_profile == null
       ? null
-      : AcceptancePolicyProfileSchema.parse(parsedJson(row.acceptance_profile)),
+      : parsedJson(row.acceptance_profile),
     policy: canonical.policy,
     guidance: canonical.guidance ?? null,
     exemplars: canonical.exemplars ?? null,
@@ -307,7 +424,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
 
   const stats = statsResult.rows[0];
   return {
-    policies: dataResult.rows.map(deserializePolicy),
+    policies: await Promise.all(dataResult.rows.map(row => deserializePolicy(row))),
     total: parseInt(stats.total, 10),
     regulation: parseInt(stats.regulation, 10),
     standard: parseInt(stats.standard, 10),
@@ -327,6 +444,10 @@ export async function resolvePolicy(policyId: string, version?: string): Promise
       [policyId, version]
     );
     if (publication.rows.length > 0) return deserializePublishedPolicy(publication.rows[0]);
+    // An explicit version is an immutable-publication request. Never fall
+    // through to the mutable current-row projection, even when its version
+    // string happens to match the requested version.
+    return null;
   }
   const result = await query<PolicyRow>(
     `SELECT policy.*, publication.content_digest, publication.canonical_content
@@ -339,7 +460,6 @@ export async function resolvePolicy(policyId: string, version?: string): Promise
   );
   if (result.rows.length === 0) return null;
   const policy = deserializePolicy(result.rows[0]);
-  if (version && policy.version !== version) return null;
   return policy;
 }
 
@@ -358,7 +478,7 @@ export async function bulkResolve(policyIds: string[]): Promise<Record<string, P
     [policyIds]
   );
   const map: Record<string, Policy | null> = Object.create(null);
-  const rows = result.rows.map(deserializePolicy);
+  const rows = await Promise.all(result.rows.map(row => deserializePolicy(row)));
   for (const id of policyIds) {
     // Validate property name to prevent prototype pollution
     if (typeof id === 'string' && !['__proto__', 'constructor', 'prototype'].includes(id)) {
@@ -443,7 +563,7 @@ export async function savePolicy(
       );
 
       await client.query('COMMIT');
-      return { policy: deserializePolicy(updateResult.rows[0]), revision_number: revisionNumber };
+      return { policy: await deserializePolicy(updateResult.rows[0]), revision_number: revisionNumber };
     }
 
     // Insert new policy (community policies start as pending review)
@@ -473,7 +593,7 @@ export async function savePolicy(
     );
 
     await client.query('COMMIT');
-    return { policy: deserializePolicy(insertResult.rows[0]), revision_number: null };
+    return { policy: await deserializePolicy(insertResult.rows[0]), revision_number: null };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

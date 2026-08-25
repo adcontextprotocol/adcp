@@ -149,8 +149,8 @@ test('registry platform profiles pin source versions and reject ambiguous region
   assert.ok(checkEntry(google, 'google_political_advertising_acceptance.json')
     .some(error => error.includes('undeclared jurisdiction group')));
 
-  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/557_policy_acceptance_profiles.sql'), 'utf8');
-  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/558_publish_political_acceptance_policies.sql'), 'utf8');
+  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/558_policy_acceptance_profiles.sql'), 'utf8');
+  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/559_publish_political_acceptance_policies.sql'), 'utf8');
   assert.match(storageMigration, /acceptance_profile JSONB/);
   assert.match(storageMigration, /issuer JSONB/);
   assert.match(storageMigration, /CREATE TABLE policy_publications/);
@@ -165,6 +165,8 @@ test('registry platform profiles pin source versions and reject ambiguous region
   assert.match(publicationMigration, /policies\.version = '1\.0\.0'.*EXCLUDED\.version = '2\.0\.0'/);
   assert.match(publicationMigration, /version = EXCLUDED\.version/);
   assert.match(publicationMigration, /INSERT INTO policy_publications/);
+  assert.match(publicationMigration, /RAISE EXCEPTION 'conflicting immutable policy publication; publish a new version'/);
+  assert.match(publicationMigration, /publication\.canonical_content = incoming\.entry - 'acceptance_profile'/);
   assert.match(
     publicationMigration,
     /publication\.acceptance_profile IS NOT DISTINCT FROM incoming\.entry->'acceptance_profile'/,

@@ -4144,6 +4144,41 @@ interface MediaBuyActionRejection {
   context?: unknown;
 }
 
+interface SellerManagedControlAuthorization {
+  kind: 'seller_managed_control';
+  actions: string[];
+}
+
+export type SellerManagedControlExecution =
+  | { kind: 'defer' }
+  | {
+      kind: 'execute';
+      taskId: string;
+      mediaBuyId: string;
+      expectedRevision: number;
+      actions: readonly string[];
+    };
+
+const SELLER_MANAGED_CONTROL_TASK_REQUIRED: unique symbol = Symbol('seller-managed-control-task-required');
+
+export interface SellerManagedControlTaskRequired extends Record<string, unknown> {
+  [SELLER_MANAGED_CONTROL_TASK_REQUIRED]: true;
+  mediaBuyId: string;
+  expectedRevision: number;
+  actions: string[];
+}
+
+export function isSellerManagedControlTaskRequired(value: unknown): value is SellerManagedControlTaskRequired {
+  return isRecord(value)
+    && (value as SellerManagedControlTaskRequired)[SELLER_MANAGED_CONTROL_TASK_REQUIRED] === true;
+}
+
+function isSellerManagedControlAuthorization(
+  value: MediaBuyActionRejection | SellerManagedControlAuthorization | null,
+): value is SellerManagedControlAuthorization {
+  return value?.kind === 'seller_managed_control';
+}
+
 function actionsForUpdateRequest(mb: MediaBuyState, req: MediaBuyMutationRequest): AttemptedMediaBuyActionEntry[] {
   const actions: AttemptedMediaBuyActionEntry[] = [];
   const seen = new Set<string>();
@@ -4316,20 +4351,88 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
     .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
 }
 
+const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
+  'invoice_recipient',
+  'purchase_order_ref',
+  'agency_estimate_number',
+] as const;
+
+const UNTYPED_ACCEPTED_CHANGE_PACKAGE_FIELDS = [
+  'measurement_terms',
+  'performance_standards',
+  'audience_evidence_requirements',
+  'audience_evidence_pins',
+  'agency_estimate_number',
+] as const;
+
+/**
+ * Fields which change commercial terms but have no canonical change action.
+ * Once change_terms is present it is the complete post-acceptance authority
+ * ceiling, so these fields must be renegotiated instead of hitchhiking on an
+ * unrelated typed right.
+ */
+function untypedAcceptedChangeEnvelopeField(req: MediaBuyMutationRequest): string | undefined {
+  const root = req as unknown as Record<string, unknown>;
+  const rootField = UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS.find(field => Object.hasOwn(root, field));
+  if (rootField) return rootField;
+
+  for (const [index, rawPackage] of (req.packages ?? []).entries()) {
+    if (!isRecord(rawPackage) || rawPackage.canceled === true) continue;
+    const packageField = UNTYPED_ACCEPTED_CHANGE_PACKAGE_FIELDS.find(field => Object.hasOwn(rawPackage, field));
+    if (packageField) return `packages[${index}].${packageField}`;
+  }
+  return undefined;
+}
+
+function acceptedEnvelopeRequiresRequote(field: string, context?: unknown): MediaBuyActionRejection {
+  return {
+    errors: [{
+      code: 'REQUOTE_REQUIRED',
+      message: `The requested ${field} changes commercial terms without a negotiated typed change right.`,
+      field,
+      recovery: 'correctable',
+      details: {
+        envelope_field: field,
+        constraint: 'no_typed_change_action',
+      },
+    }],
+    ...(context !== undefined && { context }),
+  };
+}
+
+type ActionNotAllowedReason =
+  | 'wrong_status'
+  | 'not_supported_on_product'
+  | 'not_supported_on_buy'
+  | 'mode_mismatch'
+  | 'condition_unresolved';
+
 function actionNotAllowedError(
   attemptedAction: string,
-  reason: 'wrong_status' | 'not_supported_on_product' | 'not_supported_on_buy' | 'mode_mismatch',
+  reason: ActionNotAllowedReason,
   availableActions: MediaBuyAvailableActionState[],
   context?: unknown,
+  servedAdcpVersion?: string,
 ): MediaBuyActionRejection {
+  // condition_unresolved is a 3.2 discriminator. Released 3.1 schemas are
+  // closed over their four historical values, so project the same fail-closed
+  // outcome as unavailable on this buy for legacy callers.
+  const projectedReason = reason === 'condition_unresolved'
+    && !supportsLifecycleSplitCompatibility(servedAdcpVersion)
+    ? 'not_supported_on_buy'
+    : reason;
   return {
     errors: [{
       code: 'ACTION_NOT_ALLOWED',
       message: `Action ${attemptedAction} is not available through direct update_media_buy`,
-      recovery: reason === 'wrong_status' || reason === 'mode_mismatch' ? 'correctable' : 'terminal',
+      recovery: projectedReason === 'wrong_status'
+        || projectedReason === 'mode_mismatch'
+        || projectedReason === 'condition_unresolved'
+        ? 'correctable'
+        : 'terminal',
       details: {
         attempted_action: attemptedAction,
-        reason,
+        reason: projectedReason,
         currently_available_actions: availableActions,
       },
     }],
@@ -4342,7 +4445,24 @@ function rejectUnavailableAction(
   req: MediaBuyMutationRequest,
   status: string,
   productMap: Map<string, Product>,
-): MediaBuyActionRejection | null {
+  servedAdcpVersion?: string,
+): MediaBuyActionRejection | null;
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  status: string,
+  productMap: Map<string, Product>,
+  servedAdcpVersion: string | undefined,
+  sellerManagedExecution: SellerManagedControlExecution,
+): MediaBuyActionRejection | SellerManagedControlAuthorization | null;
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  status: string,
+  productMap: Map<string, Product>,
+  servedAdcpVersion?: string,
+  sellerManagedExecution?: SellerManagedControlExecution,
+): MediaBuyActionRejection | SellerManagedControlAuthorization | null {
   const acceptedCommercialTerms = mb.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
   const hasAcceptedChangeTerms = acceptedCommercialTerms !== undefined
     && Object.hasOwn(acceptedCommercialTerms, 'change_terms');
@@ -4353,8 +4473,14 @@ function rejectUnavailableAction(
     : undefined;
   if (!mb.productAllowedActions && !mb.availableActions && acceptedChangeTerms === undefined) return null;
 
-  const availableActions = availableActionsForMediaBuy(mb, status);
+  const untypedEnvelopeField = acceptedChangeTerms === undefined
+    ? undefined
+    : untypedAcceptedChangeEnvelopeField(req);
+  if (untypedEnvelopeField) return acceptedEnvelopeRequiresRequote(untypedEnvelopeField, req.context);
+
+  const availableActions = availableActionsForMediaBuy(mb, status, servedAdcpVersion);
   let deferredModeMismatch: MediaBuyActionRejection | null = null;
+  const sellerManagedActions: string[] = [];
   for (const attempt of actionsForUpdateRequest(mb, req)) {
     // Once accepted change_terms exist they are the complete authority
     // ceiling, including package-scoped mutations. Product declarations are
@@ -4372,12 +4498,25 @@ function rejectUnavailableAction(
       const productAction = packageAllowedActions
         ? packageAllowedActions.find(action => action.action === attempt.action)
         : mb.productAllowedActions?.find(action => action.action === attempt.action);
-      const reason = negotiatedTerm || productAction
-        ? 'wrong_status'
-        : packageAllowedActions || mb.productAllowedActions
-          ? 'not_supported_on_product'
-          : 'not_supported_on_buy';
-      return actionNotAllowedError(attempt.action, reason, availableActions, req.context);
+      const allowedStatuses = negotiatedTerm && Array.isArray(negotiatedTerm.allowed_statuses)
+        ? negotiatedTerm.allowed_statuses.filter((value): value is string => typeof value === 'string')
+        : undefined;
+      const conditionUnresolved = negotiatedTerm !== undefined
+        && Array.isArray(negotiatedTerm.conditions)
+        && negotiatedTerm.conditions.length > 0
+        && (allowedStatuses ? allowedStatuses.includes(status) : NON_TERMINAL_MEDIA_BUY_STATUSES.has(status));
+      const reason = conditionUnresolved
+        ? 'condition_unresolved'
+        : negotiatedTerm
+          ? 'wrong_status'
+          : acceptedChangeTerms !== undefined
+            ? 'not_supported_on_buy'
+            : productAction
+              ? 'wrong_status'
+              : packageAllowedActions || mb.productAllowedActions
+                ? 'not_supported_on_product'
+                : 'not_supported_on_buy';
+      return actionNotAllowedError(attempt.action, reason, availableActions, req.context, servedAdcpVersion);
     }
     const negotiatedTerm = acceptedChangeTerms?.find(term => (
       term.action === attempt.action
@@ -4388,15 +4527,36 @@ function rejectUnavailableAction(
       if (constraintRejection) return constraintRejection;
     }
     if (entry.mode === 'seller_managed') {
-      // A submitted response promises a durable, pollable task. This handler
-      // does not own such a queue, so reject the direct mutation instead of
-      // fabricating a task_id that tasks/get can never resolve.
-      deferredModeMismatch ??= actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+      if (sellerManagedExecution?.kind === 'defer') {
+        sellerManagedActions.push(attempt.action);
+        continue;
+      }
+      if (
+        sellerManagedExecution?.kind === 'execute'
+        && sellerManagedExecution.mediaBuyId === mb.mediaBuyId
+        && sellerManagedExecution.expectedRevision === req.revision
+        && sellerManagedExecution.actions.includes(attempt.action)
+      ) {
+        // Only the framework-owned task closure can supply this execution
+        // capability. The captured media-buy id, revision, and authorized
+        // action set bind execution to the exact request that was queued.
+        continue;
+      }
+      deferredModeMismatch ??= actionNotAllowedError(
+        attempt.action,
+        'mode_mismatch',
+        availableActions,
+        req.context,
+        servedAdcpVersion,
+      );
       continue;
     }
     if (entry.mode !== 'self_serve' && entry.mode !== 'conditional_self_serve') {
-      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context, servedAdcpVersion);
     }
+  }
+  if (sellerManagedActions.length > 0) {
+    return { kind: 'seller_managed_control', actions: sellerManagedActions };
   }
   return deferredModeMismatch;
 }
@@ -11785,7 +11945,7 @@ async function handleCreateMediaBuyUnlocked(
   // check_governance first.
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
-  const governanceAgents = resolveGovernanceAgentsForAccount(
+  const governanceAgents = await resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
     req.account,
@@ -14414,18 +14574,18 @@ async function handleUpdateMediaBuyUnlocked(
     return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
 
-  const actionRejection = options.acceptedProposalExecution
+  const actionRejection = options.acceptedProposalExecution || options.operationalControlExecution
     ? undefined
-    : rejectUnavailableAction(mb, req, currentStatus, productMap);
+    : rejectUnavailableAction(mb, req, currentStatus, productMap, lifecycleSplitVersionForContext(ctx));
   if (actionRejection) return actionRejection;
 
   // Established update_media_buy made root cancellation dominant over every
   // sibling mutation. Authorize only the cancel action, then commit it before
   // validating fields that the protocol says are ignored.
   if (req.canceled === true) {
-    const cancelRejection = options.acceptedProposalExecution
+    const cancelRejection = options.acceptedProposalExecution || options.operationalControlExecution
       ? undefined
-      : rejectUnavailableAction(mb, req, currentStatus, productMap);
+      : rejectUnavailableAction(mb, req, currentStatus, productMap, lifecycleSplitVersionForContext(ctx));
     if (cancelRejection) return cancelRejection;
 
     const now = new Date().toISOString();
@@ -14592,7 +14752,7 @@ async function handleUpdateMediaBuyUnlocked(
     ? rawGovernanceContext
     : undefined;
   const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, validationReq, updateDelta);
-  const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const updateGovernanceAgents = await resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
     mb.accountRef,
@@ -15934,7 +16094,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, req.account);
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, req.account);
   const hasRegisteredGovernanceAgent = registeredGovernanceAgents.length > 0;
 
   if (!segmentId) {
@@ -16313,7 +16473,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       }],
     });
   }
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(
     creativeSessionKey(req as unknown as ToolArgs, ctx),
     ctx.principal,
     effectiveAccount as AccountRef | undefined,
@@ -18721,12 +18881,13 @@ export async function handleAcceptProposal(
 export async function handleControlMediaBuy(
   args: ControlMediaBuyRequest & ToolArgs,
   ctx: TrainingContext,
+  options: { sellerManagedExecution?: SellerManagedControlExecution } = {},
 ): Promise<Record<string, unknown>> {
   const mutex = await acquireMediaBuyMutationMutex(args, ctx);
   if (!mutex) return mediaBuyMutationConflict();
   try {
     evictSessionFromRequestCache(mutex.sessionScope);
-    const result = await handleControlMediaBuyUnlocked(args, ctx);
+    const result = await handleControlMediaBuyUnlocked(args, ctx, options);
     await flushDirtySessions();
     return result;
   } finally {
@@ -18737,6 +18898,7 @@ export async function handleControlMediaBuy(
 async function handleControlMediaBuyUnlocked(
   args: ControlMediaBuyRequest & ToolArgs,
   ctx: TrainingContext,
+  options: { sellerManagedExecution?: SellerManagedControlExecution } = {},
 ): Promise<Record<string, unknown>> {
   if (Array.isArray(args.packages)) {
     const seenPackageIds = new Set<string>();
@@ -18777,6 +18939,19 @@ async function handleControlMediaBuyUnlocked(
   );
   const mediaBuy = session.mediaBuys.get(args.media_buy_id);
   if (mediaBuy) {
+    const execution = options.sellerManagedExecution?.kind === 'execute'
+      ? options.sellerManagedExecution
+      : undefined;
+    const durableReceipt = execution
+      ? mediaBuy.sellerManagedControlReceipts?.find(receipt => (
+          receipt.taskId === execution.taskId
+          && receipt.expectedRevision === execution.expectedRevision
+          && receipt.actions.length === execution.actions.length
+          && receipt.actions.every(action => execution.actions.includes(action))
+        ))
+      : undefined;
+    if (durableReceipt) return structuredClone(durableReceipt.result);
+
     // Route and lifecycle authorization is part of the accepted change right,
     // so evaluate it before comparing the request with the original proposal
     // envelope. Otherwise a negotiated seller-managed increase is
@@ -18788,12 +18963,25 @@ async function handleControlMediaBuyUnlocked(
     const currentStatus = deriveStatus(mediaBuy, session);
     const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
     overlaySeededProducts(session, productMap);
-    const actionRejection = rejectUnavailableAction(
-      mediaBuy,
-      args,
-      currentStatus,
-      productMap,
-    );
+    const servedAdcpVersion = lifecycleSplitVersionForContext(ctx);
+    const actionRejection = options.sellerManagedExecution
+      ? rejectUnavailableAction(
+          mediaBuy,
+          args,
+          currentStatus,
+          productMap,
+          servedAdcpVersion,
+          options.sellerManagedExecution,
+        )
+      : rejectUnavailableAction(mediaBuy, args, currentStatus, productMap, servedAdcpVersion);
+    if (isSellerManagedControlAuthorization(actionRejection)) {
+      return {
+        [SELLER_MANAGED_CONTROL_TASK_REQUIRED]: true,
+        mediaBuyId: mediaBuy.mediaBuyId,
+        expectedRevision: args.revision,
+        actions: actionRejection.actions,
+      } as SellerManagedControlTaskRequired;
+    }
     if (actionRejection) return actionRejection;
   }
   const acceptedCommercialTerms = mediaBuy?.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
@@ -19003,7 +19191,7 @@ async function handleControlMediaBuyUnlocked(
   const affectedPackages = Array.isArray(updateResult.affected_packages)
     ? updateResult.affected_packages.filter(isRecord)
     : [];
-  return {
+  const controlResult = {
     status: 'completed',
     media_buy_id: updateResult.media_buy_id,
     revision: updateResult.revision,
@@ -19013,6 +19201,25 @@ async function handleControlMediaBuyUnlocked(
       .filter((id): id is string => typeof id === 'string'),
     ...(Array.isArray(updateResult.available_actions) && { available_actions: updateResult.available_actions }),
   };
+  const execution = options.sellerManagedExecution?.kind === 'execute'
+    ? options.sellerManagedExecution
+    : undefined;
+  const committedMediaBuy = session.mediaBuys.get(args.media_buy_id);
+  if (committedMediaBuy && execution) {
+    const receipts = committedMediaBuy.sellerManagedControlReceipts ?? [];
+    receipts.push({
+      taskId: execution.taskId,
+      expectedRevision: execution.expectedRevision,
+      actions: [...execution.actions],
+      result: structuredClone(controlResult),
+    });
+    // Do not evict receipts by a fixed count: an older worker may still be
+    // recovering after later revisions have completed. The durable outbox
+    // retains the corresponding terminal row, allowing a future maintenance
+    // pass to prune only receipts whose task outcome is known synchronized.
+    committedMediaBuy.sellerManagedControlReceipts = receipts;
+  }
+  return controlResult;
 }
 
 const HANDLER_MAP: Record<string, ToolHandler> = {

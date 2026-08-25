@@ -636,6 +636,13 @@ export async function getSession(key: string, controllerFixtureSessionKey?: stri
   return session;
 }
 
+/** Return an already-authoritatively-loaded session for synchronous policy
+ * checks. Security-sensitive callers must not interpret a missing cache entry
+ * as an empty durable record. */
+export function getCachedSession(key: string): SessionState | undefined {
+  return requestCtx.getStore()?.sessions.get(key);
+}
+
 
 const MAX_DOMAIN_LEN = 253; // RFC 1035 max hostname length
 const MAX_ACCOUNT_ID_LEN = 128;

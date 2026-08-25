@@ -23,6 +23,7 @@ import {
   type SyncAudiencesRow,
   type AudienceStatus,
   type CreateMediaBuyHandlerResult,
+  type TaskRegistry,
 } from '@adcp/sdk/server';
 import {
   packageRefsForFormatOptions,
@@ -34,6 +35,7 @@ import {
   handleBuyProducts,
   handleAcceptProposal,
   handleControlMediaBuy,
+  isSellerManagedControlTaskRequired,
   handleCreateMediaBuy,
   handleUpdateMediaBuy,
   handleGetMediaBuys,
@@ -56,21 +58,124 @@ import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
-import { registerSharedPublicBrandPartition, sessionKeyFromArgs } from './state.js';
+import { registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
-import { maybeEmitCompletionWebhook } from './webhooks.js';
+import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { scopedPrincipal } from './idempotency.js';
+import {
+  SellerManagedControlJobCoordinator,
+  type SellerManagedControlJobContext,
+} from './seller-managed-control-jobs.js';
 
 interface TrainingSalesMeta {
   brand_domain?: string;
   operator?: string;
   account_ref?: ToolArgs['account'];
+  task_owner_scope?: string;
+  webhook_tenant_scope?: string;
   [key: string]: unknown;
 }
 
 interface TrainingSalesConfig {
   strict: boolean;
+}
+
+interface TaskOwnerRequestContext {
+  sessionKey?: string;
+  callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
+  agent?: { agent_url?: string };
+  authInfo?: {
+    clientId?: string;
+    credential?:
+      | { kind: 'http_sig'; agent_url: string }
+      | { kind: 'oauth'; client_id: string }
+      | { kind: 'api_key'; key_id: string };
+  };
+}
+
+function authenticatedPrincipalForPlatformContext(ctx: TaskOwnerRequestContext): string | undefined {
+  if (ctx.agent?.agent_url) return `agent:${ctx.agent.agent_url}`;
+  const credential = ctx.authInfo?.credential;
+  if (credential?.kind === 'http_sig') return `http_sig:${credential.agent_url}`;
+  if (credential?.kind === 'oauth') return `oauth:${credential.client_id}`;
+  if (credential?.kind === 'api_key') return `api_key:${credential.key_id}`;
+  return ctx.authInfo?.clientId ? `client:${ctx.authInfo.clientId}` : undefined;
+}
+
+/** Byte-for-byte equivalent of the SDK webhook delivery partition that is
+ * bound on the outer HandlerContext before dispatchCompactMutation adds its
+ * callerMutationScope to the platform-only request context. */
+export function webhookTenantScopeForPlatformContext(
+  ctx: TaskOwnerRequestContext & { account?: unknown },
+): string | undefined {
+  // RequestContext intentionally omits transport auth/session fields. Capture
+  // the SDK's exact outer webhook partition in AccountStore.resolve(), where
+  // those trusted fields are still present, and carry it through metadata.
+  const captured = (ctx.account as { ctx_metadata?: TrainingSalesMeta } | undefined)
+    ?.ctx_metadata?.webhook_tenant_scope;
+  if (captured !== undefined) return captured;
+
+  const account = ctx.account as {
+    id?: unknown; account_id?: unknown; tenant_id?: unknown; tenantId?: unknown;
+  } | undefined;
+  const accountId = typeof account?.id === 'string' ? account.id
+    : typeof account?.account_id === 'string' ? account.account_id : undefined;
+  const tenantId = typeof account?.tenant_id === 'string' ? account.tenant_id
+    : typeof account?.tenantId === 'string' ? account.tenantId : undefined;
+  const principal = authenticatedPrincipalForPlatformContext(ctx);
+  if (ctx.sessionKey !== undefined) {
+    return JSON.stringify(['session', ctx.sessionKey, tenantId ?? null, accountId ?? null, principal ?? null]);
+  }
+  if (tenantId !== undefined || accountId !== undefined) {
+    return JSON.stringify(['account', tenantId ?? null, accountId ?? null, principal ?? null]);
+  }
+  return principal !== undefined ? JSON.stringify(['principal', principal]) : undefined;
+}
+
+/** Keep the outbox partition identical to the SDK task registry partition. */
+function taskOwnerScopeForRequest(ctx: TaskOwnerRequestContext, accountId: string): string {
+  if (ctx.sessionKey !== undefined) return `session:${ctx.sessionKey}`;
+  if (ctx.agent?.agent_url) return `agent:${ctx.agent.agent_url}`;
+  const credential = ctx.authInfo?.credential;
+  if (credential?.kind === 'http_sig') return `http_sig:${credential.agent_url}`;
+  if (credential?.kind === 'oauth') return `oauth:${credential.client_id}`;
+  if (credential?.kind === 'api_key') return `api_key:${credential.key_id}`;
+  if (ctx.authInfo?.clientId) return `client:${ctx.authInfo.clientId}`;
+  return `account:${accountId}`;
+}
+
+export function taskOwnerScopeForPlatformContext(
+  ctx: TaskOwnerRequestContext & { account?: unknown },
+  accountId: string,
+): string {
+  // AccountStore captures the SDK task partition from the original transport
+  // context. Preserve it exactly: in particular, session scope takes
+  // precedence over a subsequently resolved buyer-agent identity.
+  const captured = (ctx.account as { ctx_metadata?: TrainingSalesMeta } | undefined)
+    ?.ctx_metadata?.task_owner_scope;
+  return captured ?? taskOwnerScopeForRequest(ctx, accountId);
+}
+
+function idempotencyPrincipalForPlatformContext(
+  ctx: TaskOwnerRequestContext & { account?: unknown },
+  accountRef: ToolArgs['account'],
+): string {
+  const account = ctx.account as { authInfo?: { principal?: unknown } } | undefined;
+  const principal = ctx.authInfo?.clientId ?? account?.authInfo?.principal;
+  if (typeof principal !== 'string' || principal.length === 0) {
+    throw new AdcpError('AUTH_MISSING', {
+      recovery: 'correctable',
+      message: 'Seller-managed control requires an authenticated principal.',
+    });
+  }
+  if (principal !== 'static:public' && principal !== 'static:public:shared') return principal;
+  const accountScope = typeof accountRef?.account_id === 'string'
+    ? `a:${accountRef.account_id}`
+    : typeof accountRef?.brand?.domain === 'string'
+      ? `b:${accountRef.brand.domain.toLowerCase()}`
+      : undefined;
+  return scopedPrincipal(principal, accountScope);
 }
 
 const PACKAGE_SELECTOR_FIELDS = [
@@ -587,12 +692,19 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
   resolve: async (ref, ctx) => {
     const principal = ctx?.authInfo?.clientId;
     if (ref == null) {
+      const id = 'public_sandbox';
       return {
-        id: 'public_sandbox',
+        id,
         name: 'Public Sandbox',
         status: 'active',
         mode: 'sandbox',
-        ctx_metadata: {},
+        ctx_metadata: {
+          task_owner_scope: taskOwnerScopeForRequest(ctx as TaskOwnerRequestContext, id),
+          webhook_tenant_scope: webhookTenantScopeForPlatformContext({
+            ...(ctx as TaskOwnerRequestContext),
+            account: { id },
+          }),
+        },
         sandbox: true,
         authInfo: { kind: 'public', ...(principal && { principal }) },
       };
@@ -631,6 +743,11 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         account_ref: accountRef,
         brand_domain: brandDomain,
         ...(operator && { operator }),
+        task_owner_scope: taskOwnerScopeForRequest(ctx as TaskOwnerRequestContext, id),
+        webhook_tenant_scope: webhookTenantScopeForPlatformContext({
+          ...(ctx as TaskOwnerRequestContext),
+          account: { id },
+        }),
       },
       sandbox: true,
       authInfo: { kind: 'api_key', ...(principal && { principal }) },
@@ -751,12 +868,58 @@ export function legacyListCreativesHandler(
 export class TrainingSalesPlatform
   implements DecisioningPlatform<TrainingSalesConfig, TrainingSalesMeta>
 {
+  private readonly sellerManagedControlJobs?: SellerManagedControlJobCoordinator;
+
   constructor(
     private readonly storyboardCompat?: TrainingContext['storyboardCompat'],
     private readonly proposalNegotiationProfile: NonNullable<TrainingContext['proposalNegotiationProfile']> = 'ask-only',
-  ) {}
+    taskRegistry?: TaskRegistry,
+  ) {
+    if (taskRegistry) {
+      this.sellerManagedControlJobs = new SellerManagedControlJobCoordinator(
+        taskRegistry,
+        async job => await runWithSessionContext(async () => {
+          const executionArgs = structuredClone(job.request);
+          if (job.executionContext.sharedPublicBrandDomain) {
+            registerSharedPublicBrandPartition(
+              executionArgs,
+              job.executionContext.sharedPublicBrandDomain,
+            );
+          }
+          return await handleControlMediaBuy(
+            executionArgs as unknown as Parameters<typeof handleControlMediaBuy>[0],
+            job.executionContext as unknown as TrainingContext,
+            {
+              sellerManagedExecution: {
+                kind: 'execute',
+                taskId: job.taskId,
+                mediaBuyId: job.mediaBuyId,
+                expectedRevision: job.expectedRevision,
+                actions: job.authorizedActions,
+              },
+            },
+          );
+        }),
+        undefined,
+        async job => await emitDurableSellerManagedTaskWebhook({
+          pushConfig: job.pushConfig,
+          taskId: job.taskId,
+          accountId: job.accountId,
+          webhookTenantScope: job.webhookTenantScope,
+          terminalAt: job.terminalAt ?? job.updatedAt,
+          ...(job.result && { result: job.result }),
+          ...(job.error && { error: job.error }),
+        }),
+      );
+      this.sellerManagedControlJobs.start();
+    }
+  }
 
   capabilities = TRAINING_SALES_CAPABILITIES;
+
+  async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
+    await this.sellerManagedControlJobs?.acknowledgeFrameworkWebhook(taskId);
+  }
 
   statusMappers = {};
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
@@ -972,12 +1135,116 @@ export class TrainingSalesPlatform
       ),
     ),
 
-    controlMediaBuy: async (req, ctx) => translateV5Result(
-      await handleControlMediaBuy(
-        withCurrentAccountScope(req as unknown as Record<string, unknown>, ctx.account, ctx.input) as Parameters<typeof handleControlMediaBuy>[0],
-        buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile),
-      ),
-    ),
+    controlMediaBuy: async (req, ctx) => {
+      const args = withCurrentAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        ctx.input,
+      ) as Parameters<typeof handleControlMediaBuy>[0];
+      const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);
+      const jobs = this.sellerManagedControlJobs;
+      const accountId = (ctx.account as { id?: unknown } | undefined)?.id;
+      if (typeof accountId !== 'string' || accountId.length === 0) {
+        throw new AdcpError('ACCOUNT_NOT_FOUND', {
+          recovery: 'correctable',
+          message: 'Seller-managed control requires a resolved account.',
+          field: 'account',
+        });
+      }
+      const { push_notification_config: rawPushConfig, ...durableArgs } = args as unknown as Record<string, unknown>;
+      const pushConfig = rawPushConfig && typeof rawPushConfig === 'object' && !Array.isArray(rawPushConfig)
+        ? structuredClone(rawPushConfig as Record<string, unknown>)
+        : undefined;
+      const idempotencyKey = durableArgs.idempotency_key;
+      const mediaBuyId = durableArgs.media_buy_id;
+      const expectedRevision = durableArgs.revision;
+      const idempotencyPrincipal = idempotencyPrincipalForPlatformContext(
+        ctx as unknown as TaskOwnerRequestContext & { account?: unknown },
+        args.account,
+      );
+      const ownerScope = taskOwnerScopeForPlatformContext(
+        ctx as unknown as TaskOwnerRequestContext & { account?: unknown },
+        accountId,
+      );
+      const webhookTenantScope = webhookTenantScopeForPlatformContext(
+        ctx as unknown as TaskOwnerRequestContext & { account?: unknown },
+      );
+      if (jobs && typeof idempotencyKey === 'string' && typeof mediaBuyId === 'string'
+        && typeof expectedRevision === 'number') {
+        const replayInput = {
+          accountId,
+          idempotencyPrincipal,
+          idempotencyKey,
+          mediaBuyId,
+          expectedRevision,
+          request: structuredClone(durableArgs),
+          ...(pushConfig && { pushConfig }),
+        };
+        const replay = await jobs.store.findReplay(replayInput);
+        if (replay) {
+          await jobs.reconnect(
+            replayInput,
+            replay,
+            ownerScope,
+            replay.hasWebhook ? webhookTenantScope : undefined,
+          );
+          return ctx.handoffToTask(
+            async () => translateV5Result(await jobs.runTask(replay.taskId)),
+            { task_id: replay.taskId },
+          );
+        }
+      }
+      const result = await handleControlMediaBuy(args, trainingCtx, {
+        sellerManagedExecution: { kind: 'defer' },
+      });
+      if (!isSellerManagedControlTaskRequired(result)) return translateV5Result(result);
+
+      if (!jobs) {
+        throw new AdcpError('SERVICE_UNAVAILABLE', {
+          recovery: 'transient',
+          message: 'Seller-managed control execution is temporarily unavailable.',
+        });
+      }
+      if (typeof idempotencyKey !== 'string' || idempotencyKey.length === 0) {
+        throw new AdcpError('INVALID_REQUEST', {
+          recovery: 'correctable',
+          message: 'Seller-managed control requires idempotency_key.',
+          field: 'idempotency_key',
+        });
+      }
+      const durableAccount = args.account;
+      const sharedPublicBrandDomain = trainingCtx.principal?.startsWith('static:')
+        && durableAccount?.sandbox === true
+        && typeof durableAccount.brand?.domain === 'string'
+        ? durableAccount.brand.domain.toLowerCase()
+        : undefined;
+      const job = await jobs.enqueue({
+        accountId,
+        idempotencyPrincipal,
+        idempotencyKey,
+        ownerScope,
+        hasWebhook: pushConfig !== undefined,
+        ...(pushConfig && webhookTenantScope && { webhookTenantScope }),
+        ...(pushConfig && { pushConfig }),
+        mediaBuyId: result.mediaBuyId,
+        expectedRevision: result.expectedRevision,
+        authorizedActions: result.actions,
+        request: structuredClone(durableArgs),
+        executionContext: {
+          ...structuredClone(trainingCtx),
+          requestInput: structuredClone(durableArgs),
+          ...(sharedPublicBrandDomain && { sharedPublicBrandDomain }),
+        } as SellerManagedControlJobContext,
+      });
+
+      // Commit the outbox before asking the framework to create its task row.
+      // A replacement worker can recreate either side of that boundary from
+      // the durable account/owner/action authorization captured above.
+      return ctx.handoffToTask(
+        async () => translateV5Result(await jobs.runTask(job.taskId)),
+        { task_id: job.taskId },
+      );
+    },
 
     getMediaBuys: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx, this.storyboardCompat, this.proposalNegotiationProfile);

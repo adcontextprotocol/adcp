@@ -70,17 +70,29 @@ export function buildSalesTenantConfig(
   config: TenantConfig;
 } {
   const material = getTenantSigningMaterial(TENANT_ID);
+  const platform = new TrainingSalesPlatform(
+    options.storyboardCompat,
+    options.proposalNegotiationProfile ?? 'ask-only',
+    taskRegistry,
+  );
   return {
     tenantId: TENANT_ID,
     config: {
       agentUrl: `${host}/${TENANT_ID}`,
       signingKey: material.signingKey,
       label: 'Training agent — sales',
-      platform: new TrainingSalesPlatform(
-        options.storyboardCompat,
-        options.proposalNegotiationProfile ?? 'ask-only',
-      ),
+      platform,
       serverOptions: {
+        observability: {
+          onWebhookEmit(info) {
+            // The SDK also fires this hook when delivery throws before its
+            // durable checkpoint. Only a confirmed delivery may retire the
+            // seller outbox; every failure remains eligible for recovery.
+            if (info.tool === 'control_media_buy' && info.success) {
+              return platform.acknowledgeSellerManagedWebhook(info.taskId);
+            }
+          },
+        },
         // The public training sandbox intentionally exposes both current
         // compact tools and registered compatibility aliases.
         mcpToolProfile: 'all',

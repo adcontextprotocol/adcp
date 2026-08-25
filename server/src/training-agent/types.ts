@@ -639,6 +639,15 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
+  /** Durable idempotency receipts for seller-managed task execution. Written
+   * in the same session CAS as the media-buy mutation so a worker can recover
+   * after mutation but before recording its outbox outcome. */
+  sellerManagedControlReceipts?: Array<{
+    taskId: string;
+    expectedRevision: number;
+    actions: string[];
+    result: Record<string, unknown>;
+  }>;
   /** Set by comply_test_controller after a forced status write so repeated
    * reads preserve the requested harness state even when creative readiness
    * would normally derive pending_creatives. Never set by production paths. */

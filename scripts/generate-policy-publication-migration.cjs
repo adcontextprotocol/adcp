@@ -150,6 +150,23 @@ SELECT
   (payload->>'is_current')::boolean AS is_current
 FROM bundled;
 
+DO $immutable_policy_publication_conflict$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM incoming_policy_publications incoming
+    JOIN policy_publications publication
+      ON publication.policy_id = incoming.entry->>'policy_id'
+     AND publication.version = incoming.entry->>'version'
+    WHERE publication.content_digest <> incoming.content_digest
+       OR publication.canonical_content <> incoming.entry - 'acceptance_profile'
+       OR publication.acceptance_profile IS DISTINCT FROM incoming.entry->'acceptance_profile'
+  ) THEN
+    RAISE EXCEPTION 'conflicting immutable policy publication; publish a new version';
+  END IF;
+END
+$immutable_policy_publication_conflict$;
+
 INSERT INTO policy_publications (
   policy_id,
   version,
@@ -215,8 +232,17 @@ SELECT
   entry->'ext',
   'registry',
   'approved'
-FROM incoming_policy_publications
+FROM incoming_policy_publications incoming
 WHERE is_current
+  AND EXISTS (
+    SELECT 1
+    FROM policy_publications publication
+    WHERE publication.policy_id = incoming.entry->>'policy_id'
+      AND publication.version = incoming.entry->>'version'
+      AND publication.content_digest = incoming.content_digest
+      AND publication.canonical_content = incoming.entry - 'acceptance_profile'
+      AND publication.acceptance_profile IS NOT DISTINCT FROM incoming.entry->'acceptance_profile'
+  )
 ON CONFLICT (policy_id) DO UPDATE SET
   version = EXCLUDED.version,
   name = EXCLUDED.name,

@@ -96,6 +96,12 @@ async function dispatchV5(
   const rawParams = cleanInput.params && typeof cleanInput.params === 'object' && !Array.isArray(cleanInput.params)
     ? cleanInput.params as Record<string, unknown>
     : {};
+  const parsedFixture = params.fixture && typeof params.fixture === 'object' && !Array.isArray(params.fixture)
+    ? params.fixture as Record<string, unknown>
+    : {};
+  const rawFixture = rawParams.fixture && typeof rawParams.fixture === 'object' && !Array.isArray(rawParams.fixture)
+    ? rawParams.fixture as Record<string, unknown>
+    : undefined;
   const forwardedParams = scenario === 'force_upstream_unavailable'
     ? {
         ...params,
@@ -103,7 +109,15 @@ async function dispatchV5(
           cache_age_seconds: rawParams.cache_age_seconds,
         }),
       }
-    : params;
+    : scenario === 'seed_media_buy' && rawFixture
+      ? {
+          ...params,
+          // The pinned SDK seed type predates accepted_proposal/change_terms.
+          // Preserve additive fixture state from the raw compliance request so
+          // current storyboards can seed the binding commercial authority.
+          fixture: { ...parsedFixture, ...rawFixture },
+        }
+      : params;
   const args = { ...cleanInput, scenario, params: forwardedParams } as ToolArgs;
   return await handleComplyTestController(args, {
     mode: 'open',

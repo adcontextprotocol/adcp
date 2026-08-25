@@ -27,6 +27,24 @@ const canonicalContent = {
   policy: 'Example policy text.',
 };
 
+const validAcceptanceProfile = {
+  profile_id: 'example_profile',
+  version: '1.0.0',
+  content_digest: `sha256:${'c'.repeat(64)}`,
+  policy_refs: [{
+    policy_id: 'example_policy',
+    version: '1.0.0',
+    content_digest: `sha256:${'a'.repeat(64)}`,
+  }],
+  coverage: 'partial',
+  rules: [{
+    rule_id: 'example_rule',
+    subject_category: 'regulated_goods',
+    applies_to: ['media_buy'],
+    disposition: 'allowed',
+  }],
+};
+
 describe('immutable policy publication resolution', () => {
   beforeEach(() => queryMock.mockReset());
 
@@ -37,7 +55,7 @@ describe('immutable policy publication resolution', () => {
         version: '1.0.0',
         content_digest: `sha256:${'a'.repeat(64)}`,
         canonical_content: canonicalContent,
-        acceptance_profile: null,
+        acceptance_profile: validAcceptanceProfile,
         published_at: '2026-01-02T00:00:00.000Z',
       }],
     } as never);
@@ -52,7 +70,42 @@ describe('immutable policy publication resolution', () => {
       source_type: 'registry',
       content_digest: `sha256:${'a'.repeat(64)}`,
       canonical_content: canonicalContent,
+      acceptance_profile: validAcceptanceProfile,
     });
+  });
+
+  it('does not fall back to the mutable policy row when an exact publication is absent', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] } as never);
+
+    const resolved = await resolvePolicy('example_policy', '1.0.0');
+
+    expect(resolved).toBeNull();
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    expect(queryMock.mock.calls[0][0]).toContain('FROM policy_publications');
+    expect(queryMock.mock.calls[0][0]).not.toContain('FROM policies policy');
+  });
+
+  it.each([
+    ['empty policy references', { ...validAcceptanceProfile, policy_refs: [] }],
+    ['a malformed profile digest', { ...validAcceptanceProfile, content_digest: 'sha256:not-a-digest' }],
+    ['complete coverage without an explicit scope', { ...validAcceptanceProfile, coverage: 'complete' }],
+    ['a conditional rule without requirements', {
+      ...validAcceptanceProfile,
+      rules: [{ ...validAcceptanceProfile.rules[0], disposition: 'conditional' }],
+    }],
+  ])('rejects an acceptance profile with %s', async (_label, acceptanceProfile) => {
+    queryMock.mockResolvedValueOnce({
+      rows: [{
+        policy_id: 'example_policy',
+        version: '1.0.0',
+        content_digest: `sha256:${'a'.repeat(64)}`,
+        canonical_content: canonicalContent,
+        acceptance_profile: acceptanceProfile,
+        published_at: '2026-01-02T00:00:00.000Z',
+      }],
+    } as never);
+
+    await expect(resolvePolicy('example_policy', '1.0.0')).rejects.toThrow('Invalid policy acceptance_profile');
   });
 
   it('joins the canonical snapshot when resolving the current version', async () => {

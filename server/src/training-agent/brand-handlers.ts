@@ -1211,7 +1211,7 @@ export async function handleAcquireRights(
     : basePrice;
   const accountSessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(accountSessionKey);
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(
     accountSessionKey,
     ctx.principal,
     req.account,
@@ -1473,7 +1473,7 @@ export async function handleUpdateRights(
   const increasesObligation = paused === false && grant.paused
     || Boolean(endDate && endDate > currentEndDate)
     || Boolean(impressionCap !== undefined && impressionCap > (grant.impressionCap ?? 0));
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(
     accountSessionKey,
     ctx.principal,
     req.account,

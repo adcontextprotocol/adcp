@@ -35,6 +35,10 @@ import {
   type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
+import {
+  withSellerManagedIdempotencyReplay,
+  withSellerManagedTaskReplay,
+} from '../seller-managed-control-jobs.js';
 import { getPool } from '../../db/client.js';
 import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { getWebhookSigningMaterial } from '../webhooks.js';
@@ -190,7 +194,7 @@ function buildDefaultServerOptions(
     name: 'adcp-training-agent',
     version: '1.0.0',
     adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : TRAINING_AGENT_CURRENT_ADCP_VERSION,
-    idempotency: getSdkIdempotencyStore(),
+    idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
     // task handoffs always use the durable framework emitter configured above.
@@ -273,7 +277,7 @@ export function createRegistryHolder(options: {
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
-        const taskRegistry = pickTaskRegistry();
+        const taskRegistry = withSellerManagedTaskReplay(pickTaskRegistry());
         const reg = createTenantRegistry({
           defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, taskRegistry),
           jwksValidator: noopJwksValidator,

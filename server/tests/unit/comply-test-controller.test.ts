@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import {
   createTrainingAgentServer,
@@ -24,6 +28,24 @@ const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
 const CONTROLLER_ACCOUNT = { ...ACCOUNT, operator: ACCOUNT.brand.domain };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
+const RELEASED_31_SCHEMA_ROOT = join(process.cwd(), 'dist/schemas/3.1.19');
+
+async function validateReleased31Schema(data: unknown, relativePath: string): Promise<string[]> {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    loadSchema: async (uri: string) => {
+      const prefix = '/schemas/3.1.19/';
+      if (!uri.startsWith(prefix)) throw new Error(`Cannot load released 3.1 schema: ${uri}`);
+      return JSON.parse(readFileSync(join(RELEASED_31_SCHEMA_ROOT, uri.slice(prefix.length)), 'utf8'));
+    },
+  });
+  addFormats(ajv);
+  const schema = JSON.parse(readFileSync(join(RELEASED_31_SCHEMA_ROOT, relativePath), 'utf8'));
+  const validate = await ajv.compileAsync(schema);
+  if (validate(data)) return [];
+  return (validate.errors ?? []).map(error => `${error.instancePath || '(root)'} ${error.message}`);
+}
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
@@ -849,6 +871,11 @@ describe('comply_test_controller', () => {
               budget: 10000,
               creative_assignments: ['proposal_bound_creative'],
             }],
+            product_allowed_actions: [{
+              action: 'update_targeting',
+              modes: ['self_serve'],
+              allowed_statuses: ['active'],
+            }],
             available_actions: [{ action: 'update_targeting', mode: 'self_serve' }],
             accepted_proposal: {
               proposal_id: 'accepted_change_rights_proposal',
@@ -951,6 +978,33 @@ describe('comply_test_controller', () => {
         { action: 'extend_flight', mode: 'self_serve', terms_ref: 'extend_active' },
       ]);
 
+      const legacyRejection = await simulateCallTool(server, 'update_media_buy', {
+        adcp_version: '3.1',
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        packages: [{ package_id: 'proposal_bound_package', budget: 11000 }],
+      });
+      const legacyError = (legacyRejection.result as any).errors?.[0] ?? legacyRejection.result;
+      expect(legacyError).toMatchObject({
+        code: 'ACTION_NOT_ALLOWED',
+        details: {
+          attempted_action: 'increase_budget',
+          reason: 'mode_mismatch',
+          currently_available_actions: [
+            { action: 'pause', mode: 'self_serve', terms_ref: 'pause_active' },
+            { action: 'increase_budget', mode: 'requires_approval', terms_ref: 'increase_active' },
+            { action: 'extend_flight', mode: 'self_serve', terms_ref: 'extend_active' },
+          ],
+        },
+      });
+      const released31Errors = await validateReleased31Schema(
+        legacyError.details,
+        'error-details/action-not-allowed.json',
+      );
+      expect(released31Errors, released31Errors.join('; ')).toEqual([]);
+
       const sellerManaged = await simulateCallTool(server, 'control_media_buy', {
         adcp_version: '3.2-beta.6',
         account: ACCOUNT,
@@ -979,7 +1033,7 @@ describe('comply_test_controller', () => {
         code: 'ACTION_NOT_ALLOWED',
         details: {
           attempted_action: 'update_name',
-          reason: 'wrong_status',
+          reason: 'condition_unresolved',
         },
       });
 
@@ -1145,6 +1199,48 @@ describe('comply_test_controller', () => {
           constraint: 'max_delta_percent',
         },
       });
+
+      const untypedCommercialUpdates = [
+        { field: 'measurement_terms', value: { billing_measurement: { measurement_window: 'post_sivt' } } },
+        { field: 'performance_standards', value: [{ metric: 'viewability', threshold: 0.7 }] },
+        { field: 'audience_evidence_requirements', value: { minimum_confidence: 0.9 } },
+        { field: 'audience_evidence_pins', value: [{ evidence_id: 'evidence_pin_1' }] },
+        { field: 'agency_estimate_number', value: 'AE-UNNEGOTIATED-1' },
+      ];
+      for (const { field, value } of untypedCommercialUpdates) {
+        const rejected = await simulateCallTool(server, 'update_media_buy', {
+          adcp_version: '3.2-beta.6',
+          account: ACCOUNT,
+          brand: BRAND,
+          media_buy_id: 'bounded_self_serve_budget',
+          revision: increased.revision,
+          packages: [{ package_id: 'bounded_budget_package', [field]: value }],
+        });
+        const error = (rejected.result as any).errors?.[0] ?? rejected.result;
+        expect(error).toMatchObject({
+          code: 'REQUOTE_REQUIRED',
+          field: `packages[0].${field}`,
+          details: {
+            envelope_field: `packages[0].${field}`,
+            constraint: 'no_typed_change_action',
+          },
+        });
+      }
+
+      const session = await getSession(sessionKeyFromArgs({ account: ACCOUNT }, 'open'));
+      const unchangedBuy = session.mediaBuys.get('bounded_self_serve_budget');
+      const unchangedPackage = unchangedBuy?.packages.find(pkg => pkg.packageId === 'bounded_budget_package');
+      expect(unchangedBuy?.revision).toBe(increased.revision);
+      expect(unchangedPackage).toBeDefined();
+      for (const field of [
+        'measurementTerms',
+        'performanceStandards',
+        'audienceEvidenceRequirements',
+        'audienceEvidencePins',
+        'agencyEstimateNumber',
+      ]) {
+        expect(Object.hasOwn(unchangedPackage!, field)).toBe(false);
+      }
     });
 
     it('does not synthesize resume beyond accepted change terms', async () => {

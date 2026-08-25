@@ -7,9 +7,14 @@
 
 import { randomUUID } from 'node:crypto';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
-import { supportsSellerGovernanceDiscovery, type TrainingContext, type ToolArgs, type AccountRef, type OperatorUnit } from './types.js';
-import { accountScopeFromRef } from './account-scope.js';
-import { sessionKeyFromArgs } from './state.js';
+import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
+import { SESSION_STORE_UNAVAILABLE_MESSAGE, sessionKeyFromArgs } from './state.js';
+import {
+  clearInMemoryGovernanceBindings,
+  governanceBindingStore,
+  type GovernanceBindingRecord,
+} from './governance-binding-store.js';
 import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
@@ -69,6 +74,7 @@ interface SyncAccountInput {
   operator?: string;
   operator_unit?: OperatorUnit;
   currency?: string;
+  timezone?: string;
   billing?: 'operator' | 'agent' | 'advertiser';
   billing_entity?: Record<string, unknown>;
   payment_terms?: string;
@@ -82,6 +88,7 @@ interface AccountState {
   operator: string;
   operatorUnit?: OperatorUnit;
   currency?: string;
+  timezone?: string;
   billing: string;
   billingEntity?: Record<string, unknown>;
   paymentTerms: string;
@@ -168,6 +175,7 @@ function accountKey(
   operatorUnit?: OperatorUnit,
   currency?: string,
   sandbox = false,
+  timezone?: string,
 ): string {
   return accountScopeFromRef({
     brand: {
@@ -178,6 +186,7 @@ function accountKey(
     operator,
     ...(operatorUnit && { operator_unit: operatorUnit }),
     ...(currency && { currency }),
+    ...(timezone && { timezone }),
     sandbox,
   });
 }
@@ -196,6 +205,7 @@ function findAccountByRef(accounts: Map<string, AccountState>, ref: AccountRef):
       ref.operator_unit,
       ref.currency,
       ref.sandbox === true,
+      ref.timezone,
     ));
   }
   return undefined;
@@ -237,6 +247,7 @@ export function sandboxAccountRefForId(
     operator: account.operator.toLowerCase(),
     ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
     ...(account.currency && { currency: account.currency }),
+    ...(account.timezone && { timezone: account.timezone }),
     sandbox: true,
   };
 }
@@ -272,6 +283,7 @@ function accountStateFromWire(wire: AccountWireShape, now: string): AccountState
     operator: wire.operator,
     operatorUnit: wire.operator_unit,
     currency: wire.currency,
+    timezone: wire.timezone,
     billing: wire.billing,
     paymentTerms: wire.payment_terms ?? 'net_30',
     status: wire.status,
@@ -291,9 +303,15 @@ function findComplianceAccountById(accountId: string, now: string): AccountState
   return fixture ? accountStateFromWire(fixture, now) : undefined;
 }
 
-/** Exported for testing — clear all account state */
-export function clearAccountStore(): void {
+/** Simulate a process restart without erasing the authoritative binding store. */
+export function clearProcessLocalAccountStore(): void {
   accountStore.clear();
+}
+
+/** Exported for isolated tests/manual storyboards — clear all account state. */
+export function clearAccountStore(): void {
+  clearProcessLocalAccountStore();
+  clearInMemoryGovernanceBindings();
 }
 
 interface AccountWireShape {
@@ -306,6 +324,7 @@ interface AccountWireShape {
   operator: string;
   operator_unit?: OperatorUnit;
   currency?: string;
+  timezone?: string;
   billing: string;
   account_scope: string;
   status: string;
@@ -336,6 +355,7 @@ function accountStateToWire(account: AccountState): AccountWireShape {
     operator: account.operator,
     ...(account.operatorUnit && { operator_unit: { ...account.operatorUnit } }),
     ...(account.currency && { currency: account.currency }),
+    ...(account.timezone && { timezone: account.timezone }),
     billing: account.billing,
     account_scope: account.accountScope,
     status: account.status,
@@ -593,12 +613,14 @@ export function getAccountNotificationSubscribers(
           accountRef!.operator_unit,
           accountRef!.currency,
           accountRef!.sandbox === true,
+          accountRef!.timezone,
         ) !== accountKey(
           account.brand,
           account.operator,
           account.operatorUnit,
           account.currency,
           account.sandbox,
+          account.timezone,
         )
       ) continue;
       for (const config of account.notificationConfigs) {
@@ -651,21 +673,52 @@ export function resolveAccountCurrencyForRef(
     : undefined;
 }
 
-export function resolveGovernanceAgentsForAccount(
-  sessionKey: string,
+function governanceBindingAgents(binding: GovernanceBindingRecord | null): GovernanceAgentEntry[] {
+  return binding?.agents.map(agent => ({ url: agent.url })) ?? [];
+}
+
+export async function resolveGovernanceAgentsForAccount(
+  _sessionKey: string,
   principal: string | undefined,
   ref: AccountRef | undefined,
-): GovernanceAgentEntry[] {
+): Promise<GovernanceAgentEntry[]> {
   if (!ref) return [];
-  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
-    const account = findAccountByRef(accounts, ref);
-    if (account) return [...account.governanceAgents];
+  const scopedPrincipal = principalScope(principal);
+  try {
+    const store = governanceBindingStore();
+    // Controller-seeded legacy buys can carry a dual identity. account_id is
+    // seller-issued and remains the strongest unambiguous alias in that shape.
+    if (typeof ref.account_id === 'string' && ref.account_id.length > 0) {
+      return governanceBindingAgents(await store.getByAccountId(scopedPrincipal, ref.account_id));
+    }
+
+    let canonical;
+    try {
+      canonical = canonicalizeAccountRef(ref);
+    } catch {
+      // A few legacy fixtures retain only brand identity. Resolve that alias
+      // only when it identifies exactly one authoritative binding. Multiple
+      // matches are ambiguous and fail closed. Zero matches means there is no
+      // authoritative governed state to recover; ordinary ungoverned legacy
+      // buys must remain operable in a fresh worker.
+      const brandDomain = ref.brand?.domain?.toLowerCase();
+      if (!brandDomain) throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE);
+      const matches = await store.findByBrandDomain(scopedPrincipal, brandDomain, 2);
+      if (matches.length === 0) return [];
+      if (matches.length !== 1) throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE);
+      return governanceBindingAgents(matches[0]);
+    }
+    if (canonical.kind === 'account_id') {
+      return governanceBindingAgents(await store.getByAccountId(scopedPrincipal, canonical.account_id));
+    }
+    return governanceBindingAgents(await store.getByAccountScope(
+      scopedPrincipal,
+      accountScopeFromRef(ref),
+    ));
+  } catch (error) {
+    if (error instanceof Error && error.message === SESSION_STORE_UNAVAILABLE_MESSAGE) throw error;
+    throw new Error(SESSION_STORE_UNAVAILABLE_MESSAGE, { cause: error });
   }
-  if (ref.account_id) {
-    const account = findAccountByIdAcrossSessions(ref.account_id, principal);
-    if (account) return [...account.governanceAgents];
-  }
-  return [];
 }
 
 export function seedAccountFixture(
@@ -694,6 +747,7 @@ export function seedAccountFixture(
     ? fixture.operator_unit as unknown as OperatorUnit
     : undefined;
   const currency = typeof fixture.currency === 'string' ? fixture.currency : undefined;
+  const timezone = typeof fixture.timezone === 'string' ? fixture.timezone : undefined;
   if (!brand?.domain) {
     return { success: false, error: 'INVALID_PARAMS', error_detail: 'params.fixture.brand.domain is required for seed_account' };
   }
@@ -713,6 +767,7 @@ export function seedAccountFixture(
     operatorUnit,
     currency,
     sandbox,
+    timezone,
   );
   const existing = accounts.get(key)
     ?? findAccountByIdAcrossSessions(accountId, ctx.principal);
@@ -723,6 +778,7 @@ export function seedAccountFixture(
     operator,
     operatorUnit,
     currency,
+    timezone,
     billing,
     paymentTerms: typeof fixture.payment_terms === 'string' ? fixture.payment_terms : 'net_30',
     status,
@@ -831,6 +887,7 @@ export const ACCOUNT_REF_SCHEMA = {
           additionalProperties: false,
         },
         currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+        timezone: { type: 'string', minLength: 1 },
         sandbox: { type: 'boolean' },
       },
       required: ['brand', 'operator'],
@@ -912,6 +969,7 @@ export const ACCOUNT_TOOLS = [
                 additionalProperties: false,
               },
               currency: { type: 'string', pattern: '^[A-Z]{3}$' },
+              timezone: { type: 'string', minLength: 1 },
               billing: { type: 'string', enum: ['operator', 'agent', 'advertiser'] },
               billing_entity: { type: 'object' },
               payment_terms: { type: 'string', enum: ['net_15', 'net_30', 'net_45', 'net_60', 'net_90', 'prepay'] },
@@ -951,6 +1009,7 @@ export const ACCOUNT_TOOLS = [
                   { not: { required: ['operator'] } },
                   { not: { required: ['operator_unit'] } },
                   { not: { required: ['currency'] } },
+                  { not: { required: ['timezone'] } },
                   { not: { required: ['billing'] } },
                 ],
               },
@@ -1062,6 +1121,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         input.operator !== undefined && 'operator',
         input.operator_unit !== undefined && 'operator_unit',
         input.currency !== undefined && 'currency',
+        input.timezone !== undefined && 'timezone',
         input.billing !== undefined && 'billing',
         input.sandbox !== undefined && 'sandbox',
       ].filter(Boolean);
@@ -1101,6 +1161,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
           existing.operatorUnit,
           existing.currency,
           existing.sandbox,
+          existing.timezone,
         ), existing);
       }
 
@@ -1139,6 +1200,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         operator: existing.operator,
         ...(existing.operatorUnit && { operator_unit: existing.operatorUnit }),
         ...(existing.currency && { currency: existing.currency }),
+        ...(existing.timezone && { timezone: existing.timezone }),
         action: 'updated',
         status: existing.status,
         billing: existing.billing,
@@ -1289,6 +1351,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       input.operator_unit,
       input.currency,
       input.sandbox === true,
+      input.timezone,
     );
     const existing = accounts.get(key);
     const isSandbox = input.sandbox === true;
@@ -1310,6 +1373,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         operator: input.operator,
         ...(input.operator_unit && { operator_unit: input.operator_unit }),
         ...(input.currency && { currency: input.currency }),
+        ...(input.timezone && { timezone: input.timezone }),
         action: existing ? 'updated' : 'created',
         status: isSandbox ? 'active' : 'pending_approval',
         billing: input.billing,
@@ -1337,6 +1401,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       operator: input.operator,
       operatorUnit: input.operator_unit,
       currency: input.currency,
+      timezone: input.timezone,
       billing: input.billing!,
       billingEntity: input.billing_entity,
       paymentTerms: input.payment_terms || 'net_30',
@@ -1363,6 +1428,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       operator: input.operator,
       ...(input.operator_unit && { operator_unit: input.operator_unit }),
       ...(input.currency && { currency: input.currency }),
+      ...(input.timezone && { timezone: input.timezone }),
       name: input.operator_unit?.name
         ? `${input.brand.name || input.brand.domain} (via ${input.operator_unit.name})`
         : `${input.brand.name || input.brand.domain} (via ${input.operator})`,
@@ -1428,6 +1494,7 @@ function wireAccountMatchesRef(account: AccountWireShape, ref: AccountRef): bool
   if (account.operator !== ref.operator) return false;
   if ((account.operator_unit?.id ?? undefined) !== (ref.operator_unit?.id ?? undefined)) return false;
   if ((account.currency ?? undefined) !== (ref.currency ?? undefined)) return false;
+  if ((account.timezone ?? undefined) !== (ref.timezone ?? undefined)) return false;
   if (typeof ref.sandbox === 'boolean') return (account.sandbox === true) === ref.sandbox;
   return true;
 }
@@ -1504,7 +1571,7 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
   };
 }
 
-export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
+export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncGovernanceInput;
   const identityError = durableAccountIdentityError(ctx);
   if (identityError) return identityError;
@@ -1589,16 +1656,16 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       continue;
     }
 
-    // Earlier checkpoints predate the acceptance declaration. Preserve their
-    // legacy accept-any behavior; otherwise an omitted capability would hide
-    // a binding restriction that buyers cannot discover on that wire version.
-    if (supportsSellerGovernanceDiscovery(ctx.servedAdcpVersion) && !TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET.has(canonicalAgentUrl)) {
+    // Binding policy is a seller-side authorization decision. It must not be
+    // weakened by a caller-selected protocol version.
+    if (!TRAINING_ACCEPTED_GOVERNANCE_AGENT_URL_SET.has(canonicalAgentUrl)) {
       results.push({
         account: acctRef,
         status: 'failed',
         errors: [{
           code: 'GOVERNANCE_AGENT_NOT_ACCEPTED',
           message: 'The proposed governance agent does not satisfy this account\'s seller policy',
+          recovery: 'correctable',
           // The reference seller deliberately exercises progressive disclosure:
           // neither the private allowlist nor the rejected URL is reflected.
           details: { disclosure: 'opaque' },
@@ -1609,7 +1676,31 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
 
     const validAgents: GovernanceAgentEntry[] = [{ url: canonicalAgentUrl }];
 
-    // Replace semantics — overwrite previous governance agents
+    const completeAccountRef: AccountRef = {
+      brand: {
+        domain: acct.brand.domain,
+        ...(acct.brand.brand_id && { brand_id: acct.brand.brand_id }),
+        ...(acct.brand.countries && { countries: [...acct.brand.countries] }),
+      },
+      operator: acct.operator,
+      ...(acct.operatorUnit && { operator_unit: { ...acct.operatorUnit } }),
+      ...(acct.currency && { currency: acct.currency }),
+      ...(acct.timezone && { timezone: acct.timezone }),
+      sandbox: acct.sandbox,
+    };
+    const durableBinding: GovernanceBindingRecord = {
+      principal: principalScope(ctx.principal),
+      accountId: acct.accountId,
+      accountScope: accountScopeFromRef(completeAccountRef),
+      brandDomain: acct.brand.domain.toLowerCase(),
+      account: completeAccountRef,
+      agents: validAgents.map(value => ({ url: value.url })),
+      updatedAt: new Date().toISOString(),
+    };
+    // One atomic authoritative row serves both account_id and complete-natural
+    // aliases. Do not mutate the process-local account projection until the
+    // durable replacement succeeds.
+    await governanceBindingStore().upsert(durableBinding);
     acct.governanceAgents = validAgents;
 
     results.push({

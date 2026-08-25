@@ -17,6 +17,7 @@ import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { verifyWebhookSignature, StaticJwksResolver, InMemoryReplayStore, InMemoryRevocationStore } from '@adcp/sdk/signing';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { buildCatalog } from '../../src/training-agent/product-factory.js';
+import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 
 vi.hoisted(() => {
   process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-webhook';
@@ -35,6 +36,8 @@ const {
   resetWebhookSigning,
   getPublicJwks,
   emitFrameworkTaskWebhook,
+  emitDurableSellerManagedTaskWebhook,
+  getWebhookEmitter,
   maybeEmitCompletionWebhook,
 } = await import('../../src/training-agent/webhooks.js');
 const { handleCreatePropertyList, handleUpdatePropertyList } = await import('../../src/training-agent/property-handlers.js');
@@ -658,6 +661,66 @@ describe('Training Agent webhook emission', () => {
     expect(key.key_ops).toContain('verify');
     expect(key.kid).toBeTruthy();
     expect(key.d).toBeUndefined(); // never publish the private scalar
+  });
+
+  it('deduplicates recovery after the framework binds a seller-control terminal payload', async () => {
+    const deliveries: CapturedDelivery[] = [];
+    let srv: http.Server | undefined;
+    try {
+      srv = await startReceiver((delivery, res) => {
+        deliveries.push(delivery);
+        res.writeHead(200); res.end();
+      });
+      const addr = srv.address() as AddressInfo;
+      const tenantScope = JSON.stringify([
+        'session', 'transport-webhook-contract', null, 'account-webhook-contract', 'client:webhook-contract',
+      ]);
+      // Simulate the SDK binding and delivering, followed by a process death
+      // before its observability acknowledgement reaches the seller outbox.
+      await getWebhookEmitter().forTenantScope(tenantScope).emit({
+        url: `http://127.0.0.1:${addr.port}/hook/seller-control`,
+        delivery_id: 'task-webhook:account-webhook-contract:control_media_buy:smc_webhook_contract_0001',
+        payload: {
+          operation_id: 'seller-control-operation-0001',
+          task_id: 'smc_webhook_contract_0001',
+          task_type: 'control_media_buy',
+          protocol: 'media-buy',
+          status: 'completed',
+          timestamp: '2026-08-25T12:00:01.000Z',
+          result: { status: 'completed', media_buy_id: 'buy-webhook-contract', revision: 2 },
+        },
+      });
+      await emitDurableSellerManagedTaskWebhook({
+        accountId: 'account-webhook-contract',
+        taskId: 'smc_webhook_contract_0001',
+        webhookTenantScope: tenantScope,
+        terminalAt: '2026-08-25T12:00:00.000Z',
+        pushConfig: {
+          url: `http://127.0.0.1:${addr.port}/hook/seller-control`,
+          operation_id: 'seller-control-operation-0001',
+        },
+        result: { status: 'completed', media_buy_id: 'buy-webhook-contract', revision: 2 },
+      });
+
+      expect(deliveries).toHaveLength(1);
+      const body = JSON.parse(deliveries[0]!.body) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        idempotency_key: expect.stringMatching(/^[A-Za-z0-9_.:-]{16,255}$/),
+        operation_id: 'seller-control-operation-0001',
+        task_id: 'smc_webhook_contract_0001',
+        task_type: 'control_media_buy',
+        protocol: 'media-buy',
+        status: 'completed',
+        timestamp: '2026-08-25T12:00:01.000Z',
+      });
+      const validation = validateSourceSchema('core/mcp-webhook-payload.json', body);
+      expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
+    } finally {
+      if (srv) {
+        srv.closeAllConnections?.();
+        await new Promise<void>(resolve => srv!.close(() => resolve()));
+      }
+    }
   });
 
   it('preserves the purpose of an existing configured webhook kid', () => {

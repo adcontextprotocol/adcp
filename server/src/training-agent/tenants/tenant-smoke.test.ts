@@ -13,14 +13,17 @@ import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore } from '../account-handlers.js';
+import { clearIdempotencyCache } from '../idempotency.js';
 import {
   clearSessions,
   flushDirtySessions,
   getSession,
+  registerSharedPublicBrandPartition,
   runWithSessionContext,
   sessionKeyFromArgs,
   stopSessionCleanup,
 } from '../state.js';
+import { handleControlMediaBuy } from '../task-handlers.js';
 import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
@@ -384,6 +387,7 @@ describe('tenant routing smoke', () => {
           },
         },
         operator: 'pinnacle-agency.example',
+        sandbox: true,
       };
       await callTenantTool(url, 2, 'sync_accounts', {
         accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
@@ -475,18 +479,19 @@ describe('tenant routing smoke', () => {
       }) as { result?: { structuredContent?: { accounts?: Array<Record<string, unknown>> } } };
       const legacyBindingJson = JSON.stringify(legacyBinding.result?.structuredContent);
       expect(legacyBinding.result?.structuredContent?.accounts?.[0]).toMatchObject({
-        status: 'synced',
-        governance_agents: [{ url: 'https://untrusted-governance.example/mcp' }],
+        status: 'failed',
+        errors: [{ code: 'GOVERNANCE_AGENT_NOT_ACCEPTED' }],
       });
+      expect(legacyBinding.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
       expect(legacyBindingJson).not.toContain(rejectedCredential);
 
       const retainedBinding = await callTenantTool(url, 14, 'comply_test_controller', {
-        account: { ...account, sandbox: true },
+        account,
         scenario: 'query_account_governance_binding',
         params: { account },
       }) as { result?: { structuredContent?: { simulated?: { governance_agents?: Array<{ url?: string }> } } } };
       expect(retainedBinding.result?.structuredContent?.simulated?.governance_agents).toEqual([
-        { url: 'https://untrusted-governance.example/mcp' },
+        { url: 'https://governance.example/mcp' },
       ]);
 
       const rebound = await callTenantTool(url, 13, 'sync_governance', {
@@ -2024,6 +2029,178 @@ describe('tenant routing smoke', () => {
       expect(terminalList?.tasks).toEqual([
         expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'completed' }),
       ]);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('executes seller-managed controls through a durable revision-bound task', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'seller-managed-control.example' },
+        operator: 'seller-managed-control.example',
+        sandbox: true,
+      };
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      const seeded = payload(await callTenantTool(url, 20, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: 'seller_managed_control_buy',
+          fixture: {
+            status: 'active',
+            currency: 'USD',
+            total_budget: 10_000,
+            start_time: '2026-01-01T00:00:00Z',
+            end_time: '2099-12-31T23:59:59Z',
+            packages: [{
+              package_id: 'seller_managed_control_package',
+              product_id: 'seller_managed_control_product',
+              pricing_option_id: 'seller_managed_control_pricing',
+              budget: 10_000,
+            }],
+            accepted_proposal: {
+              proposal_id: 'seller_managed_control_proposal',
+              proposal_kind: 'new_media_buy',
+              proposal_status: 'accepted',
+              accepted_at: '2026-01-01T00:00:00Z',
+              media_buy_id: 'seller_managed_control_buy',
+              name: 'Seller-managed control task',
+              commercial_terms: {
+                brand: account.brand,
+                purchases: [],
+                start_time: '2026-01-01T00:00:00Z',
+                end_time: '2099-12-31T23:59:59Z',
+                total_budget: { amount: 10_000, currency: 'USD' },
+                change_terms: [{
+                  term_id: 'seller_managed_budget_increase',
+                  action: 'increase_budget',
+                  service_mode: 'seller_managed',
+                  allowed_statuses: ['active', 'pending_creatives'],
+                  constraints: { kind: 'budget', max_delta_percent: 20 },
+                }],
+              },
+              terms_digest: 'sha256:DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
+            },
+          },
+        },
+      }));
+      expect(seeded?.success).toBe(true);
+
+      const before = payload(await callTenantTool(url, 19, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect(
+        (before?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]?.available_actions,
+        JSON.stringify(before),
+      ).toEqual([{
+        task: 'control_media_buy',
+        action: 'increase_budget',
+        mode: 'seller_managed',
+        change_term_id: 'seller_managed_budget_increase',
+      }]);
+
+      const request = {
+        idempotency_key: 'seller-managed-control-task-0001',
+        account,
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 1,
+        total_budget: { amount: 11_000, currency: 'USD' },
+      };
+      const submitted = payload(await callTenantTool(url, 21, 'control_media_buy', request));
+      expect(submitted, JSON.stringify(submitted)).toMatchObject({ status: 'submitted' });
+      expect(typeof submitted?.task_id).toBe('string');
+      const taskId = String(submitted?.task_id);
+
+      const replay = payload(await callTenantTool(url, 22, 'control_media_buy', request));
+      expect(replay).toMatchObject({ task_id: taskId });
+
+      let terminal: Record<string, unknown> | undefined;
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        terminal = payload(await callTenantTool(url, 23 + attempt, 'get_task_status', {
+          account,
+          task_id: taskId,
+          include_result: true,
+        }));
+        if (terminal?.status === 'completed' || terminal?.status === 'failed') break;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(terminal).toMatchObject({
+        task_id: taskId,
+        task_type: 'control_media_buy',
+        status: 'completed',
+        result: {
+          status: 'completed',
+          media_buy_id: 'seller_managed_control_buy',
+          revision: 2,
+        },
+      });
+
+      // Drop the SDK replay cache after the durable task has advanced the
+      // media-buy revision. The platform must recover the original task from
+      // its stable principal/account/idempotency row before stale-revision
+      // preflight, and the registry must accept the exact task replay.
+      await clearIdempotencyCache();
+      const postCompletionReplay = payload(await callTenantTool(url, 79, 'control_media_buy', request));
+      expect(postCompletionReplay).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      const read = payload(await callTenantTool(url, 80, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect((read?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]).toMatchObject({
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 2,
+        total_budget: 11_000,
+      });
+
+      // Model a replacement worker after the media-buy CAS committed but
+      // before the outbox/task terminal write. The task-bound receipt must
+      // return the original artifact without applying the increase twice or
+      // rejecting the original revision as stale.
+      const replayArgs = registerSharedPublicBrandPartition(
+        structuredClone(request),
+        account.brand.domain,
+      );
+      const recovered = await runWithSessionContext(async () => await handleControlMediaBuy(
+        replayArgs,
+        { mode: 'open' },
+        {
+          sellerManagedExecution: {
+            kind: 'execute',
+            taskId,
+            mediaBuyId: 'seller_managed_control_buy',
+            expectedRevision: 1,
+            actions: ['increase_budget'],
+          },
+        },
+      ));
+      expect(recovered).toMatchObject({
+        status: 'completed',
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 2,
+      });
+
+      const stale = payload(await callTenantTool(url, 81, 'control_media_buy', {
+        ...request,
+        idempotency_key: 'seller-managed-control-task-stale-0002',
+      }));
+      expect(stale?.adcp_error).toMatchObject({ code: 'CONFLICT' });
+      const readAfterStale = payload(await callTenantTool(url, 82, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect((readAfterStale?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]).toMatchObject({
+        revision: 2,
+        total_budget: 11_000,
+      });
     } finally {
       await close();
     }

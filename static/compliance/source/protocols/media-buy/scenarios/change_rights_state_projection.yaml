@@ -217,11 +217,11 @@ phases:
         validations:
           - check: error_code
             value: "ACTION_NOT_ALLOWED"
-            description: "The reference seller fails closed rather than fabricating a non-durable async task"
+            description: "The reference seller fails closed while the negotiated condition remains opaque"
           - check: field_value
             path: "errors[0].details.reason"
-            value: "wrong_status"
-            description: "An unevaluated condition is not projected as executable authority"
+            value: "condition_unresolved"
+            description: "An unevaluated condition is distinct from a lifecycle-status mismatch"
 
       - id: pause_with_negotiated_right
         title: "Exercise the active self-serve pause right"

@@ -9,6 +9,7 @@ track: media_buy
 required_tools:
   - sync_accounts
   - sync_governance
+  - comply_test_controller
 
 requires_capability:
   path: adcp.governance_enforcement.accepted_governance_agents.any_of
@@ -130,6 +131,30 @@ phases:
           - check: field_absent
             path: "accounts[0].governance_agents"
             description: "A failed response never represents the rejected endpoint as persisted"
+
+      - id: verify_prior_binding_retained
+        title: "Read the binding after the rejected replacement"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        comply_scenario: query_account_governance_binding
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          scenario: query_account_governance_binding
+          params:
+            account:
+              account_id: "$context.governance_binding_account_id"
+          account:
+            account_id: "$context.governance_binding_account_id"
+        validations:
+          - check: response_schema
+            description: "Controller response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "simulated.governance_agents[0].url"
+            value: "$context.governance_agent_url"
+            description: "The rejected replacement did not erase or replace the accepted binding"
 
       - id: resync_accepted_governance_agent
         title: "Retry with the advertised endpoint"

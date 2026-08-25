@@ -1805,7 +1805,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
       success: true,
       simulated: {
         account: structuredClone(accountRef),
-        governance_agents: resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, accountRef),
+        governance_agents: await resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, accountRef),
       },
     };
   }
