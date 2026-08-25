@@ -56,7 +56,12 @@ describe('createWebhookFetch — SSRF guard', () => {
   });
 
   describe('with allowPrivateIp=false (production)', () => {
-    const fetch = createWebhookFetch({ allowPrivateIp: false });
+    // Stubbed resolver: the guard's DNS behavior is covered by the injected-
+    // lookup tests below; hitting real DNS here made these tests fail on any
+    // machine with a slow or filtered resolver (adcp#6828). 93.184.216.34 is
+    // example.com's public address.
+    const dnsLookup = async () => [{ address: '93.184.216.34', family: 4 }];
+    const fetch = createWebhookFetch({ allowPrivateIp: false, dnsLookup });
 
     it('refuses literal IPv4 loopback', async () => {
       await expect(fetch('http://127.0.0.1/metadata')).rejects.toBeInstanceOf(SsrfRefusedError);

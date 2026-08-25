@@ -5,13 +5,13 @@
  * new price item (and optional coupon). Each safety guard plus the happy
  * path plus the post-Stripe audit-log path are covered.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import type Stripe from 'stripe';
 
-process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
-process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+vi.stubEnv('WORKOS_API_KEY', process.env.WORKOS_API_KEY ?? 'test');
+vi.stubEnv('WORKOS_CLIENT_ID', process.env.WORKOS_CLIENT_ID ?? 'client_test');
 
 const {
   mockPoolQuery,
@@ -148,6 +148,10 @@ describe('POST /api/admin/accounts/:orgId/replace-subscription', () => {
     vi.clearAllMocks();
     stripeMockState.configured = true;
     mockPoolQuery.mockResolvedValue({ rows: [] });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('returns 503 when Stripe is unconfigured', async () => {
