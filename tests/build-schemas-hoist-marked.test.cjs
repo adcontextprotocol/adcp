@@ -21,6 +21,17 @@ const { hoistMarkedSchemas } = require('../scripts/build-schemas.cjs');
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
+test('keeps the repeated creative asset union on the named hoist path', () => {
+  const assetUnion = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '../static/schemas/source/core/assets/asset-union.json'),
+    'utf8'
+  ));
+
+  assert.equal(assetUnion.title, 'AssetVariant');
+  assert.equal(assetUnion['x-adcp-hoist'], true,
+    'inlining AssetVariant repeatedly makes build_creative validators exceed the JS call stack');
+});
+
 test('hoists a marked schema and replaces all inline occurrences with $ref', () => {
   const schema = {
     type: 'object',

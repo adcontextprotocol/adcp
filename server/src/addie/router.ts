@@ -476,13 +476,14 @@ export const ROUTING_RULES = {
 /**
  * Build the routing prompt based on context
  */
-function buildRoutingPrompt(ctx: RoutingContext): string {
+export function buildRoutingPrompt(ctx: RoutingContext): string {
   const isAAOAdmin = ctx.isAAOAdmin ?? false;
   const isMember = ctx.memberContext?.is_member ?? false;
   const isLinked = !!ctx.memberContext?.workos_user?.workos_user_id;
 
   // Build tool SET descriptions - router selects categories, not individual tools
   const toolSetsSection = getToolSetDescriptionsForRouter(isAAOAdmin);
+  const validToolSetList = [...getValidToolSetNames(isAAOAdmin)].join(', ');
 
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
@@ -583,7 +584,9 @@ ${
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
-- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing"]
+${isAAOAdmin
+    ? '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing", "admin"]'
+    : '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
@@ -598,7 +601,9 @@ ${
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
 
-## Messages to React To (emoji only, no response)
+## Messages to React To (emoji only, standalone channel messages)
+Use these for short social messages with some context. Exact bare acknowledgments
+such as "thanks" remain in the ignore category below.
 ${reactList}
 
 ## Messages to Ignore
@@ -644,9 +649,7 @@ ${
 
 3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${
-     isAAOAdmin ? ", admin" : ""
-   }
+   - Valid sets: ${validToolSetList}
    - Empty array [] means respond without tools (general knowledge)
    - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
