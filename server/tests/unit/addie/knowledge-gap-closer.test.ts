@@ -36,10 +36,17 @@ describe('buildPublicGapIssuePayload', () => {
 
 describe('buildGapIssueProcessingPatch', () => {
   it('does not mark a candidate processed when GitHub filing fails', () => {
-    const patch = buildGapIssueProcessingPatch(null, 'docs/private-candidate.mdx');
+    const attemptedAt = new Date('2026-08-25T06:00:00.000Z');
+    const patch = buildGapIssueProcessingPatch(
+      null,
+      'docs/private-candidate.mdx',
+      attemptedAt,
+    );
 
     expect(patch).not.toHaveProperty('shadow_eval_gap_issue_created');
     expect(patch).toMatchObject({
+      shadow_eval_gap_last_attempt_at: '2026-08-25T06:00:00.000Z',
+      shadow_eval_gap_retry_after: '2026-08-25T07:00:00.000Z',
       shadow_eval_gap_last_error: 'github_write_failed',
       shadow_eval_gap_target_file: 'docs/private-candidate.mdx',
     });
@@ -52,6 +59,7 @@ describe('buildGapIssueProcessingPatch', () => {
     )).toMatchObject({
       shadow_eval_gap_issue_created: true,
       shadow_eval_gap_issue_url: 'https://github.com/adcontextprotocol/adcp/issues/123',
+      shadow_eval_gap_retry_after: null,
       shadow_eval_gap_last_error: null,
     });
   });

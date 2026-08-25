@@ -74,6 +74,10 @@ async function findUnresolvedGaps(limit: number): Promise<GapThread[]> {
        AND context->'shadow_eval_result'->>'gap_severity' IN ('significant', 'critical')
        AND context->>'shadow_eval_type' IN ('corrected_answer', 'historical_corrected_answer')
        AND (context->>'shadow_eval_gap_issue_created') IS NULL
+       AND COALESCE(
+         (context->>'shadow_eval_gap_retry_after')::timestamptz,
+         '-infinity'::timestamptz
+       ) <= NOW()
        AND flagged = TRUE
      ORDER BY
        CASE context->'shadow_eval_result'->>'gap_severity'
@@ -237,10 +241,14 @@ ${threadId
 export function buildGapIssueProcessingPatch(
   issueUrl: string | null,
   targetFile: string,
+  attemptedAt: Date = new Date(),
 ): Record<string, unknown> {
   if (!issueUrl) {
     return {
-      shadow_eval_gap_last_attempt_at: new Date().toISOString(),
+      shadow_eval_gap_last_attempt_at: attemptedAt.toISOString(),
+      shadow_eval_gap_retry_after: new Date(
+        attemptedAt.getTime() + 60 * 60_000,
+      ).toISOString(),
       shadow_eval_gap_last_error: 'github_write_failed',
       shadow_eval_gap_target_file: targetFile,
     };
@@ -249,6 +257,7 @@ export function buildGapIssueProcessingPatch(
     shadow_eval_gap_issue_created: true,
     shadow_eval_gap_issue_url: issueUrl,
     shadow_eval_gap_target_file: targetFile,
+    shadow_eval_gap_retry_after: null,
     shadow_eval_gap_last_error: null,
   };
 }
