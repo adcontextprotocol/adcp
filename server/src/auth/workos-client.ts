@@ -6,11 +6,13 @@ const logger = createLogger('workos-client');
 const OWNERLESS_PROMOTION_WORKOS_TIMEOUT_MS = 10_000;
 const PIPES_WORKOS_TIMEOUT_MS = 10_000;
 const AUTHORIZATION_OBSERVER_WORKOS_TIMEOUT_MS = 3_000;
+const AUTHORIZATION_ENFORCEMENT_WORKOS_TIMEOUT_MS = 5_000;
 
 let _workos: WorkOS | null = null;
 let _ownerlessPromotionWorkos: WorkOS | null = null;
 let _pipesWorkos: WorkOS | null = null;
 let _authorizationObserverWorkos: WorkOS | null = null;
+let _authorizationEnforcementWorkos: WorkOS | null = null;
 let _clientId = '';
 
 /** Returns the shared WorkOS client. Constructed on first call; WORKOS_API_KEY and WORKOS_CLIENT_ID must be set by then. */
@@ -74,6 +76,25 @@ export function getAuthorizationObserverWorkos(): WorkOS {
     });
   }
   return _authorizationObserverWorkos;
+}
+
+/**
+ * Returns the fail-fast WorkOS client used by exact-credential enforcement.
+ * A request must surface an unavailable authority source instead of consuming
+ * the SDK default retry budget and appearing to hang.
+ */
+export function getAuthorizationEnforcementWorkos(): WorkOS {
+  if (!_authorizationEnforcementWorkos) {
+    if (!process.env.WORKOS_API_KEY) throw new Error('WORKOS_API_KEY environment variable is required');
+    if (!process.env.WORKOS_CLIENT_ID) throw new Error('WORKOS_CLIENT_ID environment variable is required');
+    _clientId = process.env.WORKOS_CLIENT_ID;
+    _authorizationEnforcementWorkos = new WorkOS(process.env.WORKOS_API_KEY, {
+      clientId: _clientId,
+      timeout: AUTHORIZATION_ENFORCEMENT_WORKOS_TIMEOUT_MS,
+      maxRetries: 0,
+    });
+  }
+  return _authorizationEnforcementWorkos;
 }
 
 /**
