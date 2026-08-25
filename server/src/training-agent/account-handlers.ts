@@ -166,6 +166,7 @@ const accountStore = new Map<string, Map<string, AccountState>>();
 const accountChangeStore = new Map<string, StoredAccountChange[]>();
 const accountChangeNextSequence = new Map<string, number>();
 const accountChangeAvailableFrom = new Map<string, number>();
+const accountChangeAuthorizationEpochs = new Map<string, number>();
 const ACCOUNT_CHANGE_CURSOR_SECRET = randomUUID();
 const ACCOUNT_CHANGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -418,6 +419,7 @@ export function clearAccountStore(): void {
   accountChangeStore.clear();
   accountChangeNextSequence.clear();
   accountChangeAvailableFrom.clear();
+  accountChangeAuthorizationEpochs.clear();
   clearSharedAccountResources();
 }
 
@@ -1819,7 +1821,26 @@ function accountChangeAuthorizationEpoch(accountScopeId: string): string {
   // This reference seller grants immutable full-account visibility for the
   // lifetime of one internal access scope. Sellers with mutable partial
   // visibility must rotate this value whenever that visible set changes.
-  return `full-account:${accountScopeId}`;
+  return `full-account:${accountScopeId}:${accountChangeAuthorizationEpochs.get(accountScopeId) ?? 0}`;
+}
+
+/** Sandbox conformance hook: rotate the caller's authorization-scope epoch so
+ * every previously issued cursor for this account expires. This models a
+ * visibility-set change without revoking the controller's ability to finish
+ * the recovery exercise. Ordinary seller code rotates the same epoch when its
+ * real authorization projection changes. */
+export function expireAccountChangeCursors(
+  principal: string | undefined,
+  accountRef: AccountRef,
+): { accountId: string; authorizationEpoch: string } | undefined {
+  const access = resolveAccountForChangeFeed(accountRef, principal);
+  if (!access) return undefined;
+  const next = (accountChangeAuthorizationEpochs.get(access.scopeId) ?? 0) + 1;
+  accountChangeAuthorizationEpochs.set(access.scopeId, next);
+  return {
+    accountId: access.account.account_id,
+    authorizationEpoch: accountChangeAuthorizationEpoch(access.scopeId),
+  };
 }
 
 function issueAccountChangeCursor(cursor: AccountChangeCursor): string {

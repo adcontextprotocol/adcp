@@ -25,6 +25,13 @@ This lab teaches the buyer convergence loop:
 This lab exercises the AdCP 3.2 draft in [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810). The surface can change before ratification.
 </Warning>
 
+<Warning>
+The hosted training seller does not advertise this capability until its
+durable server-side feed store is enabled. The reference scenario remains
+available to local and compliance runners; a production deployment must not
+claim the 90-day retention guarantee with process-local state.
+</Warning>
+
 ## Learning objectives
 
 By the end, you can:
@@ -39,7 +46,7 @@ By the end, you can:
 
 ## Connect to the training seller
 
-Use a caller-unique API key from the
+After the hosted seller advertises `account.change_feed`, use a caller-unique API key from the
 [AgenticAdvertising.org dashboard](https://agenticadvertising.org/dashboard).
 Durable feed state and cursors are principal-scoped, so a shared public key is
 not suitable for this exercise.

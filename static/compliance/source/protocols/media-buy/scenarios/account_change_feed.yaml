@@ -342,6 +342,9 @@ phases:
           account:
             account_id: "acc_luma_shared"
           cursor: "$context.account_change_status_cursor"
+        context_outputs:
+          - name: account_change_expiring_cursor
+            path: "cursor"
         validations:
           - check: response_schema
             description: "Response matches list-account-changes-response.json"
@@ -385,3 +388,126 @@ phases:
             path: "errors[0].field"
             value: "cursor"
             description: "The seller identifies the incompatible cursor"
+
+  - id: cursor_expiry_recovery
+    title: "Recover from authorization-scoped cursor expiry"
+    steps:
+      - id: expire_authorization_scope
+        title: "Rotate the sandbox authorization-scope epoch"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+            sandbox: true
+          scenario: "expire_account_change_cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Authorization-scope epoch rotated"
+          - check: field_value
+            path: "current_state"
+            value: "authorization_scope_changed"
+            description: "Controller identifies the simulated scope change"
+
+      - id: observe_cursor_expired
+        title: "Reject the cursor from the prior authorization scope"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_expiring_cursor"
+        validations:
+          - check: response_schema
+            description: "Failure matches list-account-changes-response.json"
+          - check: error_code
+            value: "CURSOR_EXPIRED"
+            description: "Seller never silently resumes an authorization-invalid cursor"
+          - check: field_value
+            path: "errors[0].details.reason"
+            value: "authorization_scope_changed"
+            description: "Failure explains why snapshot rebootstrap is required"
+          - check: field_value
+            path: "errors[0].details.restart_with.starting_position"
+            value: "latest"
+            description: "Failure supplies the safe restart position"
+
+      - id: acquire_rebootstrap_checkpoint
+        title: "Acquire a new latest checkpoint"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          starting_position: "latest"
+        context_outputs:
+          - name: account_change_rebootstrap_cursor
+            path: "cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_present
+            path: "cursor"
+            description: "New authorization scope receives a fresh checkpoint"
+          - check: field_value
+            path: "has_more"
+            value: false
+            description: "Fresh checkpoint starts at the current seller-ingestion tail"
+
+      - id: rebootstrap_creative_snapshot
+        title: "Rebuild the authoritative creative snapshot"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          filters:
+            creative_ids:
+              - "$generate:uuid_v4#account_change_feed_external_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].status"
+            value: "rejected"
+            description: "Rebootstrap restores current authoritative state"
+
+      - id: drain_after_rebootstrap
+        title: "Drain strictly after the replacement checkpoint"
+        task: list_account_changes
+        schema_ref: "account/list-account-changes-request.json"
+        response_schema_ref: "account/list-account-changes-response.json"
+        doc_ref: "/accounts/tasks/list_account_changes"
+        stateful: true
+        sample_request:
+          account:
+            account_id: "acc_luma_shared"
+          cursor: "$context.account_change_rebootstrap_cursor"
+        validations:
+          - check: response_schema
+            description: "Response matches list-account-changes-response.json"
+          - check: field_value
+            path: "changes"
+            value: []
+            description: "No gap appears while the replacement snapshot is read"
+          - check: field_present
+            path: "cursor"
+            description: "Recovered consumer persists the new tail checkpoint"

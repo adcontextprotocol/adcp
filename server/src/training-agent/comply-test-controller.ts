@@ -46,6 +46,7 @@ import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
   emitAccountChangeRecordedWebhook,
+  expireAccountChangeCursors,
   getAccountNotificationSubscribers,
   recordAccountChange,
   resolveAccountIdForRef,
@@ -1269,6 +1270,7 @@ function createStore(
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
+  'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_get_products_arm',
   'force_task_completion',
@@ -1759,6 +1761,30 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   }
   if (scenario === 'force_task_completion') {
     return handleForceTaskCompletion(sessionKey, rawArgs);
+  }
+  if (scenario === 'expire_account_change_cursor') {
+    if (!args.account) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'expire_account_change_cursor requires account',
+      };
+    }
+    const expired = expireAccountChangeCursors(ctx.principal, args.account);
+    if (!expired) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: 'The requested account is not visible to this principal',
+      };
+    }
+    return {
+      success: true,
+      previous_state: 'current',
+      current_state: 'authorization_scope_changed',
+      account_id: expired.accountId,
+      message: 'Previously issued account change cursors now require snapshot rebootstrap.',
+    };
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};

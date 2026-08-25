@@ -21,6 +21,8 @@
  * every tenant and never form a "wrong tenant" hint.
  */
 
+import { supportsAccountChangeFeed } from '../types.js';
+
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   // accounts — sync_accounts is auto-registered by the framework on every
   // tenant whose `accounts.upsert` is wired (see v6-account-helpers.ts).
@@ -136,7 +138,10 @@ export function toolsForTenant(
     .filter(tool => {
       const negotiatedVersion = options.storyboardCompat?.version ?? options.adcpVersion;
       const isPre32 = negotiatedVersion?.startsWith('3.0') || negotiatedVersion?.startsWith('3.1');
-      if (tool === 'list_account_changes' && isPre32) return false;
+      if (
+        tool === 'list_account_changes'
+        && !supportsAccountChangeFeed(negotiatedVersion ?? '3.2-beta.5')
+      ) return false;
       const is30 = negotiatedVersion?.startsWith('3.0');
       if (!is30) return true;
       // 3.0-compat exclusions. The split product-discovery tools are introduced

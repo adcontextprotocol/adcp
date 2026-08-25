@@ -22,8 +22,7 @@ import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
-import type { TrainingContext } from '../types.js';
-import { supportsAccountChangeFeed } from '../types.js';
+import { supportsAccountChangeFeed, type TrainingContext } from '../types.js';
 import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 
 const TENANT_ID = 'sales';

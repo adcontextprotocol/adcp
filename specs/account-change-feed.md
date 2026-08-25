@@ -325,11 +325,13 @@ skip.
 
 ## Training scenario
 
-The public training seller exposes an existing shared sandbox account. A
+The reference training scenario exposes an existing shared sandbox account. A
 generic connected-platform simulator adds and later modifies a creative
 without a learner AdCP creative call. The reference seller advertises only
 `creative` coverage until campaign, money, assignment, and reporting mutation
-paths pass the same completeness tests. The learner:
+paths pass the same completeness tests. Its hosted production deployment MUST
+also keep the capability disabled until the feed and shared resource snapshot
+survive restarts for the advertised retention window. The learner:
 
 1. registers the account change subscriber;
 2. obtains C0 and snapshots the shared account;

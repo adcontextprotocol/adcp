@@ -44,8 +44,12 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
   return qualifier === 'beta' && prerelease >= 2;
 }
 
-/** Account change feed is a 3.2+ surface and must not leak into 3.1 negotiation. */
+/** Account change feed is a 3.2+ surface and must not leak into 3.1
+ * negotiation. The reference implementation remains process-local until the
+ * server SDK durable store lands, so production must not advertise it. Tests
+ * and local training runs retain the scenario. */
 export function supportsAccountChangeFeed(servedVersion: string | undefined): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
   if (!servedVersion) return false;
   const match = servedVersion.match(/^(\d+)\.(\d+)/);
   if (!match) return false;

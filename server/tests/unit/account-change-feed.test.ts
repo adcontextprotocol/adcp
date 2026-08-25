@@ -264,6 +264,41 @@ describe('training account change feed', () => {
     expect(response.errors[0].details.restart_with).toEqual({ starting_position: 'latest' });
   });
 
+  it('rotates the authorization epoch and completes snapshot rebootstrap', async () => {
+    const beforeScopeChange = call({ account, starting_position: 'latest' });
+    const rotated = await handleComplyTestController({
+      account: { ...account, sandbox: true },
+      scenario: 'expire_account_change_cursor',
+    }, context) as Record<string, any>;
+
+    expect(rotated).toMatchObject({
+      success: true,
+      previous_state: 'current',
+      current_state: 'authorization_scope_changed',
+      account_id: account.account_id,
+    });
+
+    const expired = call({ account, cursor: beforeScopeChange.cursor });
+    expect(expired.status).toBe('failed');
+    expect(expired.errors[0]).toMatchObject({
+      code: 'CURSOR_EXPIRED',
+      details: {
+        reason: 'authorization_scope_changed',
+        restart_with: { starting_position: 'latest' },
+      },
+    });
+
+    const replacement = call({ account, starting_position: 'latest' });
+    expect(replacement.status).toBe('completed');
+    expect(replacement.changes).toEqual([]);
+    expect(replacement.cursor).not.toBe(beforeScopeChange.cursor);
+    expect(call({ account, cursor: replacement.cursor })).toMatchObject({
+      status: 'completed',
+      changes: [],
+      has_more: false,
+    });
+  });
+
   it('expires only checkpoints that fell behind the retained 90-day window', () => {
     const startedAt = new Date('2026-01-01T00:00:00.000Z');
     vi.useFakeTimers();
@@ -302,6 +337,16 @@ describe('training account change feed', () => {
     expect(supportsAccountChangeFeed('3.2-beta.1')).toBe(true);
     expect(toolsForTenant('sales', { adcpVersion: '3.1' })).not.toContain('list_account_changes');
     expect(toolsForTenant('sales', { adcpVersion: '3.2-beta.1' })).toContain('list_account_changes');
+  });
+
+  it('does not advertise a process-local feed in production', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      expect(supportsAccountChangeFeed('3.2')).toBe(false);
+      expect(toolsForTenant('sales', { adcpVersion: '3.2' })).not.toContain('list_account_changes');
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('discovers a creative added outside AdCP after the buyer checkpoint', async () => {
