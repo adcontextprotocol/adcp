@@ -5,7 +5,9 @@ import {
   OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
   OfficialDocsReplayBoundaryError,
   OfficialDocsReplayExecutionError,
+  OfficialDocsReplayOutputConsumerError,
 } from '../../../src/addie/jobs/shadow-replay.js';
+import { ShadowReplayJudgeBoundaryError } from '../../../src/addie/jobs/shadow-replay-judge.js';
 
 const capture = {
   trace_id: '00000000-0000-4000-8000-000000000011',
@@ -25,7 +27,7 @@ const plan = {
   capability_profile_reason: 'eligible' as const,
 };
 
-function authorizedTrace() {
+function authorizedTrace(withHumanEvidence = true) {
   return {
     authorized: true as const,
     trace: {
@@ -46,6 +48,11 @@ function authorizedTrace() {
       questionTs: '1000.2',
       question: 'How does AdCP work?',
       routerDecision: plan,
+      humanEvidence: withHumanEvidence ? {
+        slackMessageTs: '1000.3',
+        userHmac: 'e'.repeat(64),
+        contentHmac: 'f'.repeat(64),
+      } : null,
       expected: {},
     },
   };
@@ -107,9 +114,18 @@ function baseDependencies() {
         reason: 'generation_disabled',
         dailyLimit: 0,
       }),
+      selectJudgeActivation: vi.fn().mockReturnValue({
+        enabled: false,
+        reason: 'judge_disabled',
+        dailyLimit: 0,
+      }),
       claimGeneration: vi.fn(),
       executeReplay: vi.fn(),
       completeGeneration: vi.fn().mockResolvedValue(true),
+      hydrateHumanEvidence: vi.fn(),
+      resolveJudgeModel: vi.fn(),
+      getJudgeClient: vi.fn(),
+      createOutputConsumer: vi.fn().mockReturnValue(vi.fn()),
     },
   };
 }
@@ -172,7 +188,7 @@ describe('shadow evaluator capture-only orchestration', () => {
     expect(fixture.providerCall).not.toHaveBeenCalled();
   });
 
-  it('claims and completes one generation without judging or exposing output', async () => {
+  it('closes a successful generation that omitted judgment as a categorical error', async () => {
     const fixture = baseDependencies();
     fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
       enabled: true,
@@ -202,22 +218,238 @@ describe('shadow evaluator capture-only orchestration', () => {
 
     const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
 
-    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(result).toMatchObject({ evaluated: 0, skipped: 0, errors: 1 });
     expect(fixture.dependencies.claimGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ traceId: capture.trace_id }),
       5,
     );
     expect(fixture.dependencies.executeReplay).toHaveBeenCalledOnce();
+    expect(fixture.dependencies.executeReplay).toHaveBeenCalledWith(
+      expect.objectContaining({ trace: expect.objectContaining({ traceId: capture.trace_id }) }),
+      expect.objectContaining({
+        renewLease: expect.any(Function),
+        outputConsumer: expect.any(Function),
+      }),
+    );
     expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ traceId: capture.trace_id }),
       expect.objectContaining({
         status: 'succeeded',
         outputHmac: 'b'.repeat(64),
       }),
+      {
+        judgment: expect.objectContaining({
+          status: 'error',
+          reason: 'judgment_internal_error',
+          sourceOutputHmac: 'b'.repeat(64),
+        }),
+      },
     );
     expect(fixture.completeCapture).not.toHaveBeenCalled();
     expect(fixture.providerCall).not.toHaveBeenCalled();
     expect(fixture.judgeCall).not.toHaveBeenCalled();
+  });
+
+  it('hydrates signed human evidence before claiming and persists an atomic judgment', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.selectJudgeActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    const humanEvidence = {
+      slackMessageTs: '1000.3',
+      userId: 'U_HUMAN',
+      content: 'A substantive human answer used only in memory.',
+    };
+    fixture.dependencies.hydrateHumanEvidence = vi.fn().mockResolvedValue(humanEvidence);
+    fixture.dependencies.resolveJudgeModel = vi.fn().mockReturnValue('claude-judge');
+    fixture.dependencies.getJudgeClient = vi.fn().mockReturnValue({ messages: {} });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    const judgment = {
+      status: 'judged' as const,
+      reason: 'judgment_succeeded',
+      evaluationValid: true,
+      evaluationSkipped: false,
+      knowledgeGap: true,
+      gapSeverity: 'significant' as const,
+      shadowQuality: 'worse' as const,
+      deterministicFailureLabels: [],
+      shapeWordCount: 42,
+      shapeExpectedMaxWords: 100,
+      shapeRatioToExpected: 0.42,
+      judgeProvider: 'anthropic' as const,
+      judgeModel: 'claude-judge',
+      selfJudged: false,
+      judgePromptVersion: 'official-docs-independent-judge:v1',
+      judgePromptHmac: 'c'.repeat(64),
+      judgeRequestHmac: 'd'.repeat(64),
+      judgeResponseHmac: 'e'.repeat(64),
+      sourceOutputHmac: 'b'.repeat(64),
+      humanEvidenceContentHmac: 'f'.repeat(64),
+      inputTokens: 30,
+      outputTokens: 8,
+      startedAt: new Date('2026-08-25T08:00:00.000Z'),
+      completedAt: new Date('2026-08-25T08:00:01.000Z'),
+    };
+    const consumer = vi.fn().mockResolvedValue(judgment);
+    fixture.dependencies.createOutputConsumer = vi.fn().mockReturnValue(consumer);
+    fixture.dependencies.executeReplay = vi.fn().mockResolvedValue({
+      traceId: capture.trace_id,
+      model: 'claude-test',
+      executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+      completeFidelity: true,
+      status: 'succeeded',
+      reason: 'generation_succeeded',
+      outputHmac: 'b'.repeat(64),
+      outputBytes: 42,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'a'.repeat(64),
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+      judgment,
+    });
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({
+      evaluated: 1,
+      knowledge_gaps: 1,
+      shape_regressions: 0,
+      skipped: 0,
+      errors: 0,
+    });
+    expect(fixture.dependencies.hydrateHumanEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+    );
+    expect(fixture.dependencies.hydrateHumanEvidence.mock.invocationCallOrder[0])
+      .toBeLessThan(fixture.dependencies.claimGeneration.mock.invocationCallOrder[0]);
+    expect(fixture.dependencies.createOutputConsumer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        humanEvidence,
+        judgeEnabled: true,
+        judgeModel: 'claude-judge',
+      }),
+      expect.objectContaining({ client: expect.any(Object), renewLease: expect.any(Function) }),
+    );
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      expect.objectContaining({ judgment }),
+      { judgment },
+    );
+  });
+
+  it('fails closed before claim or provider calls when signed human evidence cannot hydrate', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.selectJudgeActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.hydrateHumanEvidence = vi.fn().mockRejectedValue(
+      new ShadowReplayJudgeBoundaryError('human_evidence_drift'),
+    );
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.completeCapture).toHaveBeenCalledWith(
+      capture.trace_id,
+      capture.thread_id,
+      expect.objectContaining({
+        status: 'skipped',
+        reason: 'human_evidence_drift',
+        parityVerified: true,
+      }),
+    );
+    expect(fixture.dependencies.claimGeneration).not.toHaveBeenCalled();
+    expect(fixture.dependencies.executeReplay).not.toHaveBeenCalled();
+  });
+
+  it('still runs deterministic grading when the signed trace has no comparison target', async () => {
+    const fixture = baseDependencies();
+    const withoutHuman = authorizedTrace(false);
+    fixture.dependencies.resolveTrace = vi.fn().mockResolvedValue(withoutHuman);
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.selectJudgeActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    const judgment = {
+      status: 'skipped' as const,
+      reason: 'comparison_target_unattributable',
+    };
+    const consumer = vi.fn().mockResolvedValue(judgment);
+    fixture.dependencies.createOutputConsumer = vi.fn().mockReturnValue(consumer);
+    fixture.dependencies.executeReplay = vi.fn(async (
+      _input: unknown,
+      options: {
+        outputConsumer: (input: {
+          text: string;
+          outputHmac: string;
+          outputBytes: number;
+          generatorModel: string;
+        }) => Promise<typeof judgment>;
+      },
+    ) => ({
+      traceId: capture.trace_id,
+      model: 'claude-test',
+      executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+      completeFidelity: true,
+      status: 'succeeded' as const,
+      reason: 'generation_succeeded',
+      outputHmac: 'b'.repeat(64),
+      outputBytes: 20,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'a'.repeat(64),
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+      judgment: await options.outputConsumer({
+        text: 'A concise answer.',
+        outputHmac: 'b'.repeat(64),
+        outputBytes: 17,
+        generatorModel: 'claude-test',
+      }),
+    }));
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 1, errors: 0 });
+    expect(fixture.dependencies.hydrateHumanEvidence).not.toHaveBeenCalled();
+    expect(fixture.dependencies.resolveJudgeModel).not.toHaveBeenCalled();
+    expect(fixture.dependencies.getJudgeClient).not.toHaveBeenCalled();
+    expect(consumer).toHaveBeenCalledOnce();
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ judgment }),
+      { judgment },
+    );
   });
 
   it('does not generate when another worker wins the claim', async () => {
@@ -354,6 +586,53 @@ describe('shadow evaluator capture-only orchestration', () => {
     expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
       expect.objectContaining({ traceId: capture.trace_id }),
       completion,
+    );
+  });
+
+  it('persists categorical judgment failure when the output consumer throws', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    const completion = {
+      traceId: capture.trace_id,
+      model: 'claude-test',
+      executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+      completeFidelity: true,
+      status: 'succeeded' as const,
+      reason: 'generation_succeeded',
+      outputHmac: 'b'.repeat(64),
+      outputBytes: 42,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: 'a'.repeat(64),
+      }],
+      toolExecutions: [],
+      blockedCapabilities: [],
+      inputTokens: 20,
+      outputTokens: 10,
+    };
+    fixture.dependencies.executeReplay = vi.fn().mockRejectedValue(
+      new OfficialDocsReplayOutputConsumerError(completion),
+    );
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ evaluated: 0, skipped: 0, errors: 1 });
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      completion,
+      {
+        judgment: expect.objectContaining({
+          status: 'error',
+          reason: 'judgment_internal_error',
+          sourceOutputHmac: 'b'.repeat(64),
+        }),
+      },
     );
   });
 });
