@@ -6,12 +6,21 @@ on:
     paths:
       - 'docs/**'
       - 'dist/docs/**'
+      - 'dist/schemas/**'
       - 'mintlify-docs/**'
       - 'docs.json'
       - 'mint.json'
       - 'README.md'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server/src/addie/mcp/docs-indexer.ts'
       - 'server/src/addie/rules/**'
       - 'scripts/check-owned-links.js'
+      - 'scripts/smoke-docs-index-runtime.mjs'
+      - 'scripts/update-release-docs-nav.mjs'
+      - 'tests/docs-nav-validation.test.cjs'
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
   pull_request:
@@ -19,12 +28,21 @@ on:
     paths:
       - 'docs/**'
       - 'dist/docs/**'
+      - 'dist/schemas/**'
       - 'mintlify-docs/**'
       - 'docs.json'
       - 'mint.json'
       - 'README.md'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'server/src/addie/mcp/docs-indexer.ts'
       - 'server/src/addie/rules/**'
       - 'scripts/check-owned-links.js'
+      - 'scripts/smoke-docs-index-runtime.mjs'
+      - 'scripts/update-release-docs-nav.mjs'
+      - 'tests/docs-nav-validation.test.cjs'
       - '.markdown-link-check.json'
       - '.github/workflows/broken-links.yml'
   workflow_run:
@@ -59,8 +77,13 @@ jobs:
     - name: Schema link convention (autofix with `npm run fix:schema-links`)
       run: npm run lint:schema-links
 
-    - name: Validate Mintlify navigation
-      run: node tests/docs-nav-validation.test.cjs
+    - name: Fetch stable docs release surface
+      run: git fetch --depth=1 origin +3.1.x:refs/remotes/origin/3.1.x
+
+    - name: Validate Mintlify navigation and locally indexable pages
+      run: npm run test:docs-nav
+      env:
+        REQUIRE_STABLE_DOCS_REF: '1'
 
     - name: Check browser-facing Agentic Advertising links
       # Pull requests are not deployed to the production domains. Checking
@@ -72,3 +95,31 @@ jobs:
 
     - name: Check README links
       run: npx markdown-link-check README.md --config .markdown-link-check.json
+
+  docs-index-runtime:
+    name: Production docs index smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Skip if triggered by sync workflow that failed
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7.0.1
+      with:
+        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+
+    - name: Build production image without external repository clones
+      run: >-
+        docker build
+        --build-arg SKIP_PRECLONE_REPOS=true
+        --tag adcp-docs-index-smoke
+        .
+
+    - name: Initialize every configured docs snapshot in the runtime image
+      run: >-
+        docker run --rm --interactive
+        --entrypoint node
+        adcp-docs-index-smoke
+        --input-type=module
+        < scripts/smoke-docs-index-runtime.mjs

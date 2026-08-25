@@ -165,6 +165,9 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server/public ./server/public
 COPY --from=builder /app/static ./static
 COPY --from=builder /app/docs ./docs
+# Addie's version-aware docs search derives its public version/snapshot mapping
+# from the same Mintlify configuration used by the docs site.
+COPY --from=builder /app/docs.json ./docs.json
 
 # Skill docs read at runtime by Addie's ask_about_adcp_task / call_adcp_task loader.
 COPY --from=builder /app/skills ./skills
