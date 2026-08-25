@@ -265,7 +265,7 @@ describe('Addie real global-admin boundary', () => {
       .set('Authorization', 'Bearer static-global-admin-key');
 
     expect(response.status).toBe(400);
-    expect(response.body).toEqual({ error: 'hours must be an integer from 1 to 168' });
+    expect(response.body).toEqual({ error: 'Invalid readiness query parameters' });
     expect(mocks.getModelExecutionReadiness).toHaveBeenCalledWith({
       hours: Number.NaN,
       minimumSamples: 100,

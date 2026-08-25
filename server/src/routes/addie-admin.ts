@@ -635,7 +635,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       res.json(readiness);
     } catch (error) {
       if (error instanceof RangeError) {
-        return res.status(400).json({ error: error.message });
+        return res.status(400).json({ error: 'Invalid readiness query parameters' });
       }
       logger.error(
         { errorType: error instanceof Error ? error.name : typeof error },
