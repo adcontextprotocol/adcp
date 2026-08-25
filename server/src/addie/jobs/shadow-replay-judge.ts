@@ -16,6 +16,7 @@ export const MAX_SHADOW_REPLAY_JUDGE_QUESTION_BYTES = 500;
 export const MAX_SHADOW_REPLAY_JUDGE_HUMAN_BYTES = 1_500;
 export const MAX_SHADOW_REPLAY_JUDGE_OUTPUT_BYTES = 1_500;
 export const MAX_SHADOW_REPLAY_JUDGE_TOKENS = 300;
+export const SHADOW_REPLAY_JUDGE_TIMEOUT_MS = 60_000;
 
 const JUDGE_HASH_DOMAIN = 'addie-shadow-replay-judge:v1';
 const HMAC = /^[0-9a-f]{64}$/;
@@ -428,7 +429,10 @@ export async function executeIndependentShadowReplayJudge(
   try {
     response = await dependencies.client.messages.create(
       providerRequest,
-      { maxRetries: 0 },
+      {
+        maxRetries: 0,
+        timeout: SHADOW_REPLAY_JUDGE_TIMEOUT_MS,
+      },
     );
   } catch {
     return terminalEvidence(base, now(), {

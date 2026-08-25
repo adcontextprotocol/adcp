@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_SHADOW_REPLAY_JUDGE_TOKENS,
+  SHADOW_REPLAY_JUDGE_TIMEOUT_MS,
   ShadowReplayJudgeBoundaryError,
   createShadowReplayOutputConsumer,
   executeIndependentShadowReplayJudge,
@@ -252,7 +253,10 @@ describe('shadow replay independent judge', () => {
     expect(request.messages[0].content).toContain('generated response against the human reply');
     expect(request.messages[0].content).toContain('unsupported confident disagreement');
     expect(request).not.toHaveProperty('tools');
-    expect(options).toEqual({ maxRetries: 0 });
+    expect(options).toEqual({
+      maxRetries: 0,
+      timeout: SHADOW_REPLAY_JUDGE_TIMEOUT_MS,
+    });
     expect(result).toMatchObject({
       status: 'judged',
       reason: 'judgment_succeeded',
