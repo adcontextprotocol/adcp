@@ -93,11 +93,20 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
-      const complyOptions: ComplyOptions = {
+      // adcp#6632 / adcp-client#2639 — distribute coverage across
+      // budget-limited runs: rotate the storyboard starting point by the
+      // persisted per-agent run count, so consecutive `timeout_ms`-truncated
+      // heartbeats stop re-grading the same prefix while tail tracks
+      // (canonical-formats, package-selector) are never reached. The SDK
+      // applies the offset modulo the runnable count and ignores the option
+      // when it predates 2639 — safe across SDK versions.
+      const storyboardStartOffset = await complianceDb.countComplianceRuns(agent.agent_url);
+      const complyOptions: ComplyOptions & { storyboard_start_offset?: number } = {
         test_session_id: `heartbeat-${Date.now()}`,
         timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
+        storyboard_start_offset: storyboardStartOffset,
       };
       const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agent.agent_url);
 
