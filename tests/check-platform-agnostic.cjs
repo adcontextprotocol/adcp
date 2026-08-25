@@ -100,6 +100,11 @@ const ENUM_VALUE_ALLOWLIST = [
   // demographic audience measurement vocabulary (parallel to Nielsen DMA).
   { value: 'nielsen', pathContains: 'enums/demographic-system.json' },
 
+  // enums/demographic-system.json — Nielsen Audio (ex-Arbitron) is the US
+  // radio audience notation, same standing as Nielsen TV notation above
+  // (WG-ratified via adcp#6139).
+  { value: 'nielsen_audio', pathContains: 'enums/demographic-system.json' },
+
   // enums/device-platform.json — Roku OS is a distinct CTV operating system
   // name, same as tvos, fire_os, tizen, webos.
   { value: 'roku_os', pathContains: 'enums/device-platform.json' },
