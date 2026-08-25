@@ -6,6 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import type { BetaMessageStream } from '@anthropic-ai/sdk/lib/BetaMessageStream';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
 
@@ -76,6 +77,7 @@ export interface InvocationPreparedSnapshot {
 interface PreparedProviderRequest {
   model: string;
   max_tokens: number;
+  output_config?: Anthropic.Beta.BetaOutputConfig;
   system: Anthropic.TextBlockParam[];
   tools: Array<Record<string, unknown>>;
   messages: Anthropic.MessageParam[];
@@ -83,6 +85,18 @@ interface PreparedProviderRequest {
 }
 
 const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
+const SONNET_5_MAX_OUTPUT_TOKENS = 16_384;
+
+function addieModelOutputControls(model: string): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
+  if (/^claude-sonnet-5(?:-|$)/.test(model)) {
+    return {
+      max_tokens: SONNET_5_MAX_OUTPUT_TOKENS,
+      output_config: { effort: 'medium' },
+    };
+  }
+  return { max_tokens: DEFAULT_MAX_OUTPUT_TOKENS };
+}
 
 function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
   return options?.executionMode === 'evaluation' || options?.executionMode === 'replay';
@@ -1078,9 +1092,10 @@ export class AddieClaudeClient {
   ) {
     return {
       model: effectiveModel,
-      // Sonnet 5 uses adaptive thinking by default; leave room for its
-      // thinking summary plus the user-visible answer/tool calls.
-      max_tokens: 8192,
+      // Sonnet 5 defaults to high-effort adaptive thinking, and max_tokens
+      // covers both reasoning and visible output. Medium effort plus a larger
+      // cap keeps tool-heavy chat from spending the whole request on thinking.
+      ...addieModelOutputControls(effectiveModel),
       system: systemBlocks,
       tools,
       messages,
@@ -1252,6 +1267,8 @@ export class AddieClaudeClient {
     }
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
+    let retriedEmptyInitialResponse = false;
+    let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
     let hasExecutedCustomTool = false;
 
     while (iteration < maxIterations) {
@@ -1259,9 +1276,11 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      let response;
+      let response: Anthropic.Beta.BetaMessage;
+      let reusedEmptyResponse = false;
       const invocationTools = retriedEmptyPostToolResponse ? [] : firstInvocationTools;
       let invocationAttempt = 0;
+      const isEmptyResponseRecovery = emptyResponseBeforeRecovery !== null;
       try {
         const invokeProvider = async (sdkMaxRetries?: number) => {
           invocationAttempt++;
@@ -1285,33 +1304,44 @@ export class AddieClaudeClient {
         // A replay is an exactly-once paid experiment. A timeout can occur
         // after provider acceptance, so neither our outer retry helper nor the
         // Anthropic SDK may submit the request again.
-        response = options?.executionMode === 'replay'
+        response = options?.executionMode === 'replay' || isEmptyResponseRecovery
           ? await invokeProvider(0)
           : await withRetry(
             () => invokeProvider(),
             { maxRetries: 3, initialDelayMs: 1000 },
             'processMessage',
           );
+        if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
       } catch (error) {
-        const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, requestWebSearchEnabled ? 1 : 0);
-        if (options?.executionMode === 'replay') {
-          // Provider errors may echo request text. Replay logs only categorical
-          // metadata; the signed ledger records the terminal outcome.
-          logger.error(
-            { source: 'processMessage', payload: stats },
-            'Addie: Replay provider invocation failed',
-          );
+        if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+          // The empty end_turn was a valid terminal response. Recovery is
+          // best-effort: if its one extra call fails, retain that terminal and
+          // its already-accounted usage rather than turning fallback into an
+          // exception. Do not log a provider error that may echo input text.
+          logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
+          response = emptyResponseBeforeRecovery;
+          reusedEmptyResponse = true;
         } else {
-          this.logPromptOverflow(error, stats, 'processMessage');
+          const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, requestWebSearchEnabled ? 1 : 0);
+          if (options?.executionMode === 'replay') {
+            // Provider errors may echo request text. Replay logs only categorical
+            // metadata; the signed ledger records the terminal outcome.
+            logger.error(
+              { source: 'processMessage', payload: stats },
+              'Addie: Replay provider invocation failed',
+            );
+          } else {
+            this.logPromptOverflow(error, stats, 'processMessage');
+          }
+          throw error;
         }
-        throw error;
       }
 
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
 
       // Track token usage from this iteration
-      if (response.usage) {
+      if (response.usage && !reusedEmptyResponse) {
         totalInputTokens += response.usage.input_tokens;
         totalOutputTokens += response.usage.output_tokens;
         // Cache tokens are optional and may not be present
@@ -1475,11 +1505,36 @@ export class AddieClaudeClient {
           .map(block => block.type === 'text' ? block.text : '')
           .join('\n\n')
           .trim();
+        // A provider-successful but wholly empty first sample has no visible
+        // output or side effect. Production may safely resample it once; eval
+        // and replay preserve the original terminal outcome for integrity.
+        if (
+          operationalExecution
+          && response.stop_reason === 'end_turn'
+          && iteration === 1
+          && !retriedEmptyInitialResponse
+          && !hasExecutedCustomTool
+          && toolExecutions.length === 0
+          && response.content.length === 0
+          && iteration < maxIterations
+        ) {
+          retriedEmptyInitialResponse = true;
+          emptyResponseBeforeRecovery = response;
+          logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
+          continue;
+        }
         // Anthropic can occasionally return an empty end_turn immediately
         // after a tool result. Resampling the unchanged post-tool turn once is
         // safe because no assistant response has reached the caller yet.
-        if (!rawText && hasExecutedCustomTool && !retriedEmptyPostToolResponse && iteration < maxIterations) {
+        if (
+          response.stop_reason === 'end_turn'
+          && !rawText
+          && hasExecutedCustomTool
+          && !retriedEmptyPostToolResponse
+          && iteration < maxIterations
+        ) {
           retriedEmptyPostToolResponse = true;
+          emptyResponseBeforeRecovery = response;
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
@@ -2061,6 +2116,8 @@ export class AddieClaudeClient {
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
+    let retriedEmptyInitialResponse = false;
+    let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
 
       while (iteration < maxIterations) {
         iteration++;
@@ -2070,6 +2127,7 @@ export class AddieClaudeClient {
         // Collect full response for tool handling
         let currentResponse: Anthropic.Beta.BetaMessage | null = null;
         const textChunks: string[] = [];
+        let reusedEmptyResponse = false;
 
         // Retry loop for streaming API calls (handles overloaded_error).
         // Logical-turn buffering means no model output is exposed and no
@@ -2081,11 +2139,12 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
+          const isEmptyResponseRecovery: boolean = emptyResponseBeforeRecovery !== null;
           try {
             const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
             const providerRequest: PreparedProviderRequest = {
               model: effectiveModel,
-              max_tokens: 8192,
+              ...addieModelOutputControls(effectiveModel),
               system: systemBlocks,
               tools: invocationTools as unknown as Array<Record<string, unknown>>,
               messages,
@@ -2096,14 +2155,13 @@ export class AddieClaudeClient {
               iteration,
               streamRetryCount + 1,
             );
-            const stream = this.client.beta.messages.stream(
-              providerRequest as unknown as Parameters<
-                typeof this.client.beta.messages.stream
-              >[0],
+            const anthropicStream: BetaMessageStream = this.client.beta.messages.stream(
+              providerRequest as unknown as Anthropic.Beta.MessageCreateParamsStreaming,
+              isEmptyResponseRecovery ? { maxRetries: 0 } : undefined,
             );
 
             // Process stream events
-            for await (const event of stream) {
+            for await (const event of anthropicStream) {
               if (event.type === 'content_block_delta') {
                 totalReceivedDeltas++;
                 receivedDeltaCount++;
@@ -2113,16 +2171,27 @@ export class AddieClaudeClient {
                 }
               } else if (event.type === 'message_stop') {
                 // Get the final message
-                currentResponse = await stream.finalMessage();
+                currentResponse = await anthropicStream.finalMessage();
               }
             }
 
             if (!currentResponse) {
-              currentResponse = await stream.finalMessage();
+              currentResponse = await anthropicStream.finalMessage();
             }
 
             streamSucceeded = true;
+            if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
           } catch (streamError) {
+            if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+              // See the non-streaming path: recovery is an optional UX
+              // improvement, not a reason to discard the valid first terminal.
+              logger.warn({ iteration }, 'Addie Stream: Empty-response recovery failed');
+              currentResponse = emptyResponseBeforeRecovery;
+              reusedEmptyResponse = true;
+              textChunks.length = 0;
+              receivedDeltaCount = 0;
+              break;
+            }
             streamRetryCount++;
             const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration);
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
@@ -2203,7 +2272,7 @@ export class AddieClaudeClient {
         }
 
         // Track token usage
-        if (currentResponse.usage) {
+        if (currentResponse.usage && !reusedEmptyResponse) {
           totalInputTokens += currentResponse.usage.input_tokens;
           totalOutputTokens += currentResponse.usage.output_tokens;
           if ('cache_creation_input_tokens' in currentResponse.usage) {
@@ -2318,16 +2387,36 @@ export class AddieClaudeClient {
 
         // Done - no tool use
         if (stopAction === 'complete') {
-          const completedIterationText = currentResponse.content
-            .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
-            .map(block => block.text)
-            .join('\n\n')
-            .trim();
+          if (
+            operationalExecution
+            && currentResponse.stop_reason === 'end_turn'
+            && iteration === 1
+            && !retriedEmptyInitialResponse
+            && toolExecutions.length === 0
+            && logicalText.length === 0
+            && iterationText.trim().length === 0
+            && receivedDeltaCount === 0
+            && currentResponse.content.length === 0
+            && iteration < maxIterations
+          ) {
+            retriedEmptyInitialResponse = true;
+            emptyResponseBeforeRecovery = currentResponse;
+            logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
+            continue;
+          }
 
           // No deltas were emitted for this iteration, so retrying the same
           // post-tool turn once cannot duplicate text in streaming clients.
-          if (!completedIterationText && toolExecutions.length > 0 && !retriedEmptyPostToolResponse && iteration < maxIterations) {
+          if (
+            currentResponse.stop_reason === 'end_turn'
+            && !iterationText.trim()
+            && receivedDeltaCount === 0
+            && toolExecutions.length > 0
+            && !retriedEmptyPostToolResponse
+            && iteration < maxIterations
+          ) {
             retriedEmptyPostToolResponse = true;
+            emptyResponseBeforeRecovery = currentResponse;
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
