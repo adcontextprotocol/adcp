@@ -1,6 +1,5 @@
 import type { Request } from 'express';
 import { getWorkos } from '../auth/workos-client.js';
-import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { createLogger } from '../logger.js';
 import { resolveUserRole } from '../utils/resolve-user-role.js';
 import { captureEvent } from '../utils/posthog.js';
@@ -15,7 +14,6 @@ export type OrganizationSelectorSource =
   | 'body_organizationId'
   | 'path_orgId'
   | 'path_organizationId'
-  | 'legacy_primary'
   | 'none';
 
 type RequestWithAuthContext = Pick<Request, 'headers' | 'query' | 'body' | 'params' | 'method'> & {
@@ -129,13 +127,6 @@ export async function observeLinkedCredentialOrganizationAuthorization(
   let selector = organizationSelectorFromRequest(req);
   try {
     if (!selector.organizationId) {
-      const legacyOrganizationId = await resolvePrimaryOrganization(canonicalUserId);
-      selector = legacyOrganizationId
-        ? { organizationId: legacyOrganizationId, source: 'legacy_primary', explicit: false }
-        : selector;
-    }
-
-    if (!selector.organizationId) {
       captureEvent('server-metrics', 'org_authorization_shadow', {
         route,
         method: req.method,
@@ -143,7 +134,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
         linked_credential: true,
         selector_source: selector.source,
         explicit_organization: false,
-        decision: 'no_organization',
+        decision: 'no_explicit_organization',
       });
       return;
     }

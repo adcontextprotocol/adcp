@@ -3,18 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   listOrganizationMemberships,
   captureEvent,
-  resolvePrimaryOrganization,
 } = vi.hoisted(() => ({
   listOrganizationMemberships: vi.fn(),
   captureEvent: vi.fn(),
-  resolvePrimaryOrganization: vi.fn(),
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
   getWorkos: () => ({ userManagement: { listOrganizationMemberships } }),
 }));
 vi.mock('../../src/utils/posthog.js', () => ({ captureEvent }));
-vi.mock('../../src/db/users-db.js', () => ({ resolvePrimaryOrganization }));
 
 import {
   classifyAuthorizationObservation,
@@ -93,16 +90,7 @@ describe('organization authorization rollout observer', () => {
     expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('org_selected');
   });
 
-  it('observes the legacy primary organization when the request omitted a selector', async () => {
-    resolvePrimaryOrganization.mockResolvedValue('org_legacy');
-    listOrganizationMemberships
-      .mockResolvedValueOnce({
-        data: [{ organizationId: 'org_legacy', status: 'active', role: { slug: 'member' } }],
-      })
-      .mockResolvedValueOnce({
-        data: [{ organizationId: 'org_legacy', status: 'active', role: { slug: 'member' } }],
-      });
-
+  it('records a missing selector without inferring or mutating organization state', async () => {
     await observeLinkedCredentialOrganizationAuthorization({
       headers: {},
       query: {},
@@ -112,13 +100,13 @@ describe('organization authorization rollout observer', () => {
       user: { id: 'user_canonical', authWorkosUserId: 'user_authenticated' },
     } as any, 'GET /api/example', 200);
 
-    expect(resolvePrimaryOrganization).toHaveBeenCalledWith('user_canonical');
+    expect(listOrganizationMemberships).not.toHaveBeenCalled();
     expect(captureEvent).toHaveBeenCalledWith(
       'server-metrics',
       'org_authorization_shadow',
       expect.objectContaining({
-        decision: 'both_allow_same_role',
-        selector_source: 'legacy_primary',
+        decision: 'no_explicit_organization',
+        selector_source: 'none',
         explicit_organization: false,
       }),
     );
