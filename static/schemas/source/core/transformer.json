@@ -76,8 +76,20 @@
     },
     "input_formats": {
       "type": "array",
-      "description": "Canonical format declarations this transformer accepts as input. Omitted means it builds from a brief or raw assets rather than transforming an existing creative. Compatibility uses canonical constraint satisfaction, not identifier equality.",
-      "items": { "$ref": "/schemas/core/product-format-declaration.json" },
+      "description": "Canonical format declarations this transformer accepts as input. Omitted means it builds from a brief or raw assets rather than transforming an existing creative. Compatibility uses canonical constraint satisfaction, not identifier equality. Transformer self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/product-format-declaration.json" },
+          {
+            "not": {
+              "anyOf": [
+                { "required": ["tracker_execution_contract"] },
+                { "required": ["tracker_execution_contract_digest"] }
+              ]
+            }
+          }
+        ]
+      },
       "minItems": 1
     },
     "output_capability_ids": {
