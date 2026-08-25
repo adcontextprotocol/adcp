@@ -269,7 +269,7 @@ describe('hash-aware training-agent idempotency store', () => {
     await store.close();
   });
 
-  it('passes the SDK beta.7 claim token through the adapter', async () => {
+  it('passes the SDK beta.8 claim token through the adapter', async () => {
     const backend = memoryBackend({ sweepIntervalMs: 0 });
     const owned = createHashAwareIdempotencyStore({ backend });
     const adapter = adaptOwnedIdempotencyStoreForSdk(owned);
