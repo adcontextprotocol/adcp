@@ -161,6 +161,7 @@ const SALES_COMPLY_INPUT_SCHEMA = {
   account: z.object({
     account_id: z.string().optional(),
     brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
+    operator: z.string().optional(),
     sandbox: z.literal(true),
   }).passthrough(),
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
