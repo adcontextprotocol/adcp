@@ -73,6 +73,20 @@ describe('selectModuleMethodology', () => {
     },
   );
 
+  it('keeps C4 build and validation instructions on the exact TypeScript SDK checkpoint', async () => {
+    const handlers = createCertificationToolHandlers(MEMBER_CONTEXT);
+    const getInstructions = handlers.get('get_build_phase_instructions')!;
+
+    for (const phase of ['build', 'validate']) {
+      const instructions = await getInstructions({ module_id: 'C4', phase });
+
+      expect(instructions).toContain('@adcp/sdk@14.0.0-beta.8');
+      expect(instructions).toContain('beta.6');
+      expect(instructions).not.toContain('beta.5');
+      expect(instructions).not.toContain('@adcp/sdk@14.0.0-beta.7');
+    }
+  });
+
   it.each(['L1', 'L2', 'A1', 'A2', 'B1', 'S1'])(
     'standard module %s gets the plain teaching methodology — no capstone supplement',
     (id) => {

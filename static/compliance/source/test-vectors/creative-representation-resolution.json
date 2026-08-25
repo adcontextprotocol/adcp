@@ -182,6 +182,66 @@
         "retained_representation_ids": ["source-vast-4-primary", "source-vast-4-secondary"],
         "rejections": []
       }
+    },
+    {
+      "name": "no compatible representation returns one rejection for every retained candidate",
+      "representation_set": {
+        "creative_id": "cr_display_unresolved",
+        "revision_id": "rev_1",
+        "revision_content_digest": "sha256:dfab7f7290bba72f6826ee10186f7618d6b53b3037290f72b094294bceaf6835",
+        "name": "Display launch unresolved",
+        "representations": [
+          {
+            "representation_id": "source-inline",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "inline_markup",
+                "markup_type": "iframe_javascript",
+                "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_representation": "iframe/JavaScript" }
+          },
+          {
+            "representation_id": "source-paired",
+            "format_kind": "display_tag",
+            "assets": {
+              "serving_tag": {
+                "asset_type": "display_tag",
+                "delivery_type": "paired_redirect",
+                "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+                "clickthrough_url": "https://click.acme-example.com/redirect"
+              }
+            },
+            "source": { "system": "acme_ad_server", "source_representation": "Internal Redirect" }
+          }
+        ]
+      },
+      "target": {
+        "format_kind": "display_tag",
+        "supported_delivery_types": ["tag_url"]
+      },
+      "seller": {},
+      "strategy": "representation_order",
+      "expected": {
+        "selected_representation_id": null,
+        "compatible_representation_ids": [],
+        "retained_representation_ids": ["source-inline", "source-paired"],
+        "rejections": [
+          {
+            "representation_id": "source-inline",
+            "code": "unsupported_delivery_type",
+            "message": "inline_markup is not accepted by the selected format option"
+          },
+          {
+            "representation_id": "source-paired",
+            "code": "unsupported_delivery_type",
+            "message": "paired_redirect is not accepted by the selected format option"
+          }
+        ]
+      }
     }
   ]
 }

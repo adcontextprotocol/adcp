@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/daast-tracker-constraints.json",
   "title": "DAAST Tracker Constraints",
-  "description": "Shared DAAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed and progress alone carries offset.",
+  "description": "Shared DAAST tracker vocabulary and execution-selector constraints. The legacy asset vocabulary retains AdCP's historical close extension, while the closed standards selector matrix excludes it. Progress alone carries offset in selectors.",
   "type": "object",
   "definitions": {
     "daast_event": {
@@ -73,8 +73,7 @@
               "resume",
               "rewind",
               "skip",
-              "progress",
-              "close"
+              "progress"
             ]
           }
         }

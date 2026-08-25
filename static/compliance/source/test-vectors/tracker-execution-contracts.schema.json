@@ -13,6 +13,10 @@
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "contract": { "$ref": "/schemas/core/tracker-execution-contract.json" },
+          "format_slots": {
+            "type": "array",
+            "items": { "$ref": "/schemas/formats/canonical/_base.json#/properties/slots/items" }
+          },
           "tracker": {
             "oneOf": [
               { "$ref": "/schemas/core/assets/pixel-tracker-asset.json" },
@@ -38,7 +42,7 @@
             "additionalProperties": false
           }
         },
-        "required": ["name", "contract", "tracker", "expected"],
+        "required": ["name", "contract", "format_slots", "tracker", "expected"],
         "additionalProperties": false
       }
     },

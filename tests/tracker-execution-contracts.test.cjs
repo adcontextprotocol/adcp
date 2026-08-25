@@ -94,7 +94,10 @@ function selectorMatches(selector, tracker, executionVersion) {
     selector.daast_versions.includes(executionVersion);
 }
 
-function evaluateTracker(contract, tracker, executionVersion) {
+function evaluateTracker(contract, tracker, executionVersion, formatSlots) {
+  if (Array.isArray(formatSlots) && !formatSlots.some(slot => slot.asset_type === tracker.asset_type)) {
+    return { status: 'rejected', rejection_code: 'tracker_contract_mismatch' };
+  }
   const selector = contract.honored.find(candidate =>
     selectorMatches(candidate, tracker, executionVersion)
   );
@@ -151,6 +154,41 @@ function validateOperationalContract(contract) {
     }
   }
   return null;
+}
+
+function contractHasSatisfiableSlots(contract, effectiveSlots = []) {
+  const slotTypes = new Set(effectiveSlots.map(slot => slot.asset_type));
+  return contract.honored.every(selector => slotTypes.has(selector.asset_type));
+}
+
+function atomicTuples(contract) {
+  const tuples = new Set();
+  for (const selector of contract.honored) {
+    const identity = structuredClone(selector);
+    delete identity.selector_id;
+    delete identity.execution_actor;
+    delete identity.firing_paths;
+    delete identity.vast_versions;
+    delete identity.daast_versions;
+    const versions = selector.vast_versions ?? selector.daast_versions ?? [null];
+    for (const version of versions) {
+      for (const path of selector.firing_paths) {
+        tuples.add(JSON.stringify([
+          identity,
+          version,
+          selector.execution_actor,
+          path
+        ]));
+      }
+    }
+  }
+  return tuples;
+}
+
+function contractNarrowingIsValid(parent, child) {
+  if (parent.complete !== child.complete) return false;
+  const parentTuples = atomicTuples(parent);
+  return [...atomicTuples(child)].every(tuple => parentTuples.has(tuple));
 }
 
 test('tracker execution selector schema accepts only the three first-class 3.2 branches', () => {
@@ -256,6 +294,8 @@ test('DAAST selector enforces event, target, progress, and version shape', () =>
   })), true, JSON.stringify(validate.errors));
   assert.equal(validate(daastSelector({ daast_versions: [] })), false);
   assert.equal(validate(daastSelector({ daast_versions: ['1.1', '1.1'] })), false);
+  assert.equal(validate(daastSelector({ daast_event: 'close' })), false,
+    'DAAST close is a legacy AdCP asset extension, not a standards execution selector');
 
   const validateFormat = ajv.getSchema('/schemas/formats/canonical/audio_daast.json');
   assert.equal(validateFormat({ daast_versions: ['1.0', '1.1'] }), true,
@@ -269,7 +309,8 @@ test('DAAST selector enforces event, target, progress, and version shape', () =>
   const validateAsset = ajv.getSchema('/schemas/core/assets/daast-tracker-asset.json');
   for (const legacyAsset of [
     { daast_event: 'start', offset: '10%' },
-    { daast_event: 'start', target: 'companion' }
+    { daast_event: 'start', target: 'companion' },
+    { daast_event: 'close' }
   ]) {
     assert.equal(validateAsset({
       asset_type: 'daast_tracker',
@@ -304,6 +345,47 @@ test('complete and empty contract semantics validate and operational uniqueness 
   }), 'overlapping_version_sets');
   assert.match(validate.schema['x-adcp-validation'].asset_normalization,
     /non-progress asset is ignored and removed/);
+  assert.match(validate.schema['x-adcp-validation'].format_slot_satisfiability,
+    /matching first-class slot/);
+  assert.match(validate.schema['x-adcp-validation'].layer_derivation,
+    /atomic tuples/);
+});
+
+test('contracts require matching first-class slots and narrowing cannot invent version/path tuples', () => {
+  const pixelContract = { complete: true, honored: [pixelSelector()] };
+  assert.equal(contractHasSatisfiableSlots(pixelContract, [
+    { asset_group_id: 'image_main', asset_type: 'image' }
+  ]), false, 'an image option cannot promise a pixel without a pixel_tracker slot');
+  assert.equal(contractHasSatisfiableSlots(pixelContract, [
+    { asset_group_id: 'image_main', asset_type: 'image' },
+    { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker' }
+  ]), true);
+
+  const parent = {
+    complete: true,
+    honored: [
+      vastSelector({ selector_id: 'v42-client', vast_versions: ['4.2'], firing_paths: ['client'] }),
+      vastSelector({ selector_id: 'v43-server', vast_versions: ['4.3'], firing_paths: ['server'] })
+    ]
+  };
+  assert.equal(contractNarrowingIsValid(parent, {
+    complete: true,
+    honored: [vastSelector({
+      selector_id: 'unsafe-cross-product',
+      vast_versions: ['4.2', '4.3'],
+      firing_paths: ['client', 'server']
+    })]
+  }), false, 'compression must not invent 4.2/server or 4.3/client');
+  assert.equal(contractNarrowingIsValid(parent, {
+    complete: true,
+    honored: [vastSelector({
+      selector_id: 'safe-subset',
+      vast_versions: ['4.2'],
+      firing_paths: ['client']
+    })]
+  }), true);
+  assert.equal(contractNarrowingIsValid(parent, { complete: false, honored: [] }), false,
+    'completeness cannot change during downstream narrowing');
 });
 
 test('golden vectors normalize defaults, bind exact versions, and keep incomplete omissions undeclared', () => {
@@ -313,7 +395,7 @@ test('golden vectors normalize defaults, bind exact versions, and keep incomplet
 
   for (const vector of fixture.vectors) {
     assert.deepEqual(
-      evaluateTracker(vector.contract, vector.tracker, vector.execution_version),
+      evaluateTracker(vector.contract, vector.tracker, vector.execution_version, vector.format_slots),
       vector.expected,
       vector.name
     );
@@ -325,11 +407,19 @@ test('contract-bearing products require stable option identity and authority pro
   const declaration = {
     format_option_id: 'acme-image',
     format_kind: 'image',
-    params: { width: 300, height: 250 },
+    params: {
+      width: 300,
+      height: 250,
+      slots: [
+        { asset_group_id: 'image_main', asset_type: 'image', required: true },
+        { asset_group_id: 'impression_tracker', asset_type: 'pixel_tracker', required: false }
+      ]
+    },
     tracker_execution_contract: contract
   };
   const validateDeclaration = ajv.getSchema('/schemas/core/product-format-declaration.json');
   assert.equal(validateDeclaration(declaration), true, JSON.stringify(validateDeclaration.errors));
+  assert.equal(contractHasSatisfiableSlots(contract, declaration.params.slots), true);
   const { format_option_id: ignored, ...idless } = declaration;
   assert.equal(validateDeclaration(idless), false, 'seller execution authority must be addressable');
 

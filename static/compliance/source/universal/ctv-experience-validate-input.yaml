@@ -562,7 +562,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -612,7 +612,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -656,7 +656,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -691,7 +691,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -727,7 +727,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -767,7 +767,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -817,7 +817,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -860,7 +860,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -907,7 +907,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -951,7 +951,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -994,7 +994,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1038,7 +1038,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1081,7 +1081,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -1133,7 +1133,7 @@ phases:
         comply_scenario: ctv_experience_validation
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.4"
+          adcp_version: "3.2-beta.6"
           account:
             brand:
               domain: "acmeoutdoor.example"

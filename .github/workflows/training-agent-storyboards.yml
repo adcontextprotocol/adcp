@@ -79,8 +79,9 @@ jobs:
           # authenticator carries STRICT_REQUIRED_FOR + mcpToolNameResolver
           # and is wrapped by enforceSigningWhenWebhookAuthPresent so vectors
           # 001 (request_signature_required) and 027 (webhook auth unsigned)
-          # both fire correctly. Floors capture the +31 step lift per tenant
-          # from the storyboard's positive + negative conformance vectors.
+          # both fire correctly. On the current beta.6 surface, the storyboard
+          # runs the 21 vectors compatible with required content-digest
+          # coverage; the frozen 3.0 matrix retains the legacy profiles.
           # Re-baseline after fixing missing v6 SalesPlatform handlers
           # (syncEventSources/logEvent), missing expect_error markers on
           # phantom-rejection vectors (audience_buy_flow / performance_buy_flow),
@@ -88,8 +89,9 @@ jobs:
           # below observed counts for flake tolerance.
           - surface: current
             tenant: signals
-            min_clean_storyboards: 74
-            min_passing_steps: 111
+            min_clean_storyboards: 163
+            # Observed after the beta.6 signing-profile migration: 84 passing.
+            min_passing_steps: 83
           - surface: current
             tenant: governance
             min_clean_storyboards: 73
@@ -107,13 +109,15 @@ jobs:
             min_clean_storyboards: 73
             min_passing_steps: 96
           # /si runs through the SDK's first-class SponsoredIntelligencePlatform.
-          # Observed current baseline: 158 clean / 92 passing; floors retain
-          # the matrix's one-count tolerance while required-clean gates below
-          # protect both graded SI protocol storyboards directly.
+          # AdCP 3.2 permits only required content-digest coverage; legacy
+          # either/forbidden vectors remain covered by the 3.0-compat matrix.
+          # Observed current baseline: 168 clean / 53 passing; the floor keeps
+          # one-count tolerance while required-clean gates below protect both
+          # graded SI protocol storyboards directly.
           - surface: current
             tenant: si
-            min_clean_storyboards: 157
-            min_passing_steps: 91
+            min_clean_storyboards: 167
+            min_passing_steps: 52
           - surface: 3.0-compat
             tenant: signals
             min_clean_storyboards: 65
@@ -494,7 +498,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Download /sales orchestrator artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: storyboards-current-sales-orchestrator-*
           path: /tmp/storyboards-sales-orchestrators

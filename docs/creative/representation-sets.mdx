@@ -97,6 +97,8 @@ Resolution requires explicit compatibility inputs. In particular, every `video_v
 
 When a first-class `vast_tracker` or `daast_tracker` has no sibling exact-version delivery document, `representation_destination` carries `execution_vast_version` or `execution_daast_version`. The value must belong to the destination acceptance set and is echoed in `representation_selection`. It joins the selected representation and output digest in the execution-review identity, so changing it requires re-resolution and ordinary re-review. Package assignment must preserve the same exact version.
 
+Equivalence is a buyer assertion, not something the set digest proves. The digest proves that the complete asserted set was not changed; it does not prove that two representations render the same ad or behave identically. A seller MUST apply its ordinary validation and review policy to the exact selected output before approving or serving it. The seller does not need to fetch, execute, or approve every unselected candidate, and it MUST NOT treat acceptance of one candidate as approval of another. Different sellers may select different candidates, but each selected output is separately submitted through `sync_creatives` and reviewed before it can serve. A later selection likewise requires an explicit buyer sync and ordinary re-review, so an unreviewed hidden candidate can never replace the approved execution.
+
 Pass a representation set to the destination seller's `build_creative` route with the product contract and an advertised strategy:
 
 ```json
@@ -180,7 +182,7 @@ The paired redirect stays one asset. A receiver cannot combine its ad-request UR
 On `sync_creatives`, the seller enforces two different invariants:
 
 1. `(creative_id, revision_id, revision_content_digest)` binds immutable buyer source content—the complete representation set, never only the selected entry.
-2. `(selected_representation_id, selected_output_digest)` binds the current seller-bound execution submitted for review.
+2. `(selected_representation_id, selected_output_digest, execution_vast_version-or-null, execution_daast_version-or-null)` binds the current seller-bound execution submitted for review.
 
 Changing the source set requires a new buyer `revision_id`. Changing only the selected execution does not mint a buyer revision, but it is an `updated` creative and follows the ordinary re-review lifecycle; approval never transfers silently to different execution bytes. `list_creatives` returns the exact current `representation_selection` while that selected execution remains current. A downstream seller that receives only the selected manifest can verify its output digest and retain the asserted source-set digest, but cannot claim it independently inspected hidden source representations.
 
@@ -204,6 +206,18 @@ status through `creative.status_changed`, `list_creatives`, and
 `get_media_buys`, then explicitly resolve and sync a replacement when needed.
 An independent seller-initiated re-review may evaluate the same pinned
 execution, but it does not authorize representation re-selection.
+
+Representation resolution is a trafficking-time destination choice, not a
+viewer- or device-time fallback mechanism. `highest_compatible_vast` means the
+highest exact VAST version accepted by the selected product and seller; it does
+not mean the highest version supported by a particular player or device. The
+selected representation remains pinned for every execution until the buyer
+explicitly resolves and syncs a replacement. Device-specific media selection,
+VAST wrapper fallback, and player compatibility remain inside the selected
+VAST document and its `MediaFile` alternatives. Buyers that need distinct
+device contracts must target separate product options or submit separate
+creatives; a representation set never authorizes runtime switching between its
+members.
 
 This version does not combine `representation_selection` with the sync-only
 `localization` mutation. A selected sync item MUST omit `localization`, including

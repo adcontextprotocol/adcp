@@ -16,6 +16,9 @@
           }
         ]
       },
+      "format_slots": [
+        { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker" }
+      ],
       "tracker": {
         "asset_type": "pixel_tracker",
         "event": "impression",
@@ -43,6 +46,9 @@
           }
         ]
       },
+      "format_slots": [
+        { "asset_group_id": "vast_progress_tracker", "asset_type": "vast_tracker" }
+      ],
       "tracker": {
         "asset_type": "vast_tracker",
         "vast_event": "progress",
@@ -71,6 +77,9 @@
           }
         ]
       },
+      "format_slots": [
+        { "asset_group_id": "vast_start_tracker", "asset_type": "vast_tracker" }
+      ],
       "tracker": {
         "asset_type": "vast_tracker",
         "vast_event": "start",
@@ -89,6 +98,9 @@
         "complete": false,
         "honored": []
       },
+      "format_slots": [
+        { "asset_group_id": "click_tracker", "asset_type": "pixel_tracker" }
+      ],
       "tracker": {
         "asset_type": "pixel_tracker",
         "event": "click",
@@ -115,6 +127,9 @@
           }
         ]
       },
+      "format_slots": [
+        { "asset_group_id": "daast_companion_tracker", "asset_type": "daast_tracker" }
+      ],
       "tracker": {
         "asset_type": "daast_tracker",
         "daast_event": "creativeView",
@@ -126,6 +141,34 @@
         "status": "matched",
         "selector_id": "daast-companion-view"
       }
+    },
+    {
+      "name": "an honored tracker without a matching first-class format slot is rejected",
+      "contract": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "impossible-image-pixel",
+            "asset_type": "pixel_tracker",
+            "event": "impression",
+            "method": "img",
+            "execution_actor": "seller",
+            "firing_paths": ["client"]
+          }
+        ]
+      },
+      "format_slots": [
+        { "asset_group_id": "image_main", "asset_type": "image" }
+      ],
+      "tracker": {
+        "asset_type": "pixel_tracker",
+        "event": "impression",
+        "url": "https://measure.example/impossible"
+      },
+      "expected": {
+        "status": "rejected",
+        "rejection_code": "tracker_contract_mismatch"
+      }
     }
   ],
   "package_snapshot": {
@@ -133,7 +176,10 @@
     "format_option_id": "acme-vast-preroll",
     "format_kind": "video_vast",
     "params": {
-      "vast_versions": ["4.2", "4.3"]
+      "vast_versions": ["4.2", "4.3"],
+      "slots": [
+        { "asset_group_id": "vast_start_tracker", "asset_type": "vast_tracker" }
+      ]
     },
     "tracker_execution_contract": {
       "complete": true,
@@ -157,6 +203,6 @@
       }
     ],
     "tracker_execution_contract_digest": "sha256:e916445d0d6619903d2a151388efa1dc8f260b0111d4437f94c1b53108708e29",
-    "product_snapshot_digest": "sha256:b6678bfbf02a83527626f10031009b7446125db78a164e982834172cd7c92ef3"
+    "product_snapshot_digest": "sha256:763e49570a0fc8c27e4e4562c9c1070620b1afcc20fab6936b542e012d0b7c68"
   }
 }

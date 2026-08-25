@@ -410,6 +410,30 @@
           "$ref": "/schemas/core/representation-rejection.json",
           "description": "Structured incompatibility reason for one rejected representation"
         },
+        "macro-bearing-url": {
+          "$ref": "/schemas/core/macro-bearing-url.json",
+          "description": "HTTP(S) URL or legacy URI template that may contain declared or opaque macro tokens"
+        },
+        "macro-declaration": {
+          "$ref": "/schemas/core/macro-declaration.json",
+          "description": "Occurrence-level source token, semantic, actor, context, and encoding contract"
+        },
+        "macro-encoding": {
+          "$ref": "/schemas/core/macro-encoding.json",
+          "description": "Exact macro value encoding kind and pass depth"
+        },
+        "macro-resolution-capability": {
+          "$ref": "/schemas/core/macro-resolution-capability.json",
+          "description": "Exact dialect-semantic macro processing capability tuple"
+        },
+        "macro-resolution-result": {
+          "$ref": "/schemas/core/macro-resolution-result.json",
+          "description": "Path-addressable macro compatibility result for one declaration"
+        },
+        "macro-translation-target": {
+          "$ref": "/schemas/core/macro-translation-target.json",
+          "description": "Native token contract emitted by a macro translation operation"
+        },
         "performance-feedback": {
           "$ref": "/schemas/core/performance-feedback.json",
           "description": "Stored processing record for performance feedback"
