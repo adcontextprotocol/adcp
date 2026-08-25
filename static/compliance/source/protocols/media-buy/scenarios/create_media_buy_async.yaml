@@ -219,6 +219,7 @@ phases:
               pricing_option_id: "cpm_guaranteed"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"
+            operation_id: "op_create_media_buy_async_submitted"
             authentication:
               schemes:
                 - "HMAC-SHA256"

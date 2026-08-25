@@ -52,6 +52,8 @@ type DnsLookup = (
 interface PublicTargetOptions {
   dnsLookup?: DnsLookup;
   dnsTimeoutMs?: number;
+  allowPrivateIp?: boolean;
+  allowLoopback?: boolean;
 }
 
 export interface WebhookValidationError {
@@ -114,6 +116,12 @@ export async function assertPublicTarget(
   url: URL,
   options: PublicTargetOptions = {},
 ): Promise<void> {
+  if (options.allowPrivateIp) {
+    if (!isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+      throw new SsrfRefusedError(url.toString(), 'private targets are allowed only in test or development');
+    }
+    return;
+  }
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).
@@ -189,6 +197,12 @@ export async function validateWebhookUrl(
   }
   if (target.username || target.password) {
     return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
+  }
+  if (options.allowLoopback && isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+    const authority = value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i)?.[1];
+    if (authority && /^(?:127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(authority)) {
+      return undefined;
+    }
   }
   try {
     await assertPublicTarget(target, options);
