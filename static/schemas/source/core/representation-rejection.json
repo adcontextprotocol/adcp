@@ -14,6 +14,7 @@
         "unsupported_delivery_type",
         "vast_version_mismatch",
         "macro_unsupported",
+        "tracker_contract_mismatch",
         "asset_requirement_failed",
         "other"
       ]

@@ -8,7 +8,8 @@
       "seller_authority": "the build_creative endpoint MUST be the sales agent that owns product_id",
       "current_product_match": "format_option MUST exactly match one effective current format option for product_id after every applicable placement and publisher narrowing",
       "placement_scope": "when placement_refs is omitted, the representation must satisfy the common effective contract for every placement where the product may deliver",
-      "execution_intersection": "resolution additionally intersects the seller's current media_buy.execution.creative_specs VAST and macro ceilings; the request does not override those capabilities"
+      "execution_intersection": "resolution additionally intersects the seller's current media_buy.execution.creative_specs VAST and macro ceilings; the request does not override those capabilities",
+      "tracker_execution_version": "when a candidate contains first-class vast_tracker or daast_tracker assets and no sibling VAST/DAAST delivery document supplies one exact version, the matching execution_*_version is required, MUST belong to the destination acceptance set, and MUST be preserved in representation_selection; the seller MUST NOT guess or defer it to a later package"
     },
     "spec": "docs/creative/representation-sets.mdx#seller-bound-resolution"
   },
@@ -30,6 +31,14 @@
       "uniqueItems": true,
       "items": { "$ref": "/schemas/core/placement-ref.json" },
       "description": "Optional placements the derived manifest must satisfy. Omission means every placement in the intended product route, not an unconstrained destination."
+    },
+    "execution_vast_version": {
+      "$ref": "/schemas/enums/vast-version.json",
+      "description": "Exact VAST execution version selected for seller-assembled first-class VAST trackers when no sibling exact-version VAST document supplies it. Must be accepted by format_option and is preserved in selection lineage."
+    },
+    "execution_daast_version": {
+      "$ref": "/schemas/enums/daast-version.json",
+      "description": "Exact DAAST execution version selected for seller-assembled first-class DAAST trackers when no sibling exact-version DAAST document supplies it. Must be accepted by format_option and is preserved in selection lineage."
     }
   },
   "required": ["product_id", "format_option"],

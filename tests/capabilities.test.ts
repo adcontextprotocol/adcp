@@ -45,9 +45,30 @@ describe('sanitizeCreativeCapabilities', () => {
     });
   });
 
-  it('rejects incomplete ProductFormatDeclaration objects', async () => {
+  it('rejects incomplete creative operation format declarations', async () => {
     await expect(sanitizeCreativeCapabilities({
       supported_formats: [{ ...validEntry, format: { format_kind: 'image' } }],
+    })).rejects.toThrow('supported_formats[0].format');
+  });
+
+  it('validates params against the selected canonical format without compiling the seller graph', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{
+        ...validEntry,
+        format: { format_kind: 'image', params: { width: 0, height: 250 } },
+      }],
+    })).rejects.toThrow('supported_formats[0].format.params');
+  });
+
+  it('rejects seller tracker authority without compiling it into creative routes', async () => {
+    await expect(sanitizeCreativeCapabilities({
+      supported_formats: [{
+        ...validEntry,
+        format: {
+          ...validEntry.format,
+          tracker_execution_contract: { complete: true, honored: [] },
+        },
+      }],
     })).rejects.toThrow('supported_formats[0].format');
   });
 
