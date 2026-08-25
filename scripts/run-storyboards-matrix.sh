@@ -294,7 +294,7 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/expired_proposal_execution:8:0"
   "media_buy_seller/change_rights_state_projection:8:0"
   "media_buy_seller/acceptance_policy_discovery:3:0"
-  "media_buy_seller/governance_agent_binding_acceptance:4:0"
+  "media_buy_seller/governance_agent_binding_acceptance:5:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
