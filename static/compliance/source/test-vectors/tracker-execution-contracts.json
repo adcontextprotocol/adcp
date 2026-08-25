@@ -171,6 +171,66 @@
       }
     }
   ],
+  "derivation_vectors": [
+    {
+      "name": "an incomplete empty parent permits affirmative incomplete child knowledge",
+      "parent": {
+        "complete": false,
+        "honored": []
+      },
+      "child": {
+        "complete": false,
+        "honored": [{
+          "selector_id": "child-impression",
+          "asset_type": "pixel_tracker",
+          "event": "impression",
+          "method": "img",
+          "execution_actor": "seller",
+          "firing_paths": ["client"]
+        }]
+      },
+      "expected_valid": true
+    },
+    {
+      "name": "a complete parent forbids compressed version path cross-products",
+      "parent": {
+        "complete": true,
+        "honored": [
+          {
+            "selector_id": "parent-v42-client",
+            "asset_type": "vast_tracker",
+            "vast_versions": ["4.2"],
+            "vast_event": "start",
+            "target": "linear",
+            "execution_actor": "request_executor",
+            "firing_paths": ["client"]
+          },
+          {
+            "selector_id": "parent-v43-server",
+            "asset_type": "vast_tracker",
+            "vast_versions": ["4.3"],
+            "vast_event": "start",
+            "target": "linear",
+            "execution_actor": "request_executor",
+            "firing_paths": ["server"]
+          }
+        ]
+      },
+      "child": {
+        "complete": true,
+        "honored": [{
+          "selector_id": "child-cross-product",
+          "asset_type": "vast_tracker",
+          "vast_versions": ["4.2", "4.3"],
+          "vast_event": "start",
+          "target": "linear",
+          "execution_actor": "request_executor",
+          "firing_paths": ["client", "server"]
+        }]
+      },
+      "expected_valid": false
+    }
+  ],
   "package_snapshot": {
     "product_id": "prod-acme-video",
     "format_option_id": "acme-vast-preroll",

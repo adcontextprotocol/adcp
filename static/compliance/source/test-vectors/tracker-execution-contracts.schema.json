@@ -46,10 +46,25 @@
         "additionalProperties": false
       }
     },
+    "derivation_vectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "parent": { "$ref": "/schemas/core/tracker-execution-contract.json" },
+          "child": { "$ref": "/schemas/core/tracker-execution-contract.json" },
+          "expected_valid": { "type": "boolean" }
+        },
+        "required": ["name", "parent", "child", "expected_valid"],
+        "additionalProperties": false
+      }
+    },
     "package_snapshot": {
       "$ref": "/schemas/core/package-format-snapshot.json"
     }
   },
-  "required": ["vectors", "package_snapshot"],
+  "required": ["vectors", "derivation_vectors", "package_snapshot"],
   "additionalProperties": false
 }

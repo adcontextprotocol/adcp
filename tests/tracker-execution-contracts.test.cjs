@@ -186,7 +186,8 @@ function atomicTuples(contract) {
 }
 
 function contractNarrowingIsValid(parent, child) {
-  if (parent.complete !== child.complete) return false;
+  if (!parent.complete) return child.complete === false;
+  if (!child.complete) return false;
   const parentTuples = atomicTuples(parent);
   return [...atomicTuples(child)].every(tuple => parentTuples.has(tuple));
 }
@@ -385,7 +386,15 @@ test('contracts require matching first-class slots and narrowing cannot invent v
     })]
   }), true);
   assert.equal(contractNarrowingIsValid(parent, { complete: false, honored: [] }), false,
-    'completeness cannot change during downstream narrowing');
+    'a complete parent remains complete after narrowing');
+  assert.equal(contractNarrowingIsValid({ complete: false, honored: [] }, {
+    complete: false,
+    honored: [pixelSelector({ selector_id: 'new-child-knowledge' })]
+  }), true, 'an incomplete empty parent is undeclared, not a closed ceiling');
+  assert.equal(contractNarrowingIsValid({ complete: false, honored: [] }, {
+    complete: true,
+    honored: [pixelSelector({ selector_id: 'prematurely-complete' })]
+  }), false, 'a child cannot claim completeness while an applicable parent is incomplete');
 });
 
 test('golden vectors normalize defaults, bind exact versions, and keep incomplete omissions undeclared', () => {
@@ -397,6 +406,13 @@ test('golden vectors normalize defaults, bind exact versions, and keep incomplet
     assert.deepEqual(
       evaluateTracker(vector.contract, vector.tracker, vector.execution_version, vector.format_slots),
       vector.expected,
+      vector.name
+    );
+  }
+  for (const vector of fixture.derivation_vectors) {
+    assert.equal(
+      contractNarrowingIsValid(vector.parent, vector.child),
+      vector.expected_valid,
       vector.name
     );
   }

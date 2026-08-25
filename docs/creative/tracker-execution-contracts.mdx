@@ -58,7 +58,9 @@ Publisher and placement declarations may narrow an upstream contract, but the se
 
 Every asset type named in `honored[]` must also have at least one matching first-class slot in the effective selected format declaration. A contract cannot promise a `pixel_tracker`, `vast_tracker`, or `daast_tracker` that the same format rejects structurally. This is why the image example explicitly adds tracker slots instead of relying on the image canonical's default slots.
 
-Publisher, placement, and seller narrowing is directional. Expand each selector to atomic tuples of `(normalized non-version selector identity, exact version or null, execution_actor, firing_path)`. Every tuple in the child effective contract must exist in its parent; only then may tuples be compressed back into selector arrays. For example, a parent that permits VAST 4.2 on `client` and VAST 4.3 on `server` does not permit a child selector containing both versions and both paths, because that cross-product invents 4.2/server and 4.3/client commitments. An incomplete parent remains incomplete downstream; a complete parent remains complete after subset narrowing.
+Publisher, placement, and seller derivation is directional. Expand each selector to atomic tuples of `(normalized non-version selector identity, exact version or null, execution_actor, firing_path)`. When the parent contract is complete, every tuple in the child effective contract must exist in its parent; only then may tuples be compressed back into selector arrays. For example, a complete parent that permits VAST 4.2 on `client` and VAST 4.3 on `server` does not permit a child selector containing both versions and both paths, because that cross-product invents 4.2/server and 4.3/client commitments.
+
+An incomplete or omitted parent is not a closed ceiling. A downstream declaration may add affirmative knowledge beneath it, but the effective contract remains incomplete until every applicable layer is complete. Existing affirmative parent commitments are preserved unless narrower inventory genuinely excludes them. A complete parent remains complete after valid subset narrowing.
 
 ## Exact selectors
 
