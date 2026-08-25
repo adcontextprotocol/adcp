@@ -154,8 +154,12 @@ export function normalizeOpenAIResponse(response: Response): ModelResponse {
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
-      cacheReadTokens: response.usage.input_tokens_details.cached_tokens,
-      cacheWriteTokens: response.usage.input_tokens_details.cache_write_tokens,
+      ...(response.usage.input_tokens_details.cached_tokens !== undefined && {
+        cacheReadTokens: response.usage.input_tokens_details.cached_tokens,
+      }),
+      ...(response.usage.input_tokens_details.cache_write_tokens !== undefined && {
+        cacheWriteTokens: response.usage.input_tokens_details.cache_write_tokens,
+      }),
     },
   } satisfies ModelResponse);
   validateNormalizedModelResponse(normalized);

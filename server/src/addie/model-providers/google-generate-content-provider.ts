@@ -193,7 +193,12 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     if (transport) {
       this.transport = transport;
     } else {
-      const client = new GoogleGenAI({ apiKey });
+      const client = new GoogleGenAI({
+        apiKey,
+        // One attempt means no SDK retry. The evaluation runner owns the
+        // single-call budget and must observe every paid dispatch itself.
+        httpOptions: { retryOptions: { attempts: 1 } },
+      });
       this.transport = {
         models: {
           generateContent: (request, options) => client.models.generateContent({

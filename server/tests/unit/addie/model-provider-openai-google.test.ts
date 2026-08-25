@@ -16,6 +16,17 @@ import {
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import type { ModelRequest } from '../../../src/addie/model-providers/model-provider.js';
 
+const { googleGenAIConstructor } = vi.hoisted(() => ({
+  googleGenAIConstructor: vi.fn(function FakeGoogleGenAI() {
+    return { models: { generateContent: vi.fn() } };
+  }),
+}));
+
+vi.mock('@google/genai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@google/genai')>();
+  return { ...actual, GoogleGenAI: googleGenAIConstructor };
+});
+
 function request(model: string, overrides: Partial<ModelRequest> = {}): ModelRequest {
   return {
     model,
@@ -114,6 +125,39 @@ describe('OpenAIResponsesProvider', () => {
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 });
   });
 
+  it('omits unavailable optional cache usage fields', () => {
+    const withoutEither = normalizeOpenAIResponse(openAIResponse({
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: {},
+        output_tokens_details: { reasoning_tokens: 1 },
+      },
+    }));
+    const withoutWrite = normalizeOpenAIResponse(openAIResponse({
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 2 },
+        output_tokens_details: { reasoning_tokens: 1 },
+      },
+    }));
+    const withoutRead = normalizeOpenAIResponse(openAIResponse({
+      usage: {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cache_write_tokens: 3 },
+        output_tokens_details: { reasoning_tokens: 1 },
+      },
+    }));
+    expect(withoutEither.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
+    expect(withoutWrite.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2 });
+    expect(withoutRead.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheWriteTokens: 3 });
+  });
+
   it('fails closed on unsupported models, tools, cache hints, and non-text input', () => {
     const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     expect(() => provider.prepare(request('gpt-other'))).toThrow('Unsupported OpenAI router model');
@@ -140,6 +184,15 @@ describe('OpenAIResponsesProvider', () => {
 });
 
 describe('GoogleGenerateContentProvider', () => {
+  it('disables SDK retries in the default transport', () => {
+    googleGenAIConstructor.mockClear();
+    new GoogleGenerateContentProvider('test-key');
+    expect(googleGenAIConstructor).toHaveBeenCalledWith({
+      apiKey: 'test-key',
+      httpOptions: { retryOptions: { attempts: 1 } },
+    });
+  });
+
   it('builds the exact frozen generateContent request', () => {
     const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
     const prepared = provider.prepare(request(GOOGLE_ROUTER_MODEL, {
