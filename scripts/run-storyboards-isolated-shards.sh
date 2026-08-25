@@ -59,9 +59,9 @@ trap cleanup EXIT
 run_shard() {
   local index="$1"
   if [ -n "${STORYBOARD_ISOLATED_RUNNER_BIN:-}" ]; then
-    "${STORYBOARD_ISOLATED_RUNNER_BIN}" "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    "${STORYBOARD_ISOLATED_RUNNER_BIN}" ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   else
-    node scripts/run-storyboards-isolated.mjs "${RUNNER_ARGS[@]}" --shard-index "${index}" --shard-count "${SHARD_COUNT}"
+    node scripts/run-storyboards-isolated.mjs ${RUNNER_ARGS[@]+"${RUNNER_ARGS[@]}"} --shard-index "${index}" --shard-count "${SHARD_COUNT}"
   fi
 }
 

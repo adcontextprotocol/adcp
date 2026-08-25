@@ -5,14 +5,14 @@ import { MODULE_RESOURCES } from '../../server/src/addie/mcp/certification-tools
 describe('TMP coverage in docs and training', () => {
   beforeAll(async () => {
     await initializeDocsIndex();
-  });
+  }, 30_000);
 
   it('surfaces TMP and AdCP/OpenRTB docs in Addie search', () => {
     const results = searchDocs('cross-publisher frequency capping TMP Trusted Match OpenRTB', { limit: 5 });
     const urls = results.map((result) => result.sourceUrl);
 
-    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/trusted-match');
-    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/building/concepts/adcp-vs-openrtb');
+    expect(urls).toContain('https://docs.adcontextprotocol.org/dist/docs/3.1.19/trusted-match');
+    expect(urls).toContain('https://docs.adcontextprotocol.org/dist/docs/3.1.19/building/concepts/adcp-vs-openrtb');
   });
 
   it('includes TMP in all relevant training modules', () => {

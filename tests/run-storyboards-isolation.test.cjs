@@ -150,6 +150,50 @@ test('a coherent but partial multi-variant envelope fails closed', (t) => {
   assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, false);
 });
 
+test('the current required-profile signed-request envelope is aggregated', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'current' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /storyboards: 1\/1 clean/);
+  assert.match(result.stdout, /steps: 1 passed/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['signed_requests']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, true);
+});
+
+test('the exact three legacy signed-request profiles are aggregated', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'legacy' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /storyboards: 3\/3 clean/);
+  assert.match(result.stdout, /steps: 3 passed/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['signed_requests']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, true);
+});
+
+test('duplicate signed-request profile summaries fail closed', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests', 'healthy_after'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'duplicate' },
+  );
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stdout, /storyboards: 1\/2 clean/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['healthy_after']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, false);
+});
+
 test('a child crash is isolated without losing successful siblings', (t) => {
   const { result, telemetry, results } = runFixture(t, ['healthy_before', 'crash', 'healthy_after']);
 

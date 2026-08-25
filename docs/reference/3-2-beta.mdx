@@ -15,8 +15,8 @@ before GA.
 </Warning>
 
 The 3.2 beta cycle started with a protocol-first checkpoint. Beta.6 is the
-current protocol checkpoint. The current TypeScript and Python SDK betas still
-consume the exact signed beta.5 bundle:
+current protocol checkpoint. The current TypeScript SDK beta consumes the exact
+signed beta.6 bundle; the Python SDK beta remains on beta.5:
 
 | Checkpoint | Purpose | Who should test |
 |---|---|---|
@@ -25,16 +25,16 @@ consume the exact signed beta.5 bundle:
 | `3.2.0-beta.2` | Second integration-correction checkpoint | Pinned adopters comparing beta.1 and beta.2 behavior |
 | `3.2.0-beta.3` | Third integration-correction checkpoint | Pinned adopters comparing beta.2 and beta.3 behavior |
 | `3.2.0-beta.4` | Fourth integration checkpoint | Pinned adopters comparing beta.3 and beta.4 behavior |
-| `3.2.0-beta.5` | Latest SDK-backed protocol checkpoint | Buyer and seller teams running end-to-end SDK integrations |
-| `3.2.0-beta.6` | Current protocol checkpoint for reporting, CTV, canonical display, and request-signing integration | Raw-wire and code-generation adopters, SDK maintainers, and teams validating the new contracts directly |
-| SDK wave | `@adcp/sdk@14.0.0-beta.7` and Python `adcp==8.0.0b7` embed `3.2.0-beta.5`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+| `3.2.0-beta.5` | Previous SDK-backed protocol checkpoint | Pinned adopters comparing beta.5 and beta.6 behavior |
+| `3.2.0-beta.6` | Current TypeScript SDK-backed protocol checkpoint for reporting, CTV, canonical display, and request-signing integration | Buyer and seller teams running end-to-end TypeScript SDK integrations, raw-wire adopters, and SDK maintainers |
+| SDK wave | `@adcp/sdk@14.0.0-beta.8` embeds `3.2.0-beta.6`; Python `adcp==8.0.0b7` remains on `3.2.0-beta.5`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
 
 Earlier betas remain useful as pinned implementation checkpoints. For
-SDK-backed TypeScript or Python testing, pair the packages above with protocol
-beta.5. Test beta.6 from its signed artifact with raw-wire, code-generation, or
-an SDK that explicitly names beta.6. Do not combine a newer wire pin with an SDK
-generated from an older bundle unless the SDK maintainer documents forward
-compatibility.
+SDK-backed TypeScript testing, pair SDK beta.8 with protocol beta.6. Python
+testing remains paired with beta.5 until a Python SDK release explicitly names
+beta.6. You can also test beta.6 from its signed artifact with raw-wire or
+code-generation workflows. Do not combine a newer wire pin with an SDK generated
+from an older bundle unless the SDK maintainer documents forward compatibility.
 
 ## Know which version string to use
 
@@ -55,21 +55,21 @@ a stable `"3.2"` pin must not silently negotiate to a beta.
 
 ## Use matched SDK betas
 
-The TypeScript SDK has exact beta.5 support, not beta.6 support. The npm
+The TypeScript SDK has exact beta.6 support. The npm
 `latest` tag remains on SDK 13, so opt into the preview explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.7
+npm install @adcp/sdk@14.0.0-beta.8
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
-lifecycle, the beta.5 schemas and compliance assets, version-aware request
+lifecycle, the beta.6 schemas and compliance assets, version-aware request
 signing, governance plan-adjustment reporting, and agent notification
 configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
 See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
 matrix and install guidance.
 
-Python `adcp==8.0.0b7` carries the same schemas and generated types. Its
+Python `adcp==8.0.0b7` still carries beta.5 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
@@ -124,11 +124,11 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-The TypeScript and Python rows name exact beta.5 support, with different
-higher-layer coverage. They do not imply beta.6 support. Treat generated 3.2
-types and validators in every other SDK as unavailable until its row names an
-exact package and protocol checkpoint. Raw JSON calls may still be possible,
-but they are not equivalent to SDK support.
+The TypeScript row names exact beta.6 support; the Python row names exact
+beta.5 support with different higher-layer coverage. Neither implies support
+for another checkpoint. Treat generated 3.2 types and validators in every other
+SDK as unavailable until its row names an exact package and protocol checkpoint.
+Raw JSON calls may still be possible, but they are not equivalent to SDK support.
 
 SDK maintainers should report protocol ambiguities against the
 [AdCP repository](https://github.com/adcontextprotocol/adcp/issues). Report
@@ -138,9 +138,9 @@ in place.
 
 ## Current beta.6 checkpoint
 
-Protocol beta.1 through beta.6 are published. TypeScript SDK beta.7 and Python
-SDK beta.7 embed the exact beta.5 bundle. Before treating a test result as
-beta.6 integration evidence, confirm that:
+Protocol beta.1 through beta.6 are published. TypeScript SDK beta.8 embeds the
+exact beta.6 bundle, while Python SDK beta.7 embeds the exact beta.5 bundle.
+Before treating a test result as beta.6 integration evidence, confirm that:
 
 - the test uses the signed beta.6 artifact directly, or the support matrix names
   an exact SDK package that embeds beta.6;

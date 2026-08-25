@@ -2630,12 +2630,20 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.5'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH = '/registry/acceptance-policy-catalog.json';
 export const TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST = 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a';
 export const TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE = 'meta_political_advertising_acceptance';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
+const THREE_ZERO_COMPLIANCE_SCENARIOS = [
+  'force_creative_status',
+  'force_account_status',
+  'force_media_buy_status',
+  'force_session_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -2721,19 +2729,39 @@ function compareAdcpPrerelease(left: string, right: string): number {
   return 0;
 }
 
-const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS
-  .map(version => parseAdcpReleaseVersion(version))
-  .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
-  .sort(compareAdcpReleaseVersions);
+function parsedSupportedReleaseVersions(supportedVersions: readonly string[]): ParsedAdcpReleaseVersion[] {
+  return supportedVersions
+    .map(version => parseAdcpReleaseVersion(version))
+    .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
+    .sort(compareAdcpReleaseVersions);
+}
 
-function highestSupportedRelease(major?: number): string | undefined {
+function highestSupportedRelease(
+  major?: number,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): string | undefined {
+  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions);
   const candidates = major === undefined
-    ? PARSED_SUPPORTED_RELEASE_VERSIONS
-    : PARSED_SUPPORTED_RELEASE_VERSIONS.filter(version => version.major === major);
+    ? parsedVersions
+    : parsedVersions.filter(version => version.major === major);
   return candidates.at(-1)?.raw;
 }
 
-function supportedVersionDetails(args: Record<string, unknown>): VersionUnsupportedDetails {
+function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string[] {
+  const signingCap = selectSigningCapability(ctx);
+  if (!signingCap.supported || signingCap.covers_content_digest === 'required') {
+    return SUPPORTED_RELEASE_VERSIONS;
+  }
+  return SUPPORTED_RELEASE_VERSIONS.filter(version => {
+    const parsed = parseAdcpReleaseVersion(version);
+    return parsed !== undefined && parsed.major === 3 && parsed.minor < 2;
+  });
+}
+
+function supportedVersionDetails(
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionUnsupportedDetails {
   const requestedRelease = parseAdcpReleaseVersion(args.adcp_version);
   const requestedMajor = typeof args.adcp_major_version === 'number' && Number.isInteger(args.adcp_major_version)
     ? args.adcp_major_version
@@ -2742,12 +2770,15 @@ function supportedVersionDetails(args: Record<string, unknown>): VersionUnsuppor
     ...(requestedRelease && { adcp_version: requestedRelease.raw }),
     ...(requestedMajor !== undefined && { adcp_major_version: requestedMajor }),
     ...(!requestedRelease && typeof args.adcp_version === 'string' && { rejected_adcp_version: args.adcp_version }),
-    supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+    supported_versions: [...supportedVersions],
     supported_majors: [...SUPPORTED_MAJOR_VERSIONS],
   };
 }
 
-export function resolveServedAdcpVersion(args: Record<string, unknown>): VersionResolution {
+export function resolveServedAdcpVersion(
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionResolution {
   const requestedReleaseRaw = args.adcp_version;
   const requestedMajorRaw = args.adcp_major_version;
   const requestedMajor = typeof requestedMajorRaw === 'number' && Number.isInteger(requestedMajorRaw)
@@ -2761,7 +2792,7 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP version ${JSON.stringify(requestedReleaseRaw)} is not supported`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
@@ -2770,11 +2801,11 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `Request carries adcp_version="${requestedRelease.raw}" (major ${requestedRelease.major}) and adcp_major_version=${requestedMajor}; majors must agree.`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
-    if ((SUPPORTED_RELEASE_VERSIONS as readonly string[]).includes(requestedRelease.raw)) {
+    if (supportedVersions.includes(requestedRelease.raw)) {
       return { ok: true, servedVersion: requestedRelease.raw };
     }
 
@@ -2783,11 +2814,11 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP version ${requestedRelease.raw} is not supported`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
-    const downshift = PARSED_SUPPORTED_RELEASE_VERSIONS
+    const downshift = parsedSupportedReleaseVersions(supportedVersions)
       .filter(version => version.major === requestedRelease.major)
       .filter(version => !version.prerelease)
       .filter(version => compareAdcpReleaseVersions(version, requestedRelease) <= 0)
@@ -2801,7 +2832,7 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
       ok: false,
       message: `AdCP version ${requestedRelease.raw} is not supported`,
       field: 'adcp_version',
-      details: supportedVersionDetails(args),
+      details: supportedVersionDetails(args, supportedVersions),
     };
   }
 
@@ -2811,23 +2842,27 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP major version ${JSON.stringify(requestedMajorRaw)} is not supported`,
         field: 'adcp_major_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
-    const servedVersion = highestSupportedRelease(requestedMajor);
+    const servedVersion = highestSupportedRelease(requestedMajor, supportedVersions);
     if (servedVersion) return { ok: true, servedVersion };
     return {
       ok: false,
       message: `AdCP major version ${requestedMajor} is not supported`,
       field: 'adcp_major_version',
-      details: supportedVersionDetails(args),
+      details: supportedVersionDetails(args, supportedVersions),
     };
   }
 
   return { ok: true, servedVersion: DEFAULT_ADCP_VERSION };
 }
 
-export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+export function resolveServedAdcpVersionForTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionResolution {
   const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
   if (
     (toolName === 'validate_input' || splitProductTool)
@@ -2836,10 +2871,10 @@ export function resolveServedAdcpVersionForTool(toolName: string, args: Record<s
   ) {
     return resolveServedAdcpVersion({
       ...args,
-      adcp_version: CURRENT_ADCP_VERSION,
-    });
+      adcp_major_version: 3,
+    }, supportedVersions);
   }
-  return resolveServedAdcpVersion(args);
+  return resolveServedAdcpVersion(args, supportedVersions);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -3046,7 +3081,10 @@ function addServedAdcpVersion(result: unknown, servedAdcpVersion: string, contex
   };
 }
 
-function installTaskProtocolVersionNegotiation(server: Server): void {
+function installTaskProtocolVersionNegotiation(
+  server: Server,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): void {
   const handlers = (server as unknown as { _requestHandlers?: Map<string, McpRequestHandler> })._requestHandlers;
   if (!handlers) return;
 
@@ -3056,7 +3094,7 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
     handlers.set(method, async (request, extra) => {
       const rawParams = isRecord(request.params) ? request.params : {};
       const { context: callerContext, ...versionArgs } = rawParams;
-      const versionResolution = resolveServedAdcpVersion(versionArgs);
+      const versionResolution = resolveServedAdcpVersion(versionArgs, supportedVersions);
       if (!versionResolution.ok) {
         throw versionUnsupportedJsonRpcError(versionResolution, callerContext);
       }
@@ -4468,13 +4506,18 @@ function getFormats(): ReturnType<typeof buildFormats> {
   return cachedFormats;
 }
 
-function requestedCreativeWireMode(args: Record<string, unknown>): CreativeFormatWireMode {
+function requestedCreativeWireMode(
+  args: Record<string, unknown>,
+  servedAdcpVersion?: string,
+): CreativeFormatWireMode {
   const ext = args.ext as { adcp?: { creative_wire?: unknown } } | undefined;
   const explicit = ext?.adcp?.creative_wire;
   if (explicit === 'canonical' || explicit === 'legacy') return explicit;
-  return typeof args.adcp_version === 'string' && args.adcp_version.startsWith('3.0')
-    ? 'legacy'
-    : 'unknown';
+  const version = servedAdcpVersion
+    ?? (typeof args.adcp_version === 'string' ? args.adcp_version : undefined);
+  if (version?.startsWith('3.0')) return 'legacy';
+  if (version?.startsWith('3.2')) return 'canonical';
+  return 'unknown';
 }
 
 function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
@@ -4603,14 +4646,84 @@ export const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = cont
   return matches.size === 1 ? [...matches.values()][0] : undefined;
 };
 
+function mappedLegacyFormatIds(product: Product): {
+  mappedIds: FormatID[];
+  allCanonicalRefsResolve: boolean;
+} {
+  if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  if (!Array.isArray(product.format_options) || product.format_options.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  const canonicalRefs: FormatID[] = [];
+  let malformedCanonicalRef = false;
+  for (const option of product.format_options) {
+    if (!isRecord(option) || !Array.isArray(option.v1_format_ref)) continue;
+    for (const ref of option.v1_format_ref) {
+      if (!isRecord(ref) || typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') {
+        malformedCanonicalRef = true;
+        continue;
+      }
+      canonicalRefs.push(ref as FormatID);
+    }
+  }
+  const mappedIds = product.format_ids.filter(ref => (
+    isRecord(ref)
+    && typeof ref.agent_url === 'string'
+    && typeof ref.id === 'string'
+    && canonicalRefs.some(canonicalRef => legacyFormatIdMatches(ref as FormatID, canonicalRef))
+  ));
+  const allCanonicalRefsResolve = !malformedCanonicalRef && canonicalRefs.every(canonicalRef => (
+    product.format_ids!.some(ref => (
+      isRecord(ref)
+      && typeof ref.agent_url === 'string'
+      && typeof ref.id === 'string'
+      && legacyFormatIdMatches(ref as FormatID, canonicalRef)
+    ))
+  ));
+  return { mappedIds, allCanonicalRefsResolve };
+}
+
 /** Project a raw compatibility response to the wire arm explicitly requested by the caller. */
 export function projectGetProductsCompatibilityWire(
   response: { products?: Product[]; [key: string]: unknown },
   args: Record<string, unknown>,
+  servedAdcpVersion?: string,
 ): unknown {
-  const wireMode = requestedCreativeWireMode(args);
+  const wireMode = requestedCreativeWireMode(args, servedAdcpVersion);
+  const explicitWireMode = (args.ext as { adcp?: { creative_wire?: unknown } } | undefined)
+    ?.adcp?.creative_wire;
   if (wireMode === 'unknown') return response;
-  if (wireMode === 'canonical') return toCanonicalOnlyResponse(response as never).response;
+  if (wireMode === 'canonical') {
+    if (servedAdcpVersion?.startsWith('3.2') && explicitWireMode !== 'canonical') {
+      // beta.6 still permits an exact v1/v2 migration pair. Preserve those
+      // honest dual declarations, but remove an unmapped compatibility
+      // sidecar before the SDK finalizer turns its expected removal into a
+      // buyer-visible LEGACY_FORMAT_ID_DROPPED_UNMAPPED advisory.
+      return {
+        ...response,
+        ...(Array.isArray(response.products) && {
+          products: response.products.map(product => {
+            if (!Array.isArray(product.format_options) || product.format_options.length === 0) return product;
+            const { mappedIds, allCanonicalRefsResolve } = mappedLegacyFormatIds(product);
+            if (allCanonicalRefsResolve && mappedIds.length === product.format_ids?.length) return product;
+            const { format_ids: _legacyCompatibilitySelectors, ...canonicalProduct } = product;
+            return allCanonicalRefsResolve && mappedIds.length > 0
+              ? { ...canonicalProduct, format_ids: mappedIds }
+              : canonicalProduct;
+          }),
+        }),
+      };
+    }
+    const canonicalInput = response;
+    const projected = toCanonicalOnlyResponse(canonicalInput as never).response as Record<string, unknown>;
+    if (!Object.hasOwn(canonicalInput, 'products')) {
+      const { products: _sdkDefaultProducts, ...withoutDefaultProducts } = projected;
+      return withoutDefaultProducts;
+    }
+    return projected;
+  }
 
   const products = (response.products ?? []).flatMap(product => {
     if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return [];
@@ -5621,6 +5734,23 @@ export function supportedCanonicalFormatsCapability(): Array<Record<string, unkn
       },
     },
   }));
+}
+
+export function creativePreviewCapability(
+  supportedFormats: readonly Record<string, unknown>[],
+): { routes: Array<{ capability_id: string; rendering_origin: 'agent_approximation' }> } {
+  return {
+    routes: supportedFormats
+      .filter(format => (
+        typeof format.capability_id === 'string'
+        && Array.isArray(format.operations)
+        && format.operations.includes('preview')
+      ))
+      .map(format => ({
+        capability_id: format.capability_id as string,
+        rendering_origin: 'agent_approximation' as const,
+      })),
+  };
 }
 
 function supportedCanonicalBuildCapability(formatId: string): { formatKind: string; slots: CanonicalSlot[] } | undefined {
@@ -7894,10 +8024,8 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   if (!proposalLifecycleWrite && !concreteTargetingWrite) {
     let directives: GetProductsReadDirectives = {};
     try {
-      const session = await getSession(
-        sessionScope,
-        controllerFixtureSessionKey(req, ctx),
-      );
+      const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
+      const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
       let directiveSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
@@ -7911,14 +8039,21 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
           : undefined;
       }
-      const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+      let staleDirectiveSession = session;
+      let staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
+      if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
+        staleDirectiveSession = await getSession(fixtureSessionKey);
+        staleDirective = staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+          ? staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable
+          : undefined;
+      }
       if (rejection) {
         directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
-        session.complyExtensions.forcedUpstreamUnavailable = undefined;
+        staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
       directives = { rejection, staleDirective };
       if (rejection || staleDirective) await flushDirtySessions();
@@ -14936,7 +15071,8 @@ async function handleUpdateMediaBuyUnlocked(
 
 export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
-  const servedAdcpVersion = versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION;
+  const servedAdcpVersion = ctx.servedAdcpVersion
+    ?? (versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION);
   const tasks = visibleToolsForContext(ctx)
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
@@ -14952,32 +15088,57 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   // the wire response separates them so verifiers and storyboard runners
   // don't conflate the two namespaces.
   //
+  const parsedServedAdcpVersion = parseAdcpReleaseVersion(servedAdcpVersion);
+  const isThreeZeroResponse = isThreeZeroStoryboardCompat(ctx)
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
-  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethodName);
-  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethodName) ?? [];
+  const protocolMethodsRequiredFor = signingCap.required_for
+    .filter(isProtocolMethodName)
+    .filter(op => !isThreeZeroResponse || op.includes('/'));
+  const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
+    .filter(op => !isThreeZeroResponse || op.includes('/'));
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = [
-    'force_creative_status',
-    'force_audience_status',
-    'force_account_status',
-    'force_media_buy_status',
-    'force_create_media_buy_arm',
-    'force_task_completion',
-    ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
-    'force_session_status',
-    'simulate_delivery',
-    'simulate_budget_spend',
-    'seed_account',
-    'seed_product',
-    'seed_pricing_option',
-    'seed_creative',
-    'seed_plan',
-    'seed_media_buy',
-    'seed_creative_format',
-    'seed_measurement_catalog',
-    ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
-  ];
+  const complianceScenarios = isThreeZeroResponse
+    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
+    : [
+        'force_creative_status',
+        'force_audience_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_create_media_buy_arm',
+        'force_task_completion',
+        'force_creative_purge',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+        'seed_account',
+        'seed_product',
+        'seed_pricing_option',
+        'seed_creative',
+        'seed_plan',
+        'seed_media_buy',
+        'seed_creative_format',
+        'seed_measurement_catalog',
+        'query_provenance_audit_observations',
+      ];
+  // AdCP 3.2 requires every signing-capable endpoint to require
+  // content-digest coverage. The legacy conformance routes intentionally
+  // exercise the 3.0/3.1 `either` and `forbidden` policies, so they must not
+  // claim support for releases whose schema forbids those postures.
+  const supportedReleaseVersions = [...signingCompatibleReleaseVersions(ctx)];
+  const requestedRelease = parseAdcpReleaseVersion((args as unknown as Record<string, unknown>).adcp_version);
+  if (
+    isThreeZeroStoryboardCompat(ctx)
+    && requestedRelease?.major === 3
+    && requestedRelease.minor === 0
+    && !requestedRelease.prerelease
+    && !supportedReleaseVersions.includes(requestedRelease.raw)
+  ) {
+    // The frozen compatibility runner requests its patch-precise 3.0 bundle,
+    // which this facade deliberately serves through the stable 3.0 shape.
+    supportedReleaseVersions.push(requestedRelease.raw);
+  }
   const governanceEnforcementTasks = ctx.tenantId === 'sales'
     ? supportsGetProductsRejected(servedAdcpVersion)
       ? [
@@ -14999,11 +15160,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
   ];
+  const supportedCreativeFormats = includeThreeOneFields(ctx)
+    ? supportedCanonicalFormatsCapability()
+    : undefined;
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
-      supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+      supported_versions: [...supportedReleaseVersions],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
       ...(governanceEnforcementTasks.length > 0 && {
         governance_enforcement: {
@@ -15125,15 +15289,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(includeThreeOneFields(ctx) ? {
+      ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
-        supported_formats: supportedCanonicalFormatsCapability(),
-        preview: {
-          routes: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(capability => ({
-            capability_id: capability.capabilityId,
-            rendering_origin: 'agent_approximation',
-          })),
-        },
+        supported_formats: supportedCreativeFormats,
+        preview: creativePreviewCapability(supportedCreativeFormats),
         canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,
@@ -15419,9 +15578,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     unchanged?: boolean;
     wholesale_feed_version?: string;
     pricing_version?: string;
-    cache_scope?: 'public' | 'account';
+    cache_scope: 'public' | 'account';
   } = {
     signals,
+    cache_scope: wholesaleMeta?.cache_scope ?? cacheScopeForWholesaleRequest(req as WholesaleFeedRequest),
     pagination: {
       has_more: hasMore,
       total_count: totalMatching,
@@ -15433,7 +15593,6 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     ...(wholesaleMeta && {
       wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
       pricing_version: wholesaleMeta.pricing_version,
-      cache_scope: wholesaleMeta.cache_scope,
     }),
   };
   if (hasIdentityTerm) {
@@ -19109,7 +19268,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return result;
     });
   });
-  installTaskProtocolVersionNegotiation(server);
+  installTaskProtocolVersionNegotiation(server, signingCompatibleReleaseVersions(ctx));
 
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
@@ -19121,7 +19280,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...initialHandlerArgs } = rawArgs;
-    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs);
+    const routeSupportedVersions = signingCompatibleReleaseVersions(ctx);
+    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs, routeSupportedVersions);
 
     const handler = name === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
       ? handleTypedProposalRefinement

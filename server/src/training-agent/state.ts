@@ -29,7 +29,6 @@ import {
 } from '@adcp/sdk/server';
 import { isDatabaseInitialized, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import { getAgentUrl } from './config.js';
 import { REPLAY_TTL_SECONDS } from './idempotency.js';
 
 const logger = createLogger('training-agent-state');
@@ -317,14 +316,13 @@ function createSession(): SessionState {
  *  - `build_creative` / `report_usage` fall through to the fixtures when a
  *    requested `creative_id` is not in the session map.
  *
- * Agent URL is resolved lazily so the default propagates correctly in CI
- * and local runs alike.
  */
 export function getComplianceCreatives(): CreativeState[] {
   return [
     {
       creativeId: 'campaign_hero_video',
-      formatId: { agent_url: getAgentUrl(), id: 'vast_30s' },
+      formatKind: 'video_vast',
+      formatOptionRef: { scope: 'product', format_option_id: 'video_preroll_video_vast' },
       name: 'Campaign Hero Video',
       status: 'approved',
       syncedAt: new Date(0).toISOString(),

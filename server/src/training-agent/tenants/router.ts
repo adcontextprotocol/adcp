@@ -24,6 +24,7 @@ import { handleComplyTestController } from '../comply-test-controller.js';
 import { TRAINING_ACCEPTED_GOVERNANCE_AGENTS } from '../account-handlers.js';
 import {
   adcpError,
+  creativePreviewCapability,
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
   TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
@@ -131,8 +132,8 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.5'] as const;
-const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.5';
+const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6'] as const;
+const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.6';
 const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
@@ -751,8 +752,8 @@ function projectTenantCapabilities(
     };
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
-        capabilities_version: 'training-agent-3.2-beta.5',
-        last_modified: '2026-08-23T00:00:00.000Z',
+        capabilities_version: 'training-agent-3.2-beta.6',
+        last_modified: '2026-08-24T00:00:00.000Z',
         cache_ttl_seconds: 300,
         notifications: {
           supported: true,
@@ -880,10 +881,12 @@ function projectTenantCapabilities(
       const creative = structured.creative && typeof structured.creative === 'object'
         ? structured.creative
         : {};
+      const supportedFormats = supportedCanonicalFormatsCapability();
       structured.creative = {
         ...creative,
         bills_through_adcp: false,
-        supported_formats: supportedCanonicalFormatsCapability(),
+        supported_formats: supportedFormats,
+        preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
       };
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
