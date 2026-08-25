@@ -635,3 +635,15 @@ Update `server/src/addie/prompts.ts`:
 - Include the testing sequence (comply → RFP → IO)
 - Emphasize that `publisher_response` is the highest-value input for RFP testing
 - Note that `compare_media_kit` is deprecated in favor of these tools
+
+## Cadence-gate check (normative hook)
+
+The reporting-cadence rule in `optimization-reporting.mdx` places a MUST on buyers: no mid-flight optimization decisions against metrics whose declared cadence is `quarterly` or `post_campaign`. Sellers have nothing to attest here — the enforcement surface is buyer-artifact grading.
+
+When a graded buyer artifact records optimization actions (budget reallocation, bid changes, pacing adjustments justified by delivered metrics), the grader checks each cited metric against the product's `reporting_capabilities.available_reporting_frequencies`:
+
+- Cited metric's product declares only `quarterly` and/or `post_campaign` → **fail** (the normative MUST NOT).
+- Cited metric's product declares `weekly` and the optimization grain is finer than weekly → **advisory**.
+- No `available_reporting_frequencies` declared → no finding (the gate needs a declaration to gate on).
+
+Deterministic, no LLM: the check is a join between the artifact's optimization-action records and the product catalog's declared cadences.
