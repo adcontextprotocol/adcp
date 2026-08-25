@@ -60,7 +60,9 @@ import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.
 import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
 import {
   getShadowReplayCaptureSummary,
+  getShadowReplayFunnelSummary,
   getShadowReplayGenerationSummary,
+  getShadowReplayJudgmentSummary,
 } from "../addie/jobs/shadow-replay-trace.js";
 
 const logger = createLogger("addie-admin-routes");
@@ -570,9 +572,11 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 7) {
         return res.status(400).json({ error: 'days must be an integer from 1 to 7' });
       }
-      const [outcomes, generationOutcomes] = await Promise.all([
+      const [outcomes, generationOutcomes, judgmentOutcomes, funnel] = await Promise.all([
         getShadowReplayCaptureSummary(parsedDays),
         getShadowReplayGenerationSummary(parsedDays),
+        getShadowReplayJudgmentSummary(parsedDays),
+        getShadowReplayFunnelSummary(parsedDays),
       ]);
       res.json({
         days: parsedDays,
@@ -590,6 +594,19 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
           ),
           outcomes: generationOutcomes,
         },
+        judgments: {
+          total: judgmentOutcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+          input_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.input_tokens,
+            0,
+          ),
+          output_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.output_tokens,
+            0,
+          ),
+          outcomes: judgmentOutcomes,
+        },
+        funnel,
       });
     } catch (error) {
       logger.error(

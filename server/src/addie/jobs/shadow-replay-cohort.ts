@@ -19,6 +19,8 @@ interface CohortEnvironment {
   SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED?: string;
   SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS?: string;
   SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS?: string;
 }
 
 export const MAX_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT = 100;
@@ -35,6 +37,17 @@ export type OfficialDocsReplayActivationReason =
 export interface OfficialDocsReplayActivationDecision {
   enabled: boolean;
   reason: OfficialDocsReplayActivationReason;
+  dailyLimit: number;
+}
+
+export type OfficialDocsJudgeActivationReason =
+  | OfficialDocsReplayActivationReason
+  | 'judge_disabled'
+  | 'judge_channel_not_allowlisted';
+
+export interface OfficialDocsJudgeActivationDecision {
+  enabled: boolean;
+  reason: OfficialDocsJudgeActivationReason;
   dailyLimit: number;
 }
 
@@ -66,6 +79,15 @@ function allowlistedChannels(env: CohortEnvironment): Set<string> {
 function generationAllowlistedChannels(env: CohortEnvironment): Set<string> {
   return new Set(
     (env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function judgeAllowlistedChannels(env: CohortEnvironment): Set<string> {
+  return new Set(
+    (env.SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS ?? '')
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean),
@@ -121,6 +143,28 @@ export function selectOfficialDocsReplayActivation(
   const dailyLimit = replayDailyLimit(env);
   if (dailyLimit === 0) return disabled('daily_limit_invalid');
   return { enabled: true, reason: 'enabled', dailyLimit };
+}
+
+/**
+ * Judgment has its own default-off rollout boundary. It can only narrow an
+ * already eligible generation cohort and always inherits that cohort's quota.
+ */
+export function selectOfficialDocsJudgeActivation(
+  input: {
+    channelId: string;
+    plan: ProfiledChannelRespondPlan;
+  },
+  env: CohortEnvironment = process.env,
+): OfficialDocsJudgeActivationDecision {
+  const replay = selectOfficialDocsReplayActivation(input, env);
+  if (!replay.enabled) return replay;
+  if (env.SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED !== 'true') {
+    return { enabled: false, reason: 'judge_disabled', dailyLimit: 0 };
+  }
+  if (!judgeAllowlistedChannels(env).has(input.channelId)) {
+    return { enabled: false, reason: 'judge_channel_not_allowlisted', dailyLimit: 0 };
+  }
+  return { enabled: true, reason: 'enabled', dailyLimit: replay.dailyLimit };
 }
 
 export function normalizeReplayableSiResult(
