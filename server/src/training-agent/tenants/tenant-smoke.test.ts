@@ -433,6 +433,9 @@ describe('tenant routing smoke', () => {
             adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
             experimental_features?: string[];
             specialisms?: string[];
+            media_buy?: {
+              audience_targeting?: { supported_activation_methods?: Array<Record<string, unknown>> };
+            };
           } };
         };
         const capabilities = response.result?.structuredContent;
@@ -440,6 +443,13 @@ describe('tenant routing smoke', () => {
           tasks.map(task => ({ task, modes: ['signed_context'] })),
         );
         expect(capabilities?.experimental_features).toContain('governance.campaign');
+        if (tenant === 'sales') {
+          expect(capabilities?.experimental_features).toContain('media_buy.audience_activation');
+          expect(capabilities?.media_buy?.audience_targeting?.supported_activation_methods).toEqual([
+            { pattern: 'sync_audiences' },
+            { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+          ]);
+        }
         if (tenant === 'creative-builder') {
           expect(capabilities?.specialisms).toContain('creative-transformers');
         }

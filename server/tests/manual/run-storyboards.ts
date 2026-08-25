@@ -114,8 +114,15 @@ const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
-// version for schema selection and override only the request envelope.
-const wireAdcpVersion = isThreeZeroCompatRun ? '3.0' : undefined;
+// version for schema selection and override only the request envelope. Source
+// runs also pin the current wire release: capability discovery must describe
+// the surface being graded instead of falling back to the agent's legacy 3.0
+// unpinned default.
+const wireAdcpVersion = isThreeZeroCompatRun
+  ? '3.0'
+  : releasedComplianceVersion === undefined
+    ? '3.2-beta.6'
+    : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -307,12 +314,7 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
   ],
 ]);
 
-const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
-  [
-    'media_buy_seller/targeting_aware_discovery',
-    'adcontextprotocol/adcp#6199: this 3.2 compliance contract is schema- and path-validated now, but the training-agent runtime must remain unimplemented until published 3.2 SDK types expose the targeting-aware discovery fields. Remove after #6199 lands.',
-  ],
-]);
+const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
 
 /**
  * Per-step skip list. Entries are `{storyboard_id}/{step_id}` keys mapped to a

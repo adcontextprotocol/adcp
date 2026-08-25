@@ -47,11 +47,23 @@ type TrainingProduct = Omit<Product,
   installments?: Product['installments'];
   exclusivity?: 'exclusive' | 'category';
   collection_targeting_allowed?: boolean;
+  audience_activation?: {
+    methods: Array<Record<string, unknown>>;
+    preferred_method?: Record<string, unknown>;
+    notes?: string;
+  };
 };
 import { PUBLISHERS } from './publishers.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
 import { createLogger } from '../logger.js';
+
+export const TRAINING_AUDIENCE_ACTIVATION_METHODS = [{
+  pattern: 'sync_audiences',
+}, {
+  pattern: 'dataset_query',
+  vendor: { domain: 'data-cloud.example' },
+}] as const;
 
 const logger = createLogger('training-agent-catalog');
 
@@ -811,6 +823,11 @@ function buildProduct(
         vendor_metrics: pub.vendorMetrics,
       }),
     } as NonNullable<Product['reporting_capabilities']>,
+    audience_activation: {
+      methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS) as unknown as Array<Record<string, unknown>>,
+      preferred_method: { pattern: 'sync_audiences' },
+      notes: 'Inline AdCP sync is preferred; dataset sharing requires bilateral account setup.',
+    },
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
     // Vendor-metric optimization is a publisher/inventory capability, not

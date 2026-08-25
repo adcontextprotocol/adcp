@@ -1758,6 +1758,39 @@ describe('createTrainingAgentServer', () => {
     expect(mediaBuy.portfolio).toBeDefined();
   });
 
+  it('advertises audience activation discovery only on the 3.2 sales surface', async () => {
+    const currentServer = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: CURRENT_ADCP_VERSION,
+    });
+    const { result: currentResult } = await simulateCallTool(
+      currentServer,
+      'get_adcp_capabilities',
+      { adcp_version: CURRENT_ADCP_VERSION },
+    );
+    const currentCaps = currentResult as Record<string, any>;
+    expect(currentCaps.experimental_features).toContain('media_buy.audience_activation');
+    expect(currentCaps.media_buy.audience_targeting.supported_activation_methods).toEqual([
+      { pattern: 'sync_audiences' },
+      { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+    ]);
+
+    const legacyServer = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.0',
+    });
+    const { result: legacyResult } = await simulateCallTool(
+      legacyServer,
+      'get_adcp_capabilities',
+      { adcp_version: '3.0' },
+    );
+    const legacyCaps = legacyResult as Record<string, any>;
+    expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.audience_activation');
+    expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
+  });
+
   it('keeps v6 sales vendor_metric_optimization capabilities aligned with legacy discovery', () => {
     const platform = new TrainingSalesPlatform();
     expect((platform.capabilities as Record<string, unknown>).vendor_metric_optimization).toEqual({
@@ -2148,6 +2181,113 @@ describe('get_products handler', () => {
     for (const p of products) {
       expect((p.channels as string[]).includes('ctv')).toBe(true);
     }
+  });
+
+  it('filters 3.2 products by declared audience activation methods and preserves legacy ignore semantics', async () => {
+    const account = {
+      brand: { domain: 'audience-activation-filter.example' },
+      operator: 'pinnacle-agency.example',
+    };
+    const products = [{
+      productId: 'audience_activation_dataset',
+      activation: {
+        methods: [
+          { pattern: 'sync_audiences' },
+          { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+        ],
+        preferred_method: { pattern: 'sync_audiences' },
+      },
+    }, {
+      productId: 'audience_activation_platform',
+      activation: {
+        methods: [{
+          pattern: 'platform_distribution',
+          vendor: { domain: 'activation-hub.example' },
+          destination_ref: 'seat_training_42',
+        }],
+      },
+    }, {
+      productId: 'audience_activation_undeclared',
+      activation: undefined,
+    }];
+    const currentServer = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: CURRENT_ADCP_VERSION,
+    });
+    for (const product of products) {
+      const seeded = await simulateCallTool(currentServer, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: product.productId,
+          fixture: {
+            channels: ['retail_media'],
+            delivery_type: 'guaranteed',
+            ...(product.activation && { audience_activation: product.activation }),
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+      const priced = await simulateCallTool(currentServer, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: product.productId,
+          pricing_option_id: `${product.productId}_cpm`,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 12 },
+        },
+      });
+      expect(priced.result.success).toBe(true);
+    }
+
+    const discover = async (
+      server: ReturnType<typeof createTrainingAgentServer>,
+      method: Record<string, unknown>,
+      adcpVersion = CURRENT_ADCP_VERSION,
+    ) => {
+      const { result } = await simulateCallTool(server, 'get_products', {
+        adcp_version: adcpVersion,
+        account,
+        buying_mode: 'wholesale',
+        filters: {
+          pricing_currencies: ['USD'],
+          audience_activation_methods: [method],
+        },
+      });
+      return result.products as Array<Record<string, any>>;
+    };
+
+    expect(await discover(currentServer, {
+      pattern: 'dataset_query',
+      vendor: { domain: 'data-cloud.example' },
+    })).toEqual([expect.objectContaining({ product_id: 'audience_activation_dataset' })]);
+    expect(await discover(currentServer, {
+      pattern: 'platform_distribution',
+      vendor: { domain: 'wrong-vendor.example' },
+    })).toEqual([]);
+    expect(await discover(currentServer, {
+      pattern: 'platform_distribution',
+      vendor: { domain: 'activation-hub.example' },
+    })).toEqual([expect.objectContaining({ product_id: 'audience_activation_platform' })]);
+    expect(await discover(currentServer, { pattern: 'sync_audiences' }))
+      .toEqual([expect.objectContaining({ product_id: 'audience_activation_dataset' })]);
+
+    const legacyServer = createTrainingAgentServer({
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.0',
+    });
+    const legacyProducts = await discover(legacyServer, {
+      pattern: 'platform_distribution',
+      vendor: { domain: 'wrong-vendor.example' },
+    }, '3.0');
+    expect(legacyProducts.map(product => product.product_id).sort()).toEqual(
+      products.map(product => product.productId).sort(),
+    );
+    expect(legacyProducts.every(product => product.audience_activation === undefined)).toBe(true);
   });
 
   it('filters products by canonical format kind', async () => {
@@ -13939,6 +14079,112 @@ describe('get_media_buy_delivery handler', () => {
     expect(totals).toMatchObject({ impressions: 5000, clicks: 50, spend: 250 });
   });
 
+  it('honors 3.2 metric narrowing and negotiated format reporting', async () => {
+    const account = {
+      brand: { domain: 'advanced-reporting.example' },
+      operator: 'advanced-reporting.example',
+      sandbox: true,
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'advanced_reporting_training_product';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['olv'],
+          delivery_type: 'guaranteed',
+          format_options: [{
+            format_option_id: 'advanced_image',
+            format_kind: 'image',
+            params: { width: 300, height: 250 },
+          }, {
+            format_option_id: 'advanced_video',
+            format_kind: 'video_hosted',
+            params: { duration_ms_exact: 15_000 },
+          }],
+          reporting_capabilities: {
+            available_reporting_frequencies: ['daily'],
+            expected_delay_minutes: 0,
+            timezone: 'UTC',
+            supports_webhooks: false,
+            available_metrics: ['impressions', 'spend', 'clicks', 'time_based_views'],
+            supports_format_breakdown: true,
+            date_range_support: 'date_range',
+          },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: 'advanced_reporting_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: discovered } = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'wholesale',
+      filters: { channels: ['olv'], required_metrics: ['time_based_views'] },
+    });
+    expect((discovered.products as Array<Record<string, unknown>>).map(product => product.product_id)).toEqual([productId]);
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      idempotency_key: `advanced-reporting-${randomUUID()}`,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: 'advanced_reporting_cpm',
+        budget: 1_000,
+      }],
+    });
+    expect(created.errors, JSON.stringify(created)).toBeUndefined();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: created.media_buy_id,
+        impressions: 1_001,
+        clicks: 101,
+        reported_spend: { amount: 100, currency: 'USD' },
+      },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_ids: [created.media_buy_id],
+      requested_metrics: ['time_based_views'],
+      reporting_dimensions: {
+        format: { limit: 1, sort_by: 'impressions', sort_direction: 'asc' },
+      },
+    });
+    expect(result.errors, JSON.stringify(result)).toBeUndefined();
+    const delivery = (result.media_buy_deliveries as Array<Record<string, any>>)[0]!;
+    expect(delivery.totals).toMatchObject({
+      impressions: 1_001,
+      spend: 100,
+      time_based_views: [
+        { threshold_seconds: 2, basis: 'play_time', views: 801 },
+        { threshold_seconds: 6, basis: 'play_time', views: 601 },
+      ],
+    });
+    expect(delivery.totals.clicks).toBeUndefined();
+    expect(delivery.by_package[0]).toMatchObject({
+      impressions: 1_001,
+      spend: 100,
+      by_format: [{ format_kind: 'video_hosted', impressions: 500, spend: 50 }],
+      by_format_truncated: true,
+      by_format_sorted_by: 'impressions',
+      by_format_sort_direction: 'asc',
+    });
+    expect(delivery.by_package[0].clicks).toBeUndefined();
+    expect(delivery.by_package[0].by_format[0].clicks).toBeUndefined();
+  });
+
   it('computes cost_per_acquisition when simulate_delivery injects conversions and spend', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -17605,6 +17851,199 @@ describe('proposal lifecycle', () => {
       expect(concurrentPurchase.success, concurrentPurchase.error).toBe(true);
       expect(concurrentPurchase.data).toMatchObject({ status: 'completed' });
     }
+  });
+
+  it('resolves 3.2 discovery targeting through configured-product purchase', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'targeting_resolution_training_product';
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          overlay_support: {
+            geo_countries: { max_values_per_package: 1 },
+            browser: { families: ['chrome', 'safari'] },
+            demographics: { age: true },
+          },
+          demographic_targeting: {
+            age: {
+              execution_modes: ['enumerated_intervals'],
+              unknown_handling: 'always_excluded',
+              intervals: [
+                { interval_id: 'age_18_24', age: { min: 18, max: 24, include_unknown: false } },
+                { interval_id: 'age_25_34', age: { min: 25, max: 34, include_unknown: false } },
+                { interval_id: 'age_35_44', age: { min: 35, max: 44, include_unknown: false } },
+              ],
+            },
+          },
+          browser_inventory: {
+            forecastable_families: ['chrome'],
+            unavailable_families: ['safari'],
+          },
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+    const pricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: 'targeting_resolution_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    expect(pricing.result.success).toBe(true);
+
+    const conflicting = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'brief',
+      brief: 'Display inventory',
+      filters: { channels: ['display'], countries: ['CA'] },
+      targeting_overlay: { geo_countries: ['US'] },
+    });
+    expect(conflicting).toMatchObject({
+      isError: true,
+      result: { code: 'INVALID_REQUEST', field: 'filters.countries' },
+    });
+
+    const inferred = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'brief',
+      brief: 'Display. Hard requirements: deliver only in the US and only to people ages 18 through 44.',
+      filters: { channels: ['display'], pricing_currencies: ['USD'] },
+    });
+    expect(inferred.isError, JSON.stringify(inferred.result)).toBeFalsy();
+    expect(inferred.result).toMatchObject({
+      targeting_resolution: {
+        brief_targeting: {
+          geo_countries: ['US'],
+          demographics: { age: { min: 18, max: 44, include_unknown: false } },
+        },
+      },
+      products: [{ is_custom: true, forecast: expect.any(Object) }],
+    });
+
+    const modified = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'brief',
+      brief: 'Display for adults',
+      filters: { channels: ['display'], pricing_currencies: ['USD'] },
+      targeting_overlay: {
+        demographics: { age: { min: 21, max: 35, include_unknown: false } },
+        browser: ['chrome', 'safari'],
+      },
+    });
+    expect(modified.isError, JSON.stringify(modified.result)).toBeFalsy();
+    const configured = (modified.result.products as Array<Record<string, any>>)[0]!;
+    expect(configured).toMatchObject({
+      product_id: expect.stringMatching(/^configured_/),
+      targeting_resolution: {
+        modifications: [
+          { operation: 'replace', path: '/demographics/age', applied: { min: 25, max: 34 } },
+          { operation: 'remove_values', path: '/browser', values: ['safari'] },
+        ],
+      },
+    });
+
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      idempotency_key: `targeting-resolution-${randomUUID()}`,
+      ...futureFlight(),
+      packages: [{
+        product_id: configured.product_id,
+        pricing_option_id: 'targeting_resolution_cpm',
+        budget: 1_000,
+      }],
+    });
+    expect(created.isError, JSON.stringify(created.result)).toBeFalsy();
+    expect(created.result).toMatchObject({
+      packages: [{
+        targeting_overlay: {
+          demographics: { age: { min: 25, max: 34, include_unknown: false } },
+          browser: ['chrome'],
+        },
+        targeting_resolution: { demographics: { equivalent: true } },
+      }],
+    });
+  });
+
+  it('matches fixed placement inventory only on exact set equality', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'fixed_placement_training_product';
+    const placements = [
+      { kind: 'publisher_ref', publisher_domain: 'publisher.example', placement_id: 'feed', mode: 'included' },
+      { kind: 'publisher_ref', publisher_domain: 'publisher.example', placement_id: 'video', mode: 'included' },
+    ];
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: { product_id: productId, fixture: { channels: ['ctv'], delivery_type: 'non_guaranteed', placements } },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: 'fixed_placement_cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const request = (placementRefs: Array<Record<string, string>>) => simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'wholesale',
+      filters: { channels: ['ctv'], pricing_currencies: ['USD'] },
+      targeting_overlay: { placement_selection: { mode: 'selected', placement_refs: placementRefs } },
+    });
+    const partial = await request([{ publisher_domain: 'publisher.example', placement_id: 'feed' }]);
+    expect(partial.result.products).toEqual([]);
+    const exact = await request(placements.map(({ publisher_domain, placement_id }) => ({
+      publisher_domain,
+      placement_id,
+    })));
+    expect(exact.result).toMatchObject({ products: [{ product_id: productId }] });
+
+    const placementRefs = placements.map(({ publisher_domain, placement_id }) => ({
+      publisher_domain,
+      placement_id,
+    }));
+    const created = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      idempotency_key: `fixed-placement-${randomUUID()}`,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: 'fixed_placement_cpm',
+        budget: 1_000,
+        targeting_overlay: {
+          placement_selection: { mode: 'selected', placement_refs: placementRefs },
+        },
+      }],
+    });
+    expect(created.isError, JSON.stringify(created.result)).toBeFalsy();
+    const createdPackage = (created.result.packages as Array<Record<string, unknown>>)[0]!;
+    const reordered = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.result.media_buy_id,
+      revision: created.result.revision,
+      packages: [{
+        package_id: createdPackage.package_id,
+        targeting_overlay: {
+          placement_selection: { mode: 'selected', placement_refs: placementRefs.toReversed() },
+        },
+      }],
+    });
+    expect(reordered.isError, JSON.stringify(reordered.result)).toBeFalsy();
   });
 
   it('returns a correctable error when configured-product capacity would truncate discovery', async () => {
