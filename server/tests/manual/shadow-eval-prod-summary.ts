@@ -95,6 +95,37 @@ interface CaptureSummary {
       output_tokens: number;
     }>;
   };
+  judgments?: {
+    total: number;
+    input_tokens: number;
+    output_tokens: number;
+    outcomes: Array<{
+      status: string;
+      reason: string;
+      count: number;
+      input_tokens: number;
+      output_tokens: number;
+    }>;
+  };
+  funnel?: {
+    opportunities: number;
+    traces_captured: number;
+    parity_verified: number;
+    capture_verified: number;
+    capture_pending: number;
+    capture_skipped: number;
+    capture_error: number;
+    generation_claimed: number;
+    generation_succeeded: number;
+    generation_blocked: number;
+    generation_error: number;
+    generation_running: number;
+    judgment_judged: number;
+    judgment_deterministic_failure: number;
+    judgment_skipped: number;
+    judgment_error: number;
+    judgment_missing: number;
+  };
 }
 
 async function fetchCaptureSummary(baseUrl: string, apiKey: string): Promise<CaptureSummary> {
@@ -322,6 +353,38 @@ async function main() {
           + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
         );
       }
+    }
+    if (captureSummary.judgments) {
+      console.log(
+        `Judgment outcomes: ${captureSummary.judgments.total} `
+        + `(${captureSummary.judgments.input_tokens} input / `
+        + `${captureSummary.judgments.output_tokens} output tokens)`,
+      );
+      for (const outcome of captureSummary.judgments.outcomes) {
+        console.log(
+          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+        );
+      }
+    }
+    if (captureSummary.funnel) {
+      const funnel = captureSummary.funnel;
+      console.log(
+        'Replay funnel: '
+        + `${funnel.opportunities} opportunities → ${funnel.traces_captured} signed → `
+        + `${funnel.parity_verified} parity verified → `
+        + `${funnel.generation_claimed} claimed → ${funnel.generation_succeeded} generated → `
+        + `${funnel.judgment_judged} judged`,
+      );
+      console.log(
+        '  exclusions/failures: '
+        + `${funnel.capture_pending} capture pending, ${funnel.capture_skipped} capture skipped, `
+        + `${funnel.capture_error} capture error, ${funnel.generation_blocked} generation blocked, `
+        + `${funnel.generation_error} generation error, ${funnel.generation_running} generation running, `
+        + `${funnel.judgment_deterministic_failure} deterministic failure, `
+        + `${funnel.judgment_skipped} judgment skipped, ${funnel.judgment_error} judgment error, `
+        + `${funnel.judgment_missing} judgment missing`,
+      );
     }
   } catch (error) {
     console.warn(
