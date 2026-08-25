@@ -16,6 +16,7 @@ import {
   type UserOrgAuthorizationMembership,
   type OrgAuthorizationSource,
 } from "../utils/resolve-user-org-authorization.js";
+import { captureEvent } from "../utils/posthog.js";
 
 const logger = createLogger("organization-authorization-canary");
 const RUNTIME_SETTING_CACHE_TTL_MS = 5_000;
@@ -44,6 +45,26 @@ export type OrganizationAuthorizationCanaryDecision =
       status: "unavailable";
       unavailableSources: Array<OrgAuthorizationSource | "runtime_config">;
     };
+
+/**
+ * Emit one identifier-free record for an enforced canary decision. The
+ * boundary is a fixed server enum and unavailable sources are fixed resolver
+ * labels; never include the principal, membership, or organization ID.
+ */
+export function recordOrganizationAuthorizationCanaryDecision(
+  boundary: OrganizationAuthorizationBoundary,
+  decision: Exclude<OrganizationAuthorizationCanaryDecision, { enforced: false }>
+): void {
+  const properties = {
+    boundary,
+    decision: decision.status,
+    unavailable_sources:
+      decision.status === "unavailable" ? decision.unavailableSources : undefined,
+  };
+
+  captureEvent("server-metrics", "org_authorization_canary", properties);
+  logger.info(properties, "organization authorization canary decision");
+}
 
 /**
  * The environment values are a deployment-time ceiling: neither the audited
