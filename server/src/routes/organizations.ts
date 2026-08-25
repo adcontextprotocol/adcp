@@ -51,6 +51,7 @@ import { getAuthorizationEnforcementWorkos } from "../auth/workos-client.js";
 import {
   evaluateOrganizationAuthorizationCanary,
   ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+  recordOrganizationAuthorizationCanaryDecision,
 } from "../middleware/organization-authorization-canary.js";
 
 const logger = createLogger("organization-routes");
@@ -3502,13 +3503,10 @@ export function createOrganizationsRouter(): Router {
       });
 
       if (canaryDecision.enforced) {
-        logger.info({
-          boundary: ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ,
-          decision: canaryDecision.status,
-          unavailable_sources: canaryDecision.status === 'unavailable'
-            ? canaryDecision.unavailableSources
-            : undefined,
-        }, 'organization authorization canary decision');
+        recordOrganizationAuthorizationCanaryDecision(
+          ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ,
+          canaryDecision,
+        );
         if (canaryDecision.status === 'unavailable') {
           return res.status(503).json({
             error: 'Authorization temporarily unavailable',
