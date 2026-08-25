@@ -224,3 +224,14 @@ export class UnsupportedModelCapabilityError extends Error {
     this.name = 'UnsupportedModelCapabilityError';
   }
 }
+
+export class UnexpectedModelIdentityError extends Error {
+  constructor(
+    readonly provider: ModelProviderId,
+    readonly expectedModel: string,
+    readonly actualModel: string,
+  ) {
+    super(`${provider} returned an unexpected model identity`);
+    this.name = 'UnexpectedModelIdentityError';
+  }
+}
