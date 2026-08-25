@@ -173,7 +173,8 @@ import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } 
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
-// DIRECTORY_TOOLS registered via registerBaselineTools()
+import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
+import { resolveSlackDirectoryContext, type SlackDirectoryAudience } from './directory-access.js';
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
@@ -1013,7 +1014,8 @@ async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId: string,
   threadId?: string,
-  threadContext?: ThreadContext | null
+  threadContext?: ThreadContext | null,
+  directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const trainingModuleContext: { moduleId?: string } = {
@@ -1023,6 +1025,19 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Shadow the globally registered anonymous directory handlers with a
+  // caller-scoped view. API-access members may discover members_only agents;
+  // Explorer and unauthenticated callers remain public-only.
+  const directoryContext = resolveSlackDirectoryContext(
+    memberContext,
+    directoryAudience,
+  );
+  const directoryHandlers = createDirectoryToolHandlers(directoryContext);
+  allTools.push(...DIRECTORY_TOOLS);
+  for (const [name, handler] of directoryHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   const slackKnowledge = createSlackKnowledgeRequestTools(
     slackUserId
@@ -1334,7 +1349,8 @@ async function selectRoutedToolsForSlackResponse(
     memberContext,
     slackUserId,
     threadId,
-    threadContext
+    threadContext,
+    source,
   );
 
   if (!addieRouter) {

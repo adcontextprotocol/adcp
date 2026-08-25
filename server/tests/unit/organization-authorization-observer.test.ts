@@ -3,17 +3,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   listOrganizationMemberships,
   captureEvent,
+  loggerInfo,
 } = vi.hoisted(() => ({
   listOrganizationMemberships: vi.fn(),
   captureEvent: vi.fn(),
+  loggerInfo: vi.fn(),
 }));
 
 vi.mock('../../src/auth/workos-client.js', () => ({
   getAuthorizationObserverWorkos: () => ({ userManagement: { listOrganizationMemberships } }),
 }));
 vi.mock('../../src/utils/posthog.js', () => ({ captureEvent }));
+vi.mock('../../src/logger.js', () => ({
+  createLogger: () => ({ info: loggerInfo, warn: vi.fn() }),
+}));
 
 import {
+  authorizationRouteFamily,
   classifyAuthorizationObservation,
   observeLinkedCredentialOrganizationAuthorization,
   organizationSelectorFromRequest,
@@ -52,6 +58,13 @@ describe('organization authorization rollout observer', () => {
     )).toBe('both_allow_role_mismatch');
   });
 
+  it('reduces routes to a fixed non-identifying family', () => {
+    expect(authorizationRouteFamily('PATCH /api/organizations/org_secret')).toBe('organizations');
+    expect(authorizationRouteFamily('GET /api/org_secret/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/toString/private')).toBe('other');
+    expect(authorizationRouteFamily('GET /api/__proto__/private')).toBe('other');
+  });
+
   it('compares the canonical and authenticated credentials without exposing IDs', async () => {
     listOrganizationMemberships
       .mockResolvedValueOnce({
@@ -85,9 +98,21 @@ describe('organization authorization rollout observer', () => {
         explicit_organization: true,
       }),
     );
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('user_canonical');
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('user_authenticated');
-    expect(JSON.stringify(captureEvent.mock.calls)).not.toContain('org_selected');
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: 'legacy_allow_exact_deny',
+        route_family: 'other',
+        selector_source: 'query_org',
+        legacy_allowed: true,
+        exact_allowed: false,
+      }),
+      'org authorization shadow observation',
+    );
+    const telemetry = JSON.stringify([captureEvent.mock.calls, loggerInfo.mock.calls]);
+    expect(telemetry).not.toContain('user_canonical');
+    expect(telemetry).not.toContain('user_authenticated');
+    expect(telemetry).not.toContain('org_selected');
+    expect(JSON.stringify(loggerInfo.mock.calls)).not.toContain('POST /api/example');
   });
 
   it('records a missing selector without inferring or mutating organization state', async () => {
@@ -109,6 +134,13 @@ describe('organization authorization rollout observer', () => {
         selector_source: 'none',
         explicit_organization: false,
       }),
+    );
+    expect(loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decision: 'no_explicit_organization',
+        route_family: 'other',
+      }),
+      'org authorization shadow observation',
     );
   });
 

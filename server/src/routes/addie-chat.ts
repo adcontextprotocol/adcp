@@ -766,9 +766,10 @@ export async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
+  const allTools = [...MEMBER_TOOLS, ...DIRECTORY_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext),
+    ...createDirectoryToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext, trainingModuleContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),

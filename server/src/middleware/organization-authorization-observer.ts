@@ -83,6 +83,94 @@ type MembershipSummary = {
   role: string | null;
 };
 
+const SAFE_ROUTE_FAMILIES: Readonly<Record<string, string>> = Object.freeze({
+  adagents: 'adagents',
+  addie: 'addie',
+  admin: 'admin',
+  agents: 'agents',
+  agreement: 'agreement',
+  billing: 'billing',
+  brands: 'brands',
+  capabilities: 'capabilities',
+  certification: 'certification',
+  community: 'community',
+  companies: 'companies',
+  config: 'config',
+  conformance: 'conformance',
+  content: 'content',
+  crawler: 'crawler',
+  'creative-agent': 'creative-agent',
+  'dev-mode': 'dev-mode',
+  'discover-agent': 'discover-agent',
+  'email-preferences': 'email-preferences',
+  events: 'events',
+  invitations: 'invitations',
+  'join-requests': 'join-requests',
+  'manifest-refs': 'manifest-refs',
+  mcp: 'mcp',
+  me: 'me',
+  meetings: 'meetings',
+  members: 'members',
+  'network-health': 'network-health',
+  newsletter: 'newsletter',
+  notifications: 'notifications',
+  oauth: 'oauth',
+  organizations: 'organizations',
+  perspectives: 'perspectives',
+  policies: 'policies',
+  portraits: 'portraits',
+  properties: 'properties',
+  public: 'public',
+  registry: 'registry',
+  search: 'search',
+  si: 'si',
+  slack: 'slack',
+  stats: 'stats',
+  storyboards: 'storyboards',
+  'training-agent': 'training-agent',
+  v1: 'v1',
+  validate: 'validate',
+  'validate-publisher': 'validate-publisher',
+  webhooks: 'webhooks',
+  'working-groups': 'working-groups',
+});
+
+/**
+ * Reduce a normalized request route to a fixed, non-identifying API family.
+ * Dynamic or newly introduced top-level segments are deliberately reported as
+ * `other`; no user-controlled path value is ever copied into runtime logs.
+ */
+export function authorizationRouteFamily(route: string): string {
+  const match = /^\S+ \/api\/([^/?#\s]+)/.exec(route);
+  const segment = match?.[1] ?? '';
+  return Object.prototype.hasOwnProperty.call(SAFE_ROUTE_FAMILIES, segment)
+    ? SAFE_ROUTE_FAMILIES[segment]
+    : 'other';
+}
+
+function recordAuthorizationObservation(properties: Record<string, unknown>): void {
+  captureEvent('server-metrics', 'org_authorization_shadow', properties);
+
+  // Keep the independently queryable rollout log deliberately identifier-free.
+  // Route family comes from the fixed allowlist above; never copy route/path or
+  // any credential/organization values into this record. PostHog retains the
+  // richer route-level diagnostic event.
+  logger.info({
+    decision: properties.decision,
+    method: properties.method,
+    route_family: authorizationRouteFamily(
+      typeof properties.route === 'string' ? properties.route : '',
+    ),
+    response_status: properties.response_status,
+    selector_source: properties.selector_source,
+    explicit_organization: properties.explicit_organization,
+    legacy_allowed: properties.legacy_allowed,
+    exact_allowed: properties.exact_allowed,
+    legacy_role: properties.legacy_role,
+    exact_role: properties.exact_role,
+  }, 'org authorization shadow observation');
+}
+
 function summarizeMemberships(
   memberships: Array<{ organizationId: string; status?: string; role?: { slug?: string } | null }>,
   organizationId: string,
@@ -131,7 +219,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
     // This branch controls only which observe-only telemetry event is emitted;
     // it is not an authorization guard and never changes the response.
     if (!selector.organizationId) {
-      captureEvent('server-metrics', 'org_authorization_shadow', {
+      recordAuthorizationObservation({
         route,
         method: req.method,
         response_status: responseStatus,
@@ -144,7 +232,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
     }
 
     if (inFlightComparisons >= MAX_CONCURRENT_COMPARISONS) {
-      captureEvent('server-metrics', 'org_authorization_shadow', {
+      recordAuthorizationObservation({
         route,
         method: req.method,
         response_status: responseStatus,
@@ -172,7 +260,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
       const legacy = summarizeMemberships(legacyMemberships.data, selector.organizationId);
       const exact = summarizeMemberships(exactMemberships.data, selector.organizationId);
 
-      captureEvent('server-metrics', 'org_authorization_shadow', {
+      recordAuthorizationObservation({
         route,
         method: req.method,
         response_status: responseStatus,
@@ -193,7 +281,7 @@ export async function observeLinkedCredentialOrganizationAuthorization(
       { err, route, selectorSource: selector.source },
       'credential-scoped authorization shadow comparison failed',
     );
-    captureEvent('server-metrics', 'org_authorization_shadow', {
+    recordAuthorizationObservation({
       route,
       method: req.method,
       response_status: responseStatus,

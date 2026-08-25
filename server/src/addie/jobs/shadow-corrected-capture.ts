@@ -36,9 +36,14 @@ import { getThreadService } from '../thread-service.js';
 import { gradeShape } from '../testing/shape-grader.js';
 import {
   compareResponses,
-  resolveShadowModel,
+  getComparisonDisposition,
+  hasDeterministicShapeFailure,
   summarizeShapeReports,
 } from './shadow-evaluator.js';
+import {
+  buildShadowEvalProvenance,
+  resolveShadowJudgeModel,
+} from './shadow-eval-metadata.js';
 
 const logger = createLogger('shadow-corrected-capture');
 
@@ -53,6 +58,11 @@ export interface CorrectedCaptureResult {
 interface CandidateThread {
   thread_id: string;
   external_id: string;
+  message_count: number;
+  source_message_id: string | null;
+  source_answer_content: string | null;
+  source_answer_model: string | null;
+  source_config_version_id: number | null;
 }
 
 const SUBSTANTIVE_TEXT_MIN = 20;
@@ -75,19 +85,38 @@ const SUBSTANTIVE_TEXT_MIN = 20;
  */
 async function findCandidateThreads(limit: number): Promise<CandidateThread[]> {
   const result = await query<CandidateThread>(
-    `SELECT t.thread_id, t.external_id
+    `SELECT
+       t.thread_id,
+       t.external_id,
+       t.message_count,
+       source.message_id AS source_message_id,
+       source.content AS source_answer_content,
+       source.model AS source_answer_model,
+       source.config_version_id AS source_config_version_id
      FROM addie_threads t
+     JOIN LATERAL (
+       SELECT m.message_id, m.content, m.model, m.config_version_id
+       FROM addie_thread_messages m
+       WHERE m.thread_id = t.thread_id
+         AND m.role = 'assistant'
+         AND length(m.content) > $2
+         AND COALESCE(m.delivery_status, 'completed') = 'completed'
+       ORDER BY m.created_at DESC
+       LIMIT 1
+     ) source ON TRUE
      WHERE t.channel = 'slack'
        AND t.external_id LIKE '%:%'
        AND t.last_message_at < NOW() - INTERVAL '30 minutes'
        AND t.last_message_at > NOW() - INTERVAL '24 hours'
        AND (t.context->>'shadow_eval_status') IS NULL
-       AND EXISTS (
-         SELECT 1 FROM addie_thread_messages m
-         WHERE m.thread_id = t.thread_id
-           AND m.role = 'assistant'
-           AND length(m.content) > $2
-       )
+       AND COALESCE(
+         (t.context->>'shadow_eval_corrected_checked_message_count')::integer,
+         -1
+       ) < t.message_count
+       AND COALESCE(
+         (t.context->>'shadow_eval_corrected_retry_after')::timestamptz,
+         '-infinity'::timestamptz
+       ) <= NOW()
        AND EXISTS (
          SELECT 1 FROM addie_thread_messages m
          WHERE m.thread_id = t.thread_id
@@ -116,25 +145,45 @@ interface SlackThreadPayload {
  * Slack message timestamps are `epoch.sequence` strings — string
  * comparison is chronologically correct.
  */
-function extractKatiePattern(
+export function extractCorrectedAnswerPattern(
   messages: Array<{ user?: string; text?: string; bot_id?: string; ts: string }>,
+  expectedAddieResponse?: string | null,
 ): SlackThreadPayload | null {
   if (messages.length < 2) return null;
 
   const sorted = [...messages].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 
-  // Question = first substantive non-bot message.
-  const question = sorted.find(
-    (m) => !m.bot_id && m.text && m.text.length > SUBSTANTIVE_TEXT_MIN,
+  const botMessages = sorted.filter(
+    (m) => m.bot_id && m.text && m.text.length > SUBSTANTIVE_TEXT_MIN,
+  );
+  const normalizedExpected = expectedAddieResponse
+    ? normalizeSlackMessageText(expectedAddieResponse)
+    : null;
+  const addieResponse = normalizedExpected
+    ? [...botMessages].reverse().find(
+      (m) => normalizeSlackMessageText(m.text!) === normalizedExpected,
+    )
+    : new Set(botMessages.map((m) => m.bot_id)).size <= 1
+      ? botMessages[botMessages.length - 1]
+      : undefined;
+  if (!addieResponse?.text) return null;
+
+  // A later message from a different bot makes the following human reply
+  // ambiguous. Do not grade that bot under Addie's stored model/config.
+  if (botMessages.some(
+    (m) => m.ts > addieResponse.ts && m.bot_id !== addieResponse.bot_id,
+  )) return null;
+
+  // Anchor the evaluation to the substantive human turn immediately before
+  // the attributable answer, not the thread's first question. Multi-turn
+  // threads can contain several unrelated Q/A pairs.
+  const question = [...sorted].reverse().find(
+    (m) => !m.bot_id
+      && m.text
+      && m.text.length > SUBSTANTIVE_TEXT_MIN
+      && m.ts < addieResponse.ts,
   );
   if (!question?.text) return null;
-
-  // Addie's response = the LAST bot message in the thread (so we capture her
-  // most recent answer, not a stale one if she posted twice).
-  const addieResponse = [...sorted]
-    .reverse()
-    .find((m) => m.bot_id && m.text && m.text.length > SUBSTANTIVE_TEXT_MIN);
-  if (!addieResponse?.text) return null;
 
   // Human follow-ups = substantive non-bot messages strictly after Addie's
   // response. If none, this isn't a corrected pattern.
@@ -156,9 +205,14 @@ function extractKatiePattern(
   };
 }
 
+function normalizeSlackMessageText(text: string): string {
+  return text
+    .replace(/<((?:https?|mailto):[^>|]+)(?:\|[^>]+)?>/g, '$1')
+    .trim();
+}
+
 async function processCandidate(
   client: Anthropic,
-  judgeModel: string,
   thread: CandidateThread,
   result: CorrectedCaptureResult,
 ): Promise<void> {
@@ -171,6 +225,11 @@ async function processCandidate(
   const channelId = sepIdx > 0 ? thread.external_id.slice(0, sepIdx) : '';
   const threadTs = sepIdx > 0 ? thread.external_id.slice(sepIdx + 1) : '';
   if (!channelId || !threadTs) {
+    await threadService.patchThreadContext(thread.thread_id, {
+      shadow_eval_corrected_checked_message_count: thread.message_count,
+      shadow_eval_corrected_checked_at: new Date().toISOString(),
+      shadow_eval_corrected_skip_reason: 'invalid_external_id',
+    });
     result.skipped++;
     return;
   }
@@ -183,17 +242,33 @@ async function processCandidate(
       { error, threadId: thread.thread_id },
       'Corrected capture: Could not fetch Slack thread',
     );
+    await threadService.patchThreadContext(thread.thread_id, {
+      shadow_eval_corrected_retry_after: new Date(Date.now() + 5 * 60_000).toISOString(),
+      shadow_eval_corrected_error: 'slack_fetch_failed',
+    });
     result.errors++;
     return;
   }
 
-  const extracted = extractKatiePattern(slackMessages);
+  const extracted = extractCorrectedAnswerPattern(
+    slackMessages,
+    thread.source_answer_content,
+  );
   if (!extracted) {
+    await threadService.patchThreadContext(thread.thread_id, {
+      shadow_eval_corrected_checked_message_count: thread.message_count,
+      shadow_eval_corrected_checked_at: new Date().toISOString(),
+      shadow_eval_corrected_skip_reason: 'no_attributable_follow_up',
+    });
     result.skipped++;
     return;
   }
 
-  const { question, addieResponse, humanResponses } = extracted;
+  const { question, humanResponses } = extracted;
+  // The persisted assistant message is the attributable production source:
+  // it carries the model/config/tool trace. Slack text is used only to detect
+  // the follow-up ordering pattern, with a fallback for legacy unmirrored rows.
+  const addieResponse = thread.source_answer_content || extracted.addieResponse;
 
   const addieShape = gradeShape(question, addieResponse);
   const longestHuman = humanResponses.reduce(
@@ -201,23 +276,41 @@ async function processCandidate(
     humanResponses[0],
   );
   const humanShape = gradeShape(question, longestHuman);
-  const shapeRegression =
-    addieShape.violationLabels.length > humanShape.violationLabels.length;
+  // Deterministic failures are absolute. A matching human violation does not
+  // make an Addie violation disappear; the human grade remains comparison
+  // metadata for analysis.
+  const shapeRegression = hasDeterministicShapeFailure(addieShape);
   const summarizedShape = summarizeShapeReports(addieShape, humanShape);
 
+  const judgeModel = resolveShadowJudgeModel(
+    thread.source_answer_model ? [thread.source_answer_model] : [],
+  );
   const comparison = await compareResponses(
     client,
     question,
     humanResponses,
     addieResponse,
     judgeModel,
+    'corrected_answer',
   );
+  const comparisonDisposition = getComparisonDisposition(comparison, judgeModel);
 
   await threadService.patchThreadContext(thread.thread_id, {
-    shadow_eval_status: 'complete',
+    shadow_eval_status: comparisonDisposition.status,
+    shadow_eval_type: 'corrected_answer',
     shadow_eval_source: 'addie_corrected_capture',
     shadow_eval_completed_at: new Date().toISOString(),
+    shadow_eval_provenance: buildShadowEvalProvenance({
+      evaluationType: 'corrected_answer',
+      sourceKind: 'production',
+      sourceModel: thread.source_answer_model,
+      sourceConfigVersionId: thread.source_config_version_id,
+      judgeModel: comparisonDisposition.executedJudgeModel,
+      toolMode: thread.source_message_id ? 'production_trace' : 'none',
+      traceOrFixtureId: thread.source_message_id,
+    }),
     shadow_eval_question: question.substring(0, 500),
+    shadow_eval_answer_response: addieResponse.substring(0, 2000),
     shadow_eval_shadow_response: addieResponse.substring(0, 2000),
     shadow_eval_human_response: humanResponses.join('\n---\n').substring(0, 2000),
     shadow_eval_result: comparison,
@@ -225,7 +318,12 @@ async function processCandidate(
   });
 
   const flagParts: string[] = [];
-  if (comparison.knowledge_gap) {
+  if (comparisonDisposition.skipped) {
+    result.skipped++;
+  } else if (!comparison.evaluation_valid) {
+    flagParts.push(`Corrected-capture evaluation invalid: ${comparison.evaluation_error}`);
+    result.errors++;
+  } else if (comparison.knowledge_gap) {
     flagParts.push(
       `Corrected-capture gap (${comparison.gap_severity}): ${comparison.gap_details}`,
     );
@@ -239,7 +337,7 @@ async function processCandidate(
     await threadService.flagThread(thread.thread_id, flagParts.join(' | '));
   }
 
-  result.evaluated++;
+  if (!comparisonDisposition.skipped) result.evaluated++;
   logger.info(
     {
       threadId: thread.thread_id,
@@ -283,11 +381,9 @@ export async function runAddieCorrectedCaptureJob(
   if (candidates.length === 0) return result;
 
   const client = new Anthropic({ apiKey });
-  const judgeModel = resolveShadowModel();
-
   for (const candidate of candidates) {
     try {
-      await processCandidate(client, judgeModel, candidate, result);
+      await processCandidate(client, candidate, result);
       // Pace the loop so a 20-thread batch doesn't burst Slack/Anthropic
       // simultaneously.
       await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -296,6 +392,12 @@ export async function runAddieCorrectedCaptureJob(
         { error, threadId: candidate.thread_id },
         'Corrected capture: Unhandled error processing candidate',
       );
+      try {
+        await getThreadService().patchThreadContext(candidate.thread_id, {
+          shadow_eval_corrected_retry_after: new Date(Date.now() + 5 * 60_000).toISOString(),
+          shadow_eval_corrected_error: 'unhandled_evaluation_error',
+        });
+      } catch { /* preserve the original job error */ }
       result.errors++;
     }
   }
@@ -305,4 +407,4 @@ export async function runAddieCorrectedCaptureJob(
 
 // Test-only export so the unit test can validate the pattern extractor
 // independent of Slack and Anthropic.
-export const __test_extractKatiePattern = extractKatiePattern;
+export const __test_extractKatiePattern = extractCorrectedAnswerPattern;

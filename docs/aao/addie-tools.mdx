@@ -246,25 +246,25 @@ Get search analytics for the user's member profile. Shows how many times their p
 
 ### `list_members`
 
-List AgenticAdvertising.org member organizations. Can filter by offerings (buyer_agent, sales_agent, creative_agent, signals_agent, si_agent, governance_agent, publisher, consulting), markets (North America, EMEA, APAC, LATAM, Global), or search term.
+List AgenticAdvertising.org member organizations visible to the caller. Public directory members are always returned; callers on an API-access tier also see organizations with members_only agents. Can filter by offerings, markets, or search term. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
 ### `get_member`
 
-Get detailed information about a specific AAO member by their slug identifier.
+Get detailed information about a specific AgenticAdvertising.org member by slug, including agents visible to the caller. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
 ### `list_agents`
 
-List all public AdCP agents from member organizations. Can filter by type: creative (asset generation), signals (audience data), sales (media buying), governance (property lists and content standards), or si (sponsored intelligence/conversational commerce).
+List AdCP agents visible to the caller. Public agents are always returned; callers on an API-access tier also receive members_only agents. Private agents are never returned. Can filter by agent type.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
 ### `get_agent`
 
-Get details for a specific agent by its URL.
+Get details for a specific agent by URL when it is visible to the caller. Public agents are visible to everyone; members_only agents require an API-access tier; private agents are not returned.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
