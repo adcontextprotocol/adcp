@@ -780,16 +780,31 @@ describe('comply_test_controller', () => {
         'controller_fixture_exact_id',
       ]);
 
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: fixtureAccount,
+        params: {
+          creative_id: 'pagination_integrity_creative_1',
+          fixture: { status: 'approved', format_kind: 'image' },
+        },
+      });
+
       const compatServer = createTrainingAgentServer({
         mode: 'open',
         principal: 'static:public',
         storyboardCompat: { version: '3.0' },
       });
       const { result: frozenCompatLibrary } = await simulateCallTool(compatServer, 'list_creatives', {
-        account: { account_id: 'acct_runner_generated' },
+        account: { account_id: 'acct_pagination_integrity' },
       });
       expect((frozenCompatLibrary as any).creatives.map((creative: any) => creative.creative_id))
-        .toContain('controller_fixture_exact_id');
+        .toContain('pagination_integrity_creative_1');
+
+      const { result: arbitraryOpaqueLibrary } = await simulateCallTool(compatServer, 'list_creatives', {
+        account: { account_id: 'acct_runner_generated' },
+      });
+      expect((arbitraryOpaqueLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .not.toContain('pagination_integrity_creative_1');
 
       const { result: unrelatedLibrary } = await simulateCallTool(publicServer, 'list_creatives', {
         account: {

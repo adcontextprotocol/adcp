@@ -13722,6 +13722,13 @@ type CreativeListFilters = {
   asset_types?: string[];
 };
 
+const FROZEN_PAGINATION_ACCOUNT_ID = 'acct_pagination_integrity';
+const FROZEN_PAGINATION_CREATIVE_IDS = new Set([
+  'pagination_integrity_creative_1',
+  'pagination_integrity_creative_2',
+  'pagination_integrity_creative_3',
+]);
+
 function storedCreativeFormatRecord(creative: CreativeState): Record<string, unknown> {
   if (creative.formatKind) {
     return {
@@ -13826,18 +13833,22 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
     creatives = [...merged.values()];
   }
   const needsSeededFallback = creatives.length === 0
-    || Boolean(filterIds?.some(creativeId => !creatives.some(creative => creative.creativeId === creativeId)));
+    || Boolean(
+      req.account
+      && filterIds?.some(creativeId => !creatives.some(creative => creative.creativeId === creativeId)),
+    );
   if (needsSeededFallback && !req.include_webhook_activity) {
     // Controller-seeded creative storyboards can write under the test-kit
     // brand session while the list request keys by a runner-generated account.
     // Exact fixture IDs may cross that sandbox-only seam. The frozen 3.0 SDK
-    // also drops creative_ids while projecting this request, so its static,
-    // opaque-account path may read controller fixtures only. Ordinary account
-    // libraries still require an explicit matching account identity.
+    // also drops creative_ids while projecting the frozen pagination request,
+    // so only that scenario's static account alias and three fixture IDs cross
+    // without an account-ref match. Ordinary account libraries still require
+    // an explicit matching account identity.
     const requestedIds = new Set(filterIds ?? []);
-    const frozenOpaqueFixtureBridge = ctx.storyboardCompat?.version === '3.0'
+    const frozenPaginationFixtureBridge = ctx.storyboardCompat?.version === '3.0'
       && ctx.principal?.startsWith('static:')
-      && Boolean(req.account?.account_id)
+      && req.account?.account_id === FROZEN_PAGINATION_ACCOUNT_ID
       && requestedIds.size === 0;
     const seededCreativeVisible = (creative: CreativeState): boolean => {
       if (!req.account) return true;
@@ -13846,7 +13857,13 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       return Boolean(
         creative.controllerSeeded
         && ctx.principal?.startsWith('static:')
-        && (requestedIds.has(creative.creativeId) || frozenOpaqueFixtureBridge)
+        && (
+          requestedIds.has(creative.creativeId)
+          || (
+            frozenPaginationFixtureBridge
+            && FROZEN_PAGINATION_CREATIVE_IDS.has(creative.creativeId)
+          )
+        )
       );
     };
     const seededSession = await findSessionMatching(s => [...s.creatives.values()].some(creative => (
@@ -13886,8 +13903,9 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
           || (
             ctx.storyboardCompat?.version === '3.0'
             && ctx.principal?.startsWith('static:')
-            && Boolean(req.account?.account_id)
+            && req.account?.account_id === FROZEN_PAGINATION_ACCOUNT_ID
             && !filterIds?.length
+            && FROZEN_PAGINATION_CREATIVE_IDS.has(c.creativeId)
           )
         )
       ) return true;

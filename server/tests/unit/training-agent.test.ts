@@ -9945,6 +9945,34 @@ describe('list_creatives handler', () => {
     expect(qs.returned).toBe(0);
   });
 
+  it('does not borrow a missing creative into a non-empty account-less session', async () => {
+    const ownSession = await getSession(sessionKeyFromArgs({}, 'open'));
+    ownSession.creatives.set('own_unscoped_creative', {
+      creativeId: 'own_unscoped_creative',
+      formatKind: 'image',
+      status: 'approved',
+      syncedAt: new Date().toISOString(),
+    });
+
+    const unrelatedAccount = {
+      brand: { domain: 'unrelated-creative-session.example' },
+      operator: 'unrelated-creative-session.example',
+    };
+    const unrelatedSession = await getSession(sessionKeyFromArgs({ account: unrelatedAccount }, 'open'));
+    unrelatedSession.creatives.set('unrelated_session_creative', {
+      creativeId: 'unrelated_session_creative',
+      accountRef: unrelatedAccount,
+      formatKind: 'image',
+      status: 'approved',
+      syncedAt: new Date().toISOString(),
+    });
+
+    const result = await handleListCreatives({
+      filters: { creative_ids: ['unrelated_session_creative'] },
+    }, DEFAULT_CTX) as Record<string, any>;
+    expect(result.creatives).toEqual([]);
+  });
+
   it('query_summary reflects filtered count', async () => {
     const account = { brand: { domain: 'filteredcreatives.example' }, operator: 'filteredcreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
