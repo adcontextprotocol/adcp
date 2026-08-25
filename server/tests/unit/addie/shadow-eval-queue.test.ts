@@ -1,49 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { buildShadowEvalQueueContext } from '../../../src/addie/bolt-app.js';
+import {
+  buildShadowEvalQueueContext,
+  suppressedOpportunityFlagReason,
+} from '../../../src/addie/jobs/shadow-replay-trace.js';
 
 describe('shadow evaluation queue provenance', () => {
-  it('captures source identity and the complete respond decision', () => {
-    const context = buildShadowEvalQueueContext({
-      plan: {
-        action: 'respond',
-        tool_sets: ['knowledge'],
-        reason: 'Synthetic high-confidence fixture',
-        confidence: 'high',
-        decision_method: 'llm',
-        model: 'router-model-example',
-        latency_ms: 42,
-        tokens_input: 10,
-        tokens_output: 5,
-        requires_precision: true,
-        requires_depth: false,
-      },
-      channelId: 'C_SYNTHETIC',
-      threadTs: '1000.0001',
-      questionTs: '1000.0002',
-      question: 'What does the public protocol documentation say?',
-      sourceQuestionMessageId: '00000000-0000-4000-8000-000000000001',
-      sourceUserId: 'U_SYNTHETIC',
-      sourceConfigVersionId: 42,
-      siRetrievalResult: { agents: [], retrieval_time_ms: 3 },
-    });
+  it('queues only an immutable trace reference, never copied replay inputs', () => {
+    const context = buildShadowEvalQueueContext(
+      '00000000-0000-4000-8000-000000000001',
+      new Date('2026-08-25T08:00:00.000Z'),
+    );
 
-    expect(context).toMatchObject({
+    expect(context).toEqual({
       shadow_eval_status: 'pending',
-      shadow_eval_channel_id: 'C_SYNTHETIC',
-      shadow_eval_thread_ts: '1000.0001',
-      shadow_eval_question_ts: '1000.0002',
-      shadow_eval_source_question_message_id: '00000000-0000-4000-8000-000000000001',
-      shadow_eval_source_user_id: 'U_SYNTHETIC',
-      shadow_eval_source_config_version_id: 42,
-      shadow_eval_router_decision: {
-        action: 'respond',
-        tool_sets: ['knowledge'],
-        confidence: 'high',
-        decision_method: 'llm',
-        requires_precision: true,
-        requires_depth: false,
-      },
-      shadow_eval_si_retrieval: { agents: [], retrieval_time_ms: 3 },
+      shadow_eval_requested_at: '2026-08-25T08:00:00.000Z',
+      shadow_eval_type: 'suppressed_opportunity',
+      shadow_eval_source: 'suppressed',
+      shadow_eval_trace_id: '00000000-0000-4000-8000-000000000001',
     });
+    expect(Object.keys(context).some((key) => /question|user|channel|router|retrieval/.test(key)))
+      .toBe(false);
+  });
+
+  it('uses categorical suppression flags without persisting router text', () => {
+    const privateRouterReason = 'private.person@example.test asked about secret-client';
+    const reasons = [
+      suppressedOpportunityFlagReason('humans_already_answering'),
+      suppressedOpportunityFlagReason('human_replied_during_delay'),
+    ];
+
+    expect(reasons).toEqual([
+      'Suppressed high-confidence response (humans already answering)',
+      'Suppressed high-confidence response (human replied during delay)',
+    ]);
+    expect(JSON.stringify(reasons)).not.toContain(privateRouterReason);
+    expect(JSON.stringify(reasons)).not.toContain('private.person@example.test');
   });
 });

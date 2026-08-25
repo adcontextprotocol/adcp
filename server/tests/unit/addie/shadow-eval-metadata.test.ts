@@ -132,6 +132,8 @@ describe('shadow evaluation metadata', () => {
 
     expect(provenance.source_answer.model).toBeNull();
     expect(provenance.self_judged).toBeNull();
+    expect(provenance.tools.trace_verified).toBe(false);
+    expect(provenance.tools.complete_fidelity).toBe(false);
   });
 
   it('fails closed for incomplete or blocked read-only replay evidence', () => {
@@ -155,18 +157,20 @@ describe('shadow evaluation metadata', () => {
       },
     });
 
-    expect(hasHeadlineEligibleProvenance(provenance)).toBe(true);
+    expect(hasHeadlineEligibleProvenance(provenance)).toBe(false);
+    expect(hasHeadlineEligibleProvenance(provenance, { authorizationVerified: true })).toBe(true);
     expect(hasHeadlineEligibleProvenance({
       ...provenance,
       tools: { ...provenance.tools, blocked_capabilities: ['mutation:publish'] },
-    })).toBe(false);
+    }, { authorizationVerified: true })).toBe(false);
     expect(hasHeadlineEligibleProvenance({
       ...provenance,
       tools: { ...provenance.tools, complete_fidelity: false },
-    })).toBe(false);
+    }, { authorizationVerified: true })).toBe(false);
     expect(hasHeadlineEligibleProvenance({
       ...provenance,
       source_opportunity: { config_version_id: 41 },
-    })).toBe(false);
+    }, { authorizationVerified: true })).toBe(false);
   });
+
 });
