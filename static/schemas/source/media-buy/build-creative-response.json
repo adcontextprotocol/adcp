@@ -3,6 +3,21 @@
   "$id": "/schemas/media-buy/build-creative-response.json",
   "title": "Build Creative Response",
   "description": "Response payload for build_creative. Exactly one of six shapes: (1) synchronous single-capability success — creative_manifest issued in-line; (2) synchronous multi-capability success — creative_manifests issued in request order; (3) multiplicity success — creatives[] each carrying variants[]; (4) dry-run estimate; (5) terminal failure; (6) submitted task envelope. Canonical 3.2 requests use target_capability_id(s); deprecated target_format_id(s) retain the same response branches during the 3.x compatibility window.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "representation_resolution_response": {
+        "when": "the corresponding request carries creative_representation_set",
+        "success_shape": "MUST use the single creative_manifest success branch",
+        "lineage_required": "creative_manifest.representation_selection MUST be present",
+        "source_match": "creative_id, revision_id, revision_content_digest, and selected_representation_id MUST match the verified source set and selected member",
+        "strategy_match": "representation_selection.strategy MUST equal request.representation_selection_strategy",
+        "output_digest": "representation_selection.selected_output_digest MUST verify with the shared manifest projection after removing exactly top-level $schema, representation_selection, creative_id, revision_id, name, tags, status, weight, placement_refs, placement_ids, and inputs",
+        "resolver_actor": "representation_selection.resolved_by MUST equal seller for this seller-bound build_creative mode",
+        "build_variant_id": "MUST be absent because deterministic representation selection does not create a build variant"
+      }
+    },
+    "spec": "docs/creative/representation-sets.mdx#seller-bound-resolution"
+  },
   "type": "object",
   "allOf": [
     {
@@ -20,7 +35,7 @@
       "properties": {
         "creative_manifest": {
           "$ref": "/schemas/core/creative-manifest.json",
-          "description": "The generated or transformed creative manifest"
+          "description": "The generated, transformed, retrieved, or deterministically selected creative manifest. For creative_representation_set input it MUST carry exact representation_selection lineage."
         },
         "build_variant_id": {
           "type": "string",
