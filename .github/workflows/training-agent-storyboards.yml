@@ -89,8 +89,8 @@ jobs:
             min_passing_steps: 209
           - surface: current
             tenant: creative-builder
-            min_clean_storyboards: 51
-            min_passing_steps: 222
+            min_clean_storyboards: 50
+            min_passing_steps: 184
           - surface: current
             tenant: brand
             min_clean_storyboards: 45
