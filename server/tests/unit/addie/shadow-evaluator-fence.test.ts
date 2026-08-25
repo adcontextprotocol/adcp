@@ -12,8 +12,13 @@
  * Flagged by security review on PR #3601.
  */
 
-import { describe, it, expect } from 'vitest';
-import { __test_escapeFenceTags as escapeFenceTags } from '../../../src/addie/jobs/shadow-evaluator.js';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  __test_escapeFenceTags as escapeFenceTags,
+  __test_parseComparisonResult as parseComparisonResult,
+  hasDeterministicShapeFailure,
+  compareResponses,
+} from '../../../src/addie/jobs/shadow-evaluator.js';
 
 describe('escapeFenceTags — fence-closing-tag injection defense', () => {
   it('passes plain text through unchanged', () => {
@@ -57,5 +62,111 @@ describe('escapeFenceTags — fence-closing-tag injection defense', () => {
     const escaped = escapeFenceTags(attacker);
     expect(escaped).not.toContain('</human_response>');
     expect(escaped).not.toContain('</shadow_response>');
+  });
+});
+
+describe('shadow comparison result parsing', () => {
+  const validResult = {
+    knowledge_gap: true,
+    gap_severity: 'significant',
+    gap_details: 'Missing the operational constraint.',
+    shadow_quality: 'worse',
+  };
+
+  it('accepts a complete verdict and marks it valid', () => {
+    expect(parseComparisonResult(JSON.stringify(validResult))).toEqual({
+      ...validResult,
+      evaluation_valid: true,
+    });
+  });
+
+  it('accepts a fenced JSON verdict', () => {
+    expect(
+      parseComparisonResult(`\`\`\`json\n${JSON.stringify(validResult)}\n\`\`\``)
+        .evaluation_valid,
+    ).toBe(true);
+  });
+
+  it('marks malformed JSON as an explicit invalid evaluation', () => {
+    expect(parseComparisonResult('{not-json')).toMatchObject({
+      evaluation_valid: false,
+      evaluation_error: 'comparison_parse_error',
+    });
+  });
+
+  it('marks a structurally incomplete verdict as invalid', () => {
+    expect(parseComparisonResult(JSON.stringify({ knowledge_gap: true }))).toMatchObject({
+      evaluation_valid: false,
+      evaluation_error: 'comparison_schema_error',
+    });
+  });
+
+  it('rejects contradictory gap booleans and severities', () => {
+    expect(
+      parseComparisonResult(JSON.stringify({
+        ...validResult,
+        knowledge_gap: false,
+        gap_severity: 'significant',
+      })),
+    ).toMatchObject({
+      evaluation_valid: false,
+      evaluation_error: 'comparison_schema_error',
+    });
+  });
+});
+
+describe('deterministic shape failures', () => {
+  it('fails an Addie response whenever it has a violation', () => {
+    expect(hasDeterministicShapeFailure({ violationLabels: ['default_template'] })).toBe(true);
+  });
+
+  it('passes an Addie response with no violations', () => {
+    expect(hasDeterministicShapeFailure({ violationLabels: [] })).toBe(false);
+  });
+});
+
+describe('shadow comparison completeness', () => {
+  it('rejects evidence that would otherwise be silently truncated', async () => {
+    const create = vi.fn();
+    const result = await compareResponses(
+      { messages: { create } } as never,
+      'Question',
+      ['x'.repeat(1501)],
+      'Answer',
+      'claude-judge',
+    );
+
+    expect(result).toMatchObject({
+      evaluation_valid: false,
+      evaluation_error: 'comparison_input_truncated',
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a parseable verdict when the judge hit its output limit', async () => {
+    const create = vi.fn().mockResolvedValue({
+      stop_reason: 'max_tokens',
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          knowledge_gap: false,
+          gap_severity: 'none',
+          gap_details: '',
+          shadow_quality: 'equivalent',
+        }),
+      }],
+    });
+    const result = await compareResponses(
+      { messages: { create } } as never,
+      'Question',
+      ['Substantive human evidence'],
+      'Addie answer',
+      'claude-judge',
+    );
+
+    expect(result).toMatchObject({
+      evaluation_valid: false,
+      evaluation_error: 'comparison_output_truncated',
+    });
   });
 });

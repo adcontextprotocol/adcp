@@ -13,8 +13,13 @@ import { createLogger } from '../../logger.js';
 import { initializeDatabase, query } from '../../db/client.js';
 import { getThreadReplies } from '../../slack/client.js';
 import { getThreadService } from '../thread-service.js';
-import { ModelConfig } from '../../config/models.js';
 import { getDatabaseConfig } from '../../config.js';
+import { compareResponses } from './shadow-evaluator.js';
+import {
+  buildShadowEvalProvenance,
+  resolveShadowJudgeModel,
+} from './shadow-eval-metadata.js';
+import { extractCorrectedAnswerPattern } from './shadow-corrected-capture.js';
 
 const logger = createLogger('shadow-backfill');
 
@@ -24,6 +29,10 @@ interface ChannelThread {
   context: Record<string, unknown>;
   started_at: string;
   message_count: number;
+  source_message_id: string | null;
+  source_answer_content: string | null;
+  source_answer_model: string | null;
+  source_config_version_id: number | null;
 }
 
 /**
@@ -31,18 +40,44 @@ interface ChannelThread {
  * were also active in the Slack thread. These are candidates for
  * retroactive shadow evaluation.
  */
-async function findCandidateThreads(limit: number, offset: number): Promise<ChannelThread[]> {
+async function findCandidateThreads(
+  limit: number,
+  cursor: { startedAt: string; threadId: string } | null,
+): Promise<ChannelThread[]> {
   const result = await query<ChannelThread>(
-    `SELECT t.thread_id, t.external_id, t.context, t.started_at, t.message_count
+    `SELECT
+       t.thread_id,
+       t.external_id,
+       t.context,
+       t.started_at,
+       t.message_count,
+       source.message_id AS source_message_id,
+       source.content AS source_answer_content,
+       source.model AS source_answer_model,
+       source.config_version_id AS source_config_version_id
      FROM addie_threads t
+     JOIN LATERAL (
+       SELECT m.message_id, m.content, m.model, m.config_version_id
+       FROM addie_thread_messages m
+       WHERE m.thread_id = t.thread_id
+         AND m.role = 'assistant'
+         AND length(m.content) > $4
+         AND COALESCE(m.delivery_status, 'completed') = 'completed'
+       ORDER BY m.created_at DESC
+       LIMIT 1
+     ) source ON TRUE
      WHERE t.channel = 'slack'
        AND t.context->>'message_type' = 'channel_message'
        AND t.message_count >= 2
        AND (t.context->>'shadow_eval_status') IS NULL
        AND t.started_at > NOW() - INTERVAL '30 days'
-     ORDER BY t.started_at DESC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
+       AND (
+         $2::timestamptz IS NULL
+         OR (t.started_at, t.thread_id) < ($2::timestamptz, $3::uuid)
+       )
+     ORDER BY t.started_at DESC, t.thread_id DESC
+     LIMIT $1`,
+    [limit, cursor?.startedAt ?? null, cursor?.threadId ?? null, 20]
   );
   return result.rows;
 }
@@ -64,7 +99,7 @@ async function backfill() {
   const client = new Anthropic({ apiKey });
   const threadService = getThreadService();
 
-  let offset = 0;
+  let cursor: { startedAt: string; threadId: string } | null = null;
   const batchSize = 20;
   let totalProcessed = 0;
   let totalGaps = 0;
@@ -74,7 +109,7 @@ async function backfill() {
   console.log('Starting shadow evaluation backfill...');
 
   while (true) {
-    const threads = await findCandidateThreads(batchSize, offset);
+    const threads = await findCandidateThreads(batchSize, cursor);
     if (threads.length === 0) break;
 
     for (const thread of threads) {
@@ -92,82 +127,58 @@ async function backfill() {
           continue;
         }
 
-        // Find the original question (first message)
-        const question = slackMessages[0]?.text;
-        if (!question || question.length < 20) {
+        const extracted = extractCorrectedAnswerPattern(
+          slackMessages,
+          thread.source_answer_content,
+        );
+        if (!extracted) {
           totalSkipped++;
           continue;
         }
-
-        // Find human responses (non-bot, after the question)
-        const humanResponses = slackMessages
-          .filter(msg => msg.user && !('bot_id' in msg && msg.bot_id) && msg.ts > slackMessages[0].ts && msg.text)
-          .map(msg => msg.text!)
-          .filter(text => text.length > 20);
-
-        // Find Addie's response
-        const addieResponse = slackMessages
-          .find(msg => ('bot_id' in msg && msg.bot_id) && msg.text && msg.text.length > 20);
-
-        // Need both human and Addie responses for comparison
-        if (humanResponses.length === 0 || !addieResponse?.text) {
-          totalSkipped++;
-          continue;
-        }
+        const { question, humanResponses } = extracted;
+        const addieResponse = thread.source_answer_content || extracted.addieResponse;
 
         // Compare Addie's ACTUAL response with human response
         const humanText = humanResponses.join('\n---\n').substring(0, 1500);
-        const addieText = addieResponse.text.substring(0, 1500);
+        const addieText = addieResponse.substring(0, 1500);
 
-        const comparison = await client.messages.create({
-          model: ModelConfig.fast,
-          max_tokens: 300,
-          messages: [{
-            role: 'user',
-            content: `Compare these two responses to the same question. Focus on SUBSTANCE (facts, recommendations, actionable info), not style or length.
-
-## Question
-"${question.substring(0, 500)}"
-
-## Human Expert Response
-${humanText}
-
-## Addie's Response
-${addieText}
-
-## Assessment
-Respond with ONLY a JSON object:
-{
-  "knowledge_gap": true/false,
-  "gap_severity": "none" | "minor" | "significant" | "critical",
-  "gap_details": "Brief description of what was missing or wrong",
-  "shadow_quality": "better" | "equivalent" | "worse" | "different_focus"
-}`,
-          }],
-        });
-
-        const responseText = comparison.content[0].type === 'text' ? comparison.content[0].text : '';
-        let result;
-        try {
-          let jsonStr = responseText.trim();
-          if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-          result = JSON.parse(jsonStr);
-        } catch {
-          result = { knowledge_gap: false, gap_severity: 'none', gap_details: 'Parse error', shadow_quality: 'equivalent' };
-        }
+        const judgeModel = resolveShadowJudgeModel(
+          thread.source_answer_model ? [thread.source_answer_model] : [],
+        );
+        const result = await compareResponses(
+          client,
+          question,
+          humanResponses,
+          addieText,
+          judgeModel,
+          'historical_corrected_answer',
+        );
 
         // Store results
         await threadService.patchThreadContext(thread.thread_id, {
           shadow_eval_status: 'complete',
+          shadow_eval_type: 'historical_corrected_answer',
           shadow_eval_completed_at: new Date().toISOString(),
           shadow_eval_result: result,
           shadow_eval_source: 'backfill',
+          shadow_eval_provenance: buildShadowEvalProvenance({
+            evaluationType: 'historical_corrected_answer',
+            sourceKind: 'production',
+            sourceModel: thread.source_answer_model,
+            sourceConfigVersionId: thread.source_config_version_id,
+            judgeModel,
+            toolMode: thread.source_message_id ? 'production_trace' : 'none',
+            traceOrFixtureId: thread.source_message_id,
+          }),
           shadow_eval_human_response: humanText.substring(0, 2000),
+          shadow_eval_answer_response: addieText.substring(0, 2000),
           shadow_eval_shadow_response: addieText.substring(0, 2000),
           shadow_eval_question: question.substring(0, 500),
         });
 
-        if (result.knowledge_gap) {
+        if (!result.evaluation_valid) {
+          totalErrors++;
+        } else if (result.knowledge_gap) {
           await threadService.flagThread(
             thread.thread_id,
             `Backfill knowledge gap (${result.gap_severity}): ${result.gap_details}`
@@ -189,7 +200,8 @@ Respond with ONLY a JSON object:
       }
     }
 
-    offset += batchSize;
+    const lastThread = threads[threads.length - 1];
+    cursor = { startedAt: lastThread.started_at, threadId: lastThread.thread_id };
   }
 
   console.log(`\nBackfill complete:`);
