@@ -77,6 +77,10 @@
             },
             "minItems": 1
           },
+          "source": {
+            "$ref": "/schemas/core/audience-source.json",
+            "description": "External source reference: the seller ingests membership from a shared dataset or vendor-distributed segment instead of inline member deltas. Mutually exclusive with add/remove — an audience is either buyer-pushed or externally sourced, and transport is fixed at creation: a cross-transport upsert (member deltas against a sourced audience, or source against a pushed one) is rejected with CONFLICT (error.field: audience_id); convert by delete-and-recreate. Only send source kinds whose activation pattern the seller declared via audience_activation (undeclared kinds are rejected with UNSUPPORTED_FEATURE). Experimental — see the media_buy.audience_activation feature."
+          },
           "delete": {
             "type": "boolean",
             "description": "When true, delete this audience from the account entirely. All other fields on this audience object are ignored. Use this to delete a specific audience without affecting others."
@@ -88,6 +92,10 @@
         },
         "required": [
           "audience_id"
+        ],
+        "allOf": [
+          { "not": { "required": ["source", "add"] } },
+          { "not": { "required": ["source", "remove"] } }
         ],
         "additionalProperties": true
       }
