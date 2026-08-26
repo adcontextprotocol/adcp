@@ -729,6 +729,41 @@ The four property-side `authorization_type` patterns above answer **which invent
 
 Use `collections` when authorization should only apply to inventory associated with specific content programs. This is especially useful for CTV, streaming, podcasting, and creator inventory where the same property can carry many collections with different commercial arrangements.
 
+#### Owner-sold FAST channel carriage
+
+Model a FAST or virtual linear channel as a `kind: "channel"` collection declared
+by the channel owner. The host CTV app remains a property. When the owner sells
+its allocated avails, the host attests that supply path by authorizing the
+owner's sales agent for the host property and narrowing the authorization to the
+owner's canonical collection:
+
+```json
+{
+  "url": "https://sales.channel-owner.example",
+  "authorized_for": "Owner-sold avails for Acme Retro News",
+  "authorization_type": "property_ids",
+  "property_ids": ["hoststream_ctv"],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "delegation_type": "direct"
+}
+```
+
+The collection selector may point to an external publisher domain; the host does
+not need to duplicate the owner's collection definition. It also does not need
+to publish the owner's placements. The seller may expose its avails as
+`seller_inline` product placements. A host adds `placement_ids` or
+`placement_tags` only when its authorization must be position-specific.
+
+The owner's `collection.distribution[]` entry and the host's authorization have
+different trust roles. Distribution asserts that the channel is carried on the
+host property and supports discovery. It MUST NOT be treated as sales
+authorization. A verified owner-sold supply path requires the host property
+scope and external collection selector above to match the seller's product;
+missing host authorization fails closed.
+
 ### `placement_ids`
 
 Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships." In product responses and creative assignment, the corresponding placement identity is `{ publisher_domain, placement_id }`.

@@ -1138,7 +1138,7 @@
           <!-- Collections Tab Content -->
           <div id="collections-tab-content" class="tab-content" style="display: none">
             <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
-              Recurring content programs (shows, newsletters, event series) whose inventory is sold through authorized agents.
+              Recurring content programs (shows, channels, newsletters, event series) whose inventory is sold through authorized agents.
             </p>
             <div id="collections-list">
               <!-- Collection cards populated by renderCollections() -->
@@ -1165,6 +1165,7 @@
                     <option value="publication">publication — print/newsletter</option>
                     <option value="event_series">event_series — live events</option>
                     <option value="rotation">rotation — DOOH scheduling</option>
+                    <option value="channel">channel — FAST/virtual linear stream</option>
                   </select>
                 </div>
                 <div class="form-group" style="margin: 0;">
@@ -1621,6 +1622,12 @@
                     <!-- Dynamically populated -->
                   </div>
                 </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--color-border);">
+                <label>Collection constraints <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — narrows authorization to specific content programs or channels)</span></label>
+                <p style="margin: 4px 0 8px 0; font-size: 12px; color: #666;">Enter collection selectors as JSON. Selectors may point to a different publisher domain, which is how a host attests owner-sold channel inventory.</p>
+                <textarea id="agent-collections" rows="4" placeholder='[{"publisher_domain":"channel-owner.example","collection_ids":["retro_news"]}]' style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle); font-family: monospace; font-size: 12px;"></textarea>
               </div>
 
               <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--color-border);">
@@ -4319,6 +4326,7 @@
         document.getElementById('agent-countries').value = '';
         document.getElementById('agent-effective-from').value = '';
         document.getElementById('agent-effective-until').value = '';
+        document.getElementById('agent-collections').value = '';
         renderEncryptionKeysList([]);
         renderSigningKeysList([]);
 
@@ -4348,6 +4356,8 @@
           ? agent.effective_from.slice(0, 16) : '';
         document.getElementById('agent-effective-until').value = agent.effective_until
           ? agent.effective_until.slice(0, 16) : '';
+        document.getElementById('agent-collections').value = Array.isArray(agent.collections)
+          ? JSON.stringify(agent.collections, null, 2) : '';
         renderEncryptionKeysList(agent.encryption_keys || []);
         renderSigningKeysList(agent.signing_keys || []);
 
@@ -4553,6 +4563,34 @@
         }
         const sigKeys = getSigningKeysFromForm().filter(k => k.kid && k.kty);
         if (sigKeys.length > 0) agent.signing_keys = sigKeys;
+
+        const collectionsRaw = document.getElementById('agent-collections').value.trim();
+        if (collectionsRaw) {
+          let collections;
+          try {
+            collections = JSON.parse(collectionsRaw);
+          } catch {
+            alert('Collection constraints must be valid JSON.');
+            return;
+          }
+          const validSelectors = Array.isArray(collections)
+            && collections.length > 0
+            && collections.every(selector => selector
+              && typeof selector === 'object'
+              && typeof selector.publisher_domain === 'string'
+              && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(selector.publisher_domain)
+              && Array.isArray(selector.collection_ids)
+              && selector.collection_ids.length > 0
+              && selector.collection_ids.every(id => typeof id === 'string' && id.trim().length > 0));
+          if (!validSelectors) {
+            alert('Collection constraints must be a non-empty array of {publisher_domain, collection_ids[]} selectors.');
+            return;
+          }
+          agent.collections = collections.map(selector => ({
+            ...selector,
+            collection_ids: [...new Set(selector.collection_ids.map(id => id.trim()))],
+          }));
+        }
 
         // Optional placement constraints
         const placementIds = [];

@@ -24,6 +24,7 @@ The collection/installment model maps to familiar concepts across media channels
 |---|---|---|---|
 | Podcast | Program | Episode | "Serial" → "Chapter 1" |
 | Linear TV / CTV | Series | Episode / Airing | "Monday Night Football" → "Week 12" |
+| FAST / virtual linear | Programmed channel | Scheduled airing / programming block | "Acme Retro" → "Tuesday 20:00 movie" |
 | Print / Magazine | Publication | Issue | "Vogue Germany" → "May 2026" |
 | Newsletter | Publication | Edition | "Money Stuff" → "Tuesday March 24" |
 | YouTube / Social | Series | Video / Post | "Hot Ones" → "Gordon Ramsay" |
@@ -41,7 +42,7 @@ A collection is a persistent content program that produces installments over tim
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `collection_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference collections via `collections` selectors. Use distribution identifiers for cross-seller matching. |
-| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH). Defaults to `series`. |
+| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH), `channel` (FAST or virtual linear stream). Defaults to `series`. |
 | `name` | string | Yes | Human-readable collection name |
 | `description` | string | No | What the collection is about |
 | `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
@@ -55,13 +56,13 @@ A collection is a persistent content program that produces installments over tim
 | `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
 | `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
 | `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
-| `distribution` | array | No | Where this collection is distributed, with platform-specific identifiers per publisher. |
+| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher. For `channel` collections this is the carriage map, not proof of sales authorization. |
 | `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
 | `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/collection.json",
   "collection_id": "pinnacle_challenge",
   "name": "The Pinnacle Challenge",
   "description": "Competition reality collection with extreme physical and mental challenges",
@@ -99,6 +100,92 @@ A collection is a persistent content program that produces installments over tim
   ]
 }
 ```
+
+## FAST channels and owner-sold carriage
+
+A FAST channel is a `channel` collection, not a property. This preserves the
+three independent inventory axes:
+
+- the host CTV app is the **property** where the ad runs;
+- the FAST channel is the **collection** whose programming surrounds the ad;
+- pre-roll, mid-roll, or another avail is the **placement** within the product.
+
+The channel owner declares the canonical collection in its own `adagents.json`.
+Each `distribution` entry can name both the host properties carrying the
+channel and identifiers used by the host or an independent metadata system:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/collection.json",
+  "collection_id": "retro_news",
+  "kind": "channel",
+  "name": "Acme Retro News",
+  "status": "active",
+  "distribution": [{
+    "publisher_domain": "hoststream.example",
+    "property_ids": ["hoststream_ctv"],
+    "identifiers": [
+      { "type": "publisher_channel_id", "value": "channel_942" },
+      { "type": "gracenote_id", "value": "example-channel-id" }
+    ]
+  }]
+}
+```
+
+`publisher_channel_id` is the generic fallback for a host-assigned channel or
+EPG identifier. Its namespace is the enclosing `publisher_domain`; the stable
+identity is therefore `(publisher_domain, value)`. Use a more specific
+identifier type when one exists.
+
+The owner's distribution declaration is a discoverability claim, not sales
+authorization. For verified owner-sold carriage, the host's `adagents.json`
+authorizes the owner's sales agent for the host property and narrows that grant
+to the owner's canonical collection:
+
+```json
+{
+  "url": "https://sales.channel-owner.example",
+  "authorized_for": "Owner-sold avails for Acme Retro News",
+  "authorization_type": "property_ids",
+  "property_ids": ["hoststream_ctv"],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "delegation_type": "direct"
+}
+```
+
+The seller's product then combines the same host property and owner collection.
+The placement may be `seller_inline`, so the host does not have to enumerate
+the channel owner's avail definitions:
+
+```json
+{
+  "publisher_properties": [{
+    "publisher_domain": "hoststream.example",
+    "selection_type": "by_id",
+    "property_ids": ["hoststream_ctv"]
+  }],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "placements": [{
+    "kind": "seller_inline",
+    "publisher_domain": "channel-owner.example",
+    "placement_id": "owner_avails",
+    "name": "Channel-owner avails",
+    "mode": "included"
+  }]
+}
+```
+
+For a buyer to treat this supply path as verified, both declarations must
+match: the owner asserts carriage on the host property, and the host authorizes
+the seller for that property and collection. Missing host authorization fails
+closed. A host may add `placement_ids` or `placement_tags` when it needs to
+constrain positions, but owner-sold carriage does not require it.
 
 ## The installment object
 
