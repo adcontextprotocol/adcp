@@ -185,6 +185,7 @@ import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/bra
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { PORTRAIT_TOOLS, createPortraitToolHandlers } from './mcp/portrait-tools.js';
+import { IMAGE_TOOLS, createImageToolHandlers } from './mcp/image-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
@@ -1368,6 +1369,14 @@ async function createUserScopedTools(
     for (const [name, handler] of portraitHandlers) {
       allHandlers.set(name, handler);
     }
+  }
+
+  // Image search is declared always available by the router, so the modern
+  // Bolt path must register the corresponding user-scoped definition.
+  const imageHandlers = createImageToolHandlers(slackUserId, threadId);
+  allTools.push(...IMAGE_TOOLS);
+  for (const [name, handler] of imageHandlers) {
+    allHandlers.set(name, handler);
   }
 
   // Add committee leader tools (co-leader management, self-enforcing permissions)
