@@ -34,7 +34,7 @@ The full set of asset types valid in a v2 format `slots` declaration's `asset_ty
 | `zip` | Zip archive (HTML5 banner bundle) | `/schemas/core/assets/zip-asset.json` |
 | `vast_tracker` | Single VAST `Tracking` event URL (decomposed) | `/schemas/core/assets/vast-tracker-asset.json` |
 | `daast_tracker` | Single DAAST `Tracking` event URL (decomposed) | `/schemas/core/assets/daast-tracker-asset.json` |
-| `pixel_tracker` | Renderer-fired HTTP tracker (image pixel or JS include) for any web-rendered canonical. `event` (impression / viewable_mrc_* / viewable_video_50 / audible_video_complete / click / custom) × `method` (img / js). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]` event-type registry (types 1, 2, 3, 4, 500) | `/schemas/core/assets/pixel-tracker-asset.json` |
+| `pixel_tracker` | Renderer-fired HTTP tracker (image pixel or JS include) for any web-rendered canonical. `event` (impression / viewable_mrc_* / viewable_video_50 / audible_video_complete / click / custom) × `method` (img / js). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`; standardized event types 1-4 are reused, while audible completion is an AdCP-defined event and `custom` can carry exchange/vendor extensions | `/schemas/core/assets/pixel-tracker-asset.json` |
 | `object` | Structured object (image_carousel `cards`, `video_brief` for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
 
 In a v2 manifest's `assets` map, the **slot key** is the canonical's `asset_group_id` (e.g., `image_main`, `video_main`, `script`, `cards`, `landing_page_url`) and the **value** carries the matching asset payload with its `asset_type` discriminator. The format declaration's `slots[].asset_type` tells the validator which payload schema applies.
@@ -62,6 +62,8 @@ For payload schemas (the structure of the actual asset data supplied in creative
 - `width` / `height` (when declared)
 - `duration_ms` (when applicable)
 - `format` (declared container type)
+
+File-size limits use decimal, exact units throughout AdCP: `*_kb` means 1 KB = 1,000 bytes, `*_mb` means 1 MB = 1,000,000 bytes, and `*_bytes` is an exact byte count. Do not interpret KB/MB fields as KiB/MiB.
 
 ## Asset Type Schema
 
@@ -97,7 +99,7 @@ Video assets represent video files with specific technical requirements.
 - `acceptable_codecs`: Video codecs (h264, h265, vp8, vp9, av1)
 - `acceptable_resolutions`: List of width x height strings
 - `aspect_ratio`: Required aspect ratio (16:9, 9:16, 1:1, etc.)
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `min_bitrate_mbps` / `max_bitrate_mbps`: Bitrate range in Mbps
 - `features`: Additional requirements (e.g., ["non-skippable", "sound on"])
 
@@ -123,7 +125,7 @@ Static image assets for banners, logos, and visual content.
 - `min_width` / `min_height`: Minimum dimensions (px; typically used by responsive/sizeless formats)
 - `aspect_ratio`: Required aspect ratio
 - `acceptable_formats`: Image formats (jpg, png, gif, webp, svg)
-- `max_file_size_kb`: Maximum file size in kilobytes
+- `max_file_size_kb`: Maximum file size in decimal kilobytes (1 KB = 1,000 bytes)
 - `transparency`: Whether transparency is required/supported
 - `animation_allowed`: Whether animated GIFs are accepted
 - `notes`: Additional requirements (e.g., "Must be free of text")
@@ -175,6 +177,7 @@ Senders **SHOULD** include `url_type` on every URL asset. The valid values are:
 | Value | Mechanism |
 |---|---|
 | `clickthrough` | User-click destination (landing page or ad-tech redirector) |
+| `ad_request` | Invokes a third-party display creative endpoint at impression time |
 | `tracker_pixel` | Fires HTTP GET, expects 1×1 pixel or 204 response (impression / event / 3P trackers) |
 | `tracker_script` | Loads as a `<script>` tag — measurement SDKs (OMID verification, native event trackers using `method: 2`) |
 
@@ -196,6 +199,8 @@ If `url_type` is **absent**, receivers SHOULD fall back to the format's `url-ass
 | `impression_tracker`, `click_tracker` | `tracker_pixel` |
 | `viewability_tracker` | `tracker_script` — OMID and equivalent verification SDKs **require** a `<script>` tag; firing them as a pixel produces no measurement |
 | `third_party_tracker` | **No safe fallback.** Mechanism is integration-specific (DV/IAS ship both pixel and script forms). Receivers MAY reject or warn. |
+
+Display ad-request URLs also have no role-based fallback. Declare `url_type: "ad_request"` explicitly.
 
 If neither `url_type` nor a format-side `role` is available, receivers MUST NOT silently pick a mechanism — firing a clickthrough URL as a pixel (or vice versa) silently corrupts measurement and breaks the user flow. Receivers SHOULD reject the manifest.
 
@@ -249,12 +254,12 @@ Audio files for audio ads and podcasts.
 - `duration_seconds`: Expected duration
 - `acceptable_formats`: Audio formats (mp3, m4a, aac, ogg)
 - `min_bitrate_kbps`: Minimum bitrate in kilobits per second
-- `max_file_size_mb`: Maximum file size in megabytes
+- `max_file_size_mb`: Maximum file size in decimal megabytes (1 MB = 1,000,000 bytes)
 - `stereo_required`: Whether stereo audio is required
 
 ### HTML Asset
 
-HTML5 creative assets for rich media formats and third-party display tags.
+Inline HTML content assets. Seller-hosted HTML5 creative bundles use a `zip` asset. Third-party display markup uses the `display_tag` asset below.
 
 ```json
 {
@@ -275,6 +280,21 @@ HTML5 creative assets for rich media formats and third-party display tags.
 - `max_total_size_kb`: Maximum total size including all assets
 - `allowed_features`: Allowed HTML5 features
 - `restricted_features`: Features that must not be used
+
+### Display Tag Asset
+
+An atomic third-party display representation. `delivery_type` is one of `tag_url`, `inline_markup`, or `paired_redirect`. The paired form requires both `ad_request_url` and `clickthrough_url`; they cannot be trafficked or revised independently.
+
+```json
+{
+  "asset_type": "display_tag",
+  "delivery_type": "paired_redirect",
+  "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+  "clickthrough_url": "https://click.acme-example.com/redirect"
+}
+```
+
+Inline markup also records `markup_type` as `iframe_javascript`, `javascript`, or `standard`. Preserve markup bytes exactly. Do not classify it as `html5`, which means a seller-hosted zip bundle.
 
 ### VAST Asset
 
@@ -308,14 +328,14 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `delivery_type`: "url" or "inline" (required discriminator)
 - `url`: URL endpoint that returns VAST XML (required when delivery_type is "url")
 - `content`: Inline VAST XML content (required when delivery_type is "inline")
-- `vast_version`: VAST specification version (2.0, 3.0, 4.0, 4.1, 4.2, 4.3)
+- `vast_version`: Exact VAST specification version supplied by this asset (2.0, 3.0, 4.0, 4.1, 4.2, 4.3). Product format options use plural `vast_versions` for their accepted set.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
 - `duration_ms`: Expected video duration in milliseconds (if known)
 - `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Aligned to the IAB VAST 4.2 XSD `TrackingEvents_type/Tracking/@event` enumeration (vast_4.2.xsd lines 112–136), plus AdCP-flattened representations of `Impression`, `Error`, `VideoClicks`, and `ViewableImpression` elements:
   - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (VAST 2.x/3.x compat), `exitFullscreen` (VAST 2.x/3.x compat), `otherAdInteraction`, `interactiveStart` (SIMID)
-  - **Non-linear / companion**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
+  - **Non-linear**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
   - **Progress**: `progress` (for custom progress points via VAST `offset` attribute)
   - **Click & close**: `clickTracking`, `customClick`, `close`, `closeLinear`
   - **Verification**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression` (AdCP extension), `viewableImpression`
@@ -353,8 +373,8 @@ A single URL bound to a VAST `TrackingEvents` event. Use this when the creative 
 **Properties:**
 - `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` — those live in dedicated VAST elements (`Impression`, `VideoClicks`, `Error`, `ViewableImpression`), not under `TrackingEvents` (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `progress`.
 - `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
-- `offset`: Required for `vast_event: "progress"`. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
-- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. VAST 4.2 places `<TrackingEvents>` under three different parents (`<Linear>`, `<NonLinearAds>`, `<CompanionAds>/<Companion>`) with different valid event sets — e.g., `acceptInvitation` is meaningful on `non_linear`/`companion`, `closeLinear` only on `linear`. Sales agents read this to place the tracker correctly during VAST assembly.
+- `offset`: Required for `vast_event: "progress"`. On other events it is ignored for compatibility with existing 3.x manifests and removed before tracker-contract matching. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
+- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. Existing 3.x manifests remain structurally permissive. When a product declares a tracker execution contract, matching applies the closed standards matrix: `acceptInvitation` is non-linear, `creativeView` is the only companion event, and `closeLinear` is linear. Sales agents read this to place the tracker correctly during VAST assembly.
 
 **Target with non-linear event:**
 ```json
@@ -431,8 +451,8 @@ Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEv
 **Properties:**
 - `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (same element-routing rule as `vast_tracker` — those values belong in `Impression` / `<AdInteractions>` / `Error` / AdCP-extension verification slots, not `TrackingEvents`). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `rewind`, `skip`, `progress`.
 - `url`: Tracker URL. Supports AdCP universal macros.
-- `offset`: Required for `daast_event: "progress"` (DAAST 1.1 §3.2.4.3). Same format as VAST 4.2 `Tracking@offset`. Negative offsets are NOT permitted.
-- `target`: Which DAAST creative element scopes this tracker — `linear` (default, DAAST 1.1 §3.2.1.7) or `companion` (DAAST 1.1 §3.2.2.7, where the only valid event is `creativeView`). DAAST has no `<NonLinearAds>` element — audio is linear or accompanied by a visual companion.
+- `offset`: Required for `daast_event: "progress"` (DAAST 1.1 §3.2.4.3). On other events it is ignored for compatibility with existing 3.x manifests and removed before tracker-contract matching. Same format as VAST 4.2 `Tracking@offset`. Negative offsets are NOT permitted.
+- `target`: Which DAAST creative element scopes this tracker — `linear` (default, DAAST 1.1 §3.2.1.7) or `companion` (DAAST 1.1 §3.2.2.7). Existing 3.x manifests remain structurally permissive; a tracker execution contract restricts companion matching to `creativeView`. DAAST has no `<NonLinearAds>` element — audio is linear or accompanied by a visual companion.
 
 ### Pixel Tracker Asset
 
@@ -449,10 +469,10 @@ Renderer-fired HTTP tracker — image pixel or JavaScript include — bound to a
 ```
 
 **Properties:**
-- `event`: `impression` | `viewable_mrc_50` | `viewable_mrc_100` | `viewable_video_50` | `audible_video_complete` | `click` | `custom`. Event enum mirrors IAB OpenRTB Native 1.2 event-type registry (types 1, 2, 3, 4, 500). `audible_video_complete` is distinct from `viewable_video_50` — the former is full-completion with audio on; the latter is 50% pixels for ≥2 seconds with audio on. Meaningful on non-VAST video formats (Meta Reels, YouTube Shorts, TikTok Spark); VAST formats use `vast_tracker` with `vast_event: complete` instead.
+- `event`: `impression` | `viewable_mrc_50` | `viewable_mrc_100` | `viewable_video_50` | `audible_video_complete` | `click` | `custom`. The first four measurement values map to IAB OpenRTB Native 1.2 event types 1-4. Native type 4 is 50% pixels for at least two seconds and does not require audio. `audible_video_complete` is a distinct AdCP-defined full-completion event with audio on; Native leaves event types 500+ exchange-specific rather than assigning this event a standard numeric type. These video events are meaningful on non-VAST video formats; VAST formats use `vast_tracker` with `vast_event: complete` and separate audible measurement where needed.
 - `method`: `img` (fired as `<img>` pixel) or `js` (fired as `<script>` include). Matches IAB Native 1.2 method enum (1=img, 2=js). Default `img`. Sellers without JS-tracker support MUST reject `method: js` declarations at sync_creatives time.
 - `url`: Tracker URL fired when `event` occurs. May carry AdCP universal macros.
-- `custom_event_name`: REQUIRED when `event: custom`, forbidden otherwise (if/then enforced at the schema layer). Adopter-defined event name; sellers without registered handling MUST silently no-op rather than reject.
+- `custom_event_name`: REQUIRED when `event: custom`, forbidden otherwise (if/then enforced at the schema layer). When tracker execution is undeclared, an unknown custom event is a forward-compatible probe and the seller silently no-ops rather than rejecting the creative. An effective `tracker_execution_contract` overrides that fallback: under `complete: true`, an unlisted custom selector is unsupported and produces `tracker_contract_mismatch`; a listed selector is an affirmative accept-and-initiate commitment.
 
 **Maps to IAB OpenRTB Native 1.2:**
 - `imptrackers[]` → `pixel_tracker` with `event: impression`, `method: img`

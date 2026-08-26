@@ -260,6 +260,9 @@ phases:
               brand:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
+            ext:
+              governance_policy_acknowledgements:
+                - "drift_reevaluation"
             total_budget: 40000
             packages:
               - product_id: "outdoor_display_q2"

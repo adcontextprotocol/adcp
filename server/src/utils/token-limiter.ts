@@ -64,6 +64,13 @@ export const TOKEN_BUFFERS = {
   safetyMargin: 10000,
 };
 
+/** Match the largest normal chat response budget sent for each model family. */
+export function getResponseTokenReserve(model?: string): number {
+  return /^claude-sonnet-5(?:-|$)/.test(model ?? '')
+    ? 32768
+    : TOKEN_BUFFERS.responseBuffer;
+}
+
 /**
  * Total reserved tokens (not available for conversation history)
  */
@@ -96,6 +103,7 @@ export function estimateToolTokens(toolCount: number): number {
  */
 export function getConversationTokenLimit(model?: string, toolCount?: number): number {
   const limit = MODEL_CONTEXT_LIMITS[model ?? 'default'] ?? MODEL_CONTEXT_LIMITS.default;
+  const responseBuffer = getResponseTokenReserve(model);
 
   // If tool count is provided, use dynamic calculation
   if (toolCount !== undefined) {
@@ -104,13 +112,13 @@ export function getConversationTokenLimit(model?: string, toolCount?: number): n
       TOKEN_BUFFERS.systemPrompt +
       toolTokens +
       TOKEN_BUFFERS.prependedContext +
-      TOKEN_BUFFERS.responseBuffer +
+      responseBuffer +
       TOKEN_BUFFERS.safetyMargin;
     return limit - reserved;
   }
 
   // Fall back to default static buffer
-  return limit - RESERVED_TOKENS;
+  return limit - RESERVED_TOKENS - responseBuffer + TOKEN_BUFFERS.responseBuffer;
 }
 
 /**
@@ -389,7 +397,7 @@ export function checkContextLimit(
   headroom: number;
 } {
   const modelLimit = MODEL_CONTEXT_LIMITS[model ?? 'default'] ?? MODEL_CONTEXT_LIMITS.default;
-  const estimatedTotal = systemPromptTokens + messagesTokens + toolsTokens + TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer;
+  const estimatedTotal = systemPromptTokens + messagesTokens + toolsTokens + TOKEN_BUFFERS.prependedContext + getResponseTokenReserve(model);
   const headroom = modelLimit - estimatedTotal;
 
   return {

@@ -12,6 +12,7 @@ import {
   runWithSessionContext,
   flushDirtySessions,
   findMediaBuyAcrossSessions,
+  findSessionsMatching,
   MAX_MEDIA_BUYS_PER_SESSION,
   MAX_CREATIVES_PER_SESSION,
   SESSION_RETENTION_MS,
@@ -31,7 +32,9 @@ import {
   invalidateCache,
   clearTaskStore,
   projectListCreativesCompatibilityWire,
+  projectGetProductsCompatibilityWire,
   projectProductDiscoveryResult,
+  resolveServedAdcpVersionForTool,
   trainingCatalogLegacyResolver,
   creativeProjectionAdapters,
 } from '../../src/training-agent/task-handlers.js';
@@ -100,7 +103,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -325,6 +328,106 @@ async function simulateCancel(
   }
   return handler({ method: 'tasks/cancel', params: { taskId, ...params } }, {});
 }
+
+describe('get_products creative wire projection', () => {
+  it('preserves valid beta.6 migration shapes and drops only unmapped legacy sidecars', () => {
+    const mappedRef = { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' };
+    const mappedWithoutSlash = { ...mappedRef, agent_url: 'https://creative.adcontextprotocol.org' };
+    const legacyOnly = { product_id: 'legacy-only', format_ids: [mappedRef] };
+    const canonicalOnly = {
+      product_id: 'canonical-only',
+      format_options: [{ format_kind: 'image', format_option_id: 'canonical-only-image' }],
+    };
+    const projected = projectGetProductsCompatibilityWire({
+      products: [
+        {
+          product_id: 'mapped-dual',
+          format_ids: [mappedRef],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'mapped-image',
+            v1_format_ref: [mappedWithoutSlash],
+          }],
+        },
+        {
+          product_id: 'partially-mapped-dual',
+          format_ids: [
+            mappedRef,
+            { agent_url: 'https://legacy.example/', id: 'unmapped' },
+          ],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'canonical-image',
+            v1_format_ref: [mappedWithoutSlash],
+          }],
+        },
+        {
+          product_id: 'parameter-mismatch',
+          format_ids: [{ ...mappedRef, width: 300, height: 250, pixel_ratio: 2 }],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'parameterized-image',
+            v1_format_ref: [{ ...mappedRef, width: 300, height: 250, pixel_ratio: 1 }],
+          }],
+        },
+        {
+          product_id: 'unresolved-canonical-ref',
+          format_ids: [mappedRef],
+          format_options: [{
+            format_kind: 'image',
+            format_option_id: 'divergent-image',
+            v1_format_ref: [mappedWithoutSlash, { agent_url: 'https://legacy.example/', id: 'missing' }],
+          }],
+        },
+        legacyOnly,
+        canonicalOnly,
+      ] as any,
+      errors: [{ code: 'STALE_RESPONSE', message: 'Cached response', recovery: 'transient' }],
+    }, {}, '3.2-beta.6') as Record<string, any>;
+
+    expect(projected.products[0].format_ids).toEqual([mappedRef]);
+    expect(projected.products[0].format_options[0].v1_format_ref).toEqual([mappedWithoutSlash]);
+    expect(projected.products[1].format_ids).toEqual([mappedRef]);
+    expect(projected.products[2].format_ids).toBeUndefined();
+    expect(projected.products[3].format_ids).toBeUndefined();
+    expect(projected.products[4]).toEqual(legacyOnly);
+    expect(projected.products[5]).toEqual(canonicalOnly);
+    expect(projected.errors).toEqual([
+      { code: 'STALE_RESPONSE', message: 'Cached response', recovery: 'transient' },
+    ]);
+  });
+
+  it('keeps explicit canonical and compatibility wire modes unchanged', () => {
+    const mappedRef = { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' };
+    const response = {
+      products: [{
+        product_id: 'mapped-dual',
+        format_ids: [mappedRef],
+        format_options: [{
+          format_kind: 'image',
+          format_option_id: 'mapped-image',
+          v1_format_ref: [mappedRef],
+        }],
+      }] as any,
+    };
+
+    const explicitCanonical = projectGetProductsCompatibilityWire(
+      response,
+      { ext: { adcp: { creative_wire: 'canonical' } } },
+      '3.2-beta.6',
+    ) as Record<string, any>;
+    expect(explicitCanonical.products[0].format_ids).toBeUndefined();
+
+    const legacy = projectGetProductsCompatibilityWire(response, { adcp_version: '3.0' }) as Record<string, any>;
+    expect(legacy.products[0].format_ids).toEqual([mappedRef]);
+    expect(legacy.products[0].format_options).toBeUndefined();
+
+    expect(projectGetProductsCompatibilityWire(response, {}, '3.1-rc.15')).toBe(response);
+    expect(projectGetProductsCompatibilityWire({ status: 'rejected' }, {}, '3.2-beta.6')).toEqual({
+      status: 'rejected',
+    });
+  });
+});
 
 // ── Catalog (buildCatalog) ─────────────────────────────────────────
 
@@ -1135,6 +1238,30 @@ describe('session state', () => {
         });
         await runWithSessionContext(async () => {
           await expect(findMediaBuyAcrossSessions('missing-buy')).resolves.toBeNull();
+        });
+      } finally {
+        setStateStore(null);
+      }
+    });
+
+    it('fails a fan-out scan instead of returning partial session matches', async () => {
+      const { InMemoryStateStore } = await import('@adcp/sdk/server');
+      const store = new InMemoryStateStore();
+      setStateStore(store);
+      try {
+        await runWithSessionContext(async () => {
+          await getSession('fanout-scan-one');
+          await getSession('fanout-scan-two');
+          await flushDirtySessions();
+        });
+        const originalGet = store.get.bind(store);
+        store.get = async (collection: string, id: string) => {
+          if (id === 'fanout-scan-two') throw new Error('fan-out scan storage failure');
+          return originalGet(collection, id);
+        };
+
+        await runWithSessionContext(async () => {
+          await expect(findSessionsMatching(() => true)).rejects.toThrow(SESSION_STORE_UNAVAILABLE_MESSAGE);
         });
       } finally {
         setStateStore(null);
@@ -2701,7 +2828,7 @@ describe('validate_input handler', () => {
     });
   });
 
-  it('serves unpinned validate_input calls on the current 3.1 beta envelope', async () => {
+  it('serves unpinned validate_input calls on the current beta envelope', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
     const handler = requestHandlers.get('tools/call');
@@ -2732,6 +2859,75 @@ describe('validate_input handler', () => {
     expect(parsed.results).toEqual([
       { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
     ]);
+  });
+
+  it.each([
+    { digestMode: undefined, label: 'either' },
+    { digestMode: 'forbidden' as const, label: 'forbidden' },
+  ])('downshifts unpinned version-forced tools on the $label signing route', async ({ digestMode }) => {
+    const server = createTrainingAgentServer({ mode: 'open', strict: true, ...(digestMode && { digestMode }) });
+    const requestHandlers = (server as any)._requestHandlers as Map<string, Function>;
+    const handler = requestHandlers.get('tools/call');
+    const validateResponse = await handler({
+      method: 'tools/call',
+      params: {
+        name: 'validate_input',
+        arguments: {
+          manifest: {
+            format_kind: 'image',
+            assets: {
+              image_main: {
+                asset_type: 'image',
+                url: 'https://cdn.acme.example/mrec.png',
+                width: 300,
+                height: 250,
+              },
+            },
+          },
+          targets: [{ kind: 'canonical', id: 'image' }],
+        },
+      },
+    }, {});
+    const validateResult = validateResponse.structuredContent as Record<string, unknown>;
+
+    expect(validateResponse.isError).not.toBe(true);
+    expect(validateResult.adcp_version).toBe('3.1-rc.15');
+
+    const lifecycleResponse = await handler({
+      method: 'tools/call',
+      params: { name: 'list_products', arguments: {} },
+    }, {});
+    const lifecycleResult = lifecycleResponse.structuredContent as Record<string, unknown>;
+
+    expect(lifecycleResponse.isError).toBe(true);
+    expect(lifecycleResult.adcp_version).toBe('3.1-rc.15');
+    expect(lifecycleResult.adcp_error).toMatchObject({
+      code: 'INVALID_REQUEST',
+      message: 'Unknown tool: list_products',
+    });
+  });
+
+  it.each([
+    'validate_input',
+    'list_products',
+    'request_proposals',
+    'refine_proposals',
+    'decline_proposals',
+  ])('defaults unpinned %s to the highest route-compatible major-3 release', (toolName) => {
+    expect(resolveServedAdcpVersionForTool(toolName, {})).toEqual({
+      ok: true,
+      servedVersion: CURRENT_ADCP_VERSION,
+    });
+    expect(resolveServedAdcpVersionForTool(toolName, {}, ['3.0', '3.1-rc.15'])).toEqual({
+      ok: true,
+      servedVersion: '3.1-rc.15',
+    });
+    expect(resolveServedAdcpVersionForTool(toolName, {
+      adcp_version: CURRENT_ADCP_VERSION,
+    }, ['3.0', '3.1-rc.15'])).toMatchObject({
+      ok: false,
+      field: 'adcp_version',
+    });
   });
 
   it('serves in-process validate_input calls on the same version contract', async () => {
@@ -8653,6 +8849,89 @@ describe('sync_creatives handler', () => {
     expect(creatives[0].action).toBe('created');
   });
 
+  it('removes existing localization when localization is explicitly null', async () => {
+    const account = { brand: { domain: 'localization-remove.example' }, operator: 'localization-remove.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const creative = {
+      creative_id: 'cr_localization_remove',
+      format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+      name: 'Localized creative',
+      localization: {
+        source: { locale_variant_id: 'source-en', locale: 'en-US' },
+        target_variants: [],
+        default_locale_variant_id: 'source-en',
+        unmatched_locale_action: 'serve_default',
+      },
+    };
+    const { result: created } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [creative],
+    });
+    expect(created.creatives).toEqual([
+      expect.objectContaining({ creative_id: creative.creative_id, action: 'created' }),
+    ]);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{ ...creative, localization: null }],
+    });
+    expect(updated.creatives).toEqual([
+      expect.objectContaining({ creative_id: creative.creative_id, action: 'updated' }),
+    ]);
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .creatives.get(creative.creative_id);
+    expect(persisted?.localization).toBeUndefined();
+  });
+
+  it('rejects source-asset changes when existing localization is omitted', async () => {
+    const account = { brand: { domain: 'localization-source.example' }, operator: 'localization-source.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const creativeId = 'cr_localization_source_change';
+    const originalAssets = {
+      image: { asset_type: 'image', url: 'https://cdn.example/original.png' },
+    };
+    const { result: created } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: creativeId,
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: originalAssets,
+        localization: {
+          source: { locale_variant_id: 'source-en', locale: 'en-US' },
+          target_variants: [],
+          default_locale_variant_id: 'source-en',
+        },
+      }],
+    });
+    expect(created.creatives).toEqual([
+      expect.objectContaining({ creative_id: creativeId, action: 'created' }),
+    ]);
+
+    const { result: updated } = await simulateCallTool(server, 'sync_creatives', {
+      account,
+      creatives: [{
+        creative_id: creativeId,
+        format_id: { agent_url: TEST_AGENT_URL, id: 'display_300x250' },
+        assets: { image: { asset_type: 'image', url: 'https://cdn.example/replacement.png' } },
+      }],
+    });
+    expect(updated.creatives).toEqual([
+      expect.objectContaining({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          field: `creatives[${creativeId}].localization`,
+        })],
+      }),
+    ]);
+
+    const persisted = (await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode)))
+      .creatives.get(creativeId);
+    expect(persisted?.assets).toEqual(originalAssets);
+    expect(persisted?.localization).toBeDefined();
+  });
+
   it('preserves coordinated-placement component assets through creative-library readback', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = { brand: { domain: 'takeover-library.example' }, operator: 'takeover-library.example' };
@@ -9627,6 +9906,25 @@ describe('list_creatives handler', () => {
     // return only those.
     const creatives = result.creatives as Array<Record<string, unknown>>;
     expect(creatives.map(c => c.creative_id)).toEqual(['campaign_hero_video']);
+    expect(creatives[0]?.format_kind).toBe('video_vast');
+    expect(creatives[0]?.format_option_ref).toEqual({
+      scope: 'product',
+      format_option_id: 'video_preroll_video_vast',
+    });
+    expect(creatives[0]?.format_id).toBeUndefined();
+
+    const legacyProjected = projectListCreativesCompatibilityWire(
+      { creatives },
+      { adcp_version: '3.0' },
+    );
+    const legacyCreatives = legacyProjected.creatives as Array<Record<string, unknown>>;
+    expect(legacyCreatives).toEqual([
+      expect.objectContaining({
+        creative_id: 'campaign_hero_video',
+        format_id: expect.objectContaining({ id: 'video_preroll' }),
+      }),
+    ]);
+    expect(legacyCreatives[0]?.format_kind).toBeUndefined();
   });
 
   it('skips the compliance fallback when creative_ids filter is explicit', async () => {
@@ -9765,7 +10063,7 @@ describe('list_creatives handler', () => {
         },
         {
           creative_id: 'cr_image',
-          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250 },
+          format_id: { agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 2 },
           name: 'Image creative',
           assets: {
             image: { asset_type: 'image', url: 'https://cdn.example/image.png', width: 300, height: 250 },
@@ -9853,6 +10151,24 @@ describe('list_creatives handler', () => {
       },
     });
     expect(exactParameterizedFormat.creatives).toEqual([]);
+
+    const { result: mismatchedPixelRatio } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ['cr_image'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 1 }],
+      },
+    });
+    expect(mismatchedPixelRatio.creatives).toEqual([]);
+
+    const { result: exactPixelRatio } = await simulateCallTool(server2, 'list_creatives', {
+      account,
+      filters: {
+        creative_ids: ['cr_image'],
+        format_ids: [{ agent_url: TEST_AGENT_URL, id: 'existing_post', width: 300, height: 250, pixel_ratio: 2 }],
+      },
+    });
+    expect((exactPixelRatio.creatives as Array<{ creative_id: string }>).map(c => c.creative_id)).toEqual(['cr_image']);
 
     const { result: zipBundle } = await simulateCallTool(server2, 'list_creatives', {
       account,
@@ -10097,7 +10413,7 @@ describe('canonical creative build capabilities', () => {
     expect(imageCapability?.format.format_option_id).toBeUndefined();
     expect(supportedFormats.some(format => format.capability_id === 'build_html5')).toBe(false);
     expect((result.creative as any).preview).toEqual({
-      routes: supportedFormats.map(format => ({
+      routes: supportedFormats.filter(format => format.operations.includes('preview')).map(format => ({
         capability_id: format.capability_id,
         rendering_origin: 'agent_approximation',
       })),
@@ -10196,7 +10512,7 @@ describe('canonical creative build capabilities', () => {
     expect(failure.result.code).toBe('FORMAT_NOT_SUPPORTED');
   });
 
-  it('preserves implicit preview routing only on the 3.0 storyboard compatibility surface', async () => {
+  it('infers a unique advertised preview route on current and 3.0 compatibility surfaces', async () => {
     const manifest = {
       format_kind: 'native_in_feed',
       assets: {
@@ -10209,7 +10525,7 @@ describe('canonical creative build capabilities', () => {
       request_type: 'single',
       creative_manifest: manifest,
     });
-    expect(current.result.code).toBe('FORMAT_NOT_SUPPORTED');
+    expect(current.result.response_type).toBe('single');
 
     const compatServer = createTrainingAgentServer({
       ...DEFAULT_CTX,
@@ -10231,9 +10547,22 @@ describe('canonical creative build capabilities', () => {
       },
     });
     expect(legacyProjection.result.response_type).toBe('single');
+
+    // The 3.0 SDK facade projects an inline legacy format_id into the later
+    // format_kind slot before dispatch. Preserve that named legacy route even
+    // when the original format_id object is no longer present.
+    const projectedLegacyOnly = await simulateCallTool(compatServer, 'preview_creative', {
+      request_type: 'single',
+      creative_manifest: {
+        creative_id: 'inline_projected_legacy',
+        format_kind: 'display_300x250',
+        assets: {},
+      },
+    });
+    expect(projectedLegacyOnly.result.response_type).toBe('single');
   });
 
-  it('threads 3.0 preview compatibility through both v6 creative adapters', async () => {
+  it('threads unique preview routing through current and 3.0 v6 creative adapters', async () => {
     const request = {
       request_type: 'single',
       creative_manifest: {
@@ -10249,8 +10578,8 @@ describe('canonical creative build capabilities', () => {
       new TrainingCreativePlatform(),
       new TrainingCreativeBuilderPlatform(),
     ]) {
-      await expect(currentPlatform.creative.previewCreativeLegacy(request as any, platformContext as any))
-        .rejects.toThrow(/no unique matching advertised preview capability/i);
+      const result = await currentPlatform.creative.previewCreativeLegacy(request as any, platformContext as any);
+      expect((result as any).response_type).toBe('single');
     }
 
     for (const compatPlatform of [
@@ -13566,6 +13895,50 @@ describe('get_media_buy_delivery handler', () => {
     expect(result.media_buy_deliveries).toBeDefined();
   });
 
+  it('allocates one media-buy simulation across packages without double-counting totals', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'delivery-allocation.example' }, operator: 'delivery-allocation.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      start_time: 'asap',
+      end_time: '2099-12-31T00:00:00Z',
+      packages: [30000, 20000].map(budget => ({
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget,
+      })),
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 5000,
+        clicks: 50,
+        reported_spend: { amount: 250, currency: 'USD' },
+      },
+      account,
+      brand: account.brand,
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+    const delivery = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const packages = delivery.by_package as Array<Record<string, number>>;
+    const totals = delivery.totals as Record<string, number>;
+    expect(packages).toHaveLength(2);
+    expect(packages.reduce((sum, pkg) => sum + pkg.impressions, 0)).toBe(5000);
+    expect(packages.reduce((sum, pkg) => sum + pkg.clicks, 0)).toBe(50);
+    expect(packages.reduce((sum, pkg) => sum + pkg.spend, 0)).toBe(250);
+    expect(totals).toMatchObject({ impressions: 5000, clicks: 50, spend: 250 });
+  });
+
   it('computes cost_per_acquisition when simulate_delivery injects conversions and spend', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -14404,6 +14777,20 @@ describe('get_signals handler', () => {
     const { result } = await simulateCallTool(server, 'get_signals', { account });
     expect(Array.isArray(result.signals)).toBe(true);
     expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(result.cache_scope).toBe('public');
+  });
+
+  it('marks an account-overlay signal catalog as account-scoped', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_signals', {
+      account: {
+        brand: { domain: 'account-overlay.example' },
+        operator: 'account-overlay.example',
+      },
+    });
+
+    expect((result.signals as unknown[]).length).toBeGreaterThan(0);
+    expect(result.cache_scope).toBe('account');
   });
 
   it('returns wholesale signal feed metadata and honors unchanged probes', async () => {
@@ -14877,7 +15264,7 @@ describe('activate_signal handler', () => {
     });
 
     expect(result.code).toBeDefined();
-    expect(result.code).toBe('SIGNAL_AGENT_SEGMENT_NOT_FOUND');
+    expect(result.code).toBe('REFERENCE_NOT_FOUND');
   });
 
   it('returns error for invalid pricing option', async () => {
@@ -15522,24 +15909,23 @@ describe('get_adcp_capabilities handler', () => {
 
     const complianceTesting = result.compliance_testing as Record<string, unknown>;
     const scenarios = complianceTesting.scenarios as string[];
-    expect(scenarios).toEqual(expect.arrayContaining([
+    expect(scenarios).toEqual([
       'force_creative_status',
-      'force_audience_status',
       'force_account_status',
       'force_media_buy_status',
-      'force_create_media_buy_arm',
-      'force_task_completion',
-      'force_creative_purge',
       'force_session_status',
       'simulate_delivery',
       'simulate_budget_spend',
+    ]);
+
+    const { result: currentResult } = await simulateCallTool(server, 'get_adcp_capabilities', {
+      adcp_version: CURRENT_ADCP_VERSION,
+    });
+    const currentScenarios = (currentResult.compliance_testing as Record<string, unknown>).scenarios as string[];
+    expect(currentScenarios).toEqual(expect.arrayContaining([
+      'force_audience_status',
+      'force_creative_purge',
       'seed_account',
-      'seed_product',
-      'seed_pricing_option',
-      'seed_creative',
-      'seed_plan',
-      'seed_media_buy',
-      'seed_creative_format',
       'seed_measurement_catalog',
       'query_provenance_audit_observations',
     ]));
@@ -15583,8 +15969,11 @@ describe('get_adcp_capabilities handler', () => {
     const server = createTrainingAgentServer({ mode: 'open', strict: true });
     const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
     const rs = result.request_signing as Record<string, unknown>;
+    const adcp = result.adcp as Record<string, unknown>;
 
     expect(rs.supported).toBe(true);
+    expect(rs.covers_content_digest).toBe('either');
+    expect(adcp.supported_versions).not.toContain(CURRENT_ADCP_VERSION);
     const requiredFor = rs.required_for as string[];
     expect(requiredFor).toContain('create_media_buy');
     expect(requiredFor).toContain('update_media_buy');
@@ -15595,17 +15984,63 @@ describe('get_adcp_capabilities handler', () => {
     expect(rs.protocol_methods_required_for).toEqual([
       'tasks/cancel',
       'tasks/pushNotificationConfig/set',
-      'CreateTaskPushNotificationConfig',
     ]);
     expect(rs.protocol_methods_supported_for).toEqual([
       'tasks/cancel',
       'tasks/pushNotificationConfig/set',
-      'CreateTaskPushNotificationConfig',
     ]);
 
     // Cross-namespace leak guard.
     const supportedFor = rs.supported_for as string[];
     expect(supportedFor.every(op => !isProtocolMethodName(op))).toBe(true);
+  });
+
+  it('advertises 3.2 only on signing routes that require content-digest coverage', async () => {
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const [{ result: required }, { result: forbidden }] = await Promise.all([
+      simulateCallTool(requiredServer, 'get_adcp_capabilities', {}),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', {}),
+    ]);
+
+    expect((required.request_signing as Record<string, unknown>).covers_content_digest).toBe('required');
+    expect((required.adcp as Record<string, unknown>).supported_versions).toContain(CURRENT_ADCP_VERSION);
+    expect((forbidden.request_signing as Record<string, unknown>).covers_content_digest).toBe('forbidden');
+    expect((forbidden.adcp as Record<string, unknown>).supported_versions).not.toContain(CURRENT_ADCP_VERSION);
+  });
+
+  it('rejects 3.2 pins on legacy signing profiles and accepts them on the required profile', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+    const [{ result: either, isError: eitherError }, { result: forbidden, isError: forbiddenError }, required] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+      simulateCallTool(requiredServer, 'get_adcp_capabilities', { adcp_version: CURRENT_ADCP_VERSION }),
+    ]);
+
+    expect(eitherError).toBe(true);
+    expect(either).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    expect((either.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    expect(forbiddenError).toBe(true);
+    expect(forbidden).toMatchObject({ code: 'VERSION_UNSUPPORTED' });
+    expect((forbidden.details as Record<string, unknown>).supported_versions as string[]).not.toContain(CURRENT_ADCP_VERSION);
+    expect(required.isError).not.toBe(true);
+    expect(required.result.adcp_version).toBe(CURRENT_ADCP_VERSION);
+  });
+
+  it('negotiates major-only pins to the highest signing-compatible release', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const [either, forbidden] = await Promise.all([
+      simulateCallTool(eitherServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+      simulateCallTool(forbiddenServer, 'get_adcp_capabilities', { adcp_major_version: 3 }),
+    ]);
+
+    expect(either.isError).not.toBe(true);
+    expect(either.result.adcp_version).toBe('3.1-rc.15');
+    expect(forbidden.isError).not.toBe(true);
+    expect(forbidden.result.adcp_version).toBe('3.1-rc.15');
   });
 });
 
@@ -16342,6 +16777,34 @@ describe('MCP Tasks protocol', () => {
         },
       });
     }
+  });
+
+  it('applies signing-profile version negotiation to task lifecycle methods', async () => {
+    const eitherServer = createTrainingAgentServer({ mode: 'open', strict: true });
+    const forbiddenServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'forbidden' });
+    const requiredServer = createTrainingAgentServer({ mode: 'open', strict: true, digestMode: 'required' });
+
+    for (const server of [eitherServer, forbiddenServer]) {
+      await expect(
+        simulateGetTask(server, 'nonexistent-task-id', { adcp_version: CURRENT_ADCP_VERSION }),
+      ).rejects.toMatchObject({
+        code: -32602,
+        data: {
+          adcp_error: { code: 'VERSION_UNSUPPORTED', field: 'adcp_version' },
+        },
+      });
+    }
+
+    const requiredError = await simulateGetTask(
+      requiredServer,
+      'nonexistent-task-id',
+      { adcp_version: CURRENT_ADCP_VERSION },
+    ).catch((error: unknown) => error as { code?: number; data?: Record<string, unknown> });
+    expect(requiredError).toMatchObject({
+      code: -32602,
+      data: { adcp_version: CURRENT_ADCP_VERSION },
+    });
+    expect(requiredError.data?.adcp_error).toBeUndefined();
   });
 
   it('echoes served adcp_version on task lifecycle JSON-RPC errors', async () => {

@@ -13,15 +13,20 @@
  * those registered governance agents.
  */
 
-import type { TenantConfig } from '@adcp/sdk/server';
+import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
 import { TrainingPlatform } from '../v6-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import type { TrainingContext } from '../types.js';
+import { buildSignalsComplyConfig } from './comply.js';
 
 const TENANT_ID = 'signals';
 
-export function buildSignalsTenantConfig(host: string, options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {}): {
+export function buildSignalsTenantConfig(
+  host: string,
+  options: { storyboardCompat?: TrainingContext['storyboardCompat'] } = {},
+  taskRegistry?: TaskRegistry,
+): {
   tenantId: string;
   config: TenantConfig;
 } {
@@ -39,6 +44,7 @@ export function buildSignalsTenantConfig(host: string, options: { storyboardComp
           list_accounts: listAccountsTool(options.storyboardCompat),
           sync_governance: syncGovernanceTool(options.storyboardCompat),
         },
+        complyTest: buildSignalsComplyConfig(options.storyboardCompat, taskRegistry),
       },
     },
   };

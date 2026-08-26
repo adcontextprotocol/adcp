@@ -241,7 +241,7 @@ describe("metric identity coherence", () => {
     assert.deepEqual(verifierConstraints, {
       viewed_seconds_percentile_order: "p25 <= p50 <= p75 <= p90 <= p95",
       viewed_seconds_histogram_bounds:
-        "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; only the final bucket may omit upper_bound_seconds",
+        "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; gaps between buckets are permitted only when zero impressions fall in the gap (enforced by the sum-equals-measurable_impressions rule, not a separate contiguity check); only the final bucket may omit upper_bound_seconds",
       viewed_seconds_histogram_population:
         "sum(bucket.impressions) equals measurable_impressions",
     });

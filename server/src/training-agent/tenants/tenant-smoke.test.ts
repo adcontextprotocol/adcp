@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
 import { clearAccountStore } from '../account-handlers.js';
 import {
@@ -448,6 +449,51 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('advertises only the protocols implemented by each tenant route', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const expected: Record<string, string[]> = {
+        sales: ['media_buy', 'creative'],
+        signals: ['signals'],
+        governance: ['governance'],
+        creative: ['creative'],
+        'creative-builder': ['creative'],
+        brand: ['brand'],
+        si: ['sponsored_intelligence'],
+      };
+      for (const [index, [tenant, protocols]] of Object.entries(expected).entries()) {
+        const url = `${baseUrl}/${tenant}/mcp`;
+        await initializeTenant(url);
+        const response = await callTenantTool(url, 40 + index, 'get_adcp_capabilities', {}) as {
+          result?: { structuredContent?: {
+            supported_protocols?: string[];
+            media_buy?: unknown;
+            creative?: {
+              supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
+              preview?: { routes?: Array<{ capability_id?: string }> };
+            };
+          } };
+        };
+        const capabilities = response.result?.structuredContent;
+        expect(capabilities?.supported_protocols).toEqual(protocols);
+        if (!protocols.includes('media_buy')) {
+          expect(capabilities?.media_buy).toBeUndefined();
+        }
+        if (protocols.includes('creative')) {
+          const previewCapabilityIds = capabilities?.creative?.supported_formats
+            ?.filter(format => format.operations?.includes('preview'))
+            .map(format => format.capability_id) ?? [];
+          expect(previewCapabilityIds.length).toBeGreaterThan(0);
+          expect(capabilities?.creative?.preview?.routes?.map(route => route.capability_id)).toEqual(
+            previewCapabilityIds,
+          );
+        }
+      }
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('serves proposal-profile capabilities and SDK-shaped 3.2 refinement over HTTP', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -462,7 +508,7 @@ describe('tenant routing smoke', () => {
       );
 
       const capabilitiesResponse = await callTenantTool(url, 3, 'get_adcp_capabilities', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
       }) as {
         result?: { structuredContent?: {
@@ -475,8 +521,8 @@ describe('tenant routing smoke', () => {
           };
         } };
       };
-      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.5');
-      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.5');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.6');
       const mediaBuy = capabilitiesResponse.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supports_proposals).toBe(true);
       expect(mediaBuy?.lifecycle_tools).toEqual([
@@ -521,7 +567,7 @@ describe('tenant routing smoke', () => {
       }
 
       const requested = await callTenantTool(url, 4, 'request_proposals', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-request-0001',
         account: {
@@ -535,12 +581,12 @@ describe('tenant routing smoke', () => {
           proposals?: Array<{ proposal_id?: string }>;
         } };
       };
-      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.5');
+      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
       const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
       expect(sourceProposalId, JSON.stringify(requested)).toBeTruthy();
 
       const partial = await callTenantTool(url, 5, 'refine_proposals', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-three-0001',
         account: {
@@ -561,14 +607,14 @@ describe('tenant routing smoke', () => {
         } };
       };
       const counteroffer = partial.result?.structuredContent;
-      expect(counteroffer?.adcp_version).toBe('3.2-beta.5');
+      expect(counteroffer?.adcp_version).toBe('3.2-beta.6');
       expect(counteroffer?.adcp_error).toBeUndefined();
       expect(counteroffer?.results?.[0]?.outcome, JSON.stringify(counteroffer)).toBe('partial');
       expect(counteroffer?.results?.[0]?.reason_code).toBe('alternatives_unavailable');
       expect(counteroffer?.results?.[0]?.proposals).toHaveLength(2);
 
       const refined = await callTenantTool(url, 6, 'refine_proposals', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-two-0001',
         account: {
@@ -589,7 +635,7 @@ describe('tenant routing smoke', () => {
         } };
       };
       const refinement = refined.result?.structuredContent;
-      expect(refinement?.adcp_version).toBe('3.2-beta.5');
+      expect(refinement?.adcp_version).toBe('3.2-beta.6');
       expect(refinement?.adcp_error).toBeUndefined();
       expect(refinement?.results?.[0]?.outcome).toBe('revised');
       expect(refinement?.results?.[0]?.proposals).toHaveLength(2);
@@ -597,7 +643,7 @@ describe('tenant routing smoke', () => {
       const revisedProposalId = refinement?.results?.[0]?.proposals?.[0]?.proposal_id;
       expect(revisedProposalId).toEqual(expect.any(String));
       const finalized = await callTenantTool(url, 7, 'refine_proposals', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-finalize-0001',
         refinements: [{ proposal_id: revisedProposalId, action: 'finalize' }],
@@ -1732,20 +1778,43 @@ describe('tenant routing smoke', () => {
               supported_optimization_metrics?: string[];
               vendor_metric_optimization?: { supported_targets?: string[] };
             };
+            creative?: {
+              supported_formats?: Array<{ capability_id?: string; operations?: string[] }>;
+              preview?: { routes?: Array<{ capability_id?: string; rendering_origin?: string }> };
+            };
             compliance_testing?: { scenarios?: string[] };
           };
         };
       };
       const mediaBuy = body.result?.structuredContent?.media_buy;
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.5');
+      const creative = body.result?.structuredContent?.creative;
+      const previewCapabilityIds = creative?.supported_formats
+        ?.filter(format => format.operations?.includes('preview'))
+        .map(format => format.capability_id) ?? [];
+      const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.5']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
+      expect(previewCapabilityIds.length).toBeGreaterThan(0);
+      expect(previewRouteIds).toEqual(previewCapabilityIds);
+      expect(creative?.preview?.routes?.every(route => (
+        route.rendering_origin === 'agent_approximation'
+      ))).toBe(true);
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
+      const schema = JSON.parse(fs.readFileSync(path.resolve(
+        'dist/schemas/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
+      ), 'utf8'));
+      const validate = new Ajv({ allErrors: true, strict: false, discriminator: true, validateFormats: false })
+        .compile(schema);
+      expect(
+        validate(body.result?.structuredContent),
+        JSON.stringify(validate.errors),
+      ).toBe(true);
     } finally {
       await close();
     }
@@ -2643,7 +2712,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.5'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -2734,6 +2803,29 @@ describe('tenant routing smoke', () => {
         error?: unknown;
       };
       expect(directSeedBody.result?.structuredContent?.success).not.toBe(true);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
+  it('advertises a schema-valid legacy compliance scenario on the 3.0 signals tenant', async () => {
+    stageLatestThreeZeroSchemaBundle();
+    const { baseUrl, close } = await bootServer({ storyboardCompat: { version: '3.0' } });
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const capabilitiesBody = await callTenantTool(url, 2, 'get_adcp_capabilities', {}) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios).toEqual([
+        'force_session_status',
+      ]);
+
+      const listedBody = await callTenantTool(url, 3, 'comply_test_controller', {
+        account: { sandbox: true },
+        scenario: 'list_scenarios',
+      }) as { result?: { structuredContent?: { scenarios?: string[] } } };
+      expect(listedBody.result?.structuredContent?.scenarios).toEqual(['force_session_status']);
     } finally {
       await close();
     }
@@ -3044,7 +3136,7 @@ describe('tenant routing smoke', () => {
       };
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         buying_mode: 'wholesale',
         account,
       };
@@ -3162,7 +3254,7 @@ describe('tenant routing smoke', () => {
         brand: account.brand,
       }) as { result?: { structuredContent?: { adcp_version?: string; products?: Array<{ product_id?: string }>; replayed?: boolean } } };
       expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
-      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.5');
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
       expect(aliasReplay.result?.structuredContent?.products?.map(product => product.product_id))
         .toEqual(first.result?.structuredContent?.products?.map(product => product.product_id));
       expect(aliasReplay.result?.structuredContent?.replayed).toBeUndefined();
@@ -3279,42 +3371,76 @@ describe('tenant routing smoke', () => {
     try {
       const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
-      const account = {
-        brand: { domain: 'tenant-products-advisory.example' },
-        operator: 'tenant-products-advisory.example',
+      const controllerAccount = {
+        brand: { domain: 'acmeoutdoor.example' },
+        operator: 'acmeoutdoor.example',
         sandbox: true,
       };
+      const account = {
+        ...controllerAccount,
+        operator: 'pinnacle-agency.example',
+      };
       const directive = await callTenantTool(url, 2, 'comply_test_controller', {
-        account,
+        account: controllerAccount,
         scenario: 'force_upstream_unavailable',
-        params: { tool: 'get_products', upstream_name: 'catalog-test' },
+        params: { tool: 'get_products', upstream_name: 'catalog-test', cache_age_seconds: 73 },
       }) as { result?: { structuredContent?: { success?: boolean } } };
       expect(directive.result?.structuredContent?.success).toBe(true);
 
       const key = 'tenant-products-advisory-replay-0001';
       const first = await callTenantTool(url, 3, 'get_products', {
         idempotency_key: key,
-        buying_mode: 'wholesale',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
         account,
         context: { correlation_id: 'tenant-advisory-first' },
       }) as {
-        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; context?: { correlation_id?: string } } };
+        result?: { structuredContent?: { products?: Array<Record<string, unknown>>; errors?: Array<{ code?: string; details?: { served_from_cache?: boolean; cache_age_seconds?: number } }>; context?: { correlation_id?: string } } };
       };
       const replay = await callTenantTool(url, 4, 'get_products', {
         idempotency_key: key,
-        buying_mode: 'wholesale',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
         account,
         context: { correlation_id: 'tenant-advisory-retry' },
       }) as {
         result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }>; replayed?: boolean; context?: { correlation_id?: string } } };
       };
+      const fresh = await callTenantTool(url, 5, 'get_products', {
+        idempotency_key: 'tenant-products-advisory-fresh-0001',
+        buying_mode: 'brief',
+        brief: 'Display advertising',
+        account,
+      }) as {
+        result?: { structuredContent?: { products?: unknown[]; errors?: Array<{ code?: string }> } };
+      };
       expect(first.result?.structuredContent?.products?.length).toBeGreaterThan(0);
-      expect(first.result?.structuredContent?.errors?.[0]?.code).toBe('STALE_RESPONSE');
+      expect(first.result?.structuredContent?.products?.every(product => (
+        Array.isArray(product.format_options) && (
+          !Object.hasOwn(product, 'format_ids')
+          || (() => {
+            const legacy = new Set((product.format_ids as Array<{ agent_url?: string; id?: string }>).map(
+              ref => `${ref.agent_url}#${ref.id}`,
+            ));
+            const mapped = new Set((product.format_options as Array<{ v1_format_ref?: Array<{ agent_url?: string; id?: string }> }>)
+              .flatMap(option => option.v1_format_ref ?? [])
+              .map(ref => `${ref.agent_url}#${ref.id}`));
+            return legacy.size === mapped.size && [...legacy].every(id => mapped.has(id));
+          })()
+        )
+      ))).toBe(true);
+      expect(first.result?.structuredContent?.errors?.map(error => error.code)).toEqual(['STALE_RESPONSE']);
+      expect(first.result?.structuredContent?.errors?.[0]?.details).toMatchObject({
+        served_from_cache: true,
+        cache_age_seconds: 73,
+      });
       expect(first.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-first');
       expect(replay.result?.structuredContent?.replayed).toBe(true);
       expect(replay.result?.structuredContent?.products).toEqual(first.result?.structuredContent?.products);
       expect(replay.result?.structuredContent?.errors).toEqual(first.result?.structuredContent?.errors);
       expect(replay.result?.structuredContent?.context?.correlation_id).toBe('tenant-advisory-retry');
+      expect(fresh.result?.structuredContent?.products?.length).toBeGreaterThan(0);
+      expect(fresh.result?.structuredContent?.errors?.map(error => error.code) ?? []).not.toContain('STALE_RESPONSE');
     } finally {
       await close();
     }
@@ -3331,7 +3457,7 @@ describe('tenant routing smoke', () => {
         sandbox: true,
       };
       const directive = await callTenantTool(url, 91, 'comply_test_controller', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         account,
         scenario: 'force_get_products_arm',
         params: {
@@ -3343,7 +3469,7 @@ describe('tenant routing smoke', () => {
       expect(directive.result?.structuredContent?.success).toBe(true);
 
       const rejected = await callTenantTool(url, 92, 'get_products', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         idempotency_key: 'tenant-products-rejected-0001',
         buying_mode: 'brief',

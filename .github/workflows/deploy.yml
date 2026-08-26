@@ -114,6 +114,40 @@ jobs:
             exit 1
           fi
 
+      - name: Stage Luna router shadow secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          ROUTER_SHADOW_HMAC_KEY: ${{ secrets.ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY }}
+          ROUTER_SHADOW_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ "${#ROUTER_SHADOW_HMAC_KEY}" -lt 32 ]; then
+            echo "::error::ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY must be at least 32 characters."
+            exit 1
+          fi
+          if [ -z "${ROUTER_SHADOW_OPENAI_API_KEY}" ]; then
+            echo "::error::OPENAI_API_KEY must be configured."
+            exit 1
+          fi
+          flyctl secrets set --stage \
+            ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY="${ROUTER_SHADOW_HMAC_KEY}" \
+            OPENAI_API_KEY="${ROUTER_SHADOW_OPENAI_API_KEY}"
+
+      - name: Require Luna router shadow provider secrets
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          secrets=$(flyctl secrets list --json)
+          for required in OPENAI_API_KEY ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY; do
+            if ! echo "${secrets}" | jq -e --arg required "${required}" \
+              'if type == "array" then any(.[]; (.Name // .name) == $required) else error("expected Fly secrets JSON array") end' \
+              >/dev/null; then
+              echo "::error::Required Fly secret ${required} is missing."
+              exit 1
+            fi
+          done
+
       # flyctl deploy can fail for two very different reasons:
       #   1. The new image is broken (real failure — must block).
       #   2. Fly's machines API was unreachable during health-check polling

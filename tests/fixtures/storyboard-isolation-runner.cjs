@@ -9,7 +9,16 @@ const args = process.argv.slice(2);
 const storyboardIds = (process.env.FIXTURE_STORYBOARDS ?? 'healthy').split(',').filter(Boolean);
 
 if (args.includes('--list-applicable-json')) {
-  console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({ version: 1, storyboard_ids: storyboardIds })}`);
+  console.log(`ADCP_STORYBOARD_LIST ${JSON.stringify({
+    version: 1,
+    storyboard_ids: storyboardIds,
+    selection: {
+      corpus: storyboardIds.length + 2,
+      applicable: storyboardIds.length,
+      not_applicable: 1,
+      quarantined: 1,
+    },
+  })}`);
   process.exit(0);
 }
 
@@ -78,9 +87,24 @@ if (storyboardId === 'hang') {
   })}`);
   process.exit(0);
 } else if (storyboardId === 'signed_requests') {
+  const signedShape = process.env.FIXTURE_SIGNED_REQUESTS_SHAPE ?? 'partial';
+  const summaryIds = signedShape === 'current'
+    ? ['signed_requests-strict-required']
+    : signedShape === 'legacy'
+      ? ['signed_requests-strict', 'signed_requests-strict-required', 'signed_requests-strict-forbidden']
+      : signedShape === 'duplicate'
+        ? ['signed_requests-strict-required', 'signed_requests-strict-required', 'signed_requests-strict-required']
+      : ['signed_requests-strict'];
+  const summaries = summaryIds.map(id => ({ ...result.summaries[0], id }));
   console.log(`ADCP_STORYBOARD_RESULT ${JSON.stringify({
     ...result,
-    summaries: [{ ...result.summaries[0], id: 'signed_requests-strict' }],
+    summaries,
+    totals: {
+      ...result.totals,
+      clean: summaries.length,
+      total: summaries.length,
+      passed: summaries.length,
+    },
   })}`);
   process.exit(0);
 } else if (storyboardId === 'malformed_result') {

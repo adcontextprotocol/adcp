@@ -7,8 +7,21 @@
   "properties": {
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Required VAST version"
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
+    },
+    "vast_versions": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/vast-version.json" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted VAST version set for this asset requirement."
+    },
+    "media_file_requirements": {
+      "$ref": "/schemas/core/vast-media-file-requirements.json",
+      "description": "Technical acceptance constraints for the alternative MediaFile renditions in each applicable resolved InLine linear creative."
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "not": { "required": ["vast_version", "vast_versions"] }
 }

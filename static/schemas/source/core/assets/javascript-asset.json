@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/javascript-asset.json",
   "title": "JavaScript Asset",
-  "description": "Inline JavaScript content asset. For URL-delivered third-party tag scripts, use the url asset type with url_type 'tracker_script'. For HTML5 banner bundles that include JavaScript, use the zip asset type.",
+  "description": "Inline JavaScript content asset. For third-party display ad markup, use the display_tag asset with delivery_type `inline_markup`; for measurement scripts use a typed tracker; for seller-hosted HTML5 bundles use zip.",
   "type": "object",
   "properties": {
     "asset_type": {

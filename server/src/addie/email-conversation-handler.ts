@@ -274,6 +274,7 @@ export async function handleEmailConversation(
           }))
         : undefined,
       model: effectiveModel,
+        model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,

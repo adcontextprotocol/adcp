@@ -1,10 +1,10 @@
 /**
  * Pull a summary of recent shadow-eval results from production.
  *
- * Hits `/api/admin/addie/threads` with `flagged_only=true` (which is how
- * shadow-eval-complete threads surface), filters client-side to those
- * with shadow_eval_status='complete', and aggregates the shape metrics
- * the new pipeline persists.
+ * Scans recent threads without a flagged-only filter by default, filters
+ * client-side to shadow_eval_status='complete', and aggregates the metrics
+ * the pipeline persists. A flagged-only default would omit corrected-answer
+ * no-gap completions and inflate the apparent gap rate.
  *
  * Auth: uses `ADMIN_API_KEY` env var as a Bearer token. Same env var the
  * red-team runner uses (server/src/addie/testing/redteam-runner.ts:170).
@@ -18,10 +18,14 @@
  * to point at staging or local.
  */
 
-interface ThreadSummary {
+import { pathToFileURL } from 'node:url';
+import { hasHeadlineEligibleProvenance } from '../../src/addie/jobs/shadow-eval-metadata.js';
+
+export interface ThreadSummary {
   thread_id: string;
   context?: {
     shadow_eval_status?: string;
+    shadow_eval_type?: string;
     shadow_eval_source?: string;
     shadow_eval_completed_at?: string;
     shadow_eval_question?: string;
@@ -30,6 +34,9 @@ interface ThreadSummary {
       gap_severity?: string;
       gap_details?: string;
       shadow_quality?: string;
+      evaluation_valid?: boolean;
+      evaluation_skipped?: boolean;
+      evaluation_error?: string;
     };
     shadow_eval_shape?: {
       shadow?: {
@@ -47,10 +54,86 @@ interface ThreadSummary {
         expected_max_words?: number;
       };
     };
+    shadow_eval_provenance?: {
+      schema_version?: number;
+      source_answer?: { model?: string | null; config_version_id?: number | null };
+      source_opportunity?: { config_version_id?: number | null };
+      generator?: { model?: string } | null;
+      judge?: { model?: string };
+      self_judged?: boolean | null;
+      tools?: {
+        mode?: string;
+        trace_or_fixture_id?: string | null;
+        policy_version?: string | null;
+        complete_fidelity?: boolean;
+        blocked_capabilities?: string[];
+        hash_key_version?: string | null;
+        trace_verified?: boolean;
+        system_block_hashes?: string[];
+        schemas?: unknown[];
+      };
+    };
   };
   flag_reason?: string | null;
   channel?: string;
   last_message_at?: string;
+}
+
+interface CaptureSummary {
+  days: number;
+  total: number;
+  outcomes: Array<{ status: string; reason: string; count: number }>;
+  generations?: {
+    total: number;
+    input_tokens: number;
+    output_tokens: number;
+    outcomes: Array<{
+      status: string;
+      reason: string;
+      count: number;
+      input_tokens: number;
+      output_tokens: number;
+    }>;
+  };
+  judgments?: {
+    total: number;
+    input_tokens: number;
+    output_tokens: number;
+    outcomes: Array<{
+      status: string;
+      reason: string;
+      count: number;
+      input_tokens: number;
+      output_tokens: number;
+    }>;
+  };
+  funnel?: {
+    opportunities: number;
+    traces_captured: number;
+    parity_verified: number;
+    capture_verified: number;
+    capture_pending: number;
+    capture_skipped: number;
+    capture_error: number;
+    generation_claimed: number;
+    generation_succeeded: number;
+    generation_blocked: number;
+    generation_error: number;
+    generation_running: number;
+    judgment_judged: number;
+    judgment_deterministic_failure: number;
+    judgment_skipped: number;
+    judgment_error: number;
+    judgment_missing: number;
+  };
+}
+
+async function fetchCaptureSummary(baseUrl: string, apiKey: string): Promise<CaptureSummary> {
+  const res = await fetch(`${baseUrl}/api/admin/addie/threads/shadow-replay-captures?days=7`, {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from shadow replay capture summary`);
+  return res.json() as Promise<CaptureSummary>;
 }
 
 async function fetchThreads(
@@ -93,10 +176,19 @@ async function fetchThreadDetail(
   return (await res.json()) as ThreadSummary;
 }
 
-interface Aggregate {
+export interface Aggregate {
   total: number;
+  completed: number;
+  eligible_total: number;
   by_source: Record<string, number>;
-  knowledge_gaps: number;
+  by_type: Record<string, number>;
+  eligible_by_type: Record<string, number>;
+  knowledge_gaps_by_type: Record<string, number>;
+  invalid_evaluations_by_type: Record<string, number>;
+  skipped_evaluations_by_type: Record<string, number>;
+  provenance_excluded_by_type: Record<string, number>;
+  replay_fidelity: Record<string, number>;
+  blocked_capability_counts: Record<string, number>;
   gap_severities: Record<string, number>;
   shape_violation_counts: Record<string, number>;
   word_counts: number[];
@@ -104,11 +196,20 @@ interface Aggregate {
   questions_with_any_violation: number;
 }
 
-function aggregate(threads: ThreadSummary[]): Aggregate {
+export function aggregate(threads: ThreadSummary[]): Aggregate {
   const out: Aggregate = {
     total: 0,
+    completed: 0,
+    eligible_total: 0,
     by_source: {},
-    knowledge_gaps: 0,
+    by_type: {},
+    eligible_by_type: {},
+    knowledge_gaps_by_type: {},
+    invalid_evaluations_by_type: {},
+    skipped_evaluations_by_type: {},
+    provenance_excluded_by_type: {},
+    replay_fidelity: {},
+    blocked_capability_counts: {},
     gap_severities: {},
     shape_violation_counts: {},
     word_counts: [],
@@ -117,12 +218,49 @@ function aggregate(threads: ThreadSummary[]): Aggregate {
   };
   for (const t of threads) {
     const ctx = t.context;
-    if (!ctx || ctx.shadow_eval_status !== 'complete') continue;
+    if (!ctx || !['complete', 'error', 'skipped'].includes(ctx.shadow_eval_status || '')) continue;
     out.total++;
     const source = ctx.shadow_eval_source || 'suppressed';
     out.by_source[source] = (out.by_source[source] || 0) + 1;
-    if (ctx.shadow_eval_result?.knowledge_gap) {
-      out.knowledge_gaps++;
+    const evaluationType = ctx.shadow_eval_type
+      || (source === 'addie_corrected_capture'
+        ? 'corrected_answer (legacy inferred)'
+        : source === 'backfill'
+          ? 'historical_corrected_answer (legacy inferred)'
+          : 'suppressed_opportunity (legacy inferred)');
+    out.by_type[evaluationType] = (out.by_type[evaluationType] || 0) + 1;
+    if (ctx.shadow_eval_provenance?.tools?.mode === 'read_only_replay') {
+      const fidelity = ctx.shadow_eval_provenance.tools.complete_fidelity === true
+        ? 'complete'
+        : 'incomplete';
+      out.replay_fidelity[fidelity] = (out.replay_fidelity[fidelity] || 0) + 1;
+      for (const capability of ctx.shadow_eval_provenance.tools.blocked_capabilities || []) {
+        const category = capability.split(':', 1)[0] || 'unknown';
+        out.blocked_capability_counts[category] =
+          (out.blocked_capability_counts[category] || 0) + 1;
+      }
+    }
+    if (ctx.shadow_eval_status === 'skipped' || ctx.shadow_eval_result?.evaluation_skipped === true) {
+      out.skipped_evaluations_by_type[evaluationType] =
+        (out.skipped_evaluations_by_type[evaluationType] || 0) + 1;
+      continue;
+    }
+    if (ctx.shadow_eval_status === 'error' || ctx.shadow_eval_result?.evaluation_valid !== true) {
+      out.invalid_evaluations_by_type[evaluationType] =
+        (out.invalid_evaluations_by_type[evaluationType] || 0) + 1;
+      continue;
+    }
+    out.completed++;
+    if (!hasHeadlineEligibleProvenance(ctx.shadow_eval_provenance)) {
+      out.provenance_excluded_by_type[evaluationType] =
+        (out.provenance_excluded_by_type[evaluationType] || 0) + 1;
+      continue;
+    }
+    out.eligible_total++;
+    out.eligible_by_type[evaluationType] = (out.eligible_by_type[evaluationType] || 0) + 1;
+    if (ctx.shadow_eval_result.knowledge_gap) {
+      out.knowledge_gaps_by_type[evaluationType] =
+        (out.knowledge_gaps_by_type[evaluationType] || 0) + 1;
       const sev = ctx.shadow_eval_result.gap_severity || 'unknown';
       out.gap_severities[sev] = (out.gap_severities[sev] || 0) + 1;
     }
@@ -172,7 +310,7 @@ async function main() {
   // because the evaluator calls flagThread on every completion) and a
   // wider scan of recent threads regardless of flag state, so we can also
   // count pending / error statuses and confirm whether the job is running.
-  const flaggedOnly = process.env.WIDE_SCAN ? false : true;
+  const flaggedOnly = process.env.FLAGGED_ONLY === 'true';
   console.log(`Pulling ${flaggedOnly ? 'flagged' : 'all'} threads from ${baseUrl} ...`);
   const pageSize = 50;
   const targetMax = flaggedOnly ? 200 : 400;
@@ -192,6 +330,68 @@ async function main() {
     }
   }
   console.log(`Got ${all.length} thread summaries (flagged_only=${flaggedOnly}).`);
+
+  try {
+    const captureSummary = await fetchCaptureSummary(baseUrl, apiKey);
+    console.log(
+      `Signed capture-parity opportunities (${captureSummary.days}d): ${captureSummary.total}`,
+    );
+    for (const outcome of captureSummary.outcomes) {
+      console.log(
+        `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count}`,
+      );
+    }
+    if (captureSummary.generations) {
+      console.log(
+        `Generation-only replays: ${captureSummary.generations.total} `
+        + `(${captureSummary.generations.input_tokens} input / `
+        + `${captureSummary.generations.output_tokens} output tokens)`,
+      );
+      for (const outcome of captureSummary.generations.outcomes) {
+        console.log(
+          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+        );
+      }
+    }
+    if (captureSummary.judgments) {
+      console.log(
+        `Judgment outcomes: ${captureSummary.judgments.total} `
+        + `(${captureSummary.judgments.input_tokens} input / `
+        + `${captureSummary.judgments.output_tokens} output tokens)`,
+      );
+      for (const outcome of captureSummary.judgments.outcomes) {
+        console.log(
+          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+        );
+      }
+    }
+    if (captureSummary.funnel) {
+      const funnel = captureSummary.funnel;
+      console.log(
+        'Replay funnel: '
+        + `${funnel.opportunities} opportunities → ${funnel.traces_captured} signed → `
+        + `${funnel.parity_verified} parity verified → `
+        + `${funnel.generation_claimed} claimed → ${funnel.generation_succeeded} generated → `
+        + `${funnel.judgment_judged} judged`,
+      );
+      console.log(
+        '  exclusions/failures: '
+        + `${funnel.capture_pending} capture pending, ${funnel.capture_skipped} capture skipped, `
+        + `${funnel.capture_error} capture error, ${funnel.generation_blocked} generation blocked, `
+        + `${funnel.generation_error} generation error, ${funnel.generation_running} generation running, `
+        + `${funnel.judgment_deterministic_failure} deterministic failure, `
+        + `${funnel.judgment_skipped} judgment skipped, ${funnel.judgment_error} judgment error, `
+        + `${funnel.judgment_missing} judgment missing`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      'Signed capture-parity summary unavailable:',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+  }
 
   // The list endpoint returns a summary VIEW that doesn't include the
   // context JSONB. Fan out to /threads/:id for each thread to read
@@ -223,35 +423,24 @@ async function main() {
     console.log(`  ${s.padEnd(16)} ${n}`);
   }
 
-  // Dump the raw shadow_eval_* context fields for any non-unset thread so
-  // we can see what the actual shape of the data is — useful when the
-  // count is low and we want to confirm the new code path actually wrote
-  // the shape field.
-  const withStatus = detailed.filter((t) => t.context?.shadow_eval_status);
-  if (withStatus.length > 0 && withStatus.length <= 10) {
-    console.log('\nRaw shadow_eval_* fields on completed/pending threads:');
-    for (const t of withStatus) {
-      const ctx = t.context!;
-      const shadowEvalKeys = Object.keys(ctx).filter((k) => k.startsWith('shadow_eval_'));
-      console.log(`  thread ${t.thread_id.slice(0, 8)}…`);
-      for (const k of shadowEvalKeys) {
-        const v = (ctx as Record<string, unknown>)[k];
-        const display =
-          typeof v === 'string' && v.length > 80
-            ? v.slice(0, 80) + '…'
-            : JSON.stringify(v);
-        console.log(`    ${k.padEnd(32)} ${display}`);
-      }
-    }
-  }
-
   const agg = aggregate(detailed);
   console.log('');
-  console.log(`Threads with shadow_eval_status='complete': ${agg.total}`);
+  console.log(`Shadow-eval attempts (complete + error + skipped): ${agg.total}`);
   if (agg.total === 0) {
-    console.log('No completed shadow evals in the recent flagged set. Nothing to summarize.');
-    console.log('(If shadow_eval_completed_at is set on a thread that is also reviewed, it would not show up under flagged_only=true. Check the dashboard for a fuller view.)');
+    console.log('No recent shadow-eval attempts. Nothing to summarize.');
     return;
+  }
+  console.log(`Structurally valid completions: ${agg.completed}`);
+  console.log(`Headline-eligible (valid + independently judged): ${agg.eligible_total}`);
+
+  if (Object.keys(agg.replay_fidelity).length > 0) {
+    console.log('Read-only replay fidelity:');
+    for (const [fidelity, n] of Object.entries(agg.replay_fidelity)) {
+      console.log(`  ${fidelity.padEnd(16)} ${n}`);
+    }
+    for (const [category, n] of Object.entries(agg.blocked_capability_counts)) {
+      console.log(`  blocked:${category.padEnd(8)} ${n}`);
+    }
   }
 
   console.log('');
@@ -261,8 +450,22 @@ async function main() {
   }
 
   console.log('');
-  console.log(`Knowledge gaps: ${agg.knowledge_gaps} of ${agg.total} (${pct(agg.knowledge_gaps, agg.total)})`);
-  if (agg.knowledge_gaps > 0) {
+  console.log('Evaluation-type split (report these as separate corpora):');
+  for (const [evaluationType, n] of Object.entries(agg.by_type)) {
+    const gaps = agg.knowledge_gaps_by_type[evaluationType] || 0;
+    const eligible = agg.eligible_by_type[evaluationType] || 0;
+    const invalid = agg.invalid_evaluations_by_type[evaluationType] || 0;
+    const skipped = agg.skipped_evaluations_by_type[evaluationType] || 0;
+    const excluded = agg.provenance_excluded_by_type[evaluationType] || 0;
+    console.log(
+      `  ${evaluationType.padEnd(46)} ${n} attempts; ${eligible} eligible; ` +
+      `${gaps} gaps (${pct(gaps, eligible)}); ${invalid} invalid; ${skipped} skipped; ` +
+      `${excluded} provenance-excluded`,
+    );
+  }
+
+  if (Object.keys(agg.gap_severities).length > 0) {
+    console.log('');
     console.log('  Severity breakdown:');
     for (const [sev, n] of Object.entries(agg.gap_severities)) {
       console.log(`    ${sev.padEnd(14)} ${n}`);
@@ -270,7 +473,7 @@ async function main() {
   }
 
   console.log('');
-  console.log(`Shape regressions: ${agg.questions_with_any_violation} of ${agg.total} (${pct(agg.questions_with_any_violation, agg.total)})`);
+  console.log(`Shape regressions among headline-eligible rows: ${agg.questions_with_any_violation} of ${agg.eligible_total} (${pct(agg.questions_with_any_violation, agg.eligible_total)})`);
   if (Object.keys(agg.shape_violation_counts).length > 0) {
     console.log('  Violation bucket counts (sum across threads):');
     const sorted = Object.entries(agg.shape_violation_counts).sort((a, b) => b[1] - a[1]);
@@ -294,10 +497,12 @@ async function main() {
   }
 
   console.log('');
-  console.log('Caveat: corpus is selected for human intervention (suppression-flow + corrected-capture both require humans to be involved). Counts here are not a global rate — they describe shape behavior on the flagged corpus.');
+  console.log('Caveat: this corpus is selected for human intervention (suppression-flow + corrected-capture both require humans to be involved). Counts here are not a global rate.');
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}

@@ -1,0 +1,271 @@
+import type { ExecutionPlan } from '../router.js';
+import type { SIRetrievalResult } from '../services/si-retriever.js';
+
+export const OFFICIAL_DOCS_PROFILE = 'official_docs_v1' as const;
+export const OFFICIAL_DOCS_POLICY_VERSION = 'official-docs-policy:v1' as const;
+export const OFFICIAL_DOCS_ALLOWED_TOOLS = ['search_docs', 'get_doc'] as const;
+
+export type ChannelCapabilityProfile = typeof OFFICIAL_DOCS_PROFILE;
+
+export type ProfiledChannelRespondPlan = Extract<ExecutionPlan, { action: 'respond' }> & {
+  capability_profile?: ChannelCapabilityProfile;
+  capability_profile_reason?: OfficialDocsCohortReason;
+};
+
+interface CohortEnvironment {
+  ADDIE_OFFICIAL_DOCS_COHORT_ENABLED?: string;
+  ADDIE_OFFICIAL_DOCS_COHORT_CHANNEL_IDS?: string;
+  SHADOW_EVAL_TRACE_CAPTURE_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED?: string;
+  SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS?: string;
+}
+
+export const MAX_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT = 100;
+
+export type OfficialDocsReplayActivationReason =
+  | 'enabled'
+  | 'cohort_disabled'
+  | 'trace_capture_disabled'
+  | 'generation_disabled'
+  | 'unsupported_profile'
+  | 'channel_not_allowlisted'
+  | 'daily_limit_invalid';
+
+export interface OfficialDocsReplayActivationDecision {
+  enabled: boolean;
+  reason: OfficialDocsReplayActivationReason;
+  dailyLimit: number;
+}
+
+export type OfficialDocsJudgeActivationReason =
+  | OfficialDocsReplayActivationReason
+  | 'judge_disabled'
+  | 'judge_channel_not_allowlisted';
+
+export interface OfficialDocsJudgeActivationDecision {
+  enabled: boolean;
+  reason: OfficialDocsJudgeActivationReason;
+  dailyLimit: number;
+}
+
+export type OfficialDocsCohortReason =
+  | 'eligible'
+  | 'disabled'
+  | 'channel_not_allowlisted'
+  | 'channel_not_public'
+  | 'admin_user'
+  | 'not_high_confidence_knowledge'
+  | 'specialized_model_required'
+  | 'si_context_present';
+
+export interface OfficialDocsCohortDecision {
+  eligible: boolean;
+  reason: OfficialDocsCohortReason;
+  profile: ChannelCapabilityProfile | null;
+}
+
+function allowlistedChannels(env: CohortEnvironment): Set<string> {
+  return new Set(
+    (env.ADDIE_OFFICIAL_DOCS_COHORT_CHANNEL_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function generationAllowlistedChannels(env: CohortEnvironment): Set<string> {
+  return new Set(
+    (env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_CHANNEL_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function judgeAllowlistedChannels(env: CohortEnvironment): Set<string> {
+  return new Set(
+    (env.SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function replayDailyLimit(env: CohortEnvironment): number {
+  const raw = env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return 0;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed)
+    && parsed > 0
+    && parsed <= MAX_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT
+    ? parsed
+    : 0;
+}
+
+/**
+ * Generation has an independent, default-off rollout boundary. A signed trace
+ * remains necessary but cannot activate model spend by itself.
+ */
+export function selectOfficialDocsReplayActivation(
+  input: {
+    channelId: string;
+    plan: ProfiledChannelRespondPlan;
+  },
+  env: CohortEnvironment = process.env,
+): OfficialDocsReplayActivationDecision {
+  const disabled = (reason: OfficialDocsReplayActivationReason) => ({
+    enabled: false,
+    reason,
+    dailyLimit: 0,
+  });
+  if (env.ADDIE_OFFICIAL_DOCS_COHORT_ENABLED !== 'true') {
+    return disabled('cohort_disabled');
+  }
+  if (env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+    return disabled('trace_capture_disabled');
+  }
+  if (env.SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED !== 'true') {
+    return disabled('generation_disabled');
+  }
+  if (!isOfficialDocsProfile(input.plan)) {
+    return disabled('unsupported_profile');
+  }
+  // Removal from either allowlist is an immediate channel-level rollback.
+  // A previously signed profile cannot keep replay generation active after
+  // the production cohort itself has been narrowed.
+  if (!allowlistedChannels(env).has(input.channelId)
+    || !generationAllowlistedChannels(env).has(input.channelId)) {
+    return disabled('channel_not_allowlisted');
+  }
+  const dailyLimit = replayDailyLimit(env);
+  if (dailyLimit === 0) return disabled('daily_limit_invalid');
+  return { enabled: true, reason: 'enabled', dailyLimit };
+}
+
+/**
+ * Judgment has its own default-off rollout boundary. It can only narrow an
+ * already eligible generation cohort and always inherits that cohort's quota.
+ */
+export function selectOfficialDocsJudgeActivation(
+  input: {
+    channelId: string;
+    plan: ProfiledChannelRespondPlan;
+  },
+  env: CohortEnvironment = process.env,
+): OfficialDocsJudgeActivationDecision {
+  const replay = selectOfficialDocsReplayActivation(input, env);
+  if (!replay.enabled) return replay;
+  if (env.SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED !== 'true') {
+    return { enabled: false, reason: 'judge_disabled', dailyLimit: 0 };
+  }
+  if (!judgeAllowlistedChannels(env).has(input.channelId)) {
+    return { enabled: false, reason: 'judge_channel_not_allowlisted', dailyLimit: 0 };
+  }
+  return { enabled: true, reason: 'enabled', dailyLimit: replay.dailyLimit };
+}
+
+export function normalizeReplayableSiResult(
+  value: SIRetrievalResult | null | undefined,
+): SIRetrievalResult | null {
+  return value?.agents.length ? value : null;
+}
+
+/**
+ * Admit only an explicit public-channel cohort whose ordinary production
+ * response uses the same bounded capability profile as a suppressed replay.
+ * The decision is made before suppression and persisted with the router plan.
+ */
+export function selectOfficialDocsCohort(
+  input: {
+    channelId: string;
+    channelIsPublic: boolean;
+    isAdmin: boolean;
+    channelUsesDepthModel: boolean;
+    plan: ExecutionPlan;
+    siRetrievalResult: SIRetrievalResult | null | undefined;
+  },
+  env: CohortEnvironment = process.env,
+): OfficialDocsCohortDecision {
+  const base = {
+    profile: null,
+  } as const;
+  if (env.ADDIE_OFFICIAL_DOCS_COHORT_ENABLED !== 'true') {
+    return { ...base, eligible: false, reason: 'disabled' };
+  }
+  if (!allowlistedChannels(env).has(input.channelId)) {
+    return { ...base, eligible: false, reason: 'channel_not_allowlisted' };
+  }
+  if (!input.channelIsPublic) {
+    return { ...base, eligible: false, reason: 'channel_not_public' };
+  }
+  if (input.isAdmin) return { ...base, eligible: false, reason: 'admin_user' };
+  if (
+    input.plan.action !== 'respond'
+    || input.plan.confidence !== 'high'
+    || input.plan.tool_sets.length !== 1
+    || input.plan.tool_sets[0] !== 'knowledge'
+  ) {
+    return { ...base, eligible: false, reason: 'not_high_confidence_knowledge' };
+  }
+  if (input.plan.requires_precision || input.plan.requires_depth || input.channelUsesDepthModel) {
+    return { ...base, eligible: false, reason: 'specialized_model_required' };
+  }
+  if (normalizeReplayableSiResult(input.siRetrievalResult)) {
+    return { ...base, eligible: false, reason: 'si_context_present' };
+  }
+  return {
+    eligible: true,
+    reason: 'eligible',
+    profile: OFFICIAL_DOCS_PROFILE,
+  };
+}
+
+export function applyOfficialDocsProfile(
+  plan: Extract<ExecutionPlan, { action: 'respond' }>,
+): ProfiledChannelRespondPlan {
+  return {
+    ...plan,
+    capability_profile: OFFICIAL_DOCS_PROFILE,
+    capability_profile_reason: 'eligible',
+  };
+}
+
+export function isOfficialDocsProfile(
+  plan: { capability_profile?: unknown; capability_profile_reason?: unknown },
+): plan is {
+  capability_profile: ChannelCapabilityProfile;
+  capability_profile_reason: 'eligible';
+} {
+  return plan.capability_profile === OFFICIAL_DOCS_PROFILE
+    && plan.capability_profile_reason === 'eligible';
+}
+
+export function hasOfficialDocsToolBoundary(
+  client: { hasRegisteredTools(names: readonly string[]): boolean } | null,
+): boolean {
+  return client?.hasRegisteredTools(OFFICIAL_DOCS_ALLOWED_TOOLS) === true;
+}
+
+/** One canonical shape is persisted and signed; undefined router metadata is omitted by JSON. */
+export function canonicalOfficialDocsPlan(
+  plan: ProfiledChannelRespondPlan,
+): ProfiledChannelRespondPlan {
+  return {
+    action: 'respond',
+    reason: plan.reason,
+    decision_method: plan.decision_method,
+    latency_ms: plan.latency_ms,
+    tokens_input: plan.tokens_input,
+    tokens_output: plan.tokens_output,
+    model: plan.model,
+    requires_precision: plan.requires_precision,
+    requires_depth: plan.requires_depth,
+    tool_sets: [...plan.tool_sets],
+    confidence: plan.confidence,
+    capability_profile: plan.capability_profile,
+    capability_profile_reason: plan.capability_profile_reason,
+  };
+}

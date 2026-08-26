@@ -117,6 +117,7 @@ type InlineCreativeInput = {
   format_option_ref?: Record<string, unknown>;
   assets?: Record<string, unknown>;
   component_assets?: Record<string, Record<string, unknown>>;
+  localization?: Record<string, unknown>;
   manifest?: CreativeManifest;
   weight?: number;
   placement_refs?: Array<Record<string, unknown>>;
@@ -152,7 +153,7 @@ type GetProductsRejectedResponse = {
 };
 type GetProductsReadDirectives = {
   rejection?: { reason: string; suggestions?: string[] };
-  staleDirective?: { tool: string; upstreamName?: string; createdAt: string };
+  staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
 type PricingOption = Product['pricing_options'][number];
 type CompactProductPurchase = ProposalPurchase & {
@@ -456,8 +457,22 @@ const BUILD_CREATIVE_FORMAT_ALIASES: Record<string, string> = {
 };
 const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
   { capabilityId: 'training_image_generation', formatKind: 'image' },
+  { capabilityId: 'display_300x250', formatKind: 'image' },
+  { capabilityId: 'display_728x90', formatKind: 'image' },
+  { capabilityId: 'display_320x50', formatKind: 'image' },
+  { capabilityId: 'display_300x250_generative', formatKind: 'image' },
+  { capabilityId: 'display_728x90_generative', formatKind: 'image' },
+  { capabilityId: 'display_320x50_generative', formatKind: 'image' },
+  { capabilityId: 'native_in_feed', formatKind: 'native_in_feed' },
+  { capabilityId: 'vast_30s', formatKind: 'video_vast' },
+  { capabilityId: 'audio_30s', formatKind: 'audio_hosted' },
   { capabilityId: 'audio_vo', formatKind: 'audio_hosted' },
 ] as const;
+const CANONICAL_PREVIEW_CAPABILITY_IDS = new Set([
+  'training_image_generation',
+  'native_in_feed',
+  'audio_vo',
+]);
 const MAX_VALIDATE_INPUT_TARGETS = 50;
 const VALID_CANONICAL_FORMAT_KINDS = new Set([...Object.keys(CANONICAL_FORMAT_SLOTS), 'custom']);
 const NONDETERMINISTIC_INCOMPATIBLE_SOURCES = new Set(['buyer_uploaded', 'publisher_host_recorded']);
@@ -2789,9 +2804,17 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.5'] as const;
+const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'] as const;
 const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.5';
+const CURRENT_ADCP_VERSION = '3.2-beta.6';
+const THREE_ZERO_COMPLIANCE_SCENARIOS = [
+  'force_creative_status',
+  'force_account_status',
+  'force_media_buy_status',
+  'force_session_status',
+  'simulate_delivery',
+  'simulate_budget_spend',
+] as const;
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 
@@ -2874,19 +2897,39 @@ function compareAdcpPrerelease(left: string, right: string): number {
   return 0;
 }
 
-const PARSED_SUPPORTED_RELEASE_VERSIONS = SUPPORTED_RELEASE_VERSIONS
-  .map(version => parseAdcpReleaseVersion(version))
-  .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
-  .sort(compareAdcpReleaseVersions);
+function parsedSupportedReleaseVersions(supportedVersions: readonly string[]): ParsedAdcpReleaseVersion[] {
+  return supportedVersions
+    .map(version => parseAdcpReleaseVersion(version))
+    .filter((version): version is ParsedAdcpReleaseVersion => version !== undefined)
+    .sort(compareAdcpReleaseVersions);
+}
 
-function highestSupportedRelease(major?: number): string | undefined {
+function highestSupportedRelease(
+  major?: number,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): string | undefined {
+  const parsedVersions = parsedSupportedReleaseVersions(supportedVersions);
   const candidates = major === undefined
-    ? PARSED_SUPPORTED_RELEASE_VERSIONS
-    : PARSED_SUPPORTED_RELEASE_VERSIONS.filter(version => version.major === major);
+    ? parsedVersions
+    : parsedVersions.filter(version => version.major === major);
   return candidates.at(-1)?.raw;
 }
 
-function supportedVersionDetails(args: Record<string, unknown>): VersionUnsupportedDetails {
+function signingCompatibleReleaseVersions(ctx: TrainingContext): readonly string[] {
+  const signingCap = selectSigningCapability(ctx);
+  if (!signingCap.supported || signingCap.covers_content_digest === 'required') {
+    return SUPPORTED_RELEASE_VERSIONS;
+  }
+  return SUPPORTED_RELEASE_VERSIONS.filter(version => {
+    const parsed = parseAdcpReleaseVersion(version);
+    return parsed !== undefined && parsed.major === 3 && parsed.minor < 2;
+  });
+}
+
+function supportedVersionDetails(
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionUnsupportedDetails {
   const requestedRelease = parseAdcpReleaseVersion(args.adcp_version);
   const requestedMajor = typeof args.adcp_major_version === 'number' && Number.isInteger(args.adcp_major_version)
     ? args.adcp_major_version
@@ -2895,12 +2938,15 @@ function supportedVersionDetails(args: Record<string, unknown>): VersionUnsuppor
     ...(requestedRelease && { adcp_version: requestedRelease.raw }),
     ...(requestedMajor !== undefined && { adcp_major_version: requestedMajor }),
     ...(!requestedRelease && typeof args.adcp_version === 'string' && { rejected_adcp_version: args.adcp_version }),
-    supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+    supported_versions: [...supportedVersions],
     supported_majors: [...SUPPORTED_MAJOR_VERSIONS],
   };
 }
 
-export function resolveServedAdcpVersion(args: Record<string, unknown>): VersionResolution {
+export function resolveServedAdcpVersion(
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionResolution {
   const requestedReleaseRaw = args.adcp_version;
   const requestedMajorRaw = args.adcp_major_version;
   const requestedMajor = typeof requestedMajorRaw === 'number' && Number.isInteger(requestedMajorRaw)
@@ -2914,7 +2960,7 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP version ${JSON.stringify(requestedReleaseRaw)} is not supported`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
@@ -2923,11 +2969,11 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `Request carries adcp_version="${requestedRelease.raw}" (major ${requestedRelease.major}) and adcp_major_version=${requestedMajor}; majors must agree.`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
-    if ((SUPPORTED_RELEASE_VERSIONS as readonly string[]).includes(requestedRelease.raw)) {
+    if (supportedVersions.includes(requestedRelease.raw)) {
       return { ok: true, servedVersion: requestedRelease.raw };
     }
 
@@ -2936,11 +2982,11 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP version ${requestedRelease.raw} is not supported`,
         field: 'adcp_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
 
-    const downshift = PARSED_SUPPORTED_RELEASE_VERSIONS
+    const downshift = parsedSupportedReleaseVersions(supportedVersions)
       .filter(version => version.major === requestedRelease.major)
       .filter(version => !version.prerelease)
       .filter(version => compareAdcpReleaseVersions(version, requestedRelease) <= 0)
@@ -2954,7 +3000,7 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
       ok: false,
       message: `AdCP version ${requestedRelease.raw} is not supported`,
       field: 'adcp_version',
-      details: supportedVersionDetails(args),
+      details: supportedVersionDetails(args, supportedVersions),
     };
   }
 
@@ -2964,23 +3010,27 @@ export function resolveServedAdcpVersion(args: Record<string, unknown>): Version
         ok: false,
         message: `AdCP major version ${JSON.stringify(requestedMajorRaw)} is not supported`,
         field: 'adcp_major_version',
-        details: supportedVersionDetails(args),
+        details: supportedVersionDetails(args, supportedVersions),
       };
     }
-    const servedVersion = highestSupportedRelease(requestedMajor);
+    const servedVersion = highestSupportedRelease(requestedMajor, supportedVersions);
     if (servedVersion) return { ok: true, servedVersion };
     return {
       ok: false,
       message: `AdCP major version ${requestedMajor} is not supported`,
       field: 'adcp_major_version',
-      details: supportedVersionDetails(args),
+      details: supportedVersionDetails(args, supportedVersions),
     };
   }
 
   return { ok: true, servedVersion: DEFAULT_ADCP_VERSION };
 }
 
-export function resolveServedAdcpVersionForTool(toolName: string, args: Record<string, unknown>): VersionResolution {
+export function resolveServedAdcpVersionForTool(
+  toolName: string,
+  args: Record<string, unknown>,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): VersionResolution {
   const splitProductTool = isProductDiscoveryTool(toolName) && toolName !== 'get_products';
   if (
     (toolName === 'validate_input' || splitProductTool)
@@ -2989,10 +3039,10 @@ export function resolveServedAdcpVersionForTool(toolName: string, args: Record<s
   ) {
     return resolveServedAdcpVersion({
       ...args,
-      adcp_version: CURRENT_ADCP_VERSION,
-    });
+      adcp_major_version: 3,
+    }, supportedVersions);
   }
-  return resolveServedAdcpVersion(args);
+  return resolveServedAdcpVersion(args, supportedVersions);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -3199,7 +3249,10 @@ function addServedAdcpVersion(result: unknown, servedAdcpVersion: string, contex
   };
 }
 
-function installTaskProtocolVersionNegotiation(server: Server): void {
+function installTaskProtocolVersionNegotiation(
+  server: Server,
+  supportedVersions: readonly string[] = SUPPORTED_RELEASE_VERSIONS,
+): void {
   const handlers = (server as unknown as { _requestHandlers?: Map<string, McpRequestHandler> })._requestHandlers;
   if (!handlers) return;
 
@@ -3209,7 +3262,7 @@ function installTaskProtocolVersionNegotiation(server: Server): void {
     handlers.set(method, async (request, extra) => {
       const rawParams = isRecord(request.params) ? request.params : {};
       const { context: callerContext, ...versionArgs } = rawParams;
-      const versionResolution = resolveServedAdcpVersion(versionArgs);
+      const versionResolution = resolveServedAdcpVersion(versionArgs, supportedVersions);
       if (!versionResolution.ok) {
         throw versionUnsupportedJsonRpcError(versionResolution, callerContext);
       }
@@ -3509,6 +3562,42 @@ function controllerFixtureSessionKey(
   return sessionKeyFromArgs({
     account: fixtureAccount,
   }, ctx.mode, ctx.userId, ctx.moduleId, controllerFixturePrincipal(ctx.principal));
+}
+
+/** Resolve the exact public-demo task partition used by controller scenarios
+ * that seed or arm buyer-visible state. Static controller calls normalize a
+ * natural sandbox account to its brand-owned task identity; ordinary authored
+ * requests may name a buyer operator, so they need this exact alternate key
+ * instead of an unqualified scan across every session. */
+function controllerPublicTaskSessionKey(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): string | undefined {
+  if (!ctx.principal?.startsWith('static:')) return undefined;
+  const requestedAccount = args.account ?? ctx.resolvedAccount ?? (
+    ctx.requestInput?.account && typeof ctx.requestInput.account === 'object'
+      ? ctx.requestInput.account as ToolArgs['account']
+      : undefined
+  );
+  if (requestedAccount) {
+    try {
+      const account = canonicalizeAccountRef(requestedAccount);
+      const controllerAccount: ToolArgs['account'] = account.kind === 'natural'
+        ? {
+            brand: account.brand,
+            operator: account.brand.domain,
+            sandbox: false,
+          }
+        : { account_id: account.account_id };
+      return sessionKeyFromArgs({ account: controllerAccount }, ctx.mode, ctx.userId, ctx.moduleId);
+    } catch {
+      return undefined;
+    }
+  }
+  if (ctx.storyboardCompat?.version === '3.0' && typeof args.brand?.domain === 'string') {
+    return sessionKeyFromArgs({ brand: args.brand }, ctx.mode, ctx.userId, ctx.moduleId);
+  }
+  return undefined;
 }
 
 /** Clear the task store (for tests). Calls cleanup() to cancel TTL timers. */
@@ -3820,6 +3909,8 @@ interface CreativeDeliveryEntry {
 interface SyncCreativeResult {
   creative_id: string;
   action: 'created' | 'updated' | 'failed';
+  status?: string;
+  localization?: Record<string, unknown>;
   errors?: TaskError[];
 }
 
@@ -4348,13 +4439,18 @@ function getFormats(): ReturnType<typeof buildFormats> {
   return cachedFormats;
 }
 
-function requestedCreativeWireMode(args: Record<string, unknown>): CreativeFormatWireMode {
+function requestedCreativeWireMode(
+  args: Record<string, unknown>,
+  servedAdcpVersion?: string,
+): CreativeFormatWireMode {
   const ext = args.ext as { adcp?: { creative_wire?: unknown } } | undefined;
   const explicit = ext?.adcp?.creative_wire;
   if (explicit === 'canonical' || explicit === 'legacy') return explicit;
-  return typeof args.adcp_version === 'string' && args.adcp_version.startsWith('3.0')
-    ? 'legacy'
-    : 'unknown';
+  const version = servedAdcpVersion
+    ?? (typeof args.adcp_version === 'string' ? args.adcp_version : undefined);
+  if (version?.startsWith('3.0')) return 'legacy';
+  if (version?.startsWith('3.2')) return 'canonical';
+  return 'unknown';
 }
 
 function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
@@ -4483,14 +4579,84 @@ export const trainingCatalogLegacyResolver: CanonicalFormatLegacyResolver = cont
   return matches.size === 1 ? [...matches.values()][0] : undefined;
 };
 
+function mappedLegacyFormatIds(product: Product): {
+  mappedIds: FormatID[];
+  allCanonicalRefsResolve: boolean;
+} {
+  if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  if (!Array.isArray(product.format_options) || product.format_options.length === 0) {
+    return { mappedIds: [], allCanonicalRefsResolve: false };
+  }
+  const canonicalRefs: FormatID[] = [];
+  let malformedCanonicalRef = false;
+  for (const option of product.format_options) {
+    if (!isRecord(option) || !Array.isArray(option.v1_format_ref)) continue;
+    for (const ref of option.v1_format_ref) {
+      if (!isRecord(ref) || typeof ref.agent_url !== 'string' || typeof ref.id !== 'string') {
+        malformedCanonicalRef = true;
+        continue;
+      }
+      canonicalRefs.push(ref as FormatID);
+    }
+  }
+  const mappedIds = product.format_ids.filter(ref => (
+    isRecord(ref)
+    && typeof ref.agent_url === 'string'
+    && typeof ref.id === 'string'
+    && canonicalRefs.some(canonicalRef => legacyFormatIdMatches(ref as FormatID, canonicalRef))
+  ));
+  const allCanonicalRefsResolve = !malformedCanonicalRef && canonicalRefs.every(canonicalRef => (
+    product.format_ids!.some(ref => (
+      isRecord(ref)
+      && typeof ref.agent_url === 'string'
+      && typeof ref.id === 'string'
+      && legacyFormatIdMatches(ref as FormatID, canonicalRef)
+    ))
+  ));
+  return { mappedIds, allCanonicalRefsResolve };
+}
+
 /** Project a raw compatibility response to the wire arm explicitly requested by the caller. */
 export function projectGetProductsCompatibilityWire(
   response: { products?: Product[]; [key: string]: unknown },
   args: Record<string, unknown>,
+  servedAdcpVersion?: string,
 ): unknown {
-  const wireMode = requestedCreativeWireMode(args);
+  const wireMode = requestedCreativeWireMode(args, servedAdcpVersion);
+  const explicitWireMode = (args.ext as { adcp?: { creative_wire?: unknown } } | undefined)
+    ?.adcp?.creative_wire;
   if (wireMode === 'unknown') return response;
-  if (wireMode === 'canonical') return toCanonicalOnlyResponse(response as never).response;
+  if (wireMode === 'canonical') {
+    if (servedAdcpVersion?.startsWith('3.2') && explicitWireMode !== 'canonical') {
+      // beta.6 still permits an exact v1/v2 migration pair. Preserve those
+      // honest dual declarations, but remove an unmapped compatibility
+      // sidecar before the SDK finalizer turns its expected removal into a
+      // buyer-visible LEGACY_FORMAT_ID_DROPPED_UNMAPPED advisory.
+      return {
+        ...response,
+        ...(Array.isArray(response.products) && {
+          products: response.products.map(product => {
+            if (!Array.isArray(product.format_options) || product.format_options.length === 0) return product;
+            const { mappedIds, allCanonicalRefsResolve } = mappedLegacyFormatIds(product);
+            if (allCanonicalRefsResolve && mappedIds.length === product.format_ids?.length) return product;
+            const { format_ids: _legacyCompatibilitySelectors, ...canonicalProduct } = product;
+            return allCanonicalRefsResolve && mappedIds.length > 0
+              ? { ...canonicalProduct, format_ids: mappedIds }
+              : canonicalProduct;
+          }),
+        }),
+      };
+    }
+    const canonicalInput = response;
+    const projected = toCanonicalOnlyResponse(canonicalInput as never).response as Record<string, unknown>;
+    if (!Object.hasOwn(canonicalInput, 'products')) {
+      const { products: _sdkDefaultProducts, ...withoutDefaultProducts } = projected;
+      return withoutDefaultProducts;
+    }
+    return projected;
+  }
 
   const products = (response.products ?? []).flatMap(product => {
     if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return [];
@@ -5493,7 +5659,9 @@ function wholesaleCapabilityProfile(ctx: TrainingContext): {
 export function supportedCanonicalFormatsCapability(): Array<Record<string, unknown>> {
   return SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(({ capabilityId, formatKind }) => ({
     capability_id: capabilityId,
-    operations: ['build', 'validate', 'preview'],
+    operations: CANONICAL_PREVIEW_CAPABILITY_IDS.has(capabilityId)
+      ? ['build', 'validate', 'preview']
+      : ['build'],
     format: {
       format_kind: formatKind,
       params: {
@@ -5501,6 +5669,23 @@ export function supportedCanonicalFormatsCapability(): Array<Record<string, unkn
       },
     },
   }));
+}
+
+export function creativePreviewCapability(
+  supportedFormats: readonly Record<string, unknown>[],
+): { routes: Array<{ capability_id: string; rendering_origin: 'agent_approximation' }> } {
+  return {
+    routes: supportedFormats
+      .filter(format => (
+        typeof format.capability_id === 'string'
+        && Array.isArray(format.operations)
+        && format.operations.includes('preview')
+      ))
+      .map(format => ({
+        capability_id: format.capability_id as string,
+        rendering_origin: 'agent_approximation' as const,
+      })),
+  };
 }
 
 function supportedCanonicalBuildCapability(formatId: string): { formatKind: string; slots: CanonicalSlot[] } | undefined {
@@ -5511,8 +5696,8 @@ function supportedCanonicalBuildCapability(formatId: string): { formatKind: stri
   return slots ? { formatKind, slots } : undefined;
 }
 
-function nativeInFeedValidationError(creative: { format_id?: FormatID; assets?: Record<string, unknown> }): TaskError | null {
-  if (creative.format_id?.id !== 'native_in_feed') return null;
+function nativeInFeedValidationError(creative: { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> }): TaskError | null {
+  if (creative.format_kind !== 'native_in_feed' && creative.format_id?.id !== 'native_in_feed') return null;
   const assets = creative.assets;
   if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return null;
 
@@ -7702,31 +7887,45 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
   if (!proposalLifecycleWrite && !concreteTargetingWrite) {
     let directives: GetProductsReadDirectives = {};
     try {
-      const session = await getSession(
-        sessionScope,
-        controllerFixtureSessionKey(req, ctx),
-      );
+      const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
+      const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
-      let directiveSession = session;
+      let rejectionSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-        ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+        ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
         : undefined;
-      if (!rejection && ctx.principal?.startsWith('static:')) {
-        directiveSession = await getSession(
-          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
-        );
-        rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
-          ? directiveSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
-          : undefined;
-      }
-      const staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
+      let staleDirectiveSession = session;
+      let staleDirective = session.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products'
         ? session.complyExtensions.forcedUpstreamUnavailable
         : undefined;
+      if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
+        const fixtureDirectiveSession = await getSession(fixtureSessionKey);
+        const fixtureDirective = fixtureDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
+        if (fixtureDirective?.tool === 'get_products') {
+          staleDirectiveSession = fixtureDirectiveSession;
+          staleDirective = fixtureDirective;
+        }
+      }
+      if (ctx.principal?.startsWith('static:') && (!rejection || !staleDirective)) {
+        const globalDirectiveSession = await getSession(
+          sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
+        );
+        if (!rejection) {
+          rejectionSession = globalDirectiveSession;
+          rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
+            ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
+            : undefined;
+        }
+        if (!staleDirective && globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable?.tool === 'get_products') {
+          staleDirectiveSession = globalDirectiveSession;
+          staleDirective = globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
+        }
+      }
       if (rejection) {
-        directiveSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
+        rejectionSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
-        session.complyExtensions.forcedUpstreamUnavailable = undefined;
+        staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
       directives = { rejection, staleDirective };
       if (rejection || staleDirective) await flushDirtySessions();
@@ -9021,12 +9220,12 @@ async function handleGetProductsUnlocked(
           recovery: 'transient',
           details: {
             served_from_cache: true,
-            cache_age_seconds: 60,
+            cache_age_seconds: staleDirective.cacheAgeSeconds ?? 60,
             freshness_target_seconds: 30,
             ...(staleDirective.upstreamName && { upstream: { name: staleDirective.upstreamName } }),
           },
         }] : []),
-        ...canonicalFormatAdvisories,
+        ...(!staleDirective ? canonicalFormatAdvisories : []),
       ] as unknown as GetProductsResponse['errors'],
     }),
   };
@@ -11298,7 +11497,18 @@ async function handleCreateMediaBuyUnlocked(
   // Idempotency_key replay is unaffected: the SDK's request-idempotency cache
   // wraps this handler, so a replayed request returns the cached submitted
   // response without re-evaluating the (now-empty) directive slot.
-  const directive = session.complyExtensions.forcedCreateMediaBuyArm;
+  let directiveSession = session;
+  let directive = directiveSession.complyExtensions.forcedCreateMediaBuyArm;
+  if (!directive) {
+    const ownerKey = controllerPublicTaskSessionKey(req, ctx);
+    if (ownerKey && ownerKey !== sessionKey) {
+      const ownerSession = await getSession(ownerKey);
+      if (ownerSession.complyExtensions.forcedCreateMediaBuyArm?.arm === 'submitted') {
+        directiveSession = ownerSession;
+        directive = ownerSession.complyExtensions.forcedCreateMediaBuyArm;
+      }
+    }
+  }
   if (
     directive
     && directive.arm === 'submitted'
@@ -11306,7 +11516,7 @@ async function handleCreateMediaBuyUnlocked(
     && directive.taskId.length > 0
     && directive.taskId.length <= 128
   ) {
-    session.complyExtensions.forcedCreateMediaBuyArm = undefined;
+    directiveSession.complyExtensions.forcedCreateMediaBuyArm = undefined;
     const responseMessage =
       typeof directive.message === 'string' && directive.message.length <= 2000
         ? directive.message
@@ -12443,10 +12653,24 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
       : {}),
   } as GetMediaBuysArgs;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const session = await getSession(sessionKey);
+  let session = await getSession(sessionKey);
   const filterIds = req.media_buy_ids;
 
   let buys = Array.from(session.mediaBuys.values());
+  if (buys.length === 0 && req.account) {
+    const ownerSession = await findSessionMatching(candidate => (
+      Array.from(candidate.mediaBuys.values()).some(mediaBuy => (
+        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+        && (!filterIds?.length || filterIds.includes(mediaBuy.mediaBuyId))
+      ))
+    ));
+    if (ownerSession) {
+      session = ownerSession;
+      buys = Array.from(ownerSession.mediaBuys.values()).filter(mediaBuy => (
+        mediaBuyAccountVisibleToRequest(mediaBuy.accountRef, req.account!, ctx)
+      ));
+    }
+  }
   if (!filterIds?.length && buys.length === 0) {
     // Broad list on an empty session: provide compliance fixtures so demo.example.com
     // sessions show realistic media buy data without the learner first creating a buy.
@@ -12628,18 +12852,28 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     media_buy_id?: string;
     requested_metrics?: unknown;
   };
-  const session = await getSession(
+  let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),
   );
+  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
+  let mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
+  if (!mb && req.account) {
+    const ownerSession = await findSessionMatching(candidate => {
+      const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
+      return candidateBuy !== undefined
+        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+    });
+    if (ownerSession) {
+      session = ownerSession;
+      mb = ownerSession.mediaBuys.get(mediaBuyId);
+    }
+  }
   const catalog = getCatalog();
   const productMap = new Map(catalog.map(cp => [cp.product.product_id, { ...cp.product }]));
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
   overlayNegotiatedPricingOptions(session, productMap);
-  const mediaBuyId = req.media_buy_id || req.media_buy_ids?.[0] || '';
-  const mb = session.mediaBuys.get(mediaBuyId) ?? getComplianceMediaBuy(mediaBuyId);
-
   if (!mb) {
     return {
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
@@ -12691,7 +12925,39 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let totalReachUnit: string | undefined;
 
   const mediaBuyPaused = mb.status === 'paused';
-  const simDelivery = mediaBuyPaused ? undefined : simDeliveryEarly;
+  const simulatedPackages = mb.packages.filter(pkg => (
+    pkg.paused !== true && !pkg.canceled
+  ));
+  const simDelivery = mediaBuyPaused || simulatedPackages.length === 0
+    ? undefined
+    : simDeliveryEarly;
+  const allocateSimulatedMetric = (total: number, decimalPlaces = 0): Map<string, number> => {
+    if (!simDelivery || simulatedPackages.length === 0) return new Map();
+    const scale = 10 ** decimalPlaces;
+    const totalUnits = Math.round(total * scale);
+    const positiveBudgetTotal = simulatedPackages.reduce(
+      (sum, pkg) => sum + Math.max(0, pkg.budget),
+      0,
+    );
+    const totalWeight = positiveBudgetTotal > 0 ? positiveBudgetTotal : simulatedPackages.length;
+    let cumulativeWeight = 0;
+    let allocatedUnits = 0;
+    return new Map(simulatedPackages.map((pkg, index) => {
+      cumulativeWeight += positiveBudgetTotal > 0 ? Math.max(0, pkg.budget) : 1;
+      const targetUnits = index === simulatedPackages.length - 1
+        ? totalUnits
+        : Math.round((totalUnits * cumulativeWeight) / totalWeight);
+      const packageUnits = targetUnits - allocatedUnits;
+      allocatedUnits = targetUnits;
+      return [pkg.packageId, packageUnits / scale];
+    }));
+  };
+  const simulatedSpendByPackage = allocateSimulatedMetric(simDelivery?.reportedSpend.amount ?? 0, 2);
+  const simulatedImpressionsByPackage = allocateSimulatedMetric(simDelivery?.impressions ?? 0);
+  const simulatedClicksByPackage = allocateSimulatedMetric(simDelivery?.clicks ?? 0);
+  const simulatedConversionsByPackage = allocateSimulatedMetric(simDelivery?.conversions ?? 0);
+  const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
+  const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
   const byPackage = mb.packages.map(pkg => {
     const packagePaused = pkg.paused === true;
@@ -12714,11 +12980,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
     const isRevenueShare = pricingModel === 'revenue_share';
-    const useScopedSimulation = simDelivery !== undefined
-      && Boolean(req.start_date || req.end_date);
+    const useSimulation = simDelivery !== undefined;
     const budget = pkg.budget;
-    const spend = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.reportedSpend.amount ?? 0)
+    const spend = isRevenueShare || useSimulation
+      ? (simulatedSpendByPackage.get(pkg.packageId) ?? 0)
       : Math.round(budget * elapsed * 100) / 100;
 
     // Channel-appropriate CTR
@@ -12733,14 +12998,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['print'].includes(c))) ctr = 0;
     else ctr = 0.001;
 
-    const impressions = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.impressions ?? 0)
+    const impressions = isRevenueShare || useSimulation
+      ? (simulatedImpressionsByPackage.get(pkg.packageId) ?? 0)
       : rate > 0 ? Math.round((spend / rate) * 1000) : 0;
-    const clicks = isRevenueShare || useScopedSimulation
-      ? (simDelivery?.clicks ?? 0)
+    const clicks = isRevenueShare || useSimulation
+      ? (simulatedClicksByPackage.get(pkg.packageId) ?? 0)
       : Math.round(impressions * ctr);
 
-    if (!isRevenueShare && !useScopedSimulation) {
+    if (!isRevenueShare && !useSimulation) {
       totalImpressions += impressions;
       totalSpend += spend;
       totalClicks += clicks;
@@ -12773,11 +13038,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           : {}),
       }
       : {};
-    const byCreative = simDelivery?.conversions && pkg.creativeAssignments.length > 0
+    const packageConversions = simulatedConversionsByPackage.get(pkg.packageId) ?? 0;
+    const byCreative = packageConversions > 0 && pkg.creativeAssignments.length > 0
       ? {
         by_creative: pkg.creativeAssignments.map((creativeId, index) => {
-          const base = Math.floor(simDelivery.conversions / pkg.creativeAssignments.length);
-          const remainder = simDelivery.conversions % pkg.creativeAssignments.length;
+          const base = Math.floor(packageConversions / pkg.creativeAssignments.length);
+          const remainder = packageConversions % pkg.creativeAssignments.length;
           const impressionBase = Math.floor(impressions / pkg.creativeAssignments.length);
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
@@ -12893,9 +13159,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       package_id: pkg.packageId,
       ...packageDeliveryMetrics,
       ...(isRevenueShare && simDelivery ? {
-        conversions: simDelivery.conversions,
-        ...(simDelivery.conversionValue !== undefined ? { conversion_value: simDelivery.conversionValue } : {}),
-        ...(simDelivery.commissionableValue !== undefined ? { commissionable_value: simDelivery.commissionableValue } : {}),
+        conversions: packageConversions,
+        ...(simDelivery.conversionValue !== undefined ? {
+          conversion_value: simulatedConversionValueByPackage.get(pkg.packageId) ?? 0,
+        } : {}),
+        ...(simDelivery.commissionableValue !== undefined ? {
+          commissionable_value: simulatedCommissionableValueByPackage.get(pkg.packageId) ?? 0,
+        } : {}),
       } : {}),
       pricing_model: pricingModel,
       model: pricingModel, // #1525: alias for @adcp/sdk < 4.11.0
@@ -13188,6 +13458,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       format_option_ref?: Record<string, unknown>;
       assets?: Record<string, unknown>;
       component_assets?: Record<string, Record<string, unknown>>;
+      localization?: Record<string, unknown>;
       manifest?: CreativeManifest;
     };
     const identityResult = validatedCreativeIdentity(creativeShape);
@@ -13240,11 +13511,87 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
 
-    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; assets?: Record<string, unknown> });
+    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> });
     if (nativeError) return { errors: [nativeError] as TaskError[] };
 
     const existing = session.creatives.has(creativeId);
     const existingCreative = session.creatives.get(creativeId);
+    const retainedSourceVariant = Array.isArray(existingCreative?.localization?.variants)
+      ? existingCreative.localization.variants.find(variant => (
+        isRecord(variant) && variant.role === 'source'
+      ))
+      : undefined;
+    if (
+      creativeShape.localization === undefined
+      && Object.hasOwn(creativeShape, 'assets')
+      && isRecord(retainedSourceVariant)
+      && !isDeepStrictEqual(creativeShape.assets ?? {}, retainedSourceVariant.assets)
+    ) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [{
+          code: 'VALIDATION_ERROR',
+          message: 'Changing source assets on a localized creative requires a complete localization replacement or localization: null.',
+          field: `creatives[${creativeId}].localization`,
+          recovery: 'correctable',
+        }],
+      });
+      continue;
+    }
+    let localization = existingCreative?.localization;
+    if (creativeShape.localization === null) {
+      localization = undefined;
+    } else if (creativeShape.localization !== undefined) {
+      const source = isRecord(creativeShape.localization.source)
+        ? creativeShape.localization.source
+        : undefined;
+      const targets = Array.isArray(creativeShape.localization.target_variants)
+        ? creativeShape.localization.target_variants.filter(isRecord)
+        : [];
+      const sourceAssets = creativeShape.assets ?? {};
+      const variants: Array<Record<string, unknown>> = source
+        ? [
+            { ...source, role: 'source', assets: structuredClone(sourceAssets) },
+            ...targets.map(target => ({
+              ...target,
+              role: 'target',
+              assets: {
+                ...structuredClone(sourceAssets),
+                ...(isRecord(target.assets) ? structuredClone(target.assets) : {}),
+              },
+            })),
+          ]
+        : [];
+      const variantIds = new Set(variants.flatMap(variant => (
+        typeof variant.locale_variant_id === 'string' ? [variant.locale_variant_id] : []
+      )));
+      const defaultId = creativeShape.localization.default_locale_variant_id;
+      if (!source || typeof defaultId !== 'string' || !variantIds.has(defaultId)) {
+        results.push({
+          creative_id: creativeId,
+          action: 'failed',
+          errors: [{
+            code: 'VALIDATION_ERROR',
+            message: 'localization.default_locale_variant_id must reference the source or a target variant.',
+            field: `creatives[${creativeId}].localization.default_locale_variant_id`,
+            recovery: 'correctable',
+          }],
+        });
+        continue;
+      }
+      localization = {
+        locale_matching: 'rfc4647_lookup',
+        variants: structuredClone(variants),
+        default_locale_variant_id: defaultId,
+        ...(Array.isArray(creativeShape.localization.locale_fallbacks) && {
+          locale_fallbacks: structuredClone(creativeShape.localization.locale_fallbacks),
+        }),
+        ...(typeof creativeShape.localization.unmatched_locale_action === 'string' && {
+          unmatched_locale_action: creativeShape.localization.unmatched_locale_action,
+        }),
+      };
+    }
     const topLevelComponentAssetsSupplied = Object.hasOwn(creativeShape, 'component_assets');
     const nestedComponentAssetsSupplied = isRecord(creativeShape.manifest)
       && Object.hasOwn(creativeShape.manifest, 'component_assets');
@@ -13335,6 +13682,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           }),
         ...(manifest && { assets: manifest.assets }),
         ...(manifest?.component_assets && { componentAssets: manifest.component_assets }),
+        ...(localization && { localization }),
         name: creative.name,
         status: existingCreative?.status ?? 'approved',
         syncedAt: new Date().toISOString(),
@@ -13356,6 +13704,8 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     results.push({
       creative_id: creativeId,
       action: existing ? 'updated' : 'created',
+      status: existingCreative?.status ?? 'approved',
+      ...(localization && { localization }),
     });
   }
 
@@ -13430,6 +13780,34 @@ function accountRefsOverlap(stored: AccountRef | undefined, requested: AccountRe
   return Boolean(requested.brand?.domain && stored.brand?.domain && requested.brand.domain === stored.brand.domain);
 }
 
+function mediaBuyAccountVisibleToRequest(
+  stored: AccountRef | undefined,
+  requested: AccountRef,
+  ctx: TrainingContext,
+): boolean {
+  if (accountRefsOverlap(stored, requested)) return true;
+  if (!ctx.principal?.startsWith('static:') || !stored) return false;
+  if (
+    !stored.account_id
+    && !requested.account_id
+    && stored.brand?.domain
+    && stored.brand.domain === requested.brand?.domain
+    && stored.brand.brand_id === requested.brand?.brand_id
+  ) {
+    return true;
+  }
+  try {
+    const storedIdentity = canonicalizeAccountRef(stored);
+    const requestedIdentity = canonicalizeAccountRef(requested);
+    return storedIdentity.kind === 'natural'
+      && requestedIdentity.kind === 'natural'
+      && storedIdentity.brand.domain === requestedIdentity.brand.domain
+      && storedIdentity.brand.brand_id === requestedIdentity.brand.brand_id;
+  } catch {
+    return false;
+  }
+}
+
 type CreativeListFilters = {
   creative_ids?: string[];
   statuses?: string[];
@@ -13461,6 +13839,17 @@ function creativeMatchesAnyFormatId(
   requested: FormatID[],
   adapters: CreativeProjectionAdapters,
 ): boolean {
+  if (creative.formatId) {
+    const storedAgentUrl = creative.formatId.agent_url ?? getAgentUrl();
+    if (requested.some(wanted => (
+      wanted.id === creative.formatId?.id
+      && (!wanted.agent_url
+        || canonicalizeAgentUrl(wanted.agent_url) === canonicalizeAgentUrl(storedAgentUrl))
+      && (['width', 'height', 'duration_ms', 'pixel_ratio'] as const).every(parameter => (
+        wanted[parameter] === creative.formatId?.[parameter]
+      ))
+    ))) return true;
+  }
   let projected: Record<string, unknown>;
   try {
     projected = projectCreativeRecordForWire(storedCreativeFormatRecord(creative), 'legacy', adapters);
@@ -13474,7 +13863,7 @@ function creativeMatchesAnyFormatId(
     if (!wanted?.id || wanted.id !== actual.id) return false;
     if (!wanted.agent_url
       || canonicalizeAgentUrl(wanted.agent_url) !== canonicalizeAgentUrl(actualAgentUrl)) return false;
-    for (const parameter of ['width', 'height', 'duration_ms'] as const) {
+    for (const parameter of ['width', 'height', 'duration_ms', 'pixel_ratio'] as const) {
       if (wanted[parameter] !== actual[parameter]) return false;
     }
     return true;
@@ -13633,10 +14022,15 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
         status: c.status,
         created_date: c.syncedAt,
         updated_date: c.syncedAt,
-        ...(c.manifest?.assets && (!selectedFields || selectedFields.has('assets')) && { assets: c.manifest.assets }),
+        ...(c.manifest?.assets
+          && (!selectedFields || selectedFields.has('assets') || selectedFields.has('localization'))
+          && { assets: c.manifest.assets }),
         ...(c.manifest?.component_assets
           && (!selectedFields || selectedFields.has('component_assets'))
           && { component_assets: c.manifest.component_assets }),
+        ...(c.localization && (!selectedFields || selectedFields.has('localization')) && {
+          localization: c.localization,
+        }),
       };
       if (emitPricing && (c.formatKind || c.formatId?.id) && (!selectedFields || selectedFields.has('pricing_options'))) {
         base.pricing_options = [getCreativePricing(req.account!, c)];
@@ -13767,12 +14161,24 @@ async function handleUpdateMediaBuyUnlocked(
   options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
   const req = args as unknown as UpdateMediaBuyArgs;
-  const session = await getSession(
+  let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req as unknown as ToolArgs, ctx),
   );
   const mediaBuyId = req.media_buy_id || '';
   let mb = session.mediaBuys.get(mediaBuyId);
+
+  if (!mb && req.account) {
+    const ownerSession = await findSessionMatching(candidate => {
+      const candidateBuy = candidate.mediaBuys.get(mediaBuyId);
+      return candidateBuy !== undefined
+        && mediaBuyAccountVisibleToRequest(candidateBuy.accountRef, req.account!, ctx);
+    });
+    if (ownerSession) {
+      session = ownerSession;
+      mb = ownerSession.mediaBuys.get(mediaBuyId);
+    }
+  }
 
   if (!mb) {
     return { errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }] };
@@ -14771,7 +15177,8 @@ async function handleUpdateMediaBuyUnlocked(
 
 export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingContext): Promise<Record<string, unknown>> {
   const versionResolution = resolveServedAdcpVersion(args as unknown as Record<string, unknown>);
-  const servedAdcpVersion = versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION;
+  const servedAdcpVersion = ctx.servedAdcpVersion
+    ?? (versionResolution.ok ? versionResolution.servedVersion : DEFAULT_ADCP_VERSION);
   const tasks = visibleToolsForContext(ctx)
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
@@ -14787,32 +15194,57 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
   // the wire response separates them so verifiers and storyboard runners
   // don't conflate the two namespaces.
   //
+  const parsedServedAdcpVersion = parseAdcpReleaseVersion(servedAdcpVersion);
+  const isThreeZeroResponse = isThreeZeroStoryboardCompat(ctx)
+    || (parsedServedAdcpVersion?.major === 3 && parsedServedAdcpVersion.minor === 0);
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethodName(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethodName(op));
-  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethodName);
-  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethodName) ?? [];
+  const protocolMethodsRequiredFor = signingCap.required_for
+    .filter(isProtocolMethodName)
+    .filter(op => !isThreeZeroResponse || op.includes('/'));
+  const protocolMethodsSupportedFor = (signingCap.supported_for?.filter(isProtocolMethodName) ?? [])
+    .filter(op => !isThreeZeroResponse || op.includes('/'));
   const wholesaleProfile = wholesaleCapabilityProfile(ctx);
-  const complianceScenarios = [
-    'force_creative_status',
-    'force_audience_status',
-    'force_account_status',
-    'force_media_buy_status',
-    'force_create_media_buy_arm',
-    'force_task_completion',
-    ...(!isThreeZeroStoryboardCompat(ctx) ? ['force_creative_purge'] : []),
-    'force_session_status',
-    'simulate_delivery',
-    'simulate_budget_spend',
-    'seed_account',
-    'seed_product',
-    'seed_pricing_option',
-    'seed_creative',
-    'seed_plan',
-    'seed_media_buy',
-    'seed_creative_format',
-    'seed_measurement_catalog',
-    ...(!isThreeZeroStoryboardCompat(ctx) ? ['query_provenance_audit_observations'] : []),
-  ];
+  const complianceScenarios = isThreeZeroResponse
+    ? [...THREE_ZERO_COMPLIANCE_SCENARIOS]
+    : [
+        'force_creative_status',
+        'force_audience_status',
+        'force_account_status',
+        'force_media_buy_status',
+        'force_create_media_buy_arm',
+        'force_task_completion',
+        'force_creative_purge',
+        'force_session_status',
+        'simulate_delivery',
+        'simulate_budget_spend',
+        'seed_account',
+        'seed_product',
+        'seed_pricing_option',
+        'seed_creative',
+        'seed_plan',
+        'seed_media_buy',
+        'seed_creative_format',
+        'seed_measurement_catalog',
+        'query_provenance_audit_observations',
+      ];
+  // AdCP 3.2 requires every signing-capable endpoint to require
+  // content-digest coverage. The legacy conformance routes intentionally
+  // exercise the 3.0/3.1 `either` and `forbidden` policies, so they must not
+  // claim support for releases whose schema forbids those postures.
+  const supportedReleaseVersions = [...signingCompatibleReleaseVersions(ctx)];
+  const requestedRelease = parseAdcpReleaseVersion((args as unknown as Record<string, unknown>).adcp_version);
+  if (
+    isThreeZeroStoryboardCompat(ctx)
+    && requestedRelease?.major === 3
+    && requestedRelease.minor === 0
+    && !requestedRelease.prerelease
+    && !supportedReleaseVersions.includes(requestedRelease.raw)
+  ) {
+    // The frozen compatibility runner requests its patch-precise 3.0 bundle,
+    // which this facade deliberately serves through the stable 3.0 shape.
+    supportedReleaseVersions.push(requestedRelease.raw);
+  }
   const governanceEnforcementTasks = ctx.tenantId === 'sales'
     ? supportsGetProductsRejected(servedAdcpVersion)
       ? [
@@ -14834,11 +15266,14 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
   ];
+  const supportedCreativeFormats = includeThreeOneFields(ctx)
+    ? supportedCanonicalFormatsCapability()
+    : undefined;
   return {
     adcp_version: DEFAULT_ADCP_VERSION,
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
-      supported_versions: [...SUPPORTED_RELEASE_VERSIONS],
+      supported_versions: [...supportedReleaseVersions],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
       ...(governanceEnforcementTasks.length > 0 && {
         governance_enforcement: { tasks: governanceEnforcementTasks },
@@ -14949,15 +15384,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supports_transformation: true,
       supports_compliance: false,
       has_creative_library: true,
-      ...(includeThreeOneFields(ctx) ? {
+      ...(supportedCreativeFormats ? {
         bills_through_adcp: creativeBillsThroughAdcp(ctx),
-        supported_formats: supportedCanonicalFormatsCapability(),
-        preview: {
-          routes: SUPPORTED_CANONICAL_BUILD_CAPABILITIES.map(capability => ({
-            capability_id: capability.capabilityId,
-            rendering_origin: 'agent_approximation',
-          })),
-        },
+        supported_formats: supportedCreativeFormats,
+        preview: creativePreviewCapability(supportedCreativeFormats),
         canonical_catalog_version: '3.2',
         supports_transformers: true,
         supports_refinement: true,
@@ -15105,6 +15535,15 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     };
   }
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
+  const forcedSignalsArm = session.complyExtensions.forcedGetSignalsArm;
+  if (req.discovery_mode !== 'wholesale' && forcedSignalsArm?.arm === 'submitted') {
+    session.complyExtensions.forcedGetSignalsArm = undefined;
+    return {
+      status: 'submitted',
+      task_id: forcedSignalsArm.taskId,
+      ...(forcedSignalsArm.message && { message: forcedSignalsArm.message }),
+    };
+  }
   const wholesaleMeta = req.discovery_mode === 'wholesale'
     ? signalWholesaleFeedMeta(req as WholesaleFeedRequest)
     : undefined;
@@ -15243,9 +15682,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     unchanged?: boolean;
     wholesale_feed_version?: string;
     pricing_version?: string;
-    cache_scope?: 'public' | 'account';
+    cache_scope: 'public' | 'account';
   } = {
     signals,
+    cache_scope: wholesaleMeta?.cache_scope ?? cacheScopeForWholesaleRequest(req as WholesaleFeedRequest),
     pagination: {
       has_more: hasMore,
       total_count: totalMatching,
@@ -15257,7 +15697,6 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
     ...(wholesaleMeta && {
       wholesale_feed_version: wholesaleMeta.wholesale_feed_version,
       pricing_version: wholesaleMeta.pricing_version,
-      cache_scope: wholesaleMeta.cache_scope,
     }),
   };
   if (hasIdentityTerm) {
@@ -15295,7 +15734,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   if (!signal) {
     return {
       errors: [{
-        code: 'SIGNAL_AGENT_SEGMENT_NOT_FOUND',
+        code: 'REFERENCE_NOT_FOUND',
         message: `Signal not found: ${segmentId}. Use get_signals to discover available signals.`,
       }],
     };
@@ -16153,18 +16592,20 @@ export async function handlePreviewCreative(args: ToolArgs, ctx: TrainingContext
       isThreeZeroStoryboardCompat(ctx)
       && formatKind
       && !VALID_CANONICAL_FORMAT_KINDS.has(formatKind)
-      && formatId?.id
-      && validFormatIds.has(formatId.id)
+      && validFormatIds.has(formatKind)
     ) {
+      formatId ??= { agent_url: agentUrl, id: formatKind };
       formatKind = undefined;
     }
 
     if (legacyFormatId) {
       if (!legacyFormatId.id || !validFormatIds.has(legacyFormatId.id)) return null;
     } else if (formatKind) {
-      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => item.formatKind === formatKind);
+      const matches = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.filter(item => (
+        item.formatKind === formatKind && CANONICAL_PREVIEW_CAPABILITY_IDS.has(item.capabilityId)
+      ));
       if (targetCapabilityId) {
-        const selected = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === targetCapabilityId);
+        const selected = matches.find(item => item.capabilityId === targetCapabilityId);
         if (!selected || selected.formatKind !== formatKind) return null;
       } else if (matches.length !== 1 && !isThreeZeroStoryboardCompat(ctx)) {
         return null;
@@ -18774,7 +19215,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
       return result;
     });
   });
-  installTaskProtocolVersionNegotiation(server);
+  installTaskProtocolVersionNegotiation(server, signingCompatibleReleaseVersions(ctx));
 
   async function dispatchCallTool(
     request: { params: { name: string; arguments?: unknown; task?: { ttl?: number } } },
@@ -18786,7 +19227,8 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
     // echo caller's context object back unchanged in every response).
     const rawArgs = (args as Record<string, unknown> | undefined) ?? {};
     const { context: callerContext, ...initialHandlerArgs } = rawArgs;
-    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs);
+    const routeSupportedVersions = signingCompatibleReleaseVersions(ctx);
+    const versionResolution = resolveServedAdcpVersionForTool(name, initialHandlerArgs, routeSupportedVersions);
 
     const handler = name === 'refine_proposals' && usesTypedProposalNegotiation(ctx)
       ? handleTypedProposalRefinement

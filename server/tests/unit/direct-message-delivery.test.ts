@@ -25,6 +25,15 @@ function makeInput(overrides: { userMessageFlagged?: boolean; assistantFlagged?:
         thread_id: 'thread-1',
         role: 'assistant' as const,
         content: 'Done.',
+        model_execution: {
+          source: 'provider' as const,
+          requested_provider: 'anthropic' as const,
+          requested_model: 'claude-sonnet-5',
+          provider: 'anthropic' as const,
+          model: 'claude-sonnet-5-20260801',
+          model_resolution: 'provider_canonicalized' as const,
+          fallback_reason: null,
+        },
         tools_used: ['update_profile'],
         tool_calls: [{ name: 'update_profile', input: { name: 'Ari' }, result: 'updated' }],
       },
@@ -57,6 +66,12 @@ describe('direct-message delivery orchestration', () => {
     expect(fixture.addMessage).toHaveBeenCalledWith(expect.objectContaining({
       role: 'assistant',
       tool_calls: fixture.input.assistantMessage.tool_calls,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: 'claude-sonnet-5',
+        reason: 'canned_response',
+      },
       flag_reason: 'Slack delivery failed: restricted_action_read_only_channel',
     }));
     expect(fixture.flagThread).toHaveBeenCalledWith('thread-1', 'Slack delivery failed: restricted_action_read_only_channel');

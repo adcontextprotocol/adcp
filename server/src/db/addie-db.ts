@@ -1,5 +1,5 @@
 import { query } from './client.js';
-import type { AddieInteractionLog } from '../addie/types.js';
+import type { AddieInteractionLog, CreateAddieInteractionLog } from '../addie/types.js';
 
 /**
  * Database row type for addie_interactions
@@ -17,6 +17,14 @@ interface AddieInteractionRow {
   tools_used: string[];
   knowledge_ids: number[] | null;
   model: string;
+  model_execution_source: 'provider' | 'local' | 'legacy' | null;
+  requested_model_provider: 'anthropic' | 'openai' | 'google' | null;
+  requested_model: string | null;
+  model_provider: 'anthropic' | 'openai' | 'google' | null;
+  provider_model: string | null;
+  provider_model_resolution: 'exact' | 'provider_canonicalized' | 'fallback' | null;
+  provider_fallback_reason: string | null;
+  local_response_reason: string | null;
   latency_ms: number;
   flagged: boolean;
   flag_reason: string | null;
@@ -987,14 +995,15 @@ export class AddieDatabase {
   /**
    * Log an interaction
    */
-  async logInteraction(log: AddieInteractionLog, knowledgeIds?: number[]): Promise<void> {
+  async logInteraction(log: CreateAddieInteractionLog, knowledgeIds?: number[]): Promise<void> {
     await query(
       `INSERT INTO addie_interactions (
         id, event_type, channel_id, thread_ts, user_id,
         input_text, input_sanitized, output_text,
-        tools_used, knowledge_ids, model, latency_ms,
-        flagged, flag_reason
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        tools_used, knowledge_ids, model, model_execution_source, requested_model_provider, requested_model,
+        model_provider, provider_model, provider_model_resolution, provider_fallback_reason, local_response_reason,
+        latency_ms, flagged, flag_reason
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
       [
         log.id,
         log.event_type,
@@ -1007,6 +1016,14 @@ export class AddieDatabase {
         log.tools_used,
         knowledgeIds || null,
         log.model,
+        log.model_execution?.source || null,
+        log.model_execution?.requested_provider || null,
+        log.model_execution?.requested_model || null,
+        log.model_execution?.source === 'provider' ? log.model_execution.provider : null,
+        log.model_execution?.source === 'provider' ? log.model_execution.model : null,
+        log.model_execution?.source === 'provider' ? log.model_execution.model_resolution : null,
+        log.model_execution?.source === 'provider' ? log.model_execution.fallback_reason : null,
+        log.model_execution?.source === 'local' ? log.model_execution.reason : null,
         log.latency_ms,
         log.flagged,
         log.flag_reason || null,
@@ -1072,6 +1089,32 @@ export class AddieDatabase {
       output_text: row.output_text,
       tools_used: row.tools_used,
       model: row.model,
+      model_execution: row.model_execution_source === 'provider'
+        && row.requested_model_provider && row.requested_model && row.model_provider && row.provider_model
+        ? {
+            source: 'provider',
+            requested_provider: row.requested_model_provider,
+            requested_model: row.requested_model,
+            provider: row.model_provider,
+            model: row.provider_model,
+            model_resolution: row.provider_model_resolution!,
+            fallback_reason: row.provider_fallback_reason as Extract<NonNullable<AddieInteractionLog['model_execution']>, { source: 'provider' }>['fallback_reason'],
+          }
+        : row.model_execution_source === 'local' && row.requested_model_provider && row.requested_model && row.local_response_reason
+          ? {
+              source: 'local',
+              requested_provider: row.requested_model_provider,
+              requested_model: row.requested_model,
+              reason: row.local_response_reason as Extract<NonNullable<AddieInteractionLog['model_execution']>, { source: 'local' }>['reason'],
+            }
+          : row.model_execution_source === 'local' && row.requested_model_provider === null && row.requested_model === null && row.local_response_reason
+            ? {
+                source: 'local',
+                requested_provider: null,
+                requested_model: null,
+                reason: row.local_response_reason as Extract<NonNullable<AddieInteractionLog['model_execution']>, { source: 'local' }>['reason'],
+              }
+            : undefined,
       latency_ms: row.latency_ms,
       flagged: row.flagged,
       flag_reason: row.flag_reason ?? undefined,
@@ -1084,7 +1127,8 @@ export class AddieDatabase {
   async markInteractionReviewed(id: string, reviewedBy: string): Promise<void> {
     await query(
       `UPDATE addie_interactions
-       SET reviewed = TRUE, reviewed_by = $1, reviewed_at = NOW()
+       SET model_execution_source = COALESCE(model_execution_source, 'legacy'),
+           reviewed = TRUE, reviewed_by = $1, reviewed_at = NOW()
        WHERE id = $2`,
       [reviewedBy, id]
     );
@@ -1232,7 +1276,8 @@ export class AddieDatabase {
   ): Promise<void> {
     await query(
       `UPDATE addie_interactions
-       SET rating = $1, rating_by = $2, rating_notes = $3, rated_at = NOW(),
+       SET model_execution_source = COALESCE(model_execution_source, 'legacy'),
+           rating = $1, rating_by = $2, rating_notes = $3, rated_at = NOW(),
            outcome = $4, user_sentiment = $5, intent_category = $6
        WHERE id = $7`,
       [

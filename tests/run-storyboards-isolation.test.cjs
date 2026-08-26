@@ -99,6 +99,7 @@ test('a timed-out child group is reported without losing successful siblings', a
 
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /storyboards: 2\/3 clean/);
+  assert.match(result.stdout, /selection: 3 applicable \| 1 not applicable \| 1 quarantined \| 5 corpus/);
   assert.match(result.stdout, /healthy_after/);
   assert.deepEqual(results.map(entry => entry.storyboard_id), ['healthy_before', 'healthy_after']);
   const hang = telemetry.find(entry => entry.storyboard_id === 'hang');
@@ -113,6 +114,7 @@ test('a result is persisted before a post-result child group is killed', async (
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /storyboards: 2\/2 clean/);
+  assert.match(result.stdout, /selection: 2 applicable \| 1 not applicable \| 1 quarantined \| 4 corpus/);
   assert.deepEqual(results.map(entry => entry.storyboard_id), ['post_result_hang', 'healthy_after']);
   const hanging = telemetry.find(entry => entry.storyboard_id === 'post_result_hang');
   assert.equal(hanging.result_received, true);
@@ -143,6 +145,50 @@ test('an internally inconsistent envelope fails closed', (t) => {
 
 test('a coherent but partial multi-variant envelope fails closed', (t) => {
   const { result, telemetry, results } = runFixture(t, ['signed_requests', 'healthy_after']);
+
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stdout, /storyboards: 1\/2 clean/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['healthy_after']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, false);
+});
+
+test('the current required-profile signed-request envelope is aggregated', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'current' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /storyboards: 1\/1 clean/);
+  assert.match(result.stdout, /steps: 1 passed/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['signed_requests']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, true);
+});
+
+test('the exact three legacy signed-request profiles are aggregated', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'legacy' },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /storyboards: 3\/3 clean/);
+  assert.match(result.stdout, /steps: 3 passed/);
+  assert.deepEqual(results.map(entry => entry.storyboard_id), ['signed_requests']);
+  assert.equal(telemetry.find(entry => entry.storyboard_id === 'signed_requests').result_received, true);
+});
+
+test('duplicate signed-request profile summaries fail closed', (t) => {
+  const { result, telemetry, results } = runFixture(
+    t,
+    ['signed_requests', 'healthy_after'],
+    [],
+    { FIXTURE_SIGNED_REQUESTS_SHAPE: 'duplicate' },
+  );
 
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stdout, /storyboards: 1\/2 clean/);

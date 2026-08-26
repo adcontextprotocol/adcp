@@ -11,7 +11,7 @@ import type { TrainingContext, ToolArgs, AccountRef, PropertyListState } from '.
 import { getSession, sessionKeyFromArgs, MAX_PROPERTY_LISTS_PER_SESSION } from './state.js';
 import { ACCOUNT_REF_SCHEMA } from './account-handlers.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
-import { validateWebhookUrl } from './webhook-fetch.js';
+import { isWebhookTestOrDevelopment, validateWebhookUrl } from './webhook-fetch.js';
 import { emitPropertyListChangedWebhook } from './webhooks.js';
 
 const MAX_PROPERTIES_PER_LIST = 10_000;
@@ -314,7 +314,9 @@ export async function handleUpdatePropertyList(
   }
 
   if (req.webhook_url !== undefined && req.webhook_url !== '') {
-    const webhookError = await validateWebhookUrl(req.webhook_url);
+    const webhookError = await validateWebhookUrl(req.webhook_url, {
+      allowLoopback: isWebhookTestOrDevelopment(process.env.NODE_ENV),
+    });
     if (webhookError) return { errors: [webhookError] };
   }
 

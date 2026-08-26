@@ -17,6 +17,7 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
+import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
@@ -766,9 +767,10 @@ export async function prepareRequestWithMemberTools(
 
   // Create per-request tools (same tools as Slack, minus Slack-specific ones)
   // Re-register billing with memberContext so org-scoped operations work (overrides baseline)
-  const allTools = [...MEMBER_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
+  const allTools = [...MEMBER_TOOLS, ...DIRECTORY_TOOLS, ...SI_HOST_TOOLS, ...ADCP_TOOLS, ...ESCALATION_TOOLS, ...BILLING_TOOLS, ...IMAGE_TOOLS];
   const combinedHandlers = new Map([
     ...createMemberToolHandlers(memberContext, undefined, trainingModuleContext),
+    ...createDirectoryToolHandlers(memberContext),
     ...createSiHostToolHandlers(() => memberContext, () => threadExternalId),
     ...createAdcpToolHandlers(memberContext, trainingModuleContext),
     ...createEscalationToolHandlers(memberContext, linkedSlackUserId, threadId),
@@ -1149,7 +1151,7 @@ export function createAddieChatRouter(options?: {
         : null;
 
       // Process with Claude
-      let response;
+      let response: AddieResponse;
       try {
         response = await activeChatClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
           ...processOptions,
@@ -1181,6 +1183,9 @@ export function createAddieChatRouter(options?: {
           tool_executions: [],
           flagged: true,
           flag_reason: `Error: ${error instanceof Error ? error.message : "Unknown"}`,
+          model_execution: {
+            source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'provider_error',
+          },
         };
       }
 
@@ -1197,6 +1202,10 @@ export function createAddieChatRouter(options?: {
         response.text = normalizedResponse.text;
         response.flagged = true;
         response.flag_reason = response.flag_reason || 'Empty assistant response';
+        response.model_execution = classifyLocalModelExecution(
+          response.model_execution,
+          'no_provider_response',
+        );
       }
 
       // Validate output
@@ -1219,6 +1228,7 @@ export function createAddieChatRouter(options?: {
             }))
           : undefined,
         model: effectiveModel,
+        model_execution: response.model_execution,
         latency_ms: latencyMs,
         tokens_input: response.usage?.input_tokens,
         tokens_output: response.usage?.output_tokens,
@@ -1289,6 +1299,7 @@ export function createAddieChatRouter(options?: {
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let claimedTurn: { threadId: string; clientRequestId: string; leaseId: string } | null = null;
     let terminalResponse: AddieResponse | undefined;
+    let requestedModelForAttempt = req.user ? AddieModelConfig.chat : AddieModelConfig.anonymousChat;
 
     // Handle client disconnect
     res.on("close", () => {
@@ -1587,6 +1598,7 @@ export function createAddieChatRouter(options?: {
         typeof organization_id === 'string' ? organization_id : null
       );
       const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      requestedModelForAttempt = effectiveModel;
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
         : null;
@@ -1685,6 +1697,9 @@ export function createAddieChatRouter(options?: {
               is_error: execution.is_error,
             })),
             model: effectiveModel,
+            model_execution: {
+              source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'stream_interrupted',
+            },
             flagged: true,
             flag_reason: `stream_interrupted: ${event.reason}`,
             client_request_id: clientRequestId || undefined,
@@ -1726,6 +1741,9 @@ export function createAddieChatRouter(options?: {
               content: 'Reply interrupted before completion. The learner can safely retry this turn.',
               flagged: true,
               flag_reason: `stream_interrupted: ${event.error}`,
+              model_execution: {
+                source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'stream_interrupted',
+              },
               client_request_id: claimedTurn.clientRequestId,
               delivery_status: 'interrupted',
               client_turn_lease_id: claimedTurn.leaseId,
@@ -1750,6 +1768,9 @@ export function createAddieChatRouter(options?: {
           content: 'Reply interrupted before completion. The learner can safely retry this turn.',
           tools_used: toolsUsed.length > 0 ? toolsUsed : undefined,
           model: effectiveModel,
+          model_execution: {
+            source: 'local', requested_provider: 'anthropic', requested_model: effectiveModel, reason: 'no_provider_response',
+          },
           flagged: true,
           flag_reason: 'stream_interrupted: ended_without_done',
           client_request_id: clientRequestId || undefined,
@@ -1794,6 +1815,10 @@ export function createAddieChatRouter(options?: {
         if (response) {
           response.flagged = true;
           response.flag_reason = response.flag_reason || 'Empty assistant response';
+          response.model_execution = classifyLocalModelExecution(
+            response.model_execution,
+            'no_provider_response',
+          );
         }
       }
       fullText = normalizedStream.text;
@@ -1817,6 +1842,7 @@ export function createAddieChatRouter(options?: {
             }))
           : undefined,
         model: effectiveModel,
+        model_execution: response.model_execution,
         latency_ms: latencyMs,
         tokens_input: response?.usage?.input_tokens,
         tokens_output: response?.usage?.output_tokens,
@@ -1999,6 +2025,12 @@ export function createAddieChatRouter(options?: {
             })),
             flagged: true,
             flag_reason: 'stream_interrupted: route_error',
+            model_execution: {
+              source: 'local',
+              requested_provider: terminalResponse?.model_execution.requested_provider ?? 'anthropic',
+              requested_model: terminalResponse?.model_execution.requested_model ?? requestedModelForAttempt,
+              reason: 'stream_interrupted',
+            },
             client_request_id: claimedTurn.clientRequestId,
             delivery_status: 'interrupted',
             client_turn_lease_id: claimedTurn.leaseId,

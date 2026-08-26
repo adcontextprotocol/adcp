@@ -56,7 +56,12 @@ describe('createWebhookFetch — SSRF guard', () => {
   });
 
   describe('with allowPrivateIp=false (production)', () => {
-    const fetch = createWebhookFetch({ allowPrivateIp: false });
+    // Stubbed resolver: the guard's DNS behavior is covered by the injected-
+    // lookup tests below; hitting real DNS here made these tests fail on any
+    // machine with a slow or filtered resolver (adcp#6828). 93.184.216.34 is
+    // example.com's public address.
+    const dnsLookup = async () => [{ address: '93.184.216.34', family: 4 }];
+    const fetch = createWebhookFetch({ allowPrivateIp: false, dnsLookup });
 
     it('refuses literal IPv4 loopback', async () => {
       await expect(fetch('http://127.0.0.1/metadata')).rejects.toBeInstanceOf(SsrfRefusedError);
@@ -210,6 +215,40 @@ describe('createWebhookFetch — SSRF guard', () => {
 
       await expect(validateWebhookUrl('http://example.com/hook', { dnsLookup })).resolves.toBeUndefined();
       expect(dnsLookup).toHaveBeenCalledOnce();
+    });
+
+    it.each(['test', 'development'])('allows an explicit loopback receiver in %s mode', async (environment) => {
+      vi.stubEnv('NODE_ENV', environment);
+      await expect(validateWebhookUrl('http://127.0.0.1:9999/hook', { allowLoopback: true }))
+        .resolves.toBeUndefined();
+    });
+
+    it('the loopback override still rejects other private and encoded targets', async () => {
+      vi.stubEnv('NODE_ENV', 'test');
+      for (const target of [
+        'https://169.254.169.254/latest/meta-data',
+        'https://10.0.0.1/private',
+        'https://2852039166/latest/meta-data',
+        'https://2130706433/private',
+        'https://0x7f000001/private',
+        'https://0177.0.0.1/private',
+      ]) {
+        await expect(validateWebhookUrl(target, { allowLoopback: true })).resolves.toEqual({
+          code: 'VALIDATION_ERROR',
+          message: 'webhook_url must target a public network address',
+          field: 'webhook_url',
+        });
+      }
+    });
+
+    it('does not honor the private-target override outside test or development', async () => {
+      vi.stubEnv('NODE_ENV', 'staging');
+      await expect(validateWebhookUrl('https://127.0.0.1/hook', { allowPrivateIp: true }))
+        .resolves.toEqual({
+          code: 'VALIDATION_ERROR',
+          message: 'webhook_url must target a public network address',
+          field: 'webhook_url',
+        });
     });
 
     it.each([

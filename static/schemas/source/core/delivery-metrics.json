@@ -108,6 +108,13 @@
       "description": "Number of times the ad creative was displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (per-screen rotation count) and from `impressions` (multiplied audience figure). Used for DOOH and broadcast inventory where buyers reconcile against forecast `plays`.",
       "minimum": 0
     },
+    "measurement_source": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+$",
+      "description": "Third-party measurement provider whose data produced this row's audience numbers. Mirrors delivery-forecast.json's measurement_source so forecast and delivery reconcile on the same declaration — distinct from demographic_system, which specifies demographic notation. Makes measured-channel rows (radio, broadcast, OOH) self-describing: a reconciliation join can tie delivered numbers to the system that measured them without consulting out-of-band context. Lowercase slug format.",
+      "examples": ["nielsen", "nielsen_audio", "videoamp", "comscore", "geopath", "barb", "agf", "oztam", "kantar", "barc", "route", "rajar", "triton"]
+    },
     "by_event_type": {
       "type": "array",
       "description": "Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA) are only available at the package/totals level since spend cannot be attributed to individual event types.",
@@ -312,6 +319,128 @@
             "additionalProperties": true
           }
         }
+      },
+      "additionalProperties": true
+    },
+    "ooh_metrics": {
+      "type": "object",
+      "x-status": "experimental",
+      "description": "Classic (static) OOH metrics — printed bulletins, posters, transit, and street furniture (only included for ooh campaigns). Experimental in AdCP 3.2. Static units have no play event: the delivery number is a period-level modeled audience estimate whose methodology tier is declared in estimation_basis (provider identity rides the row-level measurement_source), and the settlement artifact is the posting record — it proves the posting period, not an airing.",
+      "properties": {
+        "panels": {
+          "type": "array",
+          "description": "Panels (faces) covered by this row. A panel commonly carries multiple identifiers at once — OOH contracts key line items on the measurement-currency panel number AND the operator's own panel number together.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "identifiers": {
+                "type": "array",
+                "minItems": 1,
+                "description": "All identifiers for this panel, one entry per scheme",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "description": "Panel/face identifier within the id_type namespace"
+                    },
+                    "id_type": {
+                      "type": "string",
+                      "enum": ["geopath", "route_frame", "plant_face", "other"],
+                      "description": "Identifier scheme: geopath (US Geopath Spot ID), route_frame (UK Route frame ID), plant_face (the operator's own panel number — the identifier both sides of a direct contract know), other (markets without a listed scheme). New schemes ship as enum additions in minors."
+                    }
+                  },
+                  "required": ["id", "id_type"],
+                  "additionalProperties": true
+                }
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable location description (e.g., 'I-95 N of Exit 12, right-hand read')"
+              }
+            },
+            "required": ["identifiers"],
+            "additionalProperties": true
+          }
+        },
+        "posting_period_start": {
+          "type": "string",
+          "format": "date",
+          "description": "First in-charge date of the posting period this row covers"
+        },
+        "posting_period_end": {
+          "type": "string",
+          "format": "date",
+          "description": "Last date of the posting period this row covers"
+        },
+        "average_posted_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Average actual posting date across the row's units — the date the display term runs from under OAAA Bulletin §2.2 / Poster §3.2(a) when materials were timely. Read with materials_timely to know whether that rule was in force."
+        },
+        "materials_timely": {
+          "type": "boolean",
+          "description": "Seller's assertion that the buyer delivered acceptable materials by the contractual deadline, which determines whether the §2.2 posting-completion rule (term runs from average posting date) applied. An assertion about the buyer's delivery, not a derived value — it is not recomputable from postings[] evidence, and is the one field in this block that isn't checkable against it."
+        },
+        "share_of_voice_contracted": {
+          "type": "number",
+          "description": "Contracted share of voice where the buy is rotation-based (e.g., rotary bulletin programs) rather than an exclusive face (0.0 to 1.0)",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "illuminated_hours": {
+          "type": "number",
+          "description": "Contracted daily illumination hours for the panels in this row. Determines the measured day-part basis (12/18/24-hour impressions) and the illumination-credit remedy when unmet.",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "estimated_impressions": {
+          "type": "integer",
+          "description": "Modeled audience impressions for the panels and period in this row. This is the channel's delivery number — there is no event-counted alternative. The methodology tier MUST be declared in estimation_basis; provider identity is declared in the row-level measurement_source; the billing vendor is declared in measurement_terms.billing_measurement. The row's top-level impressions SHOULD carry the same value so cross-channel aggregation works without channel-specific logic.",
+          "minimum": 0
+        },
+        "estimation_basis": {
+          "type": "string",
+          "enum": ["currency_measured", "seller_modeled"],
+          "description": "Methodology tier of estimated_impressions: currency_measured (an audience measurement currency's estimate for the panel and period — Geopath, Route, MOVE, COMMB — with the provider named in the row-level measurement_source) or seller_modeled (the seller's own model — the honest fallback for markets without a measurement currency). Tier, not provider: currencies change over time, so provider identity is data on measurement_source, not values in this enum."
+        },
+        "postings": {
+          "type": "array",
+          "description": "Posting records — the seller-attested settlement artifact proving each panel was posted for the period. Industry convention (OAAA model contracts, Proof of Performance §3.5): photo evidence per bulletin within five calendar days of posting and again after each rotary rotation; one representative close-up photograph per creative design variation for poster showings (no deadline attached). Distinct from the §2.2 posting-completion obligation (posting within five business days of the scheduled date), which governs average_posted_date, not evidence.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "panel_id": {
+                "type": "string",
+                "description": "Panel reference matching one of panels[].identifiers[].id"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": ["posted", "rotated", "repaired", "removed"],
+                "default": "posted",
+                "description": "What the record attests: initial posting, rotary rotation to a new face, repair/reposting after damage, or removal at flight end"
+              },
+              "occurred_at": {
+                "type": "string",
+                "format": "date",
+                "description": "Date the attested event happened. For posted events this is the posting date — display terms customarily run from the average posting date across units."
+              },
+              "evidence": {
+                "$ref": "/schemas/core/placement-evidence.json",
+                "description": "Evidence artifact for this event (completion photograph); capture time and location ride the artifact"
+              }
+            },
+            "required": ["panel_id", "occurred_at"],
+            "additionalProperties": true
+          }
+        },
+        "calculation_notes": {
+          "type": "string",
+          "description": "Row-specific methodology context that doesn't fit the structured fields (e.g., a partial-period proration or a market-specific estimate adjustment). Same role as dooh_metrics.calculation_notes — canonical methodology declarations belong on the measurement vendor's discoverable surfaces, not here."
+        }
+      },
+      "dependencies": {
+        "estimated_impressions": ["estimation_basis"]
       },
       "additionalProperties": true
     },

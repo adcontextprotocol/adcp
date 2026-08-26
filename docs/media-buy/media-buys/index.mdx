@@ -62,7 +62,8 @@ include:
 | `targeting_overlay` | Complete effective targeting, including seller resolution |
 | `start_time` / `end_time` | Executable package flight |
 | `budget` / `daily_budget_cap` | Package-level spend constraints when applicable |
-| `formats_pending` | Canonical creative requirements that still lack coverage |
+| `formats_to_provide` | Immutable package-time format snapshots; contract-bearing entries remain after coverage and pin product, placement, execution version, and digests |
+| `formats_pending` | Canonically equal subset of `formats_to_provide` that still lacks coverage |
 | `creative_approvals[]` | Current assignment review state |
 | `indicators[]` | Current seller observations such as pacing or inventory risk |
 

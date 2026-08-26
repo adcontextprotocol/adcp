@@ -10,7 +10,7 @@ required_tools:
 
 requires_capability:
   path: media_buy.proposal_refinement.supported_dimensions
-  present: true
+  contains: "alternatives"
 
 narrative: |
   AdCP 3.2 introduces typed proposal negotiation through refine_proposals.

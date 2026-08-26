@@ -50,9 +50,14 @@ import {
 
 type TruncationStopReason = 'max_tokens' | 'model_context_window_exceeded';
 interface MockMessage {
+  model: string;
   stop_reason: string;
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
-  usage: { input_tokens: number; output_tokens: number };
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+    output_tokens_details?: { thinking_tokens: number };
+  };
 }
 
 const partialText = 'First complete sentence. This trailing sentence is unfinished';
@@ -64,6 +69,7 @@ function message(
   usage = { input_tokens: 10, output_tokens: 20 },
 ): MockMessage {
   return {
+    model: 'claude-sonnet-4-6-20260801',
     stop_reason: stopReason,
     content: text ? [{ type: 'text', text }] : [],
     usage,
@@ -164,6 +170,15 @@ describe('Addie response truncation (#4431)', () => {
 
     expect(response.text).toBe(expectedTruncation);
     expect(response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(response.model_execution).toEqual({
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6-20260801',
+      model_resolution: 'provider_canonicalized',
+      fallback_reason: null,
+    });
     expect(mocks.createMessage).toHaveBeenCalledOnce();
   });
 
@@ -198,6 +213,15 @@ describe('Addie response truncation (#4431)', () => {
     expect(emittedText).toBe(expectedTruncation);
     expect(done?.response.text).toBe(emittedText);
     expect(done?.response.flag_reason).toBe(`Response truncated: ${stopReason}`);
+    expect(done?.response.model_execution).toEqual({
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6-20260801',
+      model_resolution: 'provider_canonicalized',
+      fallback_reason: null,
+    });
     expect(mocks.streamMessage).toHaveBeenCalledOnce();
   });
 
@@ -350,6 +374,43 @@ describe('Addie response truncation (#4431)', () => {
     expect(textEvents[0].text).toBe(done?.response.text);
     expect(textEvents[0].text).toBe(`${firstSentence}\n\n${OUTPUT_TRUNCATION_SUFFIX}`);
     expect(textEvents[0].text.length).toBeLessThanOrEqual(MAX_OUTPUT_LENGTH);
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not resample after a late custom tool when the terminal turn hits max_tokens', async () => {
+    const toolTurn: MockMessage = {
+      model: 'claude-sonnet-5-20260801',
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'toolu_late', name: 'lookup', input: {} }],
+      usage: { input_tokens: 4, output_tokens: 5 },
+    };
+    const truncated = message('max_tokens', partialText, {
+      input_tokens: 6,
+      output_tokens: 7,
+      output_tokens_details: { thinking_tokens: 6 },
+    });
+    mocks.streamMessage
+      .mockReturnValueOnce(streamFor(toolTurn, []))
+      .mockReturnValueOnce(streamFor(truncated, [partialText]));
+    const lookup = vi.fn().mockResolvedValue('ok');
+    const requestTools = {
+      tools: [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object' as const, properties: {} } }],
+      handlers: new Map([['lookup', lookup]]),
+    };
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'Run the lookup and explain the result',
+      undefined,
+      requestTools,
+      { uncapped: true },
+    )) events.push(event);
+
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(done?.response.flag_reason).toBe('Response truncated: max_tokens');
+    expect(done?.response.usage).toMatchObject({ input_tokens: 10, output_tokens: 12 });
     expect(lookup).toHaveBeenCalledOnce();
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
   });

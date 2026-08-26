@@ -8,7 +8,7 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-handler');
 import { getChannelInfo, sendChannelMessage } from '../slack/client.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
 import {
   buildSlackCostOptions,
   SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
@@ -55,6 +55,7 @@ import {
   DIRECTORY_TOOLS,
   createDirectoryToolHandlers,
 } from './mcp/directory-tools.js';
+import { resolveSlackDirectoryContext } from './directory-access.js';
 import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
@@ -133,7 +134,7 @@ import type {
   AssistantThreadStartedEvent,
   AppMentionEvent,
   AssistantMessageEvent,
-  AddieInteractionLog,
+  CreateAddieInteractionLog,
   SuggestedPrompt,
 } from './types.js';
 
@@ -200,14 +201,8 @@ export async function initializeAddie(): Promise<void> {
   // Billing tools are registered per-request in createUserScopedTools
   // to allow filtering them out in channel mentions (prevents enrollment pitching)
 
-  // Register admin tools (available to admin users only - enforced via instructions)
-  const adminHandlers = createAdminToolHandlers();
-  for (const tool of ADMIN_TOOLS) {
-    const handler = adminHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Admin definitions and handlers are request-scoped after verified admin
+  // authorization. Never register principal-scoped tools on the shared client.
 
   // Register directory tools (lookup members, agents, publishers)
   const directoryHandlers = createDirectoryToolHandlers();
@@ -353,6 +348,19 @@ async function createUserScopedTools(
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Shadow the globally registered anonymous directory handlers with a
+  // caller-scoped view. API-access members may discover members_only agents;
+  // Explorer and unauthenticated callers remain public-only.
+  const directoryContext = resolveSlackDirectoryContext(
+    memberContext,
+    options?.isChannelMention ? 'mention' : 'dm',
+  );
+  const directoryHandlers = createDirectoryToolHandlers(directoryContext);
+  allTools.push(...DIRECTORY_TOOLS);
+  for (const [name, handler] of directoryHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   const slackKnowledge = createSlackKnowledgeRequestTools(
     slackUserId
@@ -636,7 +644,7 @@ export async function handleAssistantMessage(
   );
 
   // If we should deflect, return the deflection response instead of processing
-  let response;
+  let response: AddieResponse;
   if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
     logger.info({
       userId: event.user,
@@ -651,6 +659,9 @@ export async function handleAssistantMessage(
       tool_executions: [],
       flagged: true,
       flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
+      model_execution: {
+        source: 'local', requested_provider: null, requested_model: null, reason: 'canned_response',
+      },
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
@@ -678,6 +689,9 @@ export async function handleAssistantMessage(
         tool_executions: [],
         flagged: true,
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+        model_execution: {
+          source: 'local', requested_provider: 'anthropic', requested_model: AddieModelConfig.chat, reason: 'provider_error',
+        },
       };
     }
   }
@@ -722,7 +736,7 @@ export async function handleAssistantMessage(
     .filter(Boolean)
     .join('; ');
 
-  const log: AddieInteractionLog = {
+  const log: CreateAddieInteractionLog = {
     id: interactionId,
     timestamp: new Date(),
     event_type: 'assistant_thread',
@@ -734,6 +748,7 @@ export async function handleAssistantMessage(
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,
@@ -810,7 +825,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
   );
 
   // If we should deflect, return the deflection response instead of processing
-  let response;
+  let response: AddieResponse;
   if (sensitiveCheck.shouldDeflect && sensitiveCheck.deflectResponse) {
     logger.info({
       userId: event.user,
@@ -826,6 +841,9 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
       tool_executions: [],
       flagged: true,
       flag_reason: `Sensitive topic deflection: ${sensitiveCheck.topicResult.category}`,
+      model_execution: {
+        source: 'local', requested_provider: null, requested_model: null, reason: 'canned_response',
+      },
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
@@ -866,6 +884,9 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
         tool_executions: [],
         flagged: true,
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+        model_execution: {
+          source: 'local', requested_provider: 'anthropic', requested_model: AddieModelConfig.chat, reason: 'provider_error',
+        },
       };
     }
   }
@@ -899,7 +920,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     .filter(Boolean)
     .join('; ');
 
-  const log: AddieInteractionLog = {
+  const log: CreateAddieInteractionLog = {
     id: interactionId,
     timestamp: new Date(),
     event_type: 'mention',
@@ -911,6 +932,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,

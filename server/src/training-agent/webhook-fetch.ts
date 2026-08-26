@@ -52,6 +52,8 @@ type DnsLookup = (
 interface PublicTargetOptions {
   dnsLookup?: DnsLookup;
   dnsTimeoutMs?: number;
+  allowPrivateIp?: boolean;
+  allowLoopback?: boolean;
 }
 
 export interface WebhookValidationError {
@@ -114,6 +116,12 @@ export async function assertPublicTarget(
   url: URL,
   options: PublicTargetOptions = {},
 ): Promise<void> {
+  if (options.allowPrivateIp) {
+    if (!isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+      throw new SsrfRefusedError(url.toString(), 'private targets are allowed only in test or development');
+    }
+    return;
+  }
   // Scheme refusal is handled by the wrapper before this is called (so it
   // applies unconditionally, including under `allowPrivateIp: true`). By the
   // time we get here the URL is already known to be http(s).
@@ -190,6 +198,12 @@ export async function validateWebhookUrl(
   if (target.username || target.password) {
     return { code: 'VALIDATION_ERROR', message: 'webhook_url must not include userinfo credentials', field: 'webhook_url' };
   }
+  if (options.allowLoopback && isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
+    const authority = value.match(/^[a-z][a-z0-9+.-]*:\/\/([^/?#]+)/i)?.[1];
+    if (authority && /^(?:127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(authority)) {
+      return undefined;
+    }
+  }
   try {
     await assertPublicTarget(target, options);
   } catch {
@@ -209,7 +223,7 @@ export async function validateWebhookUrl(
  *
  * The returned function uses userland `undici.fetch` so its dispatcher and
  * request-handler contract stay aligned with the imported undici version. */
-export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof fetch {
+export function createWebhookFetch(options: { allowPrivateIp: boolean; dnsLookup?: DnsLookup }): typeof fetch {
   if (options.allowPrivateIp && !isWebhookTestOrDevelopment(process.env.NODE_ENV)) {
     throw new Error('Private webhook targets can only be enabled in test or development');
   }
@@ -227,7 +241,7 @@ export function createWebhookFetch(options: { allowPrivateIp: boolean }): typeof
       // Step 2: pre-flight hostname + DNS check. Catches literal private
       // IPs and numeric-encoded bypasses (`http://2852039166/`) before
       // we even open a socket.
-      await assertPublicTarget(url);
+      await assertPublicTarget(url, { dnsLookup: options.dnsLookup });
     }
     // Step 4 (no redirect-follow) and step 3 (connect-time IP recheck via
     // the dispatcher) both apply on the fetch call itself. Manual redirect

@@ -2,6 +2,8 @@
  * Types for Addie - AAO's Community Agent
  */
 
+import type { ModelExecution } from './model-providers/model-provider.js';
+
 /**
  * Slack Assistant thread started event
  */
@@ -79,11 +81,17 @@ export interface AddieInteractionLog {
   output_text: string;
   tools_used: string[];
   model: string;
+  model_execution?: ModelExecution;
   latency_ms: number;
   delivery_status?: 'delivered' | 'failed';
   flagged: boolean;
   flag_reason?: string;
 }
+
+/** New audit writes must classify provider-produced versus local output. */
+export type CreateAddieInteractionLog = Omit<AddieInteractionLog, 'model_execution'> & {
+  model_execution: ModelExecution;
+};
 
 /**
  * Content sanitization result
@@ -128,6 +136,11 @@ export interface AddieTool {
    * This helps the router distinguish intent (learning vs validation).
    */
   usage_hints?: string;
+  /**
+   * Explicit replay safety classification. Tools without a classification are
+   * blocked by read-only evaluation runs.
+   */
+  replaySafety?: 'pure_local' | 'public_read' | 'principal_read' | 'external_read' | 'mutation';
   input_schema: {
     type: 'object';
     properties: Record<string, unknown>;

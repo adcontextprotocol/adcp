@@ -11,7 +11,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 
 ## Version 3.2.0
 
-**Status:** Beta cycle — minor release targeting the 3.2.0 milestone. Beta.0 was the protocol-first cut used as the canonical input for SDK work. Beta.5 is the current checkpoint, with exact TypeScript support in `@adcp/sdk@14.0.0-beta.7` and exact Python schema/type parity in `adcp==8.0.0b7`. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
+**Status:** Beta cycle — minor release targeting the 3.2.0 milestone. Beta.0 was the protocol-first cut used as the canonical input for SDK work. Beta.6 is the current protocol checkpoint. TypeScript `@adcp/sdk@14.0.0-beta.8` embeds beta.6; Python `adcp==8.0.0b7` remains on beta.5. Stable wire shapes remain backward compatible except for the ratified `media_buy_status` cleanup and request-signature encoding migration described below; explicitly experimental surfaces may carry noticed changes under the [experimental-status contract](/docs/reference/experimental-status).
 
 ### Beta checkpoints
 
@@ -23,6 +23,7 @@ Authoritative version-by-version release record for AdCP, with cumulative change
 | `3.2.0-beta.3` | Corrected protocol checkpoint, superseded by beta.4 | Superseded; remains available for pinned prerelease adopters |
 | `3.2.0-beta.4` | Publish flexible-window availability, outcome_target reverse forecasting, and availability conformance | Superseded; remains available for pinned prerelease adopters |
 | `3.2.0-beta.5` | Add cross-transport async identity and convergence, policy-backed creative rejection compliance, and outcome-target conformance | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.7`; exact Python schema/type parity in `adcp==8.0.0b7`; Go remains pending |
+| `3.2.0-beta.6` | Expand reporting negotiation and breakdowns; add CTV experience profiles and premium display canonicals; align A2A request-signing method names | Exact TypeScript support in `@adcp/sdk@14.0.0-beta.8`; direct artifact, raw-wire, and code-generation testing; Python remains on beta.5 pending refresh |
 
 Each beta is immutable. The `3.2-beta` documentation selector advances to the latest beta, while pinned protocol, schema, compliance, and documentation artifacts remain available. See the [3.2 beta program](/docs/reference/3-2-beta).
 
@@ -43,8 +44,8 @@ Each beta is immutable. The `3.2-beta` documentation selector advances to the la
 | A seller or service | Advertise and echo the exact prerelease served, emit canonical status/retry shapes, and declare only capabilities actually implemented. |
 | A signing implementation | Require `content-digest` coverage for every signed request body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; isolate named-format conversion at compatibility boundaries. |
-| An SDK maintainer | Generate from the current signed beta.5 tarball, publish an exact support statement, and route accepted protocol corrections into a later beta. |
-| A compliance operator | Pair `@adcp/sdk@14.0.0-beta.7` or Python `adcp==8.0.0b7` with beta.5; do not infer missing higher-layer helpers or Go support, and do not issue a 3.2 badge from a beta checkpoint. |
+| An SDK maintainer | Generate from the current signed beta.6 tarball, publish an exact support statement, and route accepted protocol corrections into a later beta. |
+| A compliance operator | Test beta.6 from its signed assets or with `@adcp/sdk@14.0.0-beta.8`; pair Python `adcp==8.0.0b7` with beta.5; do not infer beta.6 support from another SDK or issue a 3.2 badge from a beta checkpoint. |
 
 ### Required 3.2 migrations
 

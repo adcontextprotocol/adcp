@@ -16,7 +16,6 @@
  * - Consistency between prod/dev environments
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("addie-router");
@@ -26,6 +25,22 @@ import type { AddieTool } from "./types.js";
 import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search.js";
 import { MEMBER_TOOLS } from "./mcp/member-tools.js";
 import { trackApiCall, ApiPurpose } from "./services/api-tracker.js";
+import {
+  collectModelResponse,
+  InvalidModelEventStreamError,
+} from "./model-providers/events.js";
+import type {
+  ModelFinishReason,
+  ModelMessageContent,
+  ModelProvider,
+  ModelRequest,
+  PreparedModelInvocation,
+} from "./model-providers/model-provider.js";
+import {
+  UnexpectedModelIdentityError,
+  UnsupportedModelCapabilityError,
+} from "./model-providers/model-provider.js";
+import { AnthropicRouterProvider } from "./model-providers/anthropic-router-provider.js";
 import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
@@ -476,13 +491,14 @@ export const ROUTING_RULES = {
 /**
  * Build the routing prompt based on context
  */
-function buildRoutingPrompt(ctx: RoutingContext): string {
+export function buildRoutingPrompt(ctx: RoutingContext): string {
   const isAAOAdmin = ctx.isAAOAdmin ?? false;
   const isMember = ctx.memberContext?.is_member ?? false;
   const isLinked = !!ctx.memberContext?.workos_user?.workos_user_id;
 
   // Build tool SET descriptions - router selects categories, not individual tools
   const toolSetsSection = getToolSetDescriptionsForRouter(isAAOAdmin);
+  const validToolSetList = [...getValidToolSetNames(isAAOAdmin)].join(', ');
 
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
@@ -583,7 +599,9 @@ ${
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
-- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing"]
+${isAAOAdmin
+    ? '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing", "admin"]'
+    : '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
@@ -598,7 +616,9 @@ ${
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
 
-## Messages to React To (emoji only, no response)
+## Messages to React To (emoji only, standalone channel messages)
+Use these for short social messages with some context. Exact bare acknowledgments
+such as "thanks" remain in the ignore category below.
 ${reactList}
 
 ## Messages to Ignore
@@ -644,9 +664,7 @@ ${
 
 3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${
-     isAAOAdmin ? ", admin" : ""
-   }
+   - Valid sets: ${validToolSetList}
    - Empty array [] means respond without tools (general knowledge)
    - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
@@ -655,6 +673,59 @@ ${
    - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
 
 Respond with ONLY the JSON object, no other text.`;
+}
+
+/**
+ * Build the provider-neutral request used by the production router.
+ * Prompt-parity evaluations use this exact request contract as well.
+ */
+export function buildRouterModelRequest(
+  ctx: RoutingContext,
+  model = ModelConfig.fast,
+): ModelRequest {
+  return {
+    model,
+    system: [],
+    messages: [{
+      role: "user",
+      content: [{ type: "text", text: buildRoutingPrompt(ctx) }],
+    }],
+    tools: [],
+    maxOutputTokens: 300,
+  };
+}
+
+function deepFreezeRouterValue<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreezeRouterValue(child);
+  return Object.freeze(value);
+}
+
+/** Preserve the router's historical rule: only the first response block counts. */
+export function extractRouterResponseText(
+  content: ReadonlyArray<{ type: string; text?: string }>,
+): string {
+  const first = content[0];
+  return first?.type === "text" && typeof first.text === "string"
+    ? first.text
+    : "";
+}
+
+function classifyRouterError(error: unknown):
+  | "unexpected_model_identity"
+  | "invalid_provider_event_stream"
+  | "unsupported_provider_capability"
+  | "provider_error" {
+  if (error instanceof UnexpectedModelIdentityError) {
+    return "unexpected_model_identity";
+  }
+  if (error instanceof InvalidModelEventStreamError) {
+    return "invalid_provider_event_stream";
+  }
+  if (error instanceof UnsupportedModelCapabilityError) {
+    return "unsupported_provider_capability";
+  }
+  return "provider_error";
 }
 
 /**
@@ -670,6 +741,135 @@ type ParsedPlan =
       requires_depth?: boolean;
       confidence: ConfidenceTier;
     };
+
+export type RouterAction = "ignore" | "react" | "respond";
+
+/** A router plan accepted without production's compatibility fallbacks. */
+export interface StrictRouterPlan {
+  action: RouterAction;
+  reason: string;
+  emoji?: string;
+  tool_sets?: string[];
+  confidence?: ConfidenceTier;
+  requires_depth?: boolean;
+}
+
+export class RouterPlanParseError extends Error {
+  constructor(
+    readonly category: "invalid_json" | "schema_invalid",
+    message: string,
+    readonly unauthorizedToolSetAttempt = false,
+    readonly invalidToolSetAttempt = false,
+  ) {
+    super(message);
+    this.name = "RouterPlanParseError";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Strict parser shared by offline evaluations and production shadow evidence.
+ * It never substitutes a fallback plan for malformed or unauthorized output.
+ */
+export function parseStrictRouterPlan(
+  response: string,
+  isAdmin: boolean,
+): StrictRouterPlan {
+  let parsed: unknown;
+  try {
+    let jsonText = response.trim();
+    if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/^```json?\n?/, "").replace(/\n?```$/, "");
+    }
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new RouterPlanParseError("invalid_json", "Router response is not JSON");
+  }
+
+  if (
+    !isRecord(parsed)
+    || typeof parsed.action !== "string"
+    || typeof parsed.reason !== "string"
+    || !parsed.reason.trim()
+  ) {
+    throw new RouterPlanParseError("schema_invalid", "Router response has invalid base fields");
+  }
+
+  const keys = Object.keys(parsed).sort();
+  const fullShape = keys.join(",") === "action,confidence,emoji,reason,requires_depth,tool_sets";
+  if (parsed.action === "ignore") {
+    if (
+      keys.join(",") !== "action,reason"
+      && !(
+        fullShape
+        && parsed.emoji === null
+        && Array.isArray(parsed.tool_sets)
+        && parsed.tool_sets.length === 0
+        && parsed.confidence === null
+        && parsed.requires_depth === null
+      )
+    ) {
+      throw new RouterPlanParseError("schema_invalid", "Ignore response has invalid fields");
+    }
+    return { action: "ignore", reason: parsed.reason };
+  }
+
+  if (parsed.action === "react") {
+    const sparse = keys.join(",") === "action,emoji,reason";
+    const full = fullShape
+      && Array.isArray(parsed.tool_sets)
+      && parsed.tool_sets.length === 0
+      && parsed.confidence === null
+      && parsed.requires_depth === null;
+    if ((!sparse && !full) || typeof parsed.emoji !== "string" || !parsed.emoji.trim()) {
+      throw new RouterPlanParseError("schema_invalid", "React response is invalid");
+    }
+    return { action: "react", emoji: parsed.emoji, reason: parsed.reason };
+  }
+
+  if (parsed.action !== "respond") {
+    throw new RouterPlanParseError("schema_invalid", "Unknown router action");
+  }
+  const sparseRespond = keys.join(",")
+    === "action,confidence,reason,requires_depth,tool_sets";
+  if (!sparseRespond && !(fullShape && parsed.emoji === null)) {
+    throw new RouterPlanParseError("schema_invalid", "Respond response has invalid fields");
+  }
+  if (
+    !Array.isArray(parsed.tool_sets)
+    || parsed.tool_sets.some((tool) => typeof tool !== "string")
+    || new Set(parsed.tool_sets).size !== parsed.tool_sets.length
+    || !["high", "suggest", "low"].includes(String(parsed.confidence))
+    || typeof parsed.requires_depth !== "boolean"
+  ) {
+    throw new RouterPlanParseError("schema_invalid", "Respond response is invalid");
+  }
+
+  const allowed = getValidToolSetNames(isAdmin);
+  if (parsed.tool_sets.some((tool) => !allowed.has(tool))) {
+    const allKnown = getValidToolSetNames(true);
+    const invalidToolSetAttempt = parsed.tool_sets.some((tool) => !allKnown.has(tool));
+    const unauthorizedToolSetAttempt = !isAdmin
+      && parsed.tool_sets.some((tool) => allKnown.has(tool) && !allowed.has(tool));
+    throw new RouterPlanParseError(
+      "schema_invalid",
+      "Respond response requests an unauthorized or unknown tool set",
+      unauthorizedToolSetAttempt,
+      invalidToolSetAttempt,
+    );
+  }
+
+  return {
+    action: "respond",
+    tool_sets: parsed.tool_sets as string[],
+    confidence: parsed.confidence as ConfidenceTier,
+    requires_depth: parsed.requires_depth,
+    reason: parsed.reason,
+  };
+}
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -725,11 +925,11 @@ export function parseRouterResponse(response: string): ParsedPlan {
     }
 
     // Default to ignore if unknown action
-    logger.warn({ parsed }, "Router: Unknown action, defaulting to ignore");
+    logger.warn("Router: Unknown action, defaulting to ignore");
     return { action: "ignore", reason: "Unknown action type" };
-  } catch (error) {
+  } catch {
     logger.warn(
-      { error, response },
+      { responseBytes: Buffer.byteLength(response, "utf8") },
       "Router: Failed to parse response, using knowledge fallback",
     );
     // On parse error, default to respond with knowledge tools (safe fallback)
@@ -742,16 +942,62 @@ export function parseRouterResponse(response: string): ParsedPlan {
   }
 }
 
+export interface RouterModelObservation {
+  canonicalRequest: ModelRequest;
+  primaryInvocation: PreparedModelInvocation | null;
+  isAdmin: boolean;
+  productionPlan: ExecutionPlan;
+  rawResponseText: string | null;
+  responseContent: ReadonlyArray<ModelMessageContent>;
+  finishReason: ModelFinishReason | null;
+  primaryErrorCategory: ReturnType<typeof classifyRouterError> | null;
+  requestedProvider: ModelProvider["id"];
+  requestedModel: string;
+  returnedProvider: ModelProvider["id"] | null;
+  returnedModel: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  latencyMs: number;
+}
+
+export interface RouterRouteOptions {
+  /**
+   * Detached, best-effort observation of a completed primary model route.
+   * It cannot change or delay the production decision.
+   */
+  observer?: (observation: RouterModelObservation) => void | Promise<void>;
+}
+
+function queueRouterObserver(
+  observer: RouterRouteOptions["observer"],
+  observation: RouterModelObservation,
+): void {
+  if (!observer) return;
+  setImmediate(() => {
+    try {
+      void Promise.resolve(observer(observation)).catch(() => {
+        logger.warn("Router: detached observer failed");
+      });
+    } catch {
+      logger.warn("Router: detached observer failed");
+    }
+  });
+}
+
 /**
  * Addie Router class
  *
  * Uses Claude Haiku for fast routing decisions
  */
 export class AddieRouter {
-  private client: Anthropic;
+  private readonly provider: ModelProvider;
 
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+  constructor(apiKey: string, provider?: ModelProvider) {
+    this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
+      maxRetries: 2,
+    });
   }
 
   /**
@@ -760,20 +1006,27 @@ export class AddieRouter {
    * @param ctx - Routing context with message and metadata
    * @returns Execution plan determining how to handle the message
    */
-  async route(ctx: RoutingContext): Promise<ExecutionPlan> {
+  async route(
+    ctx: RoutingContext,
+    options: RouterRouteOptions = {},
+  ): Promise<ExecutionPlan> {
     const startTime = Date.now();
+    const canonicalRequest = deepFreezeRouterValue(buildRouterModelRequest(ctx));
+    let primaryInvocation: PreparedModelInvocation | null = null;
 
     try {
-      const prompt = buildRoutingPrompt(ctx);
+      const response = await collectModelResponse(
+        this.provider.respond(canonicalRequest, {
+          // This callback is deliberately assignment-only. Shadow evidence can
+          // never throw before or otherwise interfere with Haiku dispatch.
+          beforeDispatch: (prepared) => {
+            primaryInvocation = prepared;
+          },
+        }),
+        this.provider.id,
+      );
 
-      const response = await this.client.messages.create({
-        model: ModelConfig.fast, // Haiku for speed
-        max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const text =
-        response.content[0].type === "text" ? response.content[0].text : "";
+      const text = extractRouterResponseText(response.content);
 
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
@@ -785,8 +1038,9 @@ export class AddieRouter {
         if (filtered.length !== parsedPlan.tool_sets.length) {
           logger.warn(
             {
-              requested: parsedPlan.tool_sets,
+              requestedCount: parsedPlan.tool_sets.length,
               allowed: filtered,
+              strippedCount: parsedPlan.tool_sets.length - filtered.length,
             },
             "Router: stripped invalid tool sets from LLM response",
           );
@@ -806,8 +1060,8 @@ export class AddieRouter {
         ...parsedPlan,
         decision_method: "llm",
         latency_ms: latencyMs,
-        tokens_input: response.usage?.input_tokens,
-        tokens_output: response.usage?.output_tokens,
+        tokens_input: response.usage.inputTokens,
+        tokens_output: response.usage.outputTokens,
         model: ModelConfig.fast,
         requires_precision: requiresPrecisionMode,
         requires_depth: requiresDepthMode,
@@ -817,14 +1071,13 @@ export class AddieRouter {
         {
           source: ctx.source,
           action: plan.action,
-          reason: plan.reason,
           toolSets:
             parsedPlan.action === "respond" ? parsedPlan.tool_sets : undefined,
           confidence:
             parsedPlan.action === "respond" ? parsedPlan.confidence : undefined,
           durationMs: latencyMs,
-          inputTokens: response.usage?.input_tokens,
-          outputTokens: response.usage?.output_tokens,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
           requiresPrecision: requiresPrecisionMode,
           requiresDepth: requiresDepthMode,
         },
@@ -835,16 +1088,40 @@ export class AddieRouter {
       void trackApiCall({
         model: ModelConfig.fast,
         purpose: ApiPurpose.ROUTER,
-        tokens_input: response.usage?.input_tokens,
-        tokens_output: response.usage?.output_tokens,
+        tokens_input: response.usage.inputTokens,
+        tokens_output: response.usage.outputTokens,
         latency_ms: latencyMs,
+      });
+
+      queueRouterObserver(options.observer, {
+        canonicalRequest,
+        primaryInvocation,
+        isAdmin: ctx.isAAOAdmin ?? false,
+        productionPlan: plan,
+        rawResponseText: text,
+        responseContent: response.content,
+        finishReason: response.finishReason,
+        primaryErrorCategory: null,
+        requestedProvider: this.provider.id,
+        requestedModel: ModelConfig.fast,
+        returnedProvider: response.provider,
+        returnedModel: response.model,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        cacheReadTokens: response.usage.cacheReadTokens ?? null,
+        cacheWriteTokens: response.usage.cacheWriteTokens ?? null,
+        latencyMs,
       });
 
       return plan;
     } catch (error) {
-      logger.error({ error }, "Router: Failed to generate execution plan");
+      const category = classifyRouterError(error);
+      logger.error(
+        { category },
+        "Router: Failed to generate execution plan",
+      );
       // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
-      return {
+      const fallbackPlan: ExecutionPlan = {
         action: "respond",
         tool_sets: ["knowledge"],
         confidence: "high",
@@ -852,6 +1129,26 @@ export class AddieRouter {
         decision_method: "llm",
         latency_ms: Date.now() - startTime,
       };
+      queueRouterObserver(options.observer, {
+        canonicalRequest,
+        primaryInvocation,
+        isAdmin: ctx.isAAOAdmin ?? false,
+        productionPlan: fallbackPlan,
+        rawResponseText: null,
+        responseContent: [],
+        finishReason: null,
+        primaryErrorCategory: category,
+        requestedProvider: this.provider.id,
+        requestedModel: ModelConfig.fast,
+        returnedProvider: null,
+        returnedModel: null,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        latencyMs: Date.now() - startTime,
+      });
+      return fallbackPlan;
     }
   }
 

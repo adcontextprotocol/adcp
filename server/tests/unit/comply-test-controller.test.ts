@@ -205,6 +205,7 @@ describe('comply_test_controller', () => {
         // server/src/training-agent/comply-test-controller.ts.
         'force_create_media_buy_arm',
         'force_get_products_arm',
+        'force_get_signals_arm',
         'force_task_completion',
         'force_creative_purge',
         'force_wholesale_feed_webhook',
@@ -220,14 +221,14 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(26);
+      expect(scenarios.length).toBe(27);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
 
     it('advertises force_get_products_arm for the 3.2 beta release', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         adcp_major_version: 3,
         scenario: 'list_scenarios',
         account: ACCOUNT,
@@ -1127,7 +1128,7 @@ describe('comply_test_controller', () => {
       });
 
       const rejectedCompactControl = await simulateCallTool(server, 'control_media_buy', {
-        adcp_version: '3.2-beta.5',
+        adcp_version: '3.2-beta.6',
         account: ACCOUNT,
         media_buy_id: 'created_from_allowed_actions',
         revision: updated.revision,
@@ -1743,6 +1744,31 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(false);
       expect(result.error).toBe('INVALID_TRANSITION');
+    });
+
+    it('does not apply a terminal state from another sandbox session with the same entity id', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'completed' },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      const otherAccount = {
+        brand: { domain: 'comply-other.example.com' },
+        operator: 'comply-other',
+        sandbox: true,
+      };
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'force_media_buy_status',
+        params: { media_buy_id: mediaBuyId, status: 'active' },
+        account: otherAccount,
+        brand: otherAccount.brand,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('NOT_FOUND');
     });
 
     it('rejects rejected from active (only valid from pending_creatives or pending_start)', async () => {

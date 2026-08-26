@@ -1,11 +1,32 @@
 import { describe, it, expect, vi } from 'vitest';
-import { AddieRouter, ROUTING_RULES, parseRouterResponse } from '../../src/addie/router.js';
+import {
+  AddieRouter,
+  ROUTING_RULES,
+  buildRouterModelRequest,
+  buildRoutingPrompt,
+  parseRouterResponse,
+} from '../../src/addie/router.js';
 import type { RoutingContext, ExecutionPlan } from '../../src/addie/router.js';
+import type {
+  ModelMessageContent,
+  ModelProvider,
+  ModelRequest,
+  ModelResponse,
+  NormalizedModelEvent,
+  PreparedModelInvocation,
+} from '../../src/addie/model-providers/model-provider.js';
+import { ModelConfig } from '../../src/config/models.js';
 import {
   getToolSetDescriptionsForRouter,
   TOOL_SETS,
   getToolsForSets,
+  getValidToolSetNames,
 } from '../../src/addie/tool-sets.js';
+
+vi.mock('../../src/addie/services/api-tracker.js', () => ({
+  trackApiCall: vi.fn().mockResolvedValue(undefined),
+  ApiPurpose: { ROUTER: 'router' },
+}));
 
 /**
  * Addie Router Tests
@@ -13,12 +34,80 @@ import {
  * Tests the deterministic routing logic: quickMatch patterns, tool set
  * descriptions, and admin vs non-admin tool visibility.
  *
- * Does NOT test the LLM-based route() method — that requires a real
- * Anthropic API call and is exercised separately.
+ * The provider-neutral route tests below use a deterministic fake provider;
+ * optional live Anthropic scenarios remain at the end of this file.
  */
 
 // Use a dummy key — quickMatch never touches the Anthropic API
 const router = new AddieRouter('sk-test-dummy-key');
+
+const ROUTER_CAPABILITIES = Object.freeze({
+  streaming: false,
+  structuredOutput: false,
+  reasoning: false,
+  reasoningEfforts: Object.freeze(['provider_default'] as const),
+  customTools: false,
+  providerWebSearch: false,
+  imageInput: false,
+  documentInput: false,
+});
+
+function fakeRouterProvider(
+  content: ModelMessageContent[],
+  options: { finishReason?: ModelResponse['finishReason']; error?: Error } = {},
+): ModelProvider & { requests: ModelRequest[] } {
+  const requests: ModelRequest[] = [];
+  return {
+    id: 'anthropic',
+    capabilities: ROUTER_CAPABILITIES,
+    requests,
+    prepare(request: ModelRequest): PreparedModelInvocation {
+      return {
+        provider: 'anthropic',
+        model: request.model,
+        capabilities: ROUTER_CAPABILITIES,
+        providerRequest: {},
+      };
+    },
+    async *respond(request: ModelRequest): AsyncIterable<NormalizedModelEvent> {
+      requests.push(request);
+      if (options.error) throw options.error;
+      const response: ModelResponse = {
+        provider: 'anthropic',
+        model: request.model,
+        id: 'router-response',
+        content,
+        finishReason: options.finishReason ?? 'stop',
+        providerFinishReason: 'end_turn',
+        usage: { inputTokens: 12, outputTokens: 7 },
+      };
+      yield {
+        type: 'response_start',
+        provider: 'anthropic',
+        model: request.model,
+        id: response.id,
+      };
+      for (const [index, block] of content.entries()) {
+        if (block.type !== 'text') throw new Error('Fake router supports text blocks only');
+        yield { type: 'text_delta', index, text: block.text };
+      }
+      yield { type: 'response_complete', response };
+    },
+  };
+}
+
+describe('Addie router prompt policy', () => {
+  it('lists the exact eligible sets and resolves billing guidance by privilege', () => {
+    const memberPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm' });
+    const adminPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm', isAAOAdmin: true });
+
+    expect(memberPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(false)].join(', ')}`);
+    expect(memberPrompt).toContain('→ [] (use the always-available escalation tool)');
+    expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
+    expect(adminPrompt).toContain('→ ["billing", "admin"]');
+    expect(memberPrompt).toContain('Exact bare acknowledgments');
+  });
+});
 
 function makeCtx(overrides: Partial<RoutingContext> = {}): RoutingContext {
   return {
@@ -462,8 +551,9 @@ describe('TOOL_SETS.admin', () => {
   });
 
   it('should include engagement analytics tools', () => {
-    expect(adminSet.tools).toContain('list_users_by_engagement');
-    expect(adminSet.tools).toContain('get_member_search_analytics');
+    expect(adminSet.tools).toContain('query_admin_analytics');
+    expect(adminSet.tools).not.toContain('list_users_by_engagement');
+    expect(adminSet.tools).not.toContain('get_member_search_analytics');
   });
 
   it('should include working group membership tools', () => {
@@ -581,6 +671,77 @@ describe('ROUTING_RULES', () => {
       // Slack emoji names are alphanumeric with underscores, no colons
       expect(rule.emoji).toMatch(/^[a-z_]+$/);
     }
+  });
+});
+
+// ============================================================================
+// Provider-neutral LLM route contract
+// ============================================================================
+
+describe('AddieRouter.route', () => {
+  it('uses the shared production request and preserves plan metadata', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"suggest","requires_depth":true,"reason":"documented"}',
+    }]);
+    const subject = new AddieRouter('unused', provider);
+    const context: RoutingContext = {
+      message: 'How should this AdCP schema work?',
+      source: 'dm',
+      isAAOAdmin: false,
+    };
+
+    const plan = await subject.route(context);
+
+    expect(provider.requests).toEqual([buildRouterModelRequest(context)]);
+    expect(plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      confidence: 'suggest',
+      requires_depth: true,
+      decision_method: 'llm',
+      tokens_input: 12,
+      tokens_output: 7,
+      model: ModelConfig.fast,
+    });
+  });
+
+  it('consumes only the first text block and filters unauthorized tool sets', async () => {
+    const firstOnly = fakeRouterProvider([
+      { type: 'text', text: '{"action":"ignore","reason":"first block wins"}' },
+      { type: 'text', text: '{"action":"respond","tool_sets":["admin"],"reason":"must not be joined"}' },
+    ]);
+    const ignored = await new AddieRouter('unused', firstOnly).route({
+      message: 'ordinary question',
+      source: 'dm',
+    });
+    expect(ignored).toMatchObject({ action: 'ignore', reason: 'first block wins' });
+
+    const unauthorized = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge","admin","made_up"],"confidence":"high","reason":"route"}',
+    }]);
+    const filtered = await new AddieRouter('unused', unauthorized).route({
+      message: 'schema question',
+      source: 'dm',
+      isAAOAdmin: false,
+    });
+    expect(filtered).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+  });
+
+  it('returns the existing safe fallback when provider events fail', async () => {
+    const provider = fakeRouterProvider([], { error: new Error('provider unavailable') });
+
+    await expect(new AddieRouter('unused', provider).route({
+      message: 'important question',
+      source: 'dm',
+    })).resolves.toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      confidence: 'high',
+      reason: 'Router error - defaulting to knowledge tools',
+      decision_method: 'llm',
+    });
   });
 });
 

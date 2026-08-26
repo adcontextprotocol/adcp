@@ -33,7 +33,7 @@ import { deliverAndRecordDirectMessage } from './direct-message-delivery.js';
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
 import { captureEvent } from '../utils/posthog.js';
-import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type UserScopedToolsResult } from './claude-client.js';
+import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, CERTIFICATION_MAX_ITERATIONS, type AddieResponse, type ProcessMessageOptions, type UserScopedToolsResult } from './claude-client.js';
 import {
   buildSlackCostOptions,
   SLACK_COST_CHANNEL_INFO_MAX_AGE_MS,
@@ -99,6 +99,7 @@ import { pickPrompts } from './home/builders/suggested-prompts.js';
 import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
 import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
+import { getCurrentConfigVersionId } from './config-version.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
 import {
   sanitizeInput,
@@ -113,6 +114,7 @@ import {
   truncateNotificationText,
   planStreamStopFailureFallback,
   resolveStreamTurnCompletion,
+  STREAM_COMPLETION_MISSING_NOTICE,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   DEFAULT_STREAM_SOFT_CAP,
 } from './slack-blocks.js';
@@ -165,6 +167,7 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
+import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -173,7 +176,8 @@ import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } 
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
-// DIRECTORY_TOOLS registered via registerBaselineTools()
+import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
+import { resolveSlackDirectoryContext, type SlackDirectoryAudience } from './directory-access.js';
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
@@ -181,9 +185,11 @@ import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/bra
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { PORTRAIT_TOOLS, createPortraitToolHandlers } from './mcp/portrait-tools.js';
+import { IMAGE_TOOLS, createImageToolHandlers } from './mcp/image-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
+import { getDocsCorpusFingerprint } from './mcp/docs-indexer.js';
 import { CERTIFICATION_TOOLS, createCertificationToolHandlers, buildCertificationContext } from './mcp/certification-tools.js';
 import * as certDb from '../db/certification-db.js';
 import { siRetriever, type SIRetrievalResult } from './services/si-retriever.js';
@@ -211,27 +217,38 @@ import {
   handleAnnouncementMarkLinkedIn,
   handleAnnouncementSkip,
 } from './jobs/announcement-handlers.js';
+import {
+  beginShadowReplayCaptureAttempt,
+  completeShadowReplayCaptureAttempt,
+  createShadowReplayCaptureIdentity,
+  queueShadowReplayTrace,
+  suppressedOpportunityFlagReason,
+} from './jobs/shadow-replay-trace.js';
+import {
+  OFFICIAL_DOCS_ALLOWED_TOOLS,
+  OFFICIAL_DOCS_POLICY_VERSION,
+  applyOfficialDocsProfile,
+  canonicalOfficialDocsPlan,
+  hasOfficialDocsToolBoundary,
+  isOfficialDocsProfile,
+  normalizeReplayableSiResult,
+  selectOfficialDocsCohort,
+  type OfficialDocsCohortReason,
+  type ProfiledChannelRespondPlan,
+} from './jobs/shadow-replay-cohort.js';
+import {
+  hasActiveCertificationProgress,
+  resolveRequiredSlackChannelContext,
+  resolveSlackChannelPrivacy,
+  selectSlackToolSets,
+  type SystemChannelRole,
+} from './slack-tool-selection.js';
 
 /**
  * Slack's built-in system bot user ID.
  * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
-const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
-
-/**
- * Tool sets to auto-include when Addie is in a system-configured channel.
- * Keyed by the channel's system role from system_settings.
- */
-type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
-
-const SYSTEM_CHANNEL_TOOL_SETS: Record<SystemChannelRole, string[]> = {
-  prospect: ['admin', 'outreach'],
-  escalation: ['admin'],
-  billing: ['admin', 'billing'],
-  error: ['admin'],
-  admin: ['admin'],
-};
 
 let systemChannelMap: Map<string, SystemChannelRole> | null = null;
 let systemChannelMapExpiresAt = 0;
@@ -485,33 +502,148 @@ async function checkAddieThreadParticipation(
  *  Gives humans time to reply first. After the delay, re-checks the thread
  *  and skips if a human has already responded. */
 const THREAD_RESPONSE_DELAY_MS = 45_000; // 45 seconds
+const SUBSTANTIVE_HUMAN_REPLY_MIN_BYTES = 20;
+const MAX_SHADOW_HUMAN_EVIDENCE_BYTES = 1500;
+const MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS = 64;
+export const HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON = 'human_evidence_unattributable' as const;
+
+interface DelayedHumanReplyMessage {
+  user?: string;
+  text?: string;
+  ts: string;
+  bot_id?: string;
+  subtype?: string;
+}
+
+export interface AttributableHumanReply {
+  slackMessageTs: string;
+  userId: string;
+  content: string;
+}
+
+export interface DelayedResponseDecision {
+  shouldRespond: boolean;
+  humanEvidence: AttributableHumanReply | null;
+  humanEvidenceUnavailableReason:
+    | 'human_evidence_invalid'
+    | 'human_evidence_not_substantive'
+    | 'human_evidence_too_large'
+    | null;
+}
+
+/** Select exactly the first substantive human turn after the signed question. */
+export function findEarliestSubstantiveHumanReplyAfter(
+  messages: DelayedHumanReplyMessage[],
+  questionTs: string,
+  botUserId: string,
+): AttributableHumanReply | null {
+  const reply = [...messages]
+    // Slack timestamps are fixed-width epoch.sequence values whose lexical
+    // order is chronological; avoid locale-dependent collation here.
+    .sort((left, right) => left.ts < right.ts ? -1 : left.ts > right.ts ? 1 : 0)
+    .find((message) => Boolean(
+      message.ts > questionTs
+      && message.user
+      && message.user !== botUserId
+      && !message.bot_id
+      && !message.subtype
+      && message.text
+      && Buffer.byteLength(message.text.trim(), 'utf8') >= SUBSTANTIVE_HUMAN_REPLY_MIN_BYTES
+    ));
+  if (!reply?.user || !reply.text) return null;
+  return {
+    slackMessageTs: reply.ts,
+    userId: reply.user,
+    content: reply.text,
+  };
+}
+
+export function selectDelayedResponseDecision(
+  messages: DelayedHumanReplyMessage[],
+  questionTs: string,
+  botUserId: string,
+): DelayedResponseDecision {
+  const hasNewerHumanReply = messages.some((message) => Boolean(
+    message.ts > questionTs
+    && message.user
+    && message.user !== botUserId
+    && !message.bot_id
+    && (!message.subtype || message.subtype === 'thread_broadcast')
+  ));
+  if (!hasNewerHumanReply) {
+    return {
+      shouldRespond: true,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: null,
+    };
+  }
+  const humanEvidence = findEarliestSubstantiveHumanReplyAfter(
+    messages,
+    questionTs,
+    botUserId,
+  );
+  if (!humanEvidence) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_not_substantive',
+    };
+  }
+  if (
+    humanEvidence.slackMessageTs.length > MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS
+    || /\s/.test(humanEvidence.slackMessageTs)
+    || humanEvidence.userId.length > MAX_SHADOW_HUMAN_EVIDENCE_ID_CHARS
+    || /\s/.test(humanEvidence.userId)
+  ) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_invalid',
+    };
+  }
+  if (Buffer.byteLength(humanEvidence.content.trim(), 'utf8') > MAX_SHADOW_HUMAN_EVIDENCE_BYTES) {
+    return {
+      shouldRespond: false,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: 'human_evidence_too_large',
+    };
+  }
+  return {
+    shouldRespond: false,
+    humanEvidence,
+    humanEvidenceUnavailableReason: null,
+  };
+}
 
 /**
  * Wait before responding in a thread, then re-check if a human has already replied.
- * Returns true if Addie should still respond, false if a human got there first.
+ * Returns the exact earliest attributable human reply when a human got there
+ * first. Oversized evidence is rejected, never truncated or replaced by a
+ * later reply.
  */
 async function shouldRespondAfterDelay(
   channelId: string,
   threadTs: string,
   triggerMessageTs: string,
   botUserId: string,
-): Promise<boolean> {
+): Promise<DelayedResponseDecision> {
   await new Promise(resolve => setTimeout(resolve, THREAD_RESPONSE_DELAY_MS));
 
   try {
     const freshMessages = await getThreadReplies(channelId, threadTs);
-    // Check if any human message arrived AFTER the triggering message.
-    // Slack timestamps are "epoch.sequence" strings — string comparison is chronologically correct.
-    const hasNewerHumanReply = freshMessages.some(
-      msg => msg.user
-        && msg.user !== botUserId
-        && msg.ts > triggerMessageTs
+    return selectDelayedResponseDecision(
+      freshMessages,
+      triggerMessageTs,
+      botUserId,
     );
-    return !hasNewerHumanReply;
   } catch (error) {
     logger.warn({ error, channelId, threadTs }, 'Addie Bolt: Failed to re-check thread after delay');
     // On error, respond anyway to avoid silently dropping messages
-    return true;
+    return {
+      shouldRespond: true,
+      humanEvidence: null,
+      humanEvidenceUnavailableReason: null,
+    };
   }
 }
 
@@ -525,11 +657,16 @@ let boltApp: InstanceType<typeof App> | null = null;
 let expressReceiver: any = null;
 let claudeClient: AddieClaudeClient | null = null;
 
+/** Return the initialized channel client used by production orchestration. */
+export function getChannelClaudeClient(): AddieClaudeClient | null {
+  return claudeClient;
+}
+
 /**
  * Fetch channel info and build a partial ThreadContext with channel details
  * Also looks up any associated working group for the channel
  */
-async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
+export async function buildChannelContext(channelId: string): Promise<Partial<ThreadContext>> {
   const context: Partial<ThreadContext> = {
     viewing_channel_id: channelId,
   };
@@ -538,7 +675,10 @@ async function buildChannelContext(channelId: string): Promise<Partial<ThreadCon
     const channelInfo = await getChannelInfo(channelId);
     if (channelInfo) {
       context.viewing_channel_name = channelInfo.name;
-      context.viewing_channel_is_private = channelInfo.is_private;
+      const channelPrivacy = resolveSlackChannelPrivacy(channelInfo);
+      if (channelPrivacy !== null) {
+        context.viewing_channel_is_private = channelPrivacy;
+      }
       if (channelInfo.purpose?.value) {
         context.viewing_channel_description = channelInfo.purpose.value;
       }
@@ -924,7 +1064,7 @@ async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
   existingMemberContext?: MemberContext | null
-): Promise<{ requestContext: string; memberContext: MemberContext | null; hasCertificationContext: boolean }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; hasActiveCertification: boolean }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
@@ -959,11 +1099,13 @@ async function buildRequestContext(
     // Add certification module state so Addie remembers active modules
     // even when conversation history is trimmed
     let certContextText = '';
+    let hasActiveCertification = false;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     if (workosUserId) {
       try {
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
+        hasActiveCertification = hasActiveCertificationProgress(progress);
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
@@ -995,11 +1137,11 @@ async function buildRequestContext(
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
-      hasCertificationContext: !!certContextText,
+      hasActiveCertification,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, hasCertificationContext: false };
+    return { requestContext: '', memberContext: null, hasActiveCertification: false };
   }
 }
 
@@ -1013,7 +1155,8 @@ async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId: string,
   threadId?: string,
-  threadContext?: ThreadContext | null
+  threadContext?: ThreadContext | null,
+  directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const trainingModuleContext: { moduleId?: string } = {
@@ -1023,6 +1166,19 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Shadow the globally registered anonymous directory handlers with a
+  // caller-scoped view. API-access members may discover members_only agents;
+  // Explorer and unauthenticated callers remain public-only.
+  const directoryContext = resolveSlackDirectoryContext(
+    memberContext,
+    directoryAudience,
+  );
+  const directoryHandlers = createDirectoryToolHandlers(directoryContext);
+  allTools.push(...DIRECTORY_TOOLS);
+  for (const [name, handler] of directoryHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   const slackKnowledge = createSlackKnowledgeRequestTools(
     slackUserId
@@ -1212,6 +1368,14 @@ async function createUserScopedTools(
     }
   }
 
+  // Image search is declared always available by the router, so the modern
+  // Bolt path must register the corresponding user-scoped definition.
+  const imageHandlers = createImageToolHandlers(slackUserId, threadId);
+  allTools.push(...IMAGE_TOOLS);
+  for (const [name, handler] of imageHandlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Add committee leader tools (co-leader management, self-enforcing permissions)
   const committeeLeaderHandlers = createCommitteeLeaderToolHandlers(memberContext, slackUserId);
   allTools.push(...COMMITTEE_LEADER_TOOLS);
@@ -1321,7 +1485,7 @@ async function selectRoutedToolsForSlackResponse(
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; hasCertificationContext?: boolean; threadMessages?: string[] }
+  options?: { isThread?: boolean; hasActiveCertification?: boolean; threadMessages?: string[] }
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
@@ -1334,28 +1498,25 @@ async function selectRoutedToolsForSlackResponse(
     memberContext,
     slackUserId,
     threadId,
-    threadContext
+    threadContext,
+    source,
   );
 
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
-    const fallbackSets = ['knowledge'];
-    if (userIsAdmin && (source === 'dm' || threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG)) {
-      fallbackSets.push('admin');
-    }
-    const fallbackSystemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-    if (userIsAdmin && fallbackSystemRole) {
-      for (const set of SYSTEM_CHANNEL_TOOL_SETS[fallbackSystemRole] ?? []) {
-        if (!fallbackSets.includes(set)) {
-          fallbackSets.push(set);
-        }
-      }
-    }
+    const fallbackSets = selectSlackToolSets({
+      routerAvailable: false,
+      source,
+      isAdmin: userIsAdmin,
+      workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+      systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+      hasActiveCertification: options?.hasActiveCertification,
+    });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
       fallbackSets,
       userIsAdmin,
-      false
+      threadContext?.viewing_channel_is_private === false,
     );
     return {
       tools: filteredTools,
@@ -1381,35 +1542,18 @@ async function selectRoutedToolsForSlackResponse(
   // Direct interactions (DMs, mentions, assistant threads) always respond.
   // Non-respond router actions only make sense for channel messages where Addie can stay silent.
   const isDirectInteraction = source === 'dm' || source === 'mention';
-  const selectedSets = plan.action === 'respond'
+  const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
-
-  // Certification sessions use certification + knowledge tools so Addie can verify protocol claims
-  if (options?.hasCertificationContext) {
-    selectedSets.length = 0;
-    selectedSets.push('certification');
-    selectedSets.push('knowledge');
-  }
-
-  // Admin DMs and admin channels: always include admin tools.
-  // Admins DMing Addie are almost always asking operational questions; relying on
-  // the Haiku router to guess "admin" from the message is fragile.
-  const isAdminDm = userIsAdmin && source === 'dm';
-  const isAdminChannel = userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG;
-  if ((isAdminDm || isAdminChannel) && !options?.hasCertificationContext && !selectedSets.includes('admin')) {
-    selectedSets.push('admin');
-  }
-
-  // System-configured channels: auto-include relevant tool sets for admins
-  const systemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-  if (userIsAdmin && systemRole && !options?.hasCertificationContext) {
-    for (const set of SYSTEM_CHANNEL_TOOL_SETS[systemRole] ?? []) {
-      if (!selectedSets.includes(set)) {
-        selectedSets.push(set);
-      }
-    }
-  }
+  const selectedSets = selectSlackToolSets({
+    routerSelectedSets,
+    routerAvailable: true,
+    source,
+    isAdmin: userIsAdmin,
+    workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+    systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasActiveCertification: options?.hasActiveCertification,
+  });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
     userTools,
@@ -1424,7 +1568,7 @@ async function selectRoutedToolsForSlackResponse(
       action: plan.action,
       reason: plan.reason,
       selectedSets,
-      hasCertificationContext: !!options?.hasCertificationContext,
+      hasActiveCertification: !!options?.hasActiveCertification,
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
@@ -1685,7 +1829,7 @@ async function handleUserMessage({
   }
 
   // Build per-request context for system prompt
-  let { requestContext, memberContext: updatedMemberContext, hasCertificationContext } = await buildRequestContext(
+  let { requestContext, memberContext: updatedMemberContext, hasActiveCertification } = await buildRequestContext(
     userId,
     slackThreadContext
   );
@@ -1725,16 +1869,21 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasCertificationContext }
+    { isThread: true, hasActiveCertification }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
   // Admin users get higher iteration limit; certification sessions get more iterations
-  const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
+  const certIterations = hasActiveCertification && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
+  const dmEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
   // Resolve the cost-cap identity + tier (#2790 / #2945 f/u).
   // Prefers a mapped WorkOS user ID (aao_team for AAO admins,
   // member_paid for active subs); falls back to `slack:${userId}` at
@@ -2020,6 +2169,12 @@ async function handleUserMessage({
         tool_executions: [],
         flagged: true,
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+        model_execution: {
+          source: 'local',
+          requested_provider: 'anthropic',
+          requested_model: dmEffectiveModel,
+          reason: 'provider_error',
+        },
       };
       fullText = response.text;
 
@@ -2032,11 +2187,13 @@ async function handleUserMessage({
     }
   }
 
-  const streamCompletion = resolveStreamTurnCompletion(streamWasInterrupted, response, () => {
+  const streamCompletion = resolveStreamTurnCompletion(streamWasInterrupted, response, (): AddieResponse => {
     logger.warn({ fullTextLength: fullText.length, toolsUsedCount: toolsUsed.length },
       'Addie Bolt: Streaming completed without done event - using fallback response');
     return {
-      text: fullText,
+      // Without the terminal `done` receipt, `fullText` is unverified provider
+      // output. Never persist it under a local provenance label.
+      text: STREAM_COMPLETION_MISSING_NOTICE,
       tools_used: toolsUsed,
       tool_executions: toolExecutions.map((t, i) => ({
         ...t,
@@ -2046,6 +2203,12 @@ async function handleUserMessage({
       })),
       flagged: true,
       flag_reason: 'Streaming completed without done event',
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: dmEffectiveModel,
+        reason: 'no_provider_response',
+      },
     };
   });
   if (streamCompletion.kind === 'discard-interrupted') {
@@ -2066,7 +2229,13 @@ async function handleUserMessage({
       input_sanitized: inputValidation.sanitized,
       output_text: '',
       tools_used: toolsUsed,
-      model: AddieModelConfig.chat,
+      model: dmEffectiveModel,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: dmEffectiveModel,
+        reason: 'stream_interrupted',
+      },
       latency_ms: Date.now() - startTime,
       flagged: true,
       flag_reason: `stream_interrupted:${streamInterruptCategory}`,
@@ -2111,12 +2280,6 @@ async function handleUserMessage({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const dmEffectiveModel = routedTools.requiresPrecision
-    ? ModelConfig.precision
-    : routedTools.requiresDepth
-      ? ModelConfig.depth
-      : AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -2131,6 +2294,7 @@ async function handleUserMessage({
         is_error: exec.is_error,
       })),
       model: dmEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2175,7 +2339,8 @@ async function handleUserMessage({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: dmEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -2460,6 +2625,7 @@ async function handleAppMention({
     : (routedTools.requiresDepth || mentionIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
+  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
 
   // Admin users get higher iteration limit for bulk operations.
   // Public home-workspace discussions use a bounded community budget;
@@ -2475,7 +2641,7 @@ async function handleAppMention({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -2486,6 +2652,12 @@ async function handleAppMention({
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: mentionEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -2506,8 +2678,6 @@ async function handleAppMention({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const mentionEffectiveModel = mentionModelOverride ?? AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -2522,6 +2692,7 @@ async function handleAppMention({
         is_error: exec.is_error,
       })),
       model: mentionEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -2566,7 +2737,8 @@ async function handleAppMention({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: mentionEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -3186,7 +3358,7 @@ function buildConfidenceCalibration(confidence: ConfidenceTier): string {
   return '';
 }
 
-function buildRouterDecision(plan: ExecutionPlan): {
+function buildRouterDecision(plan: ExecutionPlan, cohortReason?: OfficialDocsCohortReason): {
   action: string;
   reason: string;
   decision_method: 'quick_match' | 'llm';
@@ -3196,6 +3368,10 @@ function buildRouterDecision(plan: ExecutionPlan): {
   tokens_input?: number;
   tokens_output?: number;
   model?: string;
+  requires_precision?: boolean;
+  requires_depth?: boolean;
+  capability_profile?: string;
+  capability_profile_reason?: OfficialDocsCohortReason;
 } {
   const base = {
     action: plan.action,
@@ -3205,13 +3381,303 @@ function buildRouterDecision(plan: ExecutionPlan): {
     tokens_input: plan.tokens_input,
     tokens_output: plan.tokens_output,
     model: plan.model,
+    requires_precision: plan.requires_precision,
+    requires_depth: plan.requires_depth,
   };
 
   if (plan.action === 'respond') {
-    return { ...base, tool_sets: plan.tool_sets, confidence: plan.confidence };
+    const profiled = plan as ProfiledChannelRespondPlan;
+    if (isOfficialDocsProfile(profiled)) return canonicalOfficialDocsPlan(profiled);
+    return {
+      ...base,
+      tool_sets: plan.tool_sets,
+      confidence: plan.confidence,
+      ...(profiled.capability_profile
+        ? { capability_profile: profiled.capability_profile }
+        : {}),
+      ...(cohortReason || profiled.capability_profile_reason
+        ? {
+            capability_profile_reason:
+              cohortReason ?? profiled.capability_profile_reason,
+          }
+        : {}),
+    };
   }
 
   return base;
+}
+
+export type ChannelRespondPlan = ProfiledChannelRespondPlan;
+
+export interface ChannelResponseInvocation {
+  requestTools: RequestTools;
+  processOptions: ProcessMessageOptions;
+  effectiveModel: string;
+  selectedToolSets: string[];
+  isAdmin: boolean;
+}
+
+/**
+ * Build the model invocation used for a proposed channel response. Keeping
+ * this in one place lets read-only evaluation exercise the same prompt,
+ * permission, routing, and tool-selection path as production.
+ */
+export async function buildChannelResponseInvocation(input: {
+  userId: string;
+  threadId: string;
+  memberContext: MemberContext | null;
+  channelContext?: ThreadContext;
+  plan: ChannelRespondPlan;
+  siRetrievalResult?: SIRetrievalResult | null;
+}): Promise<ChannelResponseInvocation> {
+  const {
+    userId,
+    threadId,
+    memberContext,
+    channelContext,
+    plan,
+    siRetrievalResult,
+  } = input;
+  const { requestContext: memberRequestContext } = await buildRequestContext(
+    userId,
+    channelContext,
+    memberContext,
+  );
+  const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(
+    memberContext,
+    userId,
+    threadId,
+    channelContext,
+  );
+  const selectedToolSets = selectSlackToolSets({
+    routerSelectedSets: plan.tool_sets,
+    routerAvailable: true,
+    source: 'channel',
+    isAdmin: userIsAdmin,
+    workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
+    systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+  });
+
+  const { filteredTools, unavailableHint } = filterToolsBySet(
+    userTools,
+    selectedToolSets,
+    userIsAdmin,
+    channelContext?.viewing_channel_is_private === false,
+  );
+  const officialDocsProfile = isOfficialDocsProfile(plan);
+  const profileTools = officialDocsProfile
+    ? {
+        // The two canonical docs tools are registered globally on the shared
+        // production client. Keep request-scoped tools empty so they cannot
+        // replace those trusted definitions/handlers by name.
+        tools: [],
+        handlers: new Map(),
+      }
+    : filteredTools;
+  const siContext = siRetrievalResult?.agents.length
+    ? siRetriever.formatContext(siRetrievalResult.agents)
+    : '';
+  const requestContext = [
+    memberRequestContext,
+    officialDocsProfile
+      ? [
+          '## Official documentation capability profile',
+          `Policy: ${OFFICIAL_DOCS_POLICY_VERSION}`,
+          'Only search_docs and get_doc are available. Base the answer on official AdCP documentation.',
+          'Do not claim to have checked live web, Slack, GitHub, account, or administrative data.',
+        ].join('\n')
+      : unavailableHint,
+    siContext,
+    buildConfidenceCalibration(plan.confidence),
+  ].filter(Boolean).join('\n\n');
+
+  const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
+  const modelOverride = plan.requires_precision
+    ? ModelConfig.precision
+    : (plan.requires_depth || channelIsDepthChannel)
+      ? ModelConfig.depth
+      : undefined;
+  const effectiveModel = modelOverride ?? AddieModelConfig.chat;
+
+  if (officialDocsProfile) {
+    const exactKnowledgeRoute = plan.tool_sets.length === 1
+      && plan.tool_sets[0] === 'knowledge';
+    const exactToolBoundary = hasOfficialDocsToolBoundary(claudeClient);
+    if (
+      userIsAdmin
+      || !exactKnowledgeRoute
+      || normalizeReplayableSiResult(siRetrievalResult)
+      || modelOverride
+      || !exactToolBoundary
+    ) {
+      throw new Error('official_docs_profile_invariant_failed');
+    }
+  }
+
+  return {
+    requestTools: profileTools,
+    processOptions: {
+      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
+      ...(modelOverride ? { modelOverride } : {}),
+      requestContext,
+      slackUserId: userId,
+      threadId,
+      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
+      ...(officialDocsProfile
+        ? {
+            disableServerTools: true,
+            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+            maxIterations: 4,
+          }
+        : {}),
+    },
+    effectiveModel,
+    selectedToolSets,
+    isAdmin: userIsAdmin,
+  };
+}
+
+function shadowTraceUnavailableContext(reason: string): Record<string, unknown> {
+  return {
+    shadow_eval_status: 'skipped',
+    shadow_eval_type: 'suppressed_opportunity',
+    shadow_eval_source: 'suppressed',
+    shadow_eval_completed_at: new Date().toISOString(),
+    shadow_eval_replay_error: reason,
+    shadow_eval_trace_id: null,
+    shadow_eval_capture_attempt_id: null,
+    shadow_eval_capture_parity_verified: false,
+    shadow_eval_replay_drift_reasons: [],
+  };
+}
+
+/**
+ * Capture the exact suppressed opportunity without copying private payloads
+ * into mutable thread context. Queueing and the immutable authorization row
+ * commit atomically; failures leave replay disabled and never call a model.
+ */
+async function queueSuppressedShadowEvaluation(input: {
+  threadId: string;
+  sourceQuestionMessageId: string | null;
+  sourceUserId: string;
+  channelId: string;
+  threadTs: string;
+  questionTs: string;
+  question: string;
+  sourceConfigVersionId: number | null;
+  memberContext: MemberContext | null;
+  channelContext?: ThreadContext;
+  plan: ChannelRespondPlan;
+  siRetrievalResult: SIRetrievalResult | null;
+  humanEvidence?: AttributableHumanReply;
+  humanEvidenceUnavailableReason?:
+    | typeof HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON
+    | 'human_evidence_invalid'
+    | 'human_evidence_not_substantive'
+    | 'human_evidence_too_large';
+}): Promise<void> {
+  const threadService = getThreadService();
+  if (!isOfficialDocsProfile(input.plan)) {
+    await threadService.patchThreadContext(
+      input.threadId,
+      shadowTraceUnavailableContext('outside_official_docs_cohort'),
+    );
+    return;
+  }
+  const attemptId = await beginShadowReplayCaptureAttempt({
+    threadId: input.threadId,
+    sourceQuestionMessageId: input.sourceQuestionMessageId,
+  });
+  const failAttempt = async (
+    reason: string,
+    status: 'skipped' | 'error' = 'skipped',
+  ) => {
+    await completeShadowReplayCaptureAttempt(
+      attemptId,
+      input.threadId,
+      { status, reason },
+    );
+  };
+  if (process.env.SHADOW_EVAL_TRACE_CAPTURE_ENABLED !== 'true') {
+    await failAttempt('trace_capture_disabled');
+    return;
+  }
+  if (input.humanEvidenceUnavailableReason) {
+    await failAttempt(input.humanEvidenceUnavailableReason);
+    return;
+  }
+  if (!input.sourceQuestionMessageId || input.sourceConfigVersionId == null) {
+    await failAttempt('missing_attributable_source');
+    return;
+  }
+  // SI retrieval is intentionally not duplicated into the replay store. A
+  // future encrypted fixture may support it; current captures are narrow and
+  // fail closed before generation.
+  if (input.siRetrievalResult !== null) {
+    await failAttempt('si_context_not_replayable');
+    return;
+  }
+  if (!claudeClient) {
+    await failAttempt('channel_client_not_initialized');
+    return;
+  }
+  const docsCorpusFingerprint = getDocsCorpusFingerprint();
+  if (!docsCorpusFingerprint) {
+    await failAttempt('docs_corpus_not_initialized');
+    return;
+  }
+
+  try {
+    const identity = createShadowReplayCaptureIdentity();
+    const invocation = await buildChannelResponseInvocation({
+      userId: input.sourceUserId,
+      threadId: input.threadId,
+      memberContext: input.memberContext,
+      channelContext: input.channelContext,
+      plan: input.plan,
+      siRetrievalResult: input.siRetrievalResult,
+    });
+    const traceProcessOptions = {
+      ...invocation.processOptions,
+      invocationHashKey: identity.hashKey,
+      invocationHashDomain: identity.hashDomain,
+    };
+    const snapshot = claudeClient.prepareMessageInvocation(
+      input.question,
+      undefined,
+      invocation.requestTools,
+      undefined,
+      traceProcessOptions,
+    );
+    await queueShadowReplayTrace({
+      attemptId,
+      identity,
+      threadId: input.threadId,
+      sourceQuestionMessageId: input.sourceQuestionMessageId,
+      sourceUserId: input.sourceUserId,
+      channelId: input.channelId,
+      threadTs: input.threadTs,
+      questionTs: input.questionTs,
+      question: input.question,
+      sourceConfigVersionId: input.sourceConfigVersionId,
+      memberContext: input.memberContext,
+      channelContext: input.channelContext,
+      plan: input.plan,
+      siRetrievalResult: input.siRetrievalResult,
+      invocation,
+      snapshot,
+      docsCorpusFingerprint,
+      providerWebSearchEnabled: claudeClient.isWebSearchEnabled()
+        && traceProcessOptions.disableServerTools !== true,
+      humanEvidence: input.humanEvidence,
+    });
+  } catch {
+    logger.warn(
+      { threadId: input.threadId },
+      'Addie Bolt: Signed shadow trace capture failed closed',
+    );
+    await failAttempt('trace_capture_failed', 'error').catch(() => undefined);
+  }
 }
 
 /**
@@ -3403,7 +3869,11 @@ async function handleDirectMessage(
   }
 
   // Build per-request context for system prompt (no channel context for DMs)
-  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  let {
+    requestContext,
+    memberContext: updatedMemberContext,
+    hasActiveCertification,
+  } = await buildRequestContext(userId);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
@@ -3436,12 +3906,19 @@ async function handleDirectMessage(
     memberContext,
     userId,
     thread.thread_id,
-    null
+    null,
+    { isThread: true, hasActiveCertification },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
+
+  const directMessageEffectiveModel = routedTools.requiresPrecision
+    ? ModelConfig.precision
+    : routedTools.requiresDepth
+      ? ModelConfig.depth
+      : AddieModelConfig.chat;
 
   // Admin users get higher iteration limit for bulk operations. DMs
   // remain user-scoped.
@@ -3460,7 +3937,7 @@ async function handleDirectMessage(
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -3471,6 +3948,12 @@ async function handleDirectMessage(
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: directMessageEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -3500,7 +3983,8 @@ async function handleDirectMessage(
       duration_ms: exec.duration_ms,
       is_error: exec.is_error,
     })),
-    model: AddieModelConfig.chat,
+    model: directMessageEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     tokens_input: response.usage?.input_tokens,
     tokens_output: response.usage?.output_tokens,
@@ -3571,7 +4055,8 @@ async function handleDirectMessage(
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: directMessageEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     delivery_status: delivery.delivered ? 'delivered' : 'failed',
     flagged: userMessageFlagged || assistantFlagged || !delivery.delivered,
@@ -3831,6 +4316,7 @@ async function handleActiveThreadReply({
     : (routedTools.requiresDepth || threadIsDepthChannel)
       ? ModelConfig.depth
       : undefined;
+  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
 
   // Admin users get higher iteration limit. Public home-workspace
   // discussions use a bounded community budget; other channels stay user-scoped.
@@ -3845,7 +4331,7 @@ async function handleActiveThreadReply({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
@@ -3856,6 +4342,12 @@ async function handleActiveThreadReply({
       tool_executions: [],
       flagged: true,
       flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: activeThreadEffectiveModel,
+        reason: 'provider_error',
+      },
     };
   }
 
@@ -3883,8 +4375,6 @@ async function handleActiveThreadReply({
   // Log assistant response to unified thread
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
-  const activeThreadEffectiveModel = threadModelOverride ?? AddieModelConfig.chat;
-
   try {
     await threadService.addMessage({
       thread_id: thread.thread_id,
@@ -3899,6 +4389,7 @@ async function handleActiveThreadReply({
         is_error: exec.is_error,
       })),
       model: activeThreadEffectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -3942,7 +4433,8 @@ async function handleActiveThreadReply({
     input_sanitized: inputValidation.sanitized,
     output_text: outputValidation.sanitized,
     tools_used: response.tools_used,
-    model: AddieModelConfig.chat,
+    model: activeThreadEffectiveModel,
+    model_execution: response.model_execution,
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -4150,10 +4642,10 @@ async function handleChannelMessage({
       // Skip delay if user explicitly named Addie (they want her input).
       const explicitlyNamedAddie = /\baddie\b/i.test(messageText);
       if (!explicitlyNamedAddie && multiParty) {
-        const shouldRespond = await shouldRespondAfterDelay(
+        const delayed = await shouldRespondAfterDelay(
           channelId, threadTsForCheck, event.ts, context.botUserId
         );
-        if (!shouldRespond) {
+        if (!delayed.shouldRespond) {
           logger.info(
             { channelId, userId, threadTs: threadTsForCheck },
             'Addie Bolt: Skipping active thread reply — human replied during delay'
@@ -4221,15 +4713,63 @@ async function handleChannelMessage({
     // Quick match first (no API call for obvious cases)
     let plan = addieRouter.quickMatch(routingCtx);
     let siRetrievalResult: SIRetrievalResult | null = null;
+    let officialDocsCohortReason: OfficialDocsCohortReason | undefined;
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
+      const shadowCandidate = selectRouterShadowCohort({
+        channelId,
+        opportunityId: event.ts,
+        // Final admission rechecks current Slack metadata inside the detached
+        // observer. These optimistic values only avoid scheduling work when
+        // the independent feature/config/sample gate is already closed.
+        channelIsPublic: true,
+        channelIsShared: false,
+      });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx),
+        addieRouter.route(routingCtx, {
+          ...(shadowCandidate.selected && {
+            observer: async (observation) => {
+              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
+                .catch(() => null);
+              await runRouterShadow({
+                channelId,
+                opportunityId: event.ts,
+                channelIsPublic: currentChannel?.is_private === false,
+                channelIsShared: currentChannel === null
+                  || currentChannel.is_shared
+                  || currentChannel.is_org_shared
+                  || currentChannel.is_pending_ext_shared === true,
+                observation,
+              });
+            },
+          }),
+        }),
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;
-      siRetrievalResult = siResult;
+      siRetrievalResult = normalizeReplayableSiResult(siResult);
+    }
+
+    if (plan.action === 'respond') {
+      const cohort = selectOfficialDocsCohort({
+        channelId,
+        channelIsPublic: channelContext?.viewing_channel_is_private === false,
+        isAdmin: isAdminForRouting,
+        channelUsesDepthModel: isDepthChannel(channelContext?.viewing_channel_name),
+        plan,
+        siRetrievalResult,
+      });
+      officialDocsCohortReason = cohort.reason;
+      if (cohort.eligible) {
+        plan = applyOfficialDocsProfile(plan);
+        logger.info(
+          {
+            profile: cohort.profile,
+          },
+          'Addie Bolt: Assigned official docs capability profile',
+        );
+      }
     }
 
     logger.debug({
@@ -4260,19 +4800,21 @@ async function handleChannelMessage({
     const inputValidation = sanitizeInput(messageText);
 
     // Log user message to unified thread with router decision
+    let sourceMessageId: string | null = null;
     try {
-      await threadService.addMessage({
+      const sourceMessage = await threadService.addMessage({
         thread_id: thread.thread_id,
         role: 'user',
         content: messageText,
         content_sanitized: inputValidation.sanitized,
         flagged: inputValidation.flagged,
         flag_reason: inputValidation.reason || undefined,
-        router_decision: buildRouterDecision(plan),
+        router_decision: buildRouterDecision(plan, officialDocsCohortReason),
         user_id: userId,
         user_display_name: resolveSpeakerDisplayName(memberContext),
         message_source: 'typed',
       });
+      sourceMessageId = sourceMessage.message_id;
     } catch (error) {
       logger.error({ error, threadId: thread.thread_id }, 'Addie Bolt: Failed to save user message');
     }
@@ -4328,25 +4870,39 @@ async function handleChannelMessage({
             { channelId, userId, threadTs, humanReplies: humanRepliesBeforeTrigger.length, confidence },
             'Addie Bolt: Skipping channel thread — humans already answering'
           );
-          // Flag high-confidence suppressions and queue shadow evaluation —
-          // Addie had a good answer but stayed silent. The shadow evaluator will
-          // generate what she would have said and compare with the human's answer.
+          // Flag high-confidence suppressions. Because the human reply predates
+          // this signed question, record an unattributable capture attempt and
+          // never reuse that reply as judgment evidence.
           if (confidence === 'high') {
             try {
               await threadService.flagThread(
                 thread.thread_id,
-                `Suppressed high-confidence response (humans answering): ${plan.reason}`
+                suppressedOpportunityFlagReason('humans_already_answering'),
               );
-              await threadService.patchThreadContext(thread.thread_id, {
-                shadow_eval_status: 'pending',
-                shadow_eval_requested_at: new Date().toISOString(),
-                shadow_eval_channel_id: channelId,
-                shadow_eval_thread_ts: threadTs,
-                shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
-                shadow_eval_question: messageText,
+              await queueSuppressedShadowEvaluation({
+                threadId: thread.thread_id,
+                plan,
+                channelId,
+                threadTs,
+                questionTs: event.ts,
+                question: messageText,
+                sourceQuestionMessageId: sourceMessageId,
+                sourceUserId: userId,
+                sourceConfigVersionId: await getCurrentConfigVersionId(),
+                memberContext,
+                channelContext,
+                siRetrievalResult,
+                humanEvidenceUnavailableReason: HUMAN_EVIDENCE_UNATTRIBUTABLE_REASON,
               });
-            } catch (flagError) {
-              logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
+            } catch {
+              await threadService.patchThreadContext(
+                thread.thread_id,
+                shadowTraceUnavailableContext('trace_capture_failed'),
+              ).catch(() => undefined);
+              logger.warn(
+                { threadId: thread.thread_id },
+                'Addie Bolt: Could not flag/queue signed shadow trace',
+              );
             }
           }
           return;
@@ -4356,10 +4912,10 @@ async function handleChannelMessage({
       }
 
       // Also delay and re-check for new human replies after the trigger
-      const shouldRespond = await shouldRespondAfterDelay(
+      const delayed = await shouldRespondAfterDelay(
         channelId, threadTs, event.ts, context.botUserId
       );
-      if (!shouldRespond) {
+      if (!delayed.shouldRespond) {
         const confidence = plan.action === 'respond' ? plan.confidence : undefined;
         logger.info(
           { channelId, userId, threadTs, confidence },
@@ -4369,18 +4925,34 @@ async function handleChannelMessage({
           try {
             await threadService.flagThread(
               thread.thread_id,
-              `Suppressed high-confidence response (human replied during delay): ${plan.reason}`
+              suppressedOpportunityFlagReason('human_replied_during_delay'),
             );
-            await threadService.patchThreadContext(thread.thread_id, {
-              shadow_eval_status: 'pending',
-              shadow_eval_requested_at: new Date().toISOString(),
-              shadow_eval_channel_id: channelId,
-              shadow_eval_thread_ts: threadTs,
-              shadow_eval_tool_sets: plan.action === 'respond' ? plan.tool_sets : [],
-              shadow_eval_question: messageText,
+            await queueSuppressedShadowEvaluation({
+              threadId: thread.thread_id,
+              plan,
+              channelId,
+              threadTs,
+              questionTs: event.ts,
+              question: messageText,
+              sourceQuestionMessageId: sourceMessageId,
+              sourceUserId: userId,
+              sourceConfigVersionId: await getCurrentConfigVersionId(),
+              memberContext,
+              channelContext,
+              siRetrievalResult,
+              humanEvidence: delayed.humanEvidence ?? undefined,
+              humanEvidenceUnavailableReason:
+                delayed.humanEvidenceUnavailableReason ?? undefined,
             });
-          } catch (flagError) {
-            logger.debug({ error: flagError }, 'Addie Bolt: Could not flag/queue shadow eval');
+          } catch {
+            await threadService.patchThreadContext(
+              thread.thread_id,
+              shadowTraceUnavailableContext('trace_capture_failed'),
+            ).catch(() => undefined);
+            logger.warn(
+              { threadId: thread.thread_id },
+              'Addie Bolt: Could not flag/queue signed shadow trace',
+            );
           }
         }
         return;
@@ -4390,58 +4962,27 @@ async function handleChannelMessage({
     logger.info({ channelId, userId, toolSets: plan.tool_sets },
       'Addie Bolt: Generating proposed response for channel message');
 
-    // Build per-request context for system prompt (pass channelContext so public channel guard is included)
-    const { requestContext: memberRequestContext } = await buildRequestContext(userId, channelContext);
-
-    // Get all user-scoped tools then filter by selected tool sets
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, userId, thread.thread_id, channelContext);
-    const proposedSets = [...plan.tool_sets];
-    if (userIsAdmin && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG && !proposedSets.includes('admin')) {
-      proposedSets.push('admin');
-    }
-    // System channels are operational channels — certification sessions don't happen here,
-    // so no hasCertificationContext guard needed (unlike selectRoutedToolsForSlackResponse).
-    const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-    if (userIsAdmin && channelSystemRole) {
-      for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
-        if (!proposedSets.includes(set)) {
-          proposedSets.push(set);
-        }
-      }
-    }
-    const { filteredTools, unavailableHint } = filterToolsBySet(userTools, proposedSets, userIsAdmin, channelContext?.viewing_channel_is_private === false);
-
-    // Build SI context from retrieved agents
-    const siContext = siRetrievalResult?.agents.length
-      ? siRetriever.formatContext(siRetrievalResult.agents)
-      : '';
-
-    // Combine all context for system prompt (member info, unavailable tool hints, SI agents, confidence calibration)
-    const requestContext = [memberRequestContext, unavailableHint, siContext, buildConfidenceCalibration(plan.confidence)]
-      .filter(Boolean)
-      .join('\n\n');
-
-    // Use Opus for billing, router-flagged depth, or protocol-depth channels (wg-*, council-*)
-    const channelIsDepthChannel = isDepthChannel(channelContext?.viewing_channel_name);
-    const channelUseOpus = plan.requires_precision || plan.requires_depth || channelIsDepthChannel;
-    const channelModelOverride = plan.requires_precision
-      ? ModelConfig.precision
-      : (plan.requires_depth || channelIsDepthChannel)
-        ? ModelConfig.depth
-        : undefined;
-    const effectiveModel = channelModelOverride ?? AddieModelConfig.chat;
+    const invocation = await buildChannelResponseInvocation({
+      userId,
+      threadId: thread.thread_id,
+      memberContext,
+      channelContext,
+      plan,
+      siRetrievalResult,
+    });
     // Public home-workspace discussions use a bounded community budget;
     // private/shared channels stay user-scoped.
     const processOptions = {
-      ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
-      ...(channelModelOverride ? { modelOverride: channelModelOverride } : {}),
-      requestContext,
-      slackUserId: userId,
-      threadId: thread.thread_id,
+      ...invocation.processOptions,
       ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
-      currentSpeakerName: resolveSpeakerDisplayName(memberContext),
     };
-    const response = await claudeClient.processMessage(messageText, undefined, filteredTools, undefined, processOptions);
+    const response = await claudeClient.processMessage(
+      messageText,
+      undefined,
+      invocation.requestTools,
+      undefined,
+      processOptions,
+    );
 
     if (!response.text || response.text.trim().length === 0) {
       logger.debug({ channelId }, 'Addie Bolt: No response generated');
@@ -4469,7 +5010,8 @@ async function handleChannelMessage({
         duration_ms: exec.duration_ms,
         is_error: exec.is_error,
       })),
-      model: effectiveModel,
+      model: invocation.effectiveModel,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,
@@ -5213,11 +5755,16 @@ async function handleReactionAdded({
   }
 
   // Fetch channel context (includes working group if channel is linked to one)
-  let channelContext: ThreadContext | undefined;
-  try {
-    channelContext = await buildChannelContext(itemChannel);
-  } catch (error) {
-    logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
+  const channelContext = await resolveRequiredSlackChannelContext(
+    itemChannel,
+    buildChannelContext,
+  );
+  if (!channelContext) {
+    logger.warn(
+      { event: 'addie_reaction_channel_context_unavailable' },
+      'Addie Bolt: Skipping reaction response because channel privacy could not be verified',
+    );
+    return;
   }
 
   // Build per-request context for system prompt (pass channelContext so public channel guard is included)
@@ -5241,7 +5788,7 @@ async function handleReactionAdded({
   };
 
   // Process with Claude
-  let response;
+  let response: AddieResponse;
   try {
     response = await claudeClient.processMessage(userInput, conversationHistory, userTools, undefined, processOptions);
   } catch (error) {
@@ -5251,6 +5798,12 @@ async function handleReactionAdded({
       tools_used: [],
       tool_executions: [],
       flagged: false,
+      model_execution: {
+        source: 'local',
+        requested_provider: 'anthropic',
+        requested_model: AddieModelConfig.chat,
+        reason: 'canned_response',
+      },
     };
   }
 
@@ -5281,6 +5834,7 @@ async function handleReactionAdded({
         is_error: exec.is_error,
       })),
       model: AddieModelConfig.chat,
+      model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,

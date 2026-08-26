@@ -63,6 +63,29 @@
     },
     {
       "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "audience_targeting": {
+                "required": ["supported_activation_methods"]
+              }
+            },
+            "required": ["audience_targeting"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.audience_activation" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
         "allOf": [
           {
             "properties": {
@@ -1055,10 +1078,20 @@
               "properties": {
                 "vast_versions": {
                   "type": "array",
-                  "description": "VAST versions supported for video creatives",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[0-9]+\\.[0-9]+$"
+                  "description": "Seller-wide VAST execution ceiling. Each product format option declares its binding accepted subset in `params.vast_versions`.",
+                  "items": { "$ref": "/schemas/enums/vast-version.json" },
+                  "minItems": 1,
+                  "uniqueItems": true
+                },
+                "macro_resolution_capabilities": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "$ref": "/schemas/core/macro-resolution-capability.json" },
+                  "description": "Seller-wide ceiling for exact macro processing tuples (dialect identity/revision, semantic mapping, operation, actor, context, and encoding). It never proves a product execution path supports the same tuple and does not claim tracker firing; inspect the selected format option and, when standardized, product tracker capabilities.",
+                  "x-adcp-validation": {
+                    "verifier_constraints": {
+                      "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+                    }
                   }
                 },
                 "mraid_versions": {
@@ -1348,6 +1381,15 @@
               "type": "integer",
               "description": "Minimum matched audience size required for targeting. Audiences below this threshold will have status: too_small. Varies by platform (100–1000 is typical).",
               "minimum": 1
+            },
+            "supported_activation_methods": {
+              "type": "array",
+              "x-status": "experimental",
+              "description": "Union of audience_activation.methods across the seller's products. Fast-fail discovery: a buyer reads this once and skips the catalog walk when nothing overlaps its pipeline. Per-product declarations are the source of truth; sellers MUST keep this consistent with the catalog. Operational coordinates are account-scoped: the union MAY omit consumer_identities and destination_ref until bilateral account setup establishes them, and MUST NOT expose another account's coordinates. Absence of this field with media_buy.audience_activation listed in experimental_features means walk the catalog; only a present, non-overlapping union is a fast-fail signal. Experimental (x-status: experimental): sellers implementing audience activation declarations MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+              "items": {
+                "$ref": "/schemas/core/audience-activation-method.json"
+              },
+              "minItems": 1
             },
             "matching_latency_hours": {
               "type": "object",
@@ -1957,6 +1999,11 @@
           "description": "When true, this agent hosts a creative library and supports list_creatives and creative_id references in build_creative. Creative agents with a library should also implement the accounts protocol (sync_accounts / list_accounts) so buyers can establish access.",
           "default": false
         },
+        "supports_revisions": {
+          "type": "boolean",
+          "description": "When true, this agent accepts buyer-assigned revision_id on sync_creatives, enforces immutable revision content, echoes accepted revision identity, returns it from list_creatives, and attributes delivered executions to it. Revision support does not imply revision history, rollback, or staged activation.",
+          "default": false
+        },
         "supports_generation": {
           "type": "boolean",
           "description": "When true, this agent can generate creatives from natural language briefs via build_creative. The buyer provides a message with creative direction, and the agent produces a manifest with generated assets. When false, build_creative only supports transformation or library retrieval.",
@@ -1966,6 +2013,33 @@
           "type": "boolean",
           "description": "When true, this agent can transform or resize existing canonical manifests via build_creative. The buyer supplies a creative_manifest and an advertised target_capability_id.",
           "default": false
+        },
+        "representation_resolution": {
+          "type": "object",
+          "description": "Explicit opt-in for deterministic seller-bound selection from `build_creative.creative_representation_set`. Only the destination sales agent may advertise and exercise this capability because resolution requires its current product, placement/publisher narrowings, and seller-wide execution ceilings. A standalone creative agent may help a buyer select locally but MUST NOT advertise this capability or claim seller deliverability. Absence means the caller selects a representation before sending a seller-bound manifest; the agent MUST NOT guess silently.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "const": true,
+              "description": "True means the agent accepts CreativeRepresentationSet input and returns `representation_selection` or per-candidate structured rejections."
+            },
+            "strategies": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "/schemas/enums/representation-selection-strategy.json" },
+              "description": "Deterministic selection strategies the seller implements after compatibility filtering. `representation_order` selects the first compatible source entry. `highest_compatible_vast` selects the highest exact VAST version from the already-intersected candidate set, with equal-version ties resolved by source array order."
+            }
+          },
+          "required": ["supported", "strategies"],
+          "additionalProperties": true,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "advertiser_role": "only a destination sales agent with media_buy product authority may advertise this capability",
+              "request_strategy": "representation_selection_strategy MUST be one of the advertised strategies",
+              "destination_authority": "the seller MUST resolve representation_destination against its own current product and execution capabilities"
+            }
+          }
         },
         "supports_transformers": {
           "type": "boolean",
@@ -2058,7 +2132,7 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
+          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the authority-free `CreativeOperationFormatDeclaration` projection of a product format declaration: canonical shape and creative-route macro processing are preserved, while seller production commitments are excluded. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
           "items": {
             "type": "object",
             "properties": {
@@ -2068,8 +2142,8 @@
                 "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
-                "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+                "description": "Format declaration on which this agent can perform the listed operations. Creative-agent capability self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
+                "$ref": "/schemas/core/creative-operation-format-declaration.json"
               },
               "operations": {
                 "type": "array",
@@ -2168,6 +2242,20 @@
         {
           "if": {
             "required": ["localization"]
+          },
+          "then": {
+            "properties": {
+              "has_creative_library": { "type": "boolean", "const": true }
+            },
+            "required": ["has_creative_library"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "supports_revisions": { "const": true }
+            },
+            "required": ["supports_revisions"]
           },
           "then": {
             "properties": {

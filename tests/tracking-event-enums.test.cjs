@@ -82,8 +82,13 @@ async function compileSchema(schemaPath) {
 
 // VAST 4.2 tracking events (includes flattened Impression, Error, VideoClicks, ViewableImpression)
 const VAST_PLAYBACK_EVENTS = ['impression', 'creativeView', 'loaded', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete'];
-const VAST_INTERACTION_EVENTS = ['mute', 'unmute', 'pause', 'resume', 'rewind', 'skip', 'playerExpand', 'playerCollapse', 'fullscreen', 'exitFullscreen', 'otherAdInteraction', 'interactiveStart'];
-const VAST_PROGRESS_EVENTS = ['progress', 'notUsed'];
+const VAST_INTERACTION_EVENTS = [
+  'mute', 'unmute', 'pause', 'resume', 'rewind', 'skip',
+  'playerExpand', 'playerCollapse', 'fullscreen', 'exitFullscreen',
+  'acceptInvitation', 'adExpand', 'adCollapse', 'minimize',
+  'overlayViewDuration', 'otherAdInteraction', 'interactiveStart'
+];
+const VAST_PROGRESS_EVENTS = ['progress'];
 const VAST_CLICK_CLOSE_EVENTS = ['clickTracking', 'customClick', 'close', 'closeLinear'];
 const VAST_VERIFICATION_EVENTS = ['error', 'viewable', 'notViewable', 'viewUndetermined', 'measurableImpression', 'viewableImpression'];
 
@@ -97,8 +102,8 @@ const ALL_VAST_EVENTS = [
 
 // DAAST tracking events (audio-appropriate subset)
 const ALL_DAAST_EVENTS = [
-  'impression', 'creativeView', 'loaded', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete',
-  'mute', 'unmute', 'pause', 'resume', 'skip',
+  'impression', 'creativeView', 'start', 'firstQuartile', 'midpoint', 'thirdQuartile', 'complete',
+  'mute', 'unmute', 'pause', 'resume', 'rewind', 'skip',
   'progress',
   'clickTracking', 'customClick', 'close',
   'error', 'viewable', 'notViewable', 'viewUndetermined', 'measurableImpression', 'viewableImpression'

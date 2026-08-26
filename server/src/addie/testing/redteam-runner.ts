@@ -203,7 +203,7 @@ async function askAddie(
 ): Promise<{ status: number; response: string }> {
   // Optional admin bypass: when ADMIN_API_KEY is set in the env, the runner
   // authenticates as admin so it skips the anonymous 50-msg/IP daily limiter
-  // and the per-IP anonymous-tier cost cap. Without it, a single 33-scenario
+  // and the per-IP anonymous-tier cost cap. Without it, a single full-suite
   // run can exhaust the daily IP budget and contaminate the result with
   // HTTP 429 / cost-cap responses (which contain none of the redteam's
   // marker words → spurious missing_marker failures).

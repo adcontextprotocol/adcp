@@ -8,6 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash } from 'node:crypto';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('addie-docs-indexer');
@@ -41,6 +42,22 @@ export interface IndexedDoc {
   path: string;
   content: string;
   sourceUrl: string;
+  /** Protocol version this content describes. Undefined means version-independent. */
+  version?: string;
+  /** Frozen release directory backing this result (for example, 3.1.19). */
+  artifactVersion?: string;
+}
+
+export interface DocsVersion {
+  /** Public version selector used by Mintlify and Addie's tools. */
+  version: string;
+  /** Exact frozen dist/docs and dist/schemas snapshot. */
+  artifactVersion: string;
+  displayName: string;
+  isDefault: boolean;
+  isArchived: boolean;
+  /** Logical doc paths present in this version's public navigation. */
+  pagePaths: Set<string>;
 }
 
 /**
@@ -62,6 +79,32 @@ export interface IndexedHeading {
 let docsIndex: IndexedDoc[] = [];
 let headingsIndex: IndexedHeading[] = [];
 let initialized = false;
+let docsVersions: DocsVersion[] = [];
+let errorCodesByDocsVersion = new Map<string, Set<string> | null>();
+let allKnownErrorCodes = new Set<string>();
+let docsCorpusFingerprint: string | null = null;
+
+function computeDocsCorpusFingerprint(): string {
+  const hash = createHash('sha256');
+  for (const doc of [...docsIndex].sort((left, right) => left.id.localeCompare(right.id))) {
+    hash.update(JSON.stringify([
+      doc.id,
+      doc.title,
+      doc.category,
+      doc.path,
+      doc.content,
+      doc.sourceUrl,
+      doc.version ?? null,
+      doc.artifactVersion ?? null,
+    ]));
+    hash.update('\n');
+  }
+  return hash.digest('hex');
+}
+
+// These describe the organization and community rather than a protocol release.
+// Keep their live copies searchable alongside every protocol version.
+const VERSION_INDEPENDENT_DOC_PREFIXES = ['aao/', 'community/', 'contributing/'];
 
 /**
  * Generate a URL-safe anchor slug from heading text
@@ -464,7 +507,12 @@ function schemaTitle(schema: JsonObject, relativePath: string): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function indexSchemaFiles(schemaRoot: string): IndexedDoc[] {
+function indexSchemaFiles(
+  schemaRoot: string,
+  version: string,
+  artifactVersion: string,
+  unavailableErrorCodePattern: RegExp | null,
+): IndexedDoc[] {
   const indexed: IndexedDoc[] = [];
 
   for (const filePath of findJsonFiles(schemaRoot)) {
@@ -475,16 +523,21 @@ function indexSchemaFiles(schemaRoot: string): IndexedDoc[] {
       const schema = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
       if (!isJsonObject(schema)) continue;
 
-      const content = extractSchemaContent(schema);
+      const content = removeUnavailableErrorCodeLines(
+        extractSchemaContent(schema),
+        unavailableErrorCodePattern,
+      );
       if (!content) continue;
 
       indexed.push({
-        id: `schema:${relativePath.replace(/\.json$/, '')}`,
+        id: `schema:${version}:${relativePath.replace(/\.json$/, '')}`,
         title: schemaTitle(schema, relativePath),
         category: 'schema',
         path: relativePath,
         content,
-        sourceUrl: `https://adcontextprotocol.org/schemas/latest/${relativePath}`,
+        sourceUrl: `https://adcontextprotocol.org/schemas/${artifactVersion}/${relativePath}`,
+        version,
+        artifactVersion,
       });
     } catch (error) {
       logger.warn({ error, filePath }, 'Addie Docs: Failed to index schema');
@@ -495,18 +548,127 @@ function indexSchemaFiles(schemaRoot: string): IndexedDoc[] {
 }
 
 /**
- * Build source URL from file path
- * Mintlify serves docs at /docs/ prefix (e.g., /docs/protocols/core-concepts)
+ * Build a source URL for live, version-independent operational docs.
+ * Mintlify's clean /docs routes redirect to the stable frozen snapshot, which
+ * may not contain the live body Addie indexed. Link to the canonical source so
+ * citations always open the exact content returned by search.
  */
 function buildSourceUrl(filePath: string, docsRoot: string): string {
-  const relativePath = path.relative(docsRoot, filePath);
-  // Remove extension and convert to URL path
+  const urlPath = path.relative(docsRoot, filePath).replace(/\\/g, '/');
+
+  return `https://github.com/adcontextprotocol/adcp/blob/main/docs/${urlPath}`;
+}
+
+function buildVersionedSourceUrl(relativePath: string, artifactVersion: string): string {
   const urlPath = relativePath
     .replace(/\.(md|mdx)$/, '')
     .replace(/\/index$/, '')
     .replace(/\\/g, '/');
 
-  return `https://docs.adcontextprotocol.org/docs/${urlPath}`;
+  return `https://docs.adcontextprotocol.org/dist/docs/${artifactVersion}/${urlPath}`;
+}
+
+function findFirstExistingPath(candidates: string[]): string | null {
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function collectNavigationPagePaths(value: unknown, artifactVersions: Set<string>): Set<string> {
+  const paths = new Set<string>();
+
+  const visit = (node: unknown): void => {
+    if (typeof node === 'string') {
+      const match = node.match(/^dist\/docs\/([^/]+)\/(.+)$/);
+      if (match && artifactVersions.has(match[1])) {
+        paths.add(match[2].replace(/\.(md|mdx)$/, ''));
+      }
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    if (node && typeof node === 'object') {
+      Object.values(node as Record<string, unknown>).forEach(visit);
+    }
+  };
+
+  visit(value);
+  return paths;
+}
+
+function loadDocsVersions(configPath: string): DocsVersion[] {
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as {
+    navigation?: { versions?: Array<Record<string, unknown>> };
+  };
+  const navigationVersions = config.navigation?.versions;
+  if (!Array.isArray(navigationVersions) || navigationVersions.length === 0) {
+    throw new Error(`No navigation.versions found in ${configPath}`);
+  }
+
+  const versions = navigationVersions.map((entry): DocsVersion => {
+    const displayName = String(entry.version || '').trim();
+    const artifactVersions = new Set<string>();
+
+    const findArtifacts = (node: unknown): void => {
+      if (typeof node === 'string') {
+        const match = node.match(/^dist\/docs\/([^/]+)\//);
+        if (match) artifactVersions.add(match[1]);
+      } else if (Array.isArray(node)) {
+        node.forEach(findArtifacts);
+      } else if (node && typeof node === 'object') {
+        Object.values(node as Record<string, unknown>).forEach(findArtifacts);
+      }
+    };
+    findArtifacts(entry.groups);
+
+    if (!displayName || artifactVersions.size !== 1) {
+      throw new Error(
+        `Docs version ${displayName || '<unnamed>'} must reference exactly one dist/docs snapshot; found ${[...artifactVersions].join(', ') || 'none'}`,
+      );
+    }
+
+    const artifactVersion = [...artifactVersions][0];
+    return {
+      version: displayName.replace(/\s*\(archived\)\s*$/i, ''),
+      artifactVersion,
+      displayName,
+      isDefault: entry.default === true,
+      isArchived: /\(archived\)/i.test(displayName),
+      pagePaths: collectNavigationPagePaths(entry.groups, artifactVersions),
+    };
+  });
+
+  if (versions.filter((version) => version.isDefault).length !== 1) {
+    throw new Error('docs.json must declare exactly one default documentation version');
+  }
+
+  return versions;
+}
+
+function versionAliases(version: DocsVersion): string[] {
+  const aliases = [version.version, version.displayName, version.artifactVersion];
+  if (version.isDefault) aliases.push('latest', 'stable', 'current', 'v3');
+  if (version.version.endsWith('-beta')) {
+    aliases.push(version.version.replace(/-beta$/, ''), `${version.version.replace(/-beta$/, '')} beta`);
+  }
+  return aliases.map((alias) => alias.toLowerCase());
+}
+
+/** Resolve a public selector to one frozen docs version. Defaults to stable. */
+export function resolveDocsVersion(requested?: string): DocsVersion | null {
+  if (docsVersions.length === 0) return null;
+  if (!requested) return docsVersions.find((version) => version.isDefault) || null;
+
+  const normalized = requested.trim().toLowerCase();
+  return docsVersions.find((version) => versionAliases(version).includes(normalized)) || null;
+}
+
+export function getSupportedDocsVersions(): DocsVersion[] {
+  return docsVersions.map((version) => ({ ...version, pagePaths: new Set(version.pagePaths) }));
+}
+
+export function formatDocsVersion(version: Pick<DocsVersion, 'displayName' | 'artifactVersion'>): string {
+  return `${version.displayName} (snapshot ${version.artifactVersion})`;
 }
 
 /**
@@ -541,6 +703,46 @@ function findHtmlFiles(dir: string, relativeTo: string = dir): string[] {
  */
 function shouldExcludePage(relativePath: string): boolean {
   return WEBSITE_PAGES_TO_EXCLUDE.some((pattern) => pattern.test(relativePath));
+}
+
+function readVersionErrorCodes(schemaRoot: string): Set<string> | null {
+  const errorCodePath = path.join(schemaRoot, 'enums', 'error-code.json');
+  if (!fs.existsSync(errorCodePath)) return null;
+
+  try {
+    const schema = JSON.parse(fs.readFileSync(errorCodePath, 'utf-8')) as { enum?: unknown[] };
+    return new Set((schema.enum || []).filter((value): value is string => typeof value === 'string'));
+  } catch (error) {
+    logger.warn({ error, errorCodePath }, 'Addie Docs: Failed to read version error-code enum');
+    return null;
+  }
+}
+
+/**
+ * Frozen prose snapshots predate the immutable-release guard and a few contain
+ * error-code rows copied from a newer branch. The closed enum is authoritative;
+ * remove lines naming codes unavailable in the selected release before search.
+ */
+function buildUnavailableErrorCodePattern(
+  allowedCodes: Set<string> | null,
+  allKnownCodes: Set<string>,
+): RegExp | null {
+  if (!allowedCodes) return null;
+  const unavailableCodes = [...allKnownCodes].filter((code) => !allowedCodes.has(code));
+  return unavailableCodes.length > 0
+    ? new RegExp(`\\b(?:${unavailableCodes.join('|')})\\b`)
+    : null;
+}
+
+function removeUnavailableErrorCodeLines(
+  content: string,
+  unavailablePattern: RegExp | null,
+): string {
+  if (!unavailablePattern) return content;
+  return content
+    .split('\n')
+    .filter((line) => !unavailablePattern.test(line))
+    .join('\n');
 }
 
 /**
@@ -601,15 +803,39 @@ function indexWebsitePages(publicRoot: string): IndexedDoc[] {
  * Initialize the docs indexer
  */
 export async function initializeDocsIndex(): Promise<void> {
-  // Find docs directory - try multiple locations
-  const possibleDocsPaths = [
-    // From server/src/addie/mcp/ to docs/
+  const docsRoot = findFirstExistingPath([
     path.resolve(__dirname, '../../../../docs'),
-    // From dist/ to docs/
     path.resolve(__dirname, '../../../docs'),
-    // Absolute path for Docker (mounted volume)
     '/app/docs',
-  ];
+  ]);
+
+  const docsConfigPath = findFirstExistingPath([
+    path.resolve(__dirname, '../../../../docs.json'),
+    path.resolve(__dirname, '../../../docs.json'),
+    '/app/docs.json',
+  ]);
+
+  const versionedDocsRoot = findFirstExistingPath([
+    path.resolve(__dirname, '../../../../dist/docs'),
+    path.resolve(__dirname, '../../docs'),
+    path.resolve(__dirname, '../../../dist/docs'),
+    '/app/dist/docs',
+  ]);
+
+  const versionedSchemasRoot = findFirstExistingPath([
+    path.resolve(__dirname, '../../../../dist/schemas'),
+    path.resolve(__dirname, '../../schemas'),
+    path.resolve(__dirname, '../../../dist/schemas'),
+    '/app/dist/schemas',
+  ]);
+
+  if (!docsConfigPath || !versionedDocsRoot || !versionedSchemasRoot) {
+    throw new Error(
+      'Versioned documentation is required: docs.json, dist/docs, and dist/schemas must be available',
+    );
+  }
+
+  docsVersions = loadDocsVersions(docsConfigPath);
 
   // Find public directory for website pages
   const possiblePublicPaths = [
@@ -621,22 +847,6 @@ export async function initializeDocsIndex(): Promise<void> {
     '/app/server/public',
   ];
 
-  const possibleSchemaPaths = [
-    // From server/src/addie/mcp/ to static schemas
-    path.resolve(__dirname, '../../../../static/schemas/source'),
-    // From dist/addie/mcp/ to static schemas
-    path.resolve(__dirname, '../../../static/schemas/source'),
-    '/app/static/schemas/source',
-  ];
-
-  let docsRoot: string | null = null;
-  for (const p of possibleDocsPaths) {
-    if (fs.existsSync(p)) {
-      docsRoot = p;
-      break;
-    }
-  }
-
   let publicRoot: string | null = null;
   for (const p of possiblePublicPaths) {
     if (fs.existsSync(p)) {
@@ -645,22 +855,27 @@ export async function initializeDocsIndex(): Promise<void> {
     }
   }
 
-  let schemaRoot: string | null = null;
-  for (const p of possibleSchemaPaths) {
-    if (fs.existsSync(p)) {
-      schemaRoot = p;
-      break;
-    }
-  }
-
   const nextDocsIndex: IndexedDoc[] = [];
   const nextHeadingsIndex: IndexedHeading[] = [];
 
-  // Index markdown docs
-  if (docsRoot) {
-    logger.info({ docsRoot }, 'Addie Docs: Indexing documentation');
+  errorCodesByDocsVersion = new Map<string, Set<string> | null>();
+  allKnownErrorCodes = new Set<string>();
+  for (const version of docsVersions) {
+    const schemaRoot = path.join(versionedSchemasRoot, version.artifactVersion);
+    const codes = readVersionErrorCodes(schemaRoot);
+    errorCodesByDocsVersion.set(version.version, codes);
+    codes?.forEach((code) => allKnownErrorCodes.add(code));
+  }
 
-    const markdownFiles = findMarkdownFiles(docsRoot);
+  // Index only explicitly version-independent live docs. Protocol content
+  // comes from the frozen snapshots selected by docs.json below.
+  if (docsRoot) {
+    logger.info({ docsRoot }, 'Addie Docs: Indexing version-independent documentation');
+
+    const markdownFiles = findMarkdownFiles(docsRoot).filter((filePath) => {
+      const relativePath = path.relative(docsRoot, filePath).replace(/\\/g, '/');
+      return VERSION_INDEPENDENT_DOC_PREFIXES.some((prefix) => relativePath.startsWith(prefix));
+    });
 
     for (const filePath of markdownFiles) {
       try {
@@ -697,16 +912,68 @@ export async function initializeDocsIndex(): Promise<void> {
       }
     }
   } else {
-    logger.warn({ paths: possibleDocsPaths }, 'Addie Docs: Could not find docs directory');
+    logger.warn('Addie Docs: Could not find live docs directory; version-independent docs unavailable');
   }
 
-  // Index schema facts separately from prose so callers can retrieve the
-  // complete extracted schema document by its stable schema: ID.
-  if (schemaRoot) {
-    logger.info({ schemaRoot }, 'Addie Docs: Indexing JSON schemas');
-    nextDocsIndex.push(...indexSchemaFiles(schemaRoot));
-  } else {
-    logger.warn({ paths: possibleSchemaPaths }, 'Addie Docs: Could not find schema directory');
+  // Index the exact frozen docs and schemas exposed in Mintlify navigation.
+  for (const version of docsVersions) {
+    const versionDocsRoot = path.join(versionedDocsRoot, version.artifactVersion);
+    const versionSchemaRoot = path.join(versionedSchemasRoot, version.artifactVersion);
+    if (!fs.existsSync(versionDocsRoot) || !fs.existsSync(versionSchemaRoot)) {
+      throw new Error(
+        `Missing Addie search snapshot for ${version.displayName}: ${version.artifactVersion}`,
+      );
+    }
+
+    logger.info(
+      { version: version.version, artifactVersion: version.artifactVersion },
+      'Addie Docs: Indexing frozen protocol documentation',
+    );
+
+    const allowedCodes = errorCodesByDocsVersion.get(version.version) || null;
+    const unavailableErrorCodePattern = buildUnavailableErrorCodePattern(
+      allowedCodes,
+      allKnownErrorCodes,
+    );
+    for (const filePath of findMarkdownFiles(versionDocsRoot)) {
+      const relativePath = path.relative(versionDocsRoot, filePath).replace(/\\/g, '/');
+      const logicalPath = relativePath.replace(/\.(md|mdx)$/, '');
+      if (!version.pagePaths.has(logicalPath)) continue;
+      if (VERSION_INDEPENDENT_DOC_PREFIXES.some((prefix) => relativePath.startsWith(prefix))) continue;
+
+      try {
+        const rawContent = fs.readFileSync(filePath, 'utf-8');
+        const cleanedContent = removeUnavailableErrorCodeLines(
+          cleanContent(rawContent),
+          unavailableErrorCodePattern,
+        );
+        if (cleanedContent.length < 100) continue;
+
+        const title = extractTitle(rawContent, path.basename(filePath));
+        const id = `doc:${version.version}:${logicalPath}`;
+        const sourceUrl = buildVersionedSourceUrl(relativePath, version.artifactVersion);
+        nextDocsIndex.push({
+          id,
+          title,
+          category: extractCategory(filePath, versionDocsRoot),
+          path: relativePath,
+          content: cleanedContent,
+          sourceUrl,
+          version: version.version,
+          artifactVersion: version.artifactVersion,
+        });
+        nextHeadingsIndex.push(...extractHeadings(cleanedContent, id, title, sourceUrl));
+      } catch (error) {
+        logger.warn({ error, filePath }, 'Addie Docs: Failed to index versioned file');
+      }
+    }
+
+    nextDocsIndex.push(...indexSchemaFiles(
+      versionSchemaRoot,
+      version.version,
+      version.artifactVersion,
+      unavailableErrorCodePattern,
+    ));
   }
 
   // Index website HTML pages
@@ -742,6 +1009,7 @@ export async function initializeDocsIndex(): Promise<void> {
 
   docsIndex = nextDocsIndex;
   headingsIndex = nextHeadingsIndex;
+  docsCorpusFingerprint = computeDocsCorpusFingerprint();
   initialized = true;
 
   const categories = [...new Set(docsIndex.map((d) => d.category))];
@@ -752,7 +1020,7 @@ export async function initializeDocsIndex(): Promise<void> {
   const protocolDocCount = docsIndex.length - websiteCount - workingGroupCount - perspectiveCount - schemaCount;
 
   // Warn if protocol docs index seems suspiciously empty (expect 50+ docs)
-  if (docsRoot && protocolDocCount < 10) {
+  if (protocolDocCount < 10) {
     logger.error(
       { protocolDocCount, docsRoot },
       'Addie Docs: Protocol doc count is suspiciously low — search_docs may return incomplete results'
@@ -782,18 +1050,41 @@ export function isDocsIndexReady(): boolean {
 }
 
 /**
+ * Stable digest of the exact in-memory corpus used by search_docs/get_doc.
+ * Replay captures bind to this value so a refresh cannot be mislabeled as
+ * the same evidence source. The corpus itself never leaves this module.
+ */
+export function getDocsCorpusFingerprint(): string | null {
+  return initialized ? docsCorpusFingerprint : null;
+}
+
+/**
  * Search indexed docs using simple keyword matching
  */
 export function searchDocs(
   query: string,
-  options: { category?: string; limit?: number } = {}
+  options: { category?: string; limit?: number; version?: string } = {}
 ): IndexedDoc[] {
   if (!initialized || docsIndex.length === 0) {
     return [];
   }
 
   const limit = options.limit ?? 5;
+  const selectedVersion = resolveDocsVersion(options.version);
+  if (!selectedVersion) return [];
   const queryLower = query.toLowerCase();
+  const allowedErrorCodes = errorCodesByDocsVersion.get(selectedVersion.version);
+  if (allowedErrorCodes) {
+    // Only a literal enum token (for example, `ACCOUNT_REQUIRED`) proves the
+    // caller is asking about that error code. Natural-language wording such
+    // as "is an account required?" must remain searchable.
+    const queryTokens = new Set(queryLower.match(/[a-z0-9_]+/g) || []);
+    const unavailableCodeRequested = [...allKnownErrorCodes].some((code) => {
+      if (allowedErrorCodes.has(code)) return false;
+      return queryTokens.has(code.toLowerCase());
+    });
+    if (unavailableCodeRequested) return [];
+  }
   const queryWords = [...new Set(
     queryLower
       .split(/[^a-z0-9_-]+/)
@@ -816,6 +1107,11 @@ export function searchDocs(
   // Score each document
   const scored = docsIndex
     .filter((doc) => {
+      // Version-independent organization/community material participates in every
+      // search; protocol docs and schemas must match the selected release.
+      if (doc.version && doc.version !== selectedVersion.version) {
+        return false;
+      }
       // Filter by category if specified
       if (options.category && doc.category.toLowerCase() !== options.category.toLowerCase()) {
         return false;
@@ -873,13 +1169,31 @@ export function searchDocs(
  * Accepts the canonical ID (e.g. "doc:media-buy/advanced-topics/targeting")
  * or a bare path without the prefix (e.g. "media-buy/advanced-topics/targeting").
  */
-export function getDocById(id: string): IndexedDoc | null {
-  return docsIndex.find((doc) => doc.id === id)
-    || docsIndex.find((doc) => doc.id === `doc:${id}`)
-    || docsIndex.find((doc) => doc.id === `website:${id}`)
-    || docsIndex.find((doc) => doc.id === `schema:${id.replace(/\.json$/, '')}`)
-    || docsIndex.find((doc) => doc.id === `wg-doc:${id}`)
-    || null;
+export function getDocById(id: string, options: { version?: string } = {}): IndexedDoc | null {
+  const selectedVersion = resolveDocsVersion(options.version);
+  if (!selectedVersion) return null;
+
+  const isAvailable = (doc: IndexedDoc): boolean => (
+    !doc.version || doc.version === selectedVersion.version
+  );
+  const exact = docsIndex.find((doc) => doc.id === id);
+  // A canonical versioned ID is self-scoping. An explicit version argument,
+  // when supplied, still guards against accidental cross-version retrieval.
+  if (exact && (!options.version || isAvailable(exact))) return exact;
+
+  const normalizedPath = id
+    .replace(/^doc:/, '')
+    .replace(/^schema:/, '')
+    .replace(/\.json$/, '');
+  const candidates = [
+    `doc:${selectedVersion.version}:${normalizedPath}`,
+    `schema:${selectedVersion.version}:${normalizedPath}`,
+    `doc:${id}`,
+    `website:${id}`,
+    `wg-doc:${id}`,
+  ];
+
+  return docsIndex.find((doc) => candidates.includes(doc.id) && isAvailable(doc)) || null;
 }
 
 /**
@@ -917,19 +1231,25 @@ export function getHeadingCount(): number {
  */
 export function searchHeadings(
   query: string,
-  options: { docId?: string; limit?: number } = {}
+  options: { docId?: string; limit?: number; version?: string } = {}
 ): IndexedHeading[] {
   if (!initialized || headingsIndex.length === 0) {
     return [];
   }
 
   const limit = options.limit ?? 5;
+  const selectedVersion = resolveDocsVersion(options.version);
+  if (!selectedVersion) return [];
   const queryLower = query.toLowerCase();
   const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
 
   // Score each heading
   const scored = headingsIndex
     .filter((heading) => {
+      const parentDoc = docsIndex.find((doc) => doc.id === heading.doc_id);
+      if (parentDoc?.version && parentDoc.version !== selectedVersion.version) {
+        return false;
+      }
       // Filter by doc if specified
       if (options.docId && heading.doc_id !== options.docId) {
         return false;
@@ -1083,6 +1403,7 @@ export async function refreshWorkingGroupDocs(): Promise<void> {
     const workingGroupDocs = await loadWorkingGroupDocuments();
     const nonWgDocs = docsIndex.filter((doc) => !doc.id.startsWith('wg-doc:'));
     docsIndex = [...nonWgDocs, ...workingGroupDocs];
+    docsCorpusFingerprint = computeDocsCorpusFingerprint();
     logger.info({ count: workingGroupDocs.length }, 'Addie Docs: Refreshed working group documents');
   } catch (error) {
     logger.warn({ error }, 'Addie Docs: Failed to refresh working group documents');

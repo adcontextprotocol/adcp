@@ -123,7 +123,15 @@ test('audio and radio guidance preserves loudness and normalization semantics', 
   assert.match(radio, /Standardized audio quartile and completion tag events use `audio_daast`/);
 });
 
-test('radio guide is present in live documentation navigation', () => {
+test('radio guide is present in the 3.2 beta documentation navigation', () => {
   const docsConfig = readJson(path.join(ROOT, 'docs.json'));
-  assert.match(JSON.stringify(docsConfig.navigation), /docs\/creative\/channels\/radio/);
+  const betaNavigation = docsConfig.navigation.versions.find(
+    version => version.version === '3.2-beta'
+  );
+
+  assert.ok(betaNavigation, '3.2-beta navigation must exist');
+  assert.match(
+    JSON.stringify(betaNavigation),
+    /dist\/docs\/3\.2\.0-beta\.\d+\/creative\/channels\/radio/
+  );
 });
