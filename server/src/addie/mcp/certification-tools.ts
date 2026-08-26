@@ -608,20 +608,23 @@ function buildShareLinks(
   const lines: string[] = [];
   const year = awardedDate.getFullYear();
   const month = awardedDate.getMonth() + 1;
+  let linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
+    + `&name=${encodeURIComponent(credName)}`
+    + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
+    + `&issueYear=${year}&issueMonth=${month}`;
 
   if (certifierPublicId) {
-    const certUrl = `https://credsverse.com/credentials/${certifierPublicId}`;
-    const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
-      + `&name=${encodeURIComponent(credName)}`
-      + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
-      + `&issueYear=${year}&issueMonth=${month}`
-      + `&certId=${encodeURIComponent(certifierPublicId)}`
+    const encodedPublicId = encodeURIComponent(certifierPublicId);
+    const certUrl = `https://credsverse.com/credentials/${encodedPublicId}`;
+    linkedInUrl += `&certId=${encodeURIComponent(certifierPublicId)}`
       + `&certUrl=${encodeURIComponent(certUrl)}`;
 
     lines.push(`- [View and share your credential](${certUrl})`);
-    lines.push(`- [Add to LinkedIn profile](${linkedInUrl})`);
   }
 
+  // LinkedIn's certification form remains available without a third-party
+  // credential URL, even though LinkedIn no longer autofills these fields.
+  lines.push(`- [Add to LinkedIn profile](${linkedInUrl})`);
   lines.push('- [View all credentials](/certification.html)');
   return lines;
 }
