@@ -34,6 +34,12 @@ import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, has
 import type { AddieInputAttachment } from './chat-attachments.js';
 import type { ModelExecution } from './model-providers/model-provider.js';
 import {
+  buildAddieProviderTools,
+  buildAddieWireTools,
+  mergeAddieToolDefinitions,
+} from './tool-wire-shape.js';
+import { assembleAddieFallbackPrompt, assembleAddieSystemPrompt } from './prompt-assembly.js';
+import {
   MAX_OUTPUT_LENGTH,
   formatTruncatedOutput,
 } from './security.js';
@@ -854,11 +860,11 @@ export class AddieClaudeClient {
     try {
       const basePrompt = loadRules();
       const responseStyle = loadResponseStyle();
-      const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${responseStyle}`;
+      const prompt = assembleAddieSystemPrompt(basePrompt, ADDIE_TOOL_REFERENCE, responseStyle);
       return { prompt };
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
-      const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+      const fallbackPrompt = assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE);
       return { prompt: fallbackPrompt };
     }
   }
@@ -1101,9 +1107,11 @@ export class AddieClaudeClient {
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()]
-      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allTools = mergeAddieToolDefinitions(
+      this.tools,
+      requestTools?.tools,
+      options?.allowedToolNames,
+    );
     const allHandlers = new Map(
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
@@ -1131,24 +1139,11 @@ export class AddieClaudeClient {
       toAnthropicMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
-    const customTools: Anthropic.Tool[] = allTools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
-    }
+    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
 
     const firstInvocationTools = [
       ...customTools,
-      ...(requestWebSearchEnabled ? [{
-        type: 'web_search_20250305' as const,
-        name: 'web_search' as const,
-      }] : []),
+      ...buildAddieProviderTools(requestWebSearchEnabled),
     ];
 
     return {
@@ -2161,9 +2156,11 @@ export class AddieClaudeClient {
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()]
-      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allTools = mergeAddieToolDefinitions(
+      this.tools,
+      requestTools?.tools,
+      options?.allowedToolNames,
+    );
     const allHandlers = new Map(
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
@@ -2211,17 +2208,7 @@ export class AddieClaudeClient {
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
-    const customTools: Anthropic.Tool[] = allTools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
-    }
+    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
