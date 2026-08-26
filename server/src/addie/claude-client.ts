@@ -30,7 +30,12 @@ import {
   formatCapExceededMessage,
   type UserTier,
 } from './claude-cost-tracker.js';
-import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
+import {
+  EMPTY_RESPONSE_FALLBACK,
+  applyResponsePipeline,
+  stripBannedRituals,
+  hasPersonaCollapse,
+} from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
 import type { ModelExecution } from './model-providers/model-provider.js';
 import {
@@ -93,16 +98,19 @@ interface PreparedProviderRequest {
 
 const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
-const SONNET_5_MAX_OUTPUT_TOKENS = 16_384;
+const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
 
-function addieModelOutputControls(model: string): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
+function addieModelOutputControls(
+  model: string,
+  maxOutputTokens?: number,
+): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
   if (/^claude-sonnet-5(?:-|$)/.test(model)) {
     return {
-      max_tokens: SONNET_5_MAX_OUTPUT_TOKENS,
+      max_tokens: Math.min(SONNET_5_MAX_OUTPUT_TOKENS, maxOutputTokens ?? SONNET_5_MAX_OUTPUT_TOKENS),
       output_config: { effort: 'medium' },
     };
   }
-  return { max_tokens: DEFAULT_MAX_OUTPUT_TOKENS };
+  return { max_tokens: Math.min(DEFAULT_MAX_OUTPUT_TOKENS, maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) };
 }
 
 function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
@@ -172,22 +180,23 @@ function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopA
 /**
  * A successful first turn is safe to resample only when it has no visible
  * answer and every provider block is side-effect-free. Sonnet 5 may return
- * private thinking (or a blank text block) before an otherwise empty
- * `end_turn`; those bytes must neither block recovery nor reach logs. Unknown,
- * tool, server-tool, and result blocks remain fail-closed.
+ * private thinking or allowlisted ritual-only text before an otherwise empty
+ * `end_turn`; those bytes must neither block recovery nor reach logs. Persona
+ * disclosures may contain semantic refusals, so they are not retryable.
+ * Unknown, tool, server-tool, and result blocks remain fail-closed.
  */
 function isSideEffectFreeEmptyEndTurn(
   response: Pick<Anthropic.Beta.BetaMessage, 'stop_reason' | 'content'>,
   visibleText: string,
 ): boolean {
-  if (response.stop_reason !== 'end_turn' || visibleText.trim().length > 0) {
+  const deliverableText = stripBannedRituals(visibleText);
+  if (response.stop_reason !== 'end_turn' || deliverableText.trim().length > 0) {
     return false;
   }
 
   return response.content.every((block) => {
     switch (block.type) {
       case 'text':
-        return block.text.trim().length === 0;
       case 'thinking':
       case 'redacted_thinking':
         return true;
@@ -1166,13 +1175,14 @@ export class AddieClaudeClient {
     systemBlocks: Anthropic.TextBlockParam[],
     tools: Array<Record<string, unknown>>,
     messages: Anthropic.MessageParam[],
+    maxOutputTokens?: number,
   ) {
     return {
       model: effectiveModel,
       // Sonnet 5 defaults to high-effort adaptive thinking, and max_tokens
       // covers both reasoning and visible output. Medium effort plus a larger
       // cap keeps tool-heavy chat from spending the whole request on thinking.
-      ...addieModelOutputControls(effectiveModel),
+      ...addieModelOutputControls(effectiveModel, maxOutputTokens),
       system: systemBlocks,
       tools,
       messages,
@@ -1373,6 +1383,7 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools as unknown as Array<Record<string, unknown>>,
             messages,
+            isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
           await this.notifyInvocationPrepared(
             options,
@@ -1618,7 +1629,7 @@ export class AddieClaudeClient {
         // safe because no assistant response has reached the caller yet.
         if (
           response.stop_reason === 'end_turn'
-          && !rawText
+          && isSideEffectFreeEmptyEndTurn(response, rawText)
           && hasExecutedCustomTool
           && !retriedEmptyPostToolResponse
           && iteration < maxIterations
@@ -2241,7 +2252,10 @@ export class AddieClaudeClient {
             const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
             const providerRequest: PreparedProviderRequest = {
               model: effectiveModel,
-              ...addieModelOutputControls(effectiveModel),
+              ...addieModelOutputControls(
+                effectiveModel,
+                isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              ),
               system: systemBlocks,
               tools: invocationTools as unknown as Array<Record<string, unknown>>,
               messages,
@@ -2507,12 +2521,11 @@ export class AddieClaudeClient {
             continue;
           }
 
-          // No deltas were emitted for this iteration, so retrying the same
-          // post-tool turn once cannot duplicate text in streaming clients.
+          // Logical-turn buffering means no text from this iteration has been
+          // emitted, so retrying ritual-only output cannot duplicate text.
           if (
             currentResponse.stop_reason === 'end_turn'
-            && !iterationText.trim()
-            && receivedDeltaCount === 0
+            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
             && toolExecutions.length > 0
             && !retriedEmptyPostToolResponse
             && iteration < maxIterations
