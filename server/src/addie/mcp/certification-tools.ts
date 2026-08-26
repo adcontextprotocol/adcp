@@ -3021,7 +3021,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.8 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.11 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3036,7 +3036,7 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-beta.8 test-mcp get_products '{"adcp_version":"3.2-beta.6","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@14.0.0-beta.11 test-mcp get_products '{"adcp_version":"3.2-beta.6","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.

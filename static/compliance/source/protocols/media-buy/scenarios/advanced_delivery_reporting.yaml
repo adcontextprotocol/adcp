@@ -90,7 +90,7 @@ phases:
         sample_request:
           accounts:
             - brand:
-                domain: "advanced-reporting.example"
+                domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
               billing: "operator"
               payment_terms: "net_30"
@@ -116,7 +116,7 @@ phases:
             required_metrics: ["time_based_views"]
           account:
             brand:
-              domain: "advanced-reporting.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         context_outputs:
           - name: advanced_product_id
@@ -144,10 +144,10 @@ phases:
         stateful: true
         sample_request:
           brand:
-            domain: "advanced-reporting.example"
+            domain: "acmeoutdoor.example"
           account:
             brand:
-              domain: "advanced-reporting.example"
+            domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -203,7 +203,7 @@ phases:
         sample_request:
           account:
             brand:
-              domain: "advanced-reporting.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           media_buy_ids: ["$context.advanced_media_buy_id"]
           requested_metrics: ["time_based_views"]

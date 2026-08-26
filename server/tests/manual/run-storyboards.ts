@@ -215,15 +215,11 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
 const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
     'webhook_emission',
-    'adcontextprotocol/adcp-client#2653: the packaged loopback webhook runner does not complete and exhausts the hosted runner memory envelope before returning a result. Remove when webhook_emission completes with bounded memory.',
-  ],
-  [
-    'wholesale_feed_products_scope_isolation',
-    'adcontextprotocol/adcp-client#2654: the packaged storyboard path projects the reserved account-overlay request as cache_scope public rather than account and retains excessive memory. Direct training-agent account-overlay coverage remains green. Remove when the packaged runner preserves the account scope.',
+    'The beta.11 packaged webhook receiver bounds shutdown memory and retry capture, but the current webhook_emission run still exceeds the isolated runner\'s 120-second result deadline. Remove when the storyboard returns a result inside the runner budget.',
   ],
   [
     'wholesale_feed_signals_scope_isolation',
-    'adcontextprotocol/adcp-client#2654: the packaged storyboard path replaces the reserved account-overlay identity with the test-kit brand, so the agent correctly resolves cache_scope public. Direct account-overlay coverage remains green. Remove when the packaged runner preserves the step account scope.',
+    'The beta.11 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
   ],
   [
     'media_buy_seller/refine_finalize_exclusivity',

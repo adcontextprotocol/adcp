@@ -144,7 +144,7 @@ phases:
                   domain: "data-cloud.example"
           account:
             brand:
-              domain: "audience-activation.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
         validations:
@@ -179,7 +179,7 @@ phases:
                   domain: "wrong-data-cloud.example"
           account:
             brand:
-              domain: "audience-activation.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
         validations:
@@ -207,7 +207,7 @@ phases:
               - pattern: "sync_audiences"
           account:
             brand:
-              domain: "audience-activation.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
         validations:
@@ -236,7 +236,7 @@ phases:
               - pattern: "dataset_query"
           account:
             brand:
-              domain: "audience-activation.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
         validations:
