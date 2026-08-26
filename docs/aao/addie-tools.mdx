@@ -959,11 +959,11 @@ Get statistics about industry feeds - total feeds, active feeds, articles collec
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-### `get_platform_stats`
+### `query_admin_analytics`
 
-Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.
+Query one read-only administrative analytics view: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement.
 
-*Source: `server/src/addie/mcp/admin-tools.ts`*
+*Source: `server/src/addie/mcp/admin-analytics.ts`*
 
 ### `list_feed_proposals`
 
@@ -1131,24 +1131,6 @@ Mark a task/reminder as done. Can complete by company name, org ID, or all overd
 ### `log_conversation`
 
 Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `get_member_search_analytics`
-
-Get analytics about member searches and introductions.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_organizations_by_users`
-
-List organizations ranked by user count (website + Slack-only).
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_users_by_engagement`
-
-List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
