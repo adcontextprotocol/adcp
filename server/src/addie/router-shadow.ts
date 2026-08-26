@@ -29,13 +29,14 @@ import {
   type StrictRouterPlan,
 } from './router.js';
 
-export const ROUTER_SHADOW_POLICY_VERSION = 'addie-router-luna-shadow:v1';
+export const ROUTER_SHADOW_POLICY_VERSION = 'addie-router-luna-shadow:v2';
 export const ROUTER_SHADOW_PRICING_VERSION = 'openai-gpt-5.6-luna-2026-08-26';
 export const ROUTER_SHADOW_PRIMARY_PRICING_VERSION = 'anthropic-router-2026-08';
 export const ROUTER_SHADOW_MIN_COMPARISON_SAMPLES = 30;
 export const ROUTER_SHADOW_RETENTION_DAYS = 8;
 export const ROUTER_SHADOW_TIMEOUT_MS = 120_000;
 export const ROUTER_SHADOW_MAX_REQUEST_BYTES = 65_536;
+export const ROUTER_SHADOW_MAX_CHANNELS = 4;
 
 // Official standard pricing checked 2026-08-26:
 // https://developers.openai.com/api/docs/models/gpt-5.6-luna
@@ -141,9 +142,12 @@ function resolveRouterShadowCohort(
     ROUTER_SHADOW_RESERVED_COST_MICROS,
     10_000_000,
   );
+  const channelsValid = channels.length >= 1
+    && channels.length <= ROUTER_SHADOW_MAX_CHANNELS
+    && new Set(channels).size === channels.length
+    && channels.every((channel) => /^C[A-Z0-9]{8,}$/.test(channel));
   if (
-    channels.length !== 1
-    || !/^C[A-Z0-9]{8,}$/.test(channels[0] ?? '')
+    !channelsValid
     || !hmacKey
     || hmacKey.length < 32
     || !hmacKeyVersion
@@ -157,7 +161,7 @@ function resolveRouterShadowCohort(
   ) {
     return { selected: false, reason: 'invalid_configuration' };
   }
-  if (channels[0] !== input.channelId) {
+  if (!channels.includes(input.channelId)) {
     return { selected: false, reason: 'channel_not_allowlisted' };
   }
 
@@ -179,7 +183,7 @@ function resolveRouterShadowCohort(
       hmacKey,
       hmacKeyVersion,
       openAiApiKey,
-      channelId: channels[0],
+      channelId: input.channelId,
       sampleBps,
       dailyLimit,
       dailyBudgetMicros,
