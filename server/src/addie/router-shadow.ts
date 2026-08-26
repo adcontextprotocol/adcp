@@ -525,17 +525,17 @@ export async function maintainRouterShadowAttempts(
   const result = await runQuery<{ recovered: string; purged: string }>(
     `WITH stale AS (
        UPDATE addie_router_shadow_attempts
-       SET status = 'error', reason = 'stale_interrupted', completed_at = $1,
+       SET status = 'error', reason = 'stale_interrupted', completed_at = $1::timestamptz,
            completion_hmac = NULL
        WHERE status = 'running'
-         AND selected_at < $1 - INTERVAL '15 minutes'
-         AND retained_until > $1
+         AND selected_at < $1::timestamptz - INTERVAL '15 minutes'
+         AND retained_until > $1::timestamptz
        RETURNING attempt_id
      ), purged AS (
-       DELETE FROM addie_router_shadow_attempts WHERE retained_until <= $1
+       DELETE FROM addie_router_shadow_attempts WHERE retained_until <= $1::timestamptz
        RETURNING attempt_id
      ), purged_admissions AS (
-       DELETE FROM addie_router_shadow_daily_admissions WHERE retained_until <= $1
+       DELETE FROM addie_router_shadow_daily_admissions WHERE retained_until <= $1::timestamptz
        RETURNING admission_date
      )
      SELECT (SELECT COUNT(*)::text FROM stale) AS recovered,

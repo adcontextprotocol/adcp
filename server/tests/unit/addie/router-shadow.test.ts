@@ -475,7 +475,10 @@ describe('Luna router shadow', () => {
       now: new Date('2026-08-26T12:00:00.000Z'),
     })).resolves.toEqual({ recovered: 2, purged: 1 });
     expect(runQuery.mock.calls[0][0]).not.toContain(SECRET_PROMPT);
-    expect(runQuery.mock.calls[0][0]).toContain('retained_until > $1');
+    expect(runQuery.mock.calls[0][0]).toContain('retained_until > $1::timestamptz');
+    expect(runQuery.mock.calls[0][0]).toContain(
+      "selected_at < $1::timestamptz - INTERVAL '15 minutes'",
+    );
   });
 });
 
