@@ -99,6 +99,10 @@ interface PreparedProviderRequest {
 const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
 const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
+// The Anthropic SDK rejects non-streaming requests whose calculated timeout
+// may exceed ten minutes. Sonnet 5 at 32k crosses that guard; streaming does
+// not, so keep the larger budget there and cap only non-streaming calls.
+const SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS = 16_384;
 
 function addieModelOutputControls(
   model: string,
@@ -1177,12 +1181,18 @@ export class AddieClaudeClient {
     messages: Anthropic.MessageParam[],
     maxOutputTokens?: number,
   ) {
+    const safeMaxOutputTokens = /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
+      ? Math.min(
+        SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
+        maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
+      )
+      : maxOutputTokens;
     return {
       model: effectiveModel,
       // Sonnet 5 defaults to high-effort adaptive thinking, and max_tokens
-      // covers both reasoning and visible output. Medium effort plus a larger
-      // cap keeps tool-heavy chat from spending the whole request on thinking.
-      ...addieModelOutputControls(effectiveModel, maxOutputTokens),
+      // covers both reasoning and visible output. Non-streaming requests must
+      // also remain below the SDK's ten-minute safety threshold.
+      ...addieModelOutputControls(effectiveModel, safeMaxOutputTokens),
       system: systemBlocks,
       tools,
       messages,
