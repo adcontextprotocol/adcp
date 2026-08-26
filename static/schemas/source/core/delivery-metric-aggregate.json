@@ -16,8 +16,24 @@
           "description": "Standard metric from the closed `available-metric.json` enum."
         },
         "metric_id": {
-          "$ref": "/schemas/enums/available-metric.json",
-          "description": "Identifier for the standard metric. Container tokens (e.g., `viewability`, `quartile_data`, `dooh_metrics`) MUST NOT appear here — an aggregate row carries a single numeric `value`, and leaf identities exist for exactly that purpose (e.g., `viewable_rate`, `quartile_75`)."
+          "description": "Identifier for a scalar standard metric. Container tokens and structured distribution identities are committed and selected through their canonical carriers, not represented as numeric aggregate rows.",
+          "allOf": [
+            {
+              "$ref": "/schemas/enums/available-metric.json"
+            },
+            {
+              "not": {
+                "enum": [
+                  "viewability",
+                  "viewed_seconds_percentiles",
+                  "viewed_seconds_histogram",
+                  "quartile_data",
+                  "time_based_views",
+                  "dooh_metrics"
+                ]
+              }
+            }
+          ]
         },
         "qualifier": {
           "type": "object",
