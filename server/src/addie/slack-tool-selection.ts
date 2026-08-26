@@ -59,6 +59,16 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
   return selected;
 }
 
+/** Normalize Slack conversation privacy, including DM shapes that omit is_private. */
+export function resolveSlackChannelPrivacy(channel: {
+  is_im?: boolean;
+  is_mpim?: boolean;
+  is_private?: boolean;
+}): boolean | null {
+  if (channel.is_im === true || channel.is_mpim === true) return true;
+  return typeof channel.is_private === 'boolean' ? channel.is_private : null;
+}
+
 /** Resolve privacy-sensitive channel context without exposing resolver errors. */
 export async function resolveRequiredSlackChannelContext<
   T extends { viewing_channel_is_private?: boolean },

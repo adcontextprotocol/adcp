@@ -3,6 +3,7 @@ import {
   ADMIN_CHANNEL_WG_SLUG,
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
+  resolveSlackChannelPrivacy,
   selectSlackToolSets,
   SYSTEM_CHANNEL_TOOL_SETS,
   type SystemChannelRole,
@@ -107,6 +108,16 @@ describe('Slack tool-set selection policy', () => {
       'C456',
       async () => ({ viewing_channel_is_private: true }),
     )).resolves.toEqual({ viewing_channel_is_private: true });
+  });
+
+  it.each([
+    ['DM', { is_im: true }, true],
+    ['multi-person DM', { is_mpim: true }, true],
+    ['public channel', { is_private: false }, false],
+    ['private channel', { is_private: true }, true],
+    ['unclassified partial response', { name: 'unknown' }, null],
+  ] as const)('normalizes %s privacy', (_label, channel, expected) => {
+    expect(resolveSlackChannelPrivacy(channel)).toBe(expected);
   });
 
   it('fails closed when channel privacy is absent from partial context', async () => {

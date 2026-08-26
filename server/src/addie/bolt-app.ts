@@ -240,6 +240,7 @@ import {
   ADMIN_CHANNEL_WG_SLUG,
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
+  resolveSlackChannelPrivacy,
   selectSlackToolSets,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
@@ -675,7 +676,10 @@ export async function buildChannelContext(channelId: string): Promise<Partial<Th
     const channelInfo = await getChannelInfo(channelId);
     if (channelInfo) {
       context.viewing_channel_name = channelInfo.name;
-      context.viewing_channel_is_private = channelInfo.is_private;
+      const channelPrivacy = resolveSlackChannelPrivacy(channelInfo);
+      if (channelPrivacy !== null) {
+        context.viewing_channel_is_private = channelPrivacy;
+      }
       if (channelInfo.purpose?.value) {
         context.viewing_channel_description = channelInfo.purpose.value;
       }
