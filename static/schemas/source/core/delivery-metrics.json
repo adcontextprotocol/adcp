@@ -321,7 +321,7 @@
       "x-adcp-validation": {
         "verifier_constraints": {
           "viewed_seconds_percentile_order": "p25 <= p50 <= p75 <= p90 <= p95",
-          "viewed_seconds_histogram_bounds": "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; only the final bucket may omit upper_bound_seconds",
+          "viewed_seconds_histogram_bounds": "buckets are ordered by lower_bound_seconds; each bounded bucket has upper_bound_seconds > lower_bound_seconds; buckets do not overlap; gaps between buckets are permitted only when zero impressions fall in the gap (enforced by the sum-equals-measurable_impressions rule, not a separate contiguity check); only the final bucket may omit upper_bound_seconds",
           "viewed_seconds_histogram_population": "sum(bucket.impressions) equals measurable_impressions"
         },
         "spec": "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
@@ -387,7 +387,7 @@
         },
         "viewed_seconds_histogram": {
           "type": "array",
-          "description": "Bucketed counts of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. Buckets MUST be ordered by ascending lower bound, MUST NOT overlap, and MUST partition every impression in the same `measurable_impressions` population exactly once; therefore the sum of `impressions` MUST equal `measurable_impressions`. Each bucket is half-open `[lower_bound_seconds, upper_bound_seconds)`; only the final bucket MAY omit `upper_bound_seconds`, representing an unbounded upper range. Sellers choose boundaries, but buyers MUST combine histograms only when the complete boundary sequence, measurement vendor, and viewability `standard` match. The structured metric identity `viewed_seconds_histogram` makes this optional surface discoverable and requestable; it is not sortable and this nested array remains the canonical carrier.",
+          "description": "Bucketed counts of the per-impression in-view durations whose arithmetic mean is reported in `viewed_seconds`. Buckets MUST be ordered by ascending lower bound, MUST NOT overlap, and MUST partition every impression in the same `measurable_impressions` population exactly once; therefore the sum of `impressions` MUST equal `measurable_impressions`. Buckets need not be contiguous: a gap between consecutive bucket boundaries is permitted when no impressions fall within that range — the sum constraint enforces this implicitly, and validators MUST NOT independently require contiguity. Each bucket is half-open `[lower_bound_seconds, upper_bound_seconds)`; only the final bucket MAY omit `upper_bound_seconds`, representing an unbounded upper range. Sellers choose boundaries, but buyers MUST combine histograms only when the complete boundary sequence, measurement vendor, and viewability `standard` match. The structured metric identity `viewed_seconds_histogram` makes this optional surface discoverable and requestable; it is not sortable and this nested array remains the canonical carrier.",
           "minItems": 1,
           "items": {
             "type": "object",
