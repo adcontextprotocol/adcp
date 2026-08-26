@@ -11,20 +11,21 @@ import {
   buildRouterModelRequest,
   buildRoutingPrompt,
   extractRouterResponseText,
+  parseStrictRouterPlan,
+  RouterPlanParseError,
   type ConfidenceTier,
+  type RouterAction,
   type RoutingContext,
+  type StrictRouterPlan,
 } from '../router.js';
 import { getValidToolSetNames } from '../tool-sets.js';
 
-export type RouterAction = 'ignore' | 'react' | 'respond';
-export interface StrictRouterPlan {
-  action: RouterAction;
-  reason: string;
-  emoji?: string;
-  tool_sets?: string[];
-  confidence?: ConfidenceTier;
-  requires_depth?: boolean;
-}
+export {
+  parseStrictRouterPlan,
+  RouterPlanParseError,
+  type RouterAction,
+  type StrictRouterPlan,
+} from '../router.js';
 
 export type RouterEvalTerminalStatus =
   | 'valid_plan'
@@ -107,91 +108,6 @@ export const ROUTER_PLAN_SCHEMA = Object.freeze({
   required: ['action', 'reason', 'emoji', 'tool_sets', 'confidence', 'requires_depth'],
   additionalProperties: false,
 }) as unknown as Readonly<JsonObject>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export class RouterPlanParseError extends Error {
-  constructor(
-    readonly category: 'invalid_json' | 'schema_invalid',
-    message: string,
-    readonly unauthorizedToolSetAttempt = false,
-    readonly invalidToolSetAttempt = false,
-  ) {
-    super(message);
-    this.name = 'RouterPlanParseError';
-  }
-}
-
-/** Strict eval parser. It intentionally does not apply production's fallback plan. */
-export function parseStrictRouterPlan(text: string, isAdmin: boolean): StrictRouterPlan {
-  let parsed: unknown;
-  try {
-    // Match production's transport-level normalization (models often wrap
-    // otherwise valid JSON in a markdown fence) while retaining stricter
-    // schema and authorization validation below.
-    let jsonText = text.trim();
-    if (jsonText.startsWith('```')) {
-      jsonText = jsonText.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-    }
-    parsed = JSON.parse(jsonText);
-  } catch {
-    throw new RouterPlanParseError('invalid_json', 'Router response is not JSON');
-  }
-  if (!isRecord(parsed) || typeof parsed.action !== 'string' || typeof parsed.reason !== 'string' || !parsed.reason.trim()) {
-    throw new RouterPlanParseError('schema_invalid', 'Router response has invalid base fields');
-  }
-  const keys = Object.keys(parsed).sort();
-  const fullShape = keys.join(',') === 'action,confidence,emoji,reason,requires_depth,tool_sets';
-  if (parsed.action === 'ignore') {
-    if (
-      keys.join(',') !== 'action,reason'
-      && !(fullShape && parsed.emoji === null && Array.isArray(parsed.tool_sets) && parsed.tool_sets.length === 0 && parsed.confidence === null && parsed.requires_depth === null)
-    ) throw new RouterPlanParseError('schema_invalid', 'Ignore response has invalid fields');
-    return { action: 'ignore', reason: parsed.reason };
-  }
-  if (parsed.action === 'react') {
-    const sparse = keys.join(',') === 'action,emoji,reason';
-    const full = fullShape && Array.isArray(parsed.tool_sets) && parsed.tool_sets.length === 0 && parsed.confidence === null && parsed.requires_depth === null;
-    if ((!sparse && !full) || typeof parsed.emoji !== 'string' || !parsed.emoji.trim()) {
-      throw new RouterPlanParseError('schema_invalid', 'React response is invalid');
-    }
-    return { action: 'react', emoji: parsed.emoji, reason: parsed.reason };
-  }
-  if (parsed.action !== 'respond') throw new RouterPlanParseError('schema_invalid', 'Unknown router action');
-  const sparseRespond = keys.join(',') === 'action,confidence,reason,requires_depth,tool_sets';
-  if (!sparseRespond && !(fullShape && parsed.emoji === null)) {
-    throw new RouterPlanParseError('schema_invalid', 'Respond response has invalid fields');
-  }
-  if (
-    !Array.isArray(parsed.tool_sets)
-    || parsed.tool_sets.some((tool) => typeof tool !== 'string')
-    || new Set(parsed.tool_sets).size !== parsed.tool_sets.length
-    || !['high', 'suggest', 'low'].includes(String(parsed.confidence))
-    || typeof parsed.requires_depth !== 'boolean'
-  ) throw new RouterPlanParseError('schema_invalid', 'Respond response is invalid');
-  const allowed = getValidToolSetNames(isAdmin);
-  if (parsed.tool_sets.some((tool) => !allowed.has(tool))) {
-    const allKnown = getValidToolSetNames(true);
-    const invalidToolSetAttempt = parsed.tool_sets.some((tool) => !allKnown.has(tool));
-    const unauthorizedToolSetAttempt = !isAdmin
-      && parsed.tool_sets.some((tool) => allKnown.has(tool) && !allowed.has(tool));
-    throw new RouterPlanParseError(
-      'schema_invalid',
-      'Respond response requests an unauthorized or unknown tool set',
-      unauthorizedToolSetAttempt,
-      invalidToolSetAttempt,
-    );
-  }
-  return {
-    action: 'respond',
-    tool_sets: parsed.tool_sets as string[],
-    confidence: parsed.confidence as ConfidenceTier,
-    requires_depth: parsed.requires_depth,
-    reason: parsed.reason,
-  };
-}
 
 const dm = (message: string): RoutingContext => ({ message, source: 'dm' });
 const channel = (message: string, channelName = 'general'): RoutingContext => ({ message, source: 'channel', channelName });
