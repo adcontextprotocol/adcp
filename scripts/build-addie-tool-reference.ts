@@ -391,6 +391,7 @@ function main() {
   const toolFiles = fs.readdirSync(MCP_DIR)
     .filter(f => (f.endsWith('-tools.ts') && f !== 'story-tools.ts')
       || f === 'knowledge-search.ts'
+      || f === 'admin-analytics.ts'
       || f === 'google-docs.ts')
     .map(f => path.join(MCP_DIR, f))
     .sort();

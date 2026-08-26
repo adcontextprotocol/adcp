@@ -551,8 +551,9 @@ describe('TOOL_SETS.admin', () => {
   });
 
   it('should include engagement analytics tools', () => {
-    expect(adminSet.tools).toContain('list_users_by_engagement');
-    expect(adminSet.tools).toContain('get_member_search_analytics');
+    expect(adminSet.tools).toContain('query_admin_analytics');
+    expect(adminSet.tools).not.toContain('list_users_by_engagement');
+    expect(adminSet.tools).not.toContain('get_member_search_analytics');
   });
 
   it('should include working group membership tools', () => {

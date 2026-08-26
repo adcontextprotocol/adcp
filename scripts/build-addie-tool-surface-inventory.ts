@@ -463,7 +463,6 @@ function buildLegacyProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>):
   } = defs;
   const globalTools = [
     ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...admin.ADMIN_TOOLS,
     ...directory.DIRECTORY_TOOLS,
     ...schema.SCHEMA_TOOLS,
     ...brand.BRAND_TOOLS,

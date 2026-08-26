@@ -201,14 +201,8 @@ export async function initializeAddie(): Promise<void> {
   // Billing tools are registered per-request in createUserScopedTools
   // to allow filtering them out in channel mentions (prevents enrollment pitching)
 
-  // Register admin tools (available to admin users only - enforced via instructions)
-  const adminHandlers = createAdminToolHandlers();
-  for (const tool of ADMIN_TOOLS) {
-    const handler = adminHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Admin definitions and handlers are request-scoped after verified admin
+  // authorization. Never register principal-scoped tools on the shared client.
 
   // Register directory tools (lookup members, agents, publishers)
   const directoryHandlers = createDirectoryToolHandlers();
