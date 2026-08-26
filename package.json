@@ -162,7 +162,8 @@
     "dev:docs": "node scripts/dev-docs.mjs",
     "docs:example-coverage": "node scripts/docs-example-coverage.cjs",
     "docs:json-field-audit": "node scripts/docs-json-field-audit.cjs",
-    "eval:addie-router-providers": "tsx --import dotenv/config server/tests/manual/provider-router-eval.ts"
+    "eval:addie-router-providers": "tsx --import dotenv/config server/tests/manual/provider-router-eval.ts",
+    "eval:addie-google-read-only-tools": "tsx --import dotenv/config server/tests/manual/provider-read-only-tool-loop.ts"
   },
   "dependencies": {
     "@adcp/sdk": "14.0.0-beta.8",
