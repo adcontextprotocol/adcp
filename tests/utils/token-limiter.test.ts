@@ -11,6 +11,7 @@ import {
   estimateToolTokens,
   trimConversationHistory,
   getConversationTokenLimit,
+  getResponseTokenReserve,
   checkContextLimit,
   formatTokenCount,
   MODEL_CONTEXT_LIMITS,
@@ -183,7 +184,12 @@ describe('getConversationTokenLimit', () => {
 
   it('should return model-specific limit minus reserved tokens', () => {
     const limit = getConversationTokenLimit('claude-sonnet-5');
-    expect(limit).toBe(MODEL_CONTEXT_LIMITS['claude-sonnet-5'] - RESERVED_TOKENS);
+    expect(limit).toBe(
+      MODEL_CONTEXT_LIMITS['claude-sonnet-5']
+      - RESERVED_TOKENS
+      - getResponseTokenReserve('claude-sonnet-5')
+      + TOKEN_BUFFERS.responseBuffer,
+    );
   });
 
   it('should use default for unknown models', () => {
@@ -198,7 +204,7 @@ describe('getConversationTokenLimit', () => {
     // Expected: model limit - (system prompt + tool tokens + prepended context + response buffer + safety margin)
     const expectedToolTokens = estimateToolTokens(toolCount);
     const expectedReserved = TOKEN_BUFFERS.systemPrompt + expectedToolTokens +
-      TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer + TOKEN_BUFFERS.safetyMargin;
+      TOKEN_BUFFERS.prependedContext + getResponseTokenReserve('claude-sonnet-5') + TOKEN_BUFFERS.safetyMargin;
     const expectedLimit = MODEL_CONTEXT_LIMITS['claude-sonnet-5'] - expectedReserved;
 
     expect(limit).toBe(expectedLimit);
@@ -242,6 +248,14 @@ describe('checkContextLimit', () => {
     // Total should include prepended context buffer and response buffer
     expect(result.estimatedTotal).toBe(10000 + 20000 + 5000 + TOKEN_BUFFERS.prependedContext + TOKEN_BUFFERS.responseBuffer);
     expect(result.modelLimit).toBe(MODEL_CONTEXT_LIMITS.default);
+  });
+
+  it('should reserve the full Sonnet 5 response budget', () => {
+    const result = checkContextLimit(10000, 20000, 5000, 'claude-sonnet-5');
+
+    expect(result.estimatedTotal).toBe(
+      10000 + 20000 + 5000 + TOKEN_BUFFERS.prependedContext + 32768,
+    );
   });
 });
 

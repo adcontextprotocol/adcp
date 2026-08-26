@@ -30,8 +30,20 @@ import {
   formatCapExceededMessage,
   type UserTier,
 } from './claude-cost-tracker.js';
-import { EMPTY_RESPONSE_FALLBACK, applyResponsePipeline, stripBannedRituals, hasPersonaCollapse } from './response-postprocess.js';
+import {
+  EMPTY_RESPONSE_FALLBACK,
+  applyResponsePipeline,
+  stripBannedRituals,
+  hasPersonaCollapse,
+} from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
+import type { ModelExecution } from './model-providers/model-provider.js';
+import {
+  buildAddieProviderTools,
+  buildAddieWireTools,
+  mergeAddieToolDefinitions,
+} from './tool-wire-shape.js';
+import { assembleAddieFallbackPrompt, assembleAddieSystemPrompt } from './prompt-assembly.js';
 import {
   MAX_OUTPUT_LENGTH,
   formatTruncatedOutput,
@@ -86,16 +98,23 @@ interface PreparedProviderRequest {
 
 const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
-const SONNET_5_MAX_OUTPUT_TOKENS = 16_384;
+const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
+// The Anthropic SDK rejects non-streaming requests whose calculated timeout
+// may exceed ten minutes. Sonnet 5 at 32k crosses that guard; streaming does
+// not, so keep the larger budget there and cap only non-streaming calls.
+const SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS = 16_384;
 
-function addieModelOutputControls(model: string): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
+function addieModelOutputControls(
+  model: string,
+  maxOutputTokens?: number,
+): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
   if (/^claude-sonnet-5(?:-|$)/.test(model)) {
     return {
-      max_tokens: SONNET_5_MAX_OUTPUT_TOKENS,
+      max_tokens: Math.min(SONNET_5_MAX_OUTPUT_TOKENS, maxOutputTokens ?? SONNET_5_MAX_OUTPUT_TOKENS),
       output_config: { effort: 'medium' },
     };
   }
-  return { max_tokens: DEFAULT_MAX_OUTPUT_TOKENS };
+  return { max_tokens: Math.min(DEFAULT_MAX_OUTPUT_TOKENS, maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) };
 }
 
 function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
@@ -160,6 +179,54 @@ function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopA
       throw new Error(`Unhandled Anthropic stop reason: ${String(exhaustiveReason)}`);
     }
   }
+}
+
+/**
+ * A successful first turn is safe to resample only when it has no visible
+ * answer and every provider block is side-effect-free. Sonnet 5 may return
+ * private thinking or allowlisted ritual-only text before an otherwise empty
+ * `end_turn`; those bytes must neither block recovery nor reach logs. Persona
+ * disclosures may contain semantic refusals, so they are not retryable.
+ * Unknown, tool, server-tool, and result blocks remain fail-closed.
+ */
+function isSideEffectFreeEmptyEndTurn(
+  response: Pick<Anthropic.Beta.BetaMessage, 'stop_reason' | 'content'>,
+  visibleText: string,
+): boolean {
+  const deliverableText = stripBannedRituals(visibleText);
+  if (response.stop_reason !== 'end_turn' || deliverableText.trim().length > 0) {
+    return false;
+  }
+
+  return response.content.every((block) => {
+    switch (block.type) {
+      case 'text':
+      case 'thinking':
+      case 'redacted_thinking':
+        return true;
+      default:
+        return false;
+    }
+  });
+}
+
+function boundedContentTypes(
+  content: Anthropic.Beta.BetaMessage['content'],
+): string[] {
+  const categories = content.map((block) => {
+    switch (block.type) {
+      case 'text':
+      case 'thinking':
+      case 'redacted_thinking':
+      case 'tool_use':
+      case 'server_tool_use':
+      case 'web_search_tool_result':
+        return block.type;
+      default:
+        return 'other';
+    }
+  });
+  return [...new Set(categories)].sort();
 }
 
 /**
@@ -456,13 +523,21 @@ function applyResponsePipelineWithEmptyMonitoring(
   // Fires only when Addie broke character and the deterministic backstop had
   // to scrub a model/provider disclosure — rare by design. A rising rate means
   // the prompt-level identity rule is slipping (e.g. after a model change).
-  if (hasPersonaCollapse(rawText)) {
+  const personaCollapsed = hasPersonaCollapse(rawText);
+  if (personaCollapsed) {
     logger.warn(
       { toolExecutionCount: toolExecutions.length },
       'Addie: persona-collapse disclosure scrubbed from response',
     );
   }
-  return { text: applyResponsePipeline(question, rawText), reason: null };
+  const text = applyResponsePipeline(question, rawText);
+  if (personaCollapsed && text === EMPTY_RESPONSE_FALLBACK) {
+    return {
+      text,
+      reason: 'Empty response after persona-collapse safety rewrite',
+    };
+  }
+  return { text, reason: null };
 }
 
 interface FinalizedAssistantText {
@@ -674,6 +749,8 @@ export interface AddieResponse {
   active_rule_ids?: number[];
   /** Configuration version ID for this interaction */
   config_version_id?: number;
+  /** Provider execution identity or an explicit local-response classification. */
+  model_execution: ModelExecution;
   /** Timing breakdown for each phase of processing */
   timing?: {
     system_prompt_ms: number;
@@ -690,6 +767,30 @@ export interface AddieResponse {
   };
   capacity?: {
     certification_reserve_used: boolean;
+  };
+}
+
+function anthropicModelExecution(model: string, requestedModel: string): ModelExecution {
+  return {
+    source: 'provider',
+    requested_provider: 'anthropic',
+    requested_model: requestedModel,
+    provider: 'anthropic',
+    model,
+    model_resolution: model === requestedModel ? 'exact' : 'provider_canonicalized',
+    fallback_reason: null,
+  };
+}
+
+function localModelExecution(
+  reason: Extract<ModelExecution, { source: 'local' }>['reason'],
+  requestedModel: string,
+): ModelExecution {
+  return {
+    source: 'local',
+    requested_provider: 'anthropic',
+    requested_model: requestedModel,
+    reason,
   };
 }
 
@@ -772,11 +873,11 @@ export class AddieClaudeClient {
     try {
       const basePrompt = loadRules();
       const responseStyle = loadResponseStyle();
-      const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${responseStyle}`;
+      const prompt = assembleAddieSystemPrompt(basePrompt, ADDIE_TOOL_REFERENCE, responseStyle);
       return { prompt };
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
-      const fallbackPrompt = `${ADDIE_FALLBACK_PROMPT}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+      const fallbackPrompt = assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE);
       return { prompt: fallbackPrompt };
     }
   }
@@ -1019,9 +1120,11 @@ export class AddieClaudeClient {
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map((tool) => [tool.name, tool])).values()]
-      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allTools = mergeAddieToolDefinitions(
+      this.tools,
+      requestTools?.tools,
+      options?.allowedToolNames,
+    );
     const allHandlers = new Map(
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
@@ -1049,24 +1152,11 @@ export class AddieClaudeClient {
       toAnthropicMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
-    const customTools: Anthropic.Tool[] = allTools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
-    }
+    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
 
     const firstInvocationTools = [
       ...customTools,
-      ...(requestWebSearchEnabled ? [{
-        type: 'web_search_20250305' as const,
-        name: 'web_search' as const,
-      }] : []),
+      ...buildAddieProviderTools(requestWebSearchEnabled),
     ];
 
     return {
@@ -1089,13 +1179,20 @@ export class AddieClaudeClient {
     systemBlocks: Anthropic.TextBlockParam[],
     tools: Array<Record<string, unknown>>,
     messages: Anthropic.MessageParam[],
+    maxOutputTokens?: number,
   ) {
+    const safeMaxOutputTokens = /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
+      ? Math.min(
+        SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
+        maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
+      )
+      : maxOutputTokens;
     return {
       model: effectiveModel,
       // Sonnet 5 defaults to high-effort adaptive thinking, and max_tokens
-      // covers both reasoning and visible output. Medium effort plus a larger
-      // cap keeps tool-heavy chat from spending the whole request on thinking.
-      ...addieModelOutputControls(effectiveModel),
+      // covers both reasoning and visible output. Non-streaming requests must
+      // also remain below the SDK's ten-minute safety threshold.
+      ...addieModelOutputControls(effectiveModel, safeMaxOutputTokens),
       system: systemBlocks,
       tools,
       messages,
@@ -1154,6 +1251,7 @@ export class AddieClaudeClient {
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
     const operationalExecution = !isEvaluationExecution(options);
+    const requestedModel = options?.modelOverride ?? this.model;
 
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
@@ -1197,6 +1295,12 @@ export class AddieClaudeClient {
           tool_executions: [],
           flagged: true,
           flag_reason: 'cost_cap_exceeded',
+          model_execution: {
+            source: 'local',
+            requested_provider: 'anthropic',
+            requested_model: requestedModel,
+            reason: 'cost_cap_exceeded',
+          },
         };
       }
     }
@@ -1289,6 +1393,7 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools as unknown as Array<Record<string, unknown>>,
             messages,
+            isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
           await this.notifyInvocationPrepared(
             options,
@@ -1469,6 +1574,9 @@ export class AddieClaudeClient {
             iteration,
             originalLength: rawText.length,
             deliveredLength: text.length,
+            contentTypes: boundedContentTypes(response.content),
+            outputTokens: response.usage?.output_tokens,
+            thinkingTokens: response.usage?.output_tokens_details?.thinking_tokens,
           },
           'Addie: Anthropic stopped before response completion',
         );
@@ -1487,6 +1595,9 @@ export class AddieClaudeClient {
           flag_reason: `Response truncated: ${response.stop_reason}`,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
+          model_execution: finalized.emptyReason
+            ? localModelExecution('no_provider_response', effectiveModel)
+            : anthropicModelExecution(response.model, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1515,7 +1626,7 @@ export class AddieClaudeClient {
           && !retriedEmptyInitialResponse
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
-          && response.content.length === 0
+          && isSideEffectFreeEmptyEndTurn(response, rawText)
           && iteration < maxIterations
         ) {
           retriedEmptyInitialResponse = true;
@@ -1528,7 +1639,7 @@ export class AddieClaudeClient {
         // safe because no assistant response has reached the caller yet.
         if (
           response.stop_reason === 'end_turn'
-          && !rawText
+          && isSideEffectFreeEmptyEndTurn(response, rawText)
           && hasExecutedCustomTool
           && !retriedEmptyPostToolResponse
           && iteration < maxIterations
@@ -1597,6 +1708,9 @@ export class AddieClaudeClient {
           flag_reason: flagReason ?? undefined,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
+          model_execution: finalized.emptyReason
+            ? localModelExecution('no_provider_response', effectiveModel)
+            : anthropicModelExecution(response.model, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1690,7 +1804,7 @@ export class AddieClaudeClient {
 
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
           const textContent = response.content.find((c) => c.type === 'text');
-          const rawText = textContent && textContent.type === 'text' ? textContent.text : "I'm not sure how to help with that.";
+          const rawText = textContent && textContent.type === 'text' ? textContent.text : '';
           const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
           const text = finalized.text;
           if (finalized.emptyReason) {
@@ -1720,6 +1834,9 @@ export class AddieClaudeClient {
             flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
             active_rule_ids: undefined,
             config_version_id: configVersionId ?? undefined,
+            model_execution: finalized.emptyReason
+              ? localModelExecution('no_provider_response', effectiveModel)
+              : anthropicModelExecution(response.model, effectiveModel),
             timing: {
               system_prompt_ms: systemPromptMs,
               total_llm_ms: totalLlmMs,
@@ -1919,6 +2036,7 @@ export class AddieClaudeClient {
       flag_reason: 'Max tool iterations reached',
       active_rule_ids: undefined,
       config_version_id: configVersionId ?? undefined,
+      model_execution: localModelExecution('canned_response', effectiveModel),
       timing: {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
@@ -1947,6 +2065,7 @@ export class AddieClaudeClient {
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
     const operationalExecution = !isEvaluationExecution(options);
+    const requestedModel = options?.modelOverride ?? this.model;
 
     // #2950: matching fail-closed warn on the stream path.
     if (operationalExecution && !options?.costScope && !options?.uncapped) {
@@ -1991,6 +2110,12 @@ export class AddieClaudeClient {
             tool_executions: [],
             flagged: true,
             flag_reason: 'cost_cap_exceeded',
+            model_execution: {
+              source: 'local',
+              requested_provider: 'anthropic',
+              requested_model: requestedModel,
+              reason: 'cost_cap_exceeded',
+            },
           },
         };
         return;
@@ -2052,9 +2177,11 @@ export class AddieClaudeClient {
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
-    const allToolsRaw = [...this.tools, ...(requestTools?.tools || [])];
-    const allTools = [...new Map(allToolsRaw.map(t => [t.name, t])).values()]
-      .filter((tool) => !allowedToolNames || allowedToolNames.has(tool.name));
+    const allTools = mergeAddieToolDefinitions(
+      this.tools,
+      requestTools?.tools,
+      options?.allowedToolNames,
+    );
     const allHandlers = new Map(
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
@@ -2102,22 +2229,13 @@ export class AddieClaudeClient {
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
-    const customTools: Anthropic.Tool[] = allTools.map(t => ({
-      name: t.name,
-      description: t.description,
-      input_schema: t.input_schema as Anthropic.Tool['input_schema'],
-    }));
-    if (customTools.length > 0) {
-      customTools[customTools.length - 1] = {
-        ...customTools[customTools.length - 1],
-        cache_control: { type: 'ephemeral' },
-      };
-    }
+    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
     let retriedEmptyInitialResponse = false;
     let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
+    let lastProviderModel: string | undefined;
 
       while (iteration < maxIterations) {
         iteration++;
@@ -2144,7 +2262,10 @@ export class AddieClaudeClient {
             const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
             const providerRequest: PreparedProviderRequest = {
               model: effectiveModel,
-              ...addieModelOutputControls(effectiveModel),
+              ...addieModelOutputControls(
+                effectiveModel,
+                isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              ),
               system: systemBlocks,
               tools: invocationTools as unknown as Array<Record<string, unknown>>,
               messages,
@@ -2180,6 +2301,7 @@ export class AddieClaudeClient {
             }
 
             streamSucceeded = true;
+            lastProviderModel = currentResponse.model;
             if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
           } catch (streamError) {
             if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
@@ -2357,6 +2479,9 @@ export class AddieClaudeClient {
               originalLength: logicalText.length,
               deliveredLength: finalized.text.length,
               localCapExceeded: finalized.lengthExceeded,
+              contentTypes: boundedContentTypes(currentResponse.content),
+              outputTokens: currentResponse.usage?.output_tokens,
+              thinkingTokens: currentResponse.usage?.output_tokens_details?.thinking_tokens,
             },
             'Addie Stream: Response stopped before completion',
           );
@@ -2372,6 +2497,9 @@ export class AddieClaudeClient {
               flag_reason: `Response truncated: ${currentResponse.stop_reason}`,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
+              model_execution: finalized.emptyReason
+                ? localModelExecution('no_provider_response', effectiveModel)
+                : anthropicModelExecution(currentResponse.model, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2394,9 +2522,7 @@ export class AddieClaudeClient {
             && !retriedEmptyInitialResponse
             && toolExecutions.length === 0
             && logicalText.length === 0
-            && iterationText.trim().length === 0
-            && receivedDeltaCount === 0
-            && currentResponse.content.length === 0
+            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
             && iteration < maxIterations
           ) {
             retriedEmptyInitialResponse = true;
@@ -2405,12 +2531,11 @@ export class AddieClaudeClient {
             continue;
           }
 
-          // No deltas were emitted for this iteration, so retrying the same
-          // post-tool turn once cannot duplicate text in streaming clients.
+          // Logical-turn buffering means no text from this iteration has been
+          // emitted, so retrying ritual-only output cannot duplicate text.
           if (
             currentResponse.stop_reason === 'end_turn'
-            && !iterationText.trim()
-            && receivedDeltaCount === 0
+            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
             && toolExecutions.length > 0
             && !retriedEmptyPostToolResponse
             && iteration < maxIterations
@@ -2464,6 +2589,9 @@ export class AddieClaudeClient {
               flag_reason: flagReason ?? undefined,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
+              model_execution: finalized.emptyReason
+                ? localModelExecution('no_provider_response', effectiveModel)
+                : anthropicModelExecution(currentResponse.model, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2508,6 +2636,9 @@ export class AddieClaudeClient {
                 flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
                 active_rule_ids: undefined,
                 config_version_id: configVersionId ?? undefined,
+                model_execution: finalized.emptyReason
+                  ? localModelExecution('no_provider_response', effectiveModel)
+                  : anthropicModelExecution(currentResponse.model, effectiveModel),
                 timing: {
                   system_prompt_ms: systemPromptMs,
                   total_llm_ms: totalLlmMs,
@@ -2752,6 +2883,9 @@ export class AddieClaudeClient {
           flag_reason: 'Max tool iterations reached',
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
+          model_execution: logicalText && lastProviderModel
+            ? anthropicModelExecution(lastProviderModel, effectiveModel)
+            : localModelExecution('canned_response', effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,

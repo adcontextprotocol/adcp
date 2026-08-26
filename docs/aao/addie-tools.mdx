@@ -30,6 +30,12 @@ Get the full content of a specific documentation page by ID. Canonical IDs retur
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
 
+### `search_repos`
+
+Search indexed external GitHub repositories for ad tech specifications and protocols. Includes: AdCP (core protocol spec, sales agent, signals agent, JS/Python/Go clients), A2A (Google Agent-to-Agent protocol and samples), MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), Prebid (full documentation site with configuration guides, bidder adapter docs, ad ops workflows, GAM integration, troubleshooting, Prebid Mobile, and video; plus Prebid.js source with module docs, and Prebid Server source), and LangGraph. Use this for protocol details, spec comparisons, implementation examples, and SDK usage.
+
+*Source: `server/src/addie/mcp/knowledge-search.ts`*
+
 ### `search_slack`
 
 Search Slack messages from public channels in the AAO workspace. Use this when you need community discussions, Q&A threads, or real-world implementation examples. When asked about a specific channel or working group (e.g., "Governance working group"), use the channel parameter to filter results. When asked to summarize discussions, search for relevant keywords then synthesize the results. Cite the Slack permalink when using information from results.
@@ -215,6 +221,12 @@ Attach a file (image, PDF) to a published perspective. Fetches from a URL and st
 Save a useful web resource to the knowledge base for future reference. Use this when you find valuable external content during web search that would be helpful for future questions. The content will be fetched, summarized, and indexed.
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
+
+### `draft_social_posts`
+
+Draft social media posts for the member based on an article or topic. In 'suggest' mode, find recent articles worth posting about and pitch them with member-specific angles. In 'draft' mode, generate 2 LinkedIn options and 1 X/Twitter option personalized to the member's company, role, and expertise. Use when a member asks for help writing a social post, or asks what they should be posting about. Do NOT use for general social media strategy advice or questions about social platforms.
+
+*Source: `server/src/addie/mcp/social-draft-tools.ts`*
 
 ### `list_committee_documents`
 
@@ -429,6 +441,31 @@ Run a compliance storyboard against the adopter MCP server connected to this Add
 ## adcp_operations
 
 Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.
+
+### `ask_about_adcp_task`
+
+Search AdCP protocol documentation for task parameters, workflows, concepts, or buyer rules. Call this BEFORE call_adcp_task when you need full parameter shapes for an uncommon task, or when an adcp_error response leaves you unsure how to recover.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+### `call_adcp_task`
+
+Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.
+Does NOT include capability discovery — use the `get_adcp_capabilities` tool directly for that (it is not a task).
+
+Two rules a search round-trip cannot rescue you from after a mutating call:
+• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.
+• On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.
+
+Full buyer rules: ask_about_adcp_task with area="buyer".
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+### `get_adcp_capabilities`
+
+Discover an agent's AdCP protocol support and capabilities. Returns supported tasks, domains, features, and configuration.
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
 
 ### `save_agent`
 
@@ -922,11 +959,11 @@ Get statistics about industry feeds - total feeds, active feeds, articles collec
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-### `get_platform_stats`
+### `query_admin_analytics`
 
-Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.
+Query one read-only administrative analytics view: platform totals, member-search performance, organizations ranked by user count, or people ranked by engagement.
 
-*Source: `server/src/addie/mcp/admin-tools.ts`*
+*Source: `server/src/addie/mcp/admin-analytics.ts`*
 
 ### `list_feed_proposals`
 
@@ -1094,24 +1131,6 @@ Mark a task/reminder as done. Can complete by company name, org ID, or all overd
 ### `log_conversation`
 
 Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `get_member_search_analytics`
-
-Get analytics about member searches and introductions.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_organizations_by_users`
-
-List organizations ranked by user count (website + Slack-only).
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_users_by_engagement`
-
-List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1373,6 +1392,19 @@ Finalize a specialist capstone. If the learner has demonstrated mastery (interna
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
+### `call_adcp_task`
+
+Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.
+Does NOT include capability discovery — use the `get_adcp_capabilities` tool directly for that (it is not a task).
+
+Two rules a search round-trip cannot rescue you from after a mutating call:
+• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.
+• On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.
+
+Full buyer rules: ask_about_adcp_task with area="buyer".
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
 ## Always available
 
 These tools are reachable in every conversation regardless of router intent. Both authenticated and anonymous users can use them when their handlers permit.
@@ -1512,9 +1544,21 @@ Ask the author to revise and resubmit content. The article stays visible in the 
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
+### `read_google_doc`
+
+Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with ${...}).
+
+*Source: `server/src/addie/mcp/google-docs.ts`*
+
 ### `check_illustration_status`
 
 Check if a perspective article has an editorial illustration and whether the author can generate one.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `generate_perspective_illustration`
+
+Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
 
 *Source: `server/src/addie/mcp/illustration-tools.ts`*
 
@@ -1807,6 +1851,12 @@ Check if the current member has an illustrated portrait, and whether they can ge
 
 *Source: `server/src/addie/mcp/portrait-tools.ts`*
 
+### `offer_portrait_generation`
+
+Explain the portrait generation feature to the member and provide a link to generate their portrait. Members upload a headshot and pick a vibe (at-my-desk, on-stage, in-a-studio, boardroom, casual). The result is an illustrated graphic novel portrait in amber/gold tones.
+
+*Source: `server/src/addie/mcp/portrait-tools.ts`*
+
 ### `check_property_list`
 
 Check a list of publisher domains against the AAO registry. Returns a summary of issues and a report URL for full details. Domains are automatically normalized (www/m stripped), duplicates removed, and known ad tech infrastructure flagged.
@@ -1872,16 +1922,4 @@ End the current SI session with a brand agent. Use when user is done talking to 
 Check if there's an active SI session and get its current status.
 
 *Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `lookup_cast`
-
-Look up a fictional character or AI agent from the AdCP universe. Returns their role, company, personality, story appearances, and related protocol walkthroughs.
-
-*Source: `server/src/addie/mcp/story-tools.ts`*
-
-### `lookup_story`
-
-Look up an AdCP story. Returns title, synopsis, featured characters, related protocol walkthroughs, and links.
-
-*Source: `server/src/addie/mcp/story-tools.ts`*
 

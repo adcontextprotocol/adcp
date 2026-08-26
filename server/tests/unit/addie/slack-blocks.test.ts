@@ -6,6 +6,7 @@ import {
   planStreamStopFailureFallback,
   resolveStreamTurnCompletion,
   summarizeSlackStreamError,
+  STREAM_COMPLETION_MISSING_NOTICE,
   STREAM_DELIVERY_UNCERTAIN_NOTICE,
   SLACK_SECTION_MRKDWN_LIMIT,
   SLACK_SECTION_HARD_LIMIT,
@@ -275,6 +276,26 @@ describe('resolveStreamTurnCompletion', () => {
       kind: 'persist', response: { text: 'fallback' }, source: 'fallback',
     });
     expect(createFallback).toHaveBeenCalledOnce();
+  });
+
+  it('does not persist unverified provider text when the done receipt is missing', () => {
+    const partialProviderText = 'SENTINEL partial provider response';
+    const completion = resolveStreamTurnCompletion(false, undefined, () => ({
+      text: STREAM_COMPLETION_MISSING_NOTICE,
+      model_execution: {
+        source: 'local' as const,
+        requested_provider: 'anthropic' as const,
+        requested_model: 'claude-sonnet-5',
+        reason: 'no_provider_response' as const,
+      },
+    }));
+
+    expect(completion).toMatchObject({
+      kind: 'persist',
+      source: 'fallback',
+      response: { text: STREAM_COMPLETION_MISSING_NOTICE },
+    });
+    expect(JSON.stringify(completion)).not.toContain(partialProviderText);
   });
 
   it('never persists a response after an interruption', () => {

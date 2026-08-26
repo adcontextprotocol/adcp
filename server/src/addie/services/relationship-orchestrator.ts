@@ -279,6 +279,9 @@ async function persistSlackThreadMessage(options: {
     thread_id: thread.thread_id,
     role: 'assistant',
     content: options.text,
+    model_execution: {
+      source: 'local', requested_provider: null, requested_model: null, reason: 'canned_response',
+    },
   });
 }
 
@@ -305,6 +308,9 @@ async function persistEmailThreadMessage(options: {
     thread_id: thread.thread_id,
     role: 'assistant',
     content: formatEmailMessageForThread(options.subject, options.text),
+    model_execution: {
+      source: 'local', requested_provider: null, requested_model: null, reason: 'canned_response',
+    },
   });
 }
 

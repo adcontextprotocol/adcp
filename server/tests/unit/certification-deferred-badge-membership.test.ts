@@ -118,4 +118,33 @@ describe('deferred certification badge membership gate', () => {
     });
     expect(result).toContain('Credential earned: AdCP Practitioner!');
   });
+
+  it('returns a LinkedIn profile link when an earned credential has no external badge configured', async () => {
+    mocks.checkAndAwardCredentials.mockResolvedValue(['decision_makers']);
+    mocks.getCredentials.mockResolvedValue([{
+      id: 'decision_makers',
+      name: 'AdCP for Decision-Makers',
+      tier: 1,
+      certifier_group_id: null,
+    }]);
+    mocks.getUserCredentials.mockResolvedValue([]);
+
+    const handlers = createCertificationToolHandlers({
+      is_member: false,
+      workos_user: {
+        workos_user_id: 'user_decision_maker',
+        email: 'learner@example.test',
+        first_name: 'Test',
+        last_name: 'Learner',
+      },
+    } as any);
+
+    const result = await handlers.get('check_credentials')?.({});
+
+    expect(result).toContain('Credential earned: AdCP for Decision-Makers!');
+    expect(result).toContain('[Add to LinkedIn profile](https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME');
+    expect(result).toContain('&name=AdCP%20for%20Decision-Makers');
+    expect(result).not.toContain('&certId=');
+    expect(mocks.ensureCertifierCredential).not.toHaveBeenCalled();
+  });
 });

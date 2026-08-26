@@ -6,6 +6,7 @@ import type {
   NormalizedModelEvent,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
+  buildRouterEvalRequest,
   evaluateRouterCase,
   MODEL_ROUTER_CORPUS,
   parseStrictRouterPlan,
@@ -17,10 +18,14 @@ import {
   summarizeRouterEval,
   SYNTHETIC_ROUTER_CORPUS,
 } from '../../../src/addie/testing/provider-router-eval.js';
-import { AddieRouter, buildRoutingPrompt } from '../../../src/addie/router.js';
+import {
+  AddieRouter,
+  buildRouterModelRequest,
+  buildRoutingPrompt,
+} from '../../../src/addie/router.js';
 import { getValidToolSetNames } from '../../../src/addie/tool-sets.js';
 
-function fakeProvider(text: string, finishReason: 'stop' | 'length' | 'refusal' = 'stop'): ModelProvider {
+function fakeProvider(text: string | string[], finishReason: 'stop' | 'length' | 'refusal' = 'stop'): ModelProvider {
   return {
     id: 'openai',
     capabilities: {
@@ -50,13 +55,16 @@ function fakeProvider(text: string, finishReason: 'stop' | 'length' | 'refusal' 
     }),
     async *respond(request: ModelRequest, options?: ModelRespondOptions): AsyncIterable<NormalizedModelEvent> {
       await options?.beforeDispatch?.(this.prepare(request));
+      const textBlocks = Array.isArray(text) ? text : text ? [text] : [];
       yield { type: 'response_start', provider: 'openai', model: request.model, id: 'id' };
-      if (text) yield { type: 'text_delta', index: 0, text };
+      for (const [index, block] of textBlocks.entries()) {
+        yield { type: 'text_delta', index, text: block };
+      }
       yield {
         type: 'response_complete',
         response: {
           provider: 'openai', model: request.model, id: 'id',
-          content: text ? [{ type: 'text', text }] : [],
+          content: textBlocks.map((block) => ({ type: 'text' as const, text: block })),
           finishReason, providerFinishReason: finishReason,
           usage: { inputTokens: 10, outputTokens: 4 },
         },
@@ -66,6 +74,69 @@ function fakeProvider(text: string, finishReason: 'stop' | 'length' | 'refusal' 
 }
 
 describe('strict router eval', () => {
+  it('returns the production plan even when its detached observer rejects', async () => {
+    const provider = fakeProvider(
+      '{"action":"ignore","reason":"authoritative"}',
+    );
+    const observer = vi.fn(async () => {
+      throw new Error('shadow failed');
+    });
+    const plan = await new AddieRouter('unused', provider).route(
+      { message: 'route this', source: 'channel' },
+      { observer },
+    );
+    expect(plan).toMatchObject({ action: 'ignore', reason: 'authoritative' });
+    expect(observer).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(observer).toHaveBeenCalledOnce();
+  });
+
+  it('observes the exact primary request and terminal provider failure without changing fallback', async () => {
+    const provider = fakeProvider('unused');
+    provider.respond = async function* (request, options) {
+      await options?.beforeDispatch?.(this.prepare(request));
+      throw new Error('private provider failure');
+    };
+    const observer = vi.fn();
+    const plan = await new AddieRouter('unused', provider).route(
+      { message: 'route failure safely', source: 'channel' },
+      { observer },
+    );
+    expect(plan).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(observer).toHaveBeenCalledWith(expect.objectContaining({
+      requestedProvider: 'openai',
+      returnedProvider: null,
+      primaryErrorCategory: 'provider_error',
+      primaryInvocation: expect.objectContaining({
+        provider: 'openai',
+        providerRequest: expect.objectContaining({ marker: 'actual-dispatch' }),
+      }),
+      canonicalRequest: expect.objectContaining({
+        model: 'claude-haiku-4-5',
+        tools: [],
+      }),
+    }));
+  });
+
+  it('uses the exact production request for the prompt-parity profile', () => {
+    const testCase = MODEL_ROUTER_CORPUS[0];
+    expect(buildRouterEvalRequest('router-model', 'prompt_parity', testCase))
+      .toEqual(buildRouterModelRequest(testCase.context, 'router-model'));
+  });
+
+  it('scores only the first response block, matching production routing', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'off-topic')!;
+    const result = await evaluateRouterCase(fakeProvider([
+      '{"action":"ignore","reason":"first block wins"}',
+      '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","requires_depth":false,"reason":"ignored"}',
+    ]), 'router-model', 'prompt_parity', testCase);
+
+    expect(result.status).toBe('valid_plan');
+    expect(result.plan).toEqual({ action: 'ignore', reason: 'first block wins' });
+    expect(result.scores.actionExact).toBe(true);
+  });
+
   it('uses a frozen synthetic corpus covering every tool set', () => {
     expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(39);
     expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(39);
