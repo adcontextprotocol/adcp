@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "5acc51e8ab204b5043ee416bcf3d1a48fa94ee8d7e1c5e5a7f71d39f93445a1b",
-  "profile_contract_sha256": "761dcbd0dd9ebefbbefb62a475472bf479cae4e11fc16e50aa2acb9f588a8465",
+  "profile_ids_sha256": "79957b57d370335967ead65eec0cb71fc81c3d469d222169f9319e6c3a3306a8",
+  "profile_contract_sha256": "f3ac0fa74e7fe520eb2ae537bc4c0d7f515c5fb23cb90ad8b490c529b8e964df",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -66,6 +66,7 @@
     "slack_bolt:private_channel_member": { "custom_tool_count": 148, "wire_schema_bytes": 125095, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt:public_channel_admin": { "custom_tool_count": 209, "wire_schema_bytes": 161050, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt:public_channel_member": { "custom_tool_count": 147, "wire_schema_bytes": 124622, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "slack_bolt:system_channel_admin": { "custom_tool_count": 217, "wire_schema_bytes": 167053, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "tavus_voice:admin": { "custom_tool_count": 220, "wire_schema_bytes": 162700, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "tavus_voice:baseline": { "custom_tool_count": 19, "wire_schema_bytes": 12383, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "tavus_voice:committee_leader": { "custom_tool_count": 132, "wire_schema_bytes": 104901, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
