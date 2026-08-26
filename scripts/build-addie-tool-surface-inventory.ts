@@ -12,6 +12,13 @@ import {
   mergeAddieToolDefinitions,
 } from '../server/src/addie/tool-wire-shape.js';
 import { assembleAddieSystemPrompt } from '../server/src/addie/prompt-assembly.js';
+import {
+  ADMIN_CHANNEL_WG_SLUG,
+  selectSlackToolSets,
+  SYSTEM_CHANNEL_TOOL_SETS,
+  type SlackToolSource,
+  type SystemChannelRole,
+} from '../server/src/addie/slack-tool-selection.js';
 
 interface BudgetFile {
   schema_version: 4;
@@ -261,23 +268,34 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   const memberRequest = buildRequest(false, false);
   const adminRequest = buildRequest(true, false);
   const publicRequest = buildRequest(false, true);
-  const surfaces = [
-    { audience: 'member_dm', isAdmin: false, isPublic: false, forceAdmin: false, available: memberRequest },
-    { audience: 'admin_dm', isAdmin: true, isPublic: false, forceAdmin: true, available: adminRequest },
-    { audience: 'private_channel_member', isAdmin: false, isPublic: false, forceAdmin: false, available: memberRequest },
-    { audience: 'private_channel_admin', isAdmin: true, isPublic: false, forceAdmin: false, available: adminRequest },
-    { audience: 'admin_working_group', isAdmin: true, isPublic: false, forceAdmin: true, available: adminRequest },
-    { audience: 'public_channel_member', isAdmin: false, isPublic: true, forceAdmin: false, available: publicRequest },
-    { audience: 'public_channel_admin', isAdmin: true, isPublic: true, forceAdmin: false, available: buildRequest(true, true) },
+  const surfaces: Array<{
+    audience: string;
+    source: SlackToolSource;
+    isAdmin: boolean;
+    isPublic: boolean;
+    workingGroupSlug?: string;
+    available: AddieTool[];
+  }> = [
+    { audience: 'member_dm', source: 'dm', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'admin_dm', source: 'dm', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'private_channel_member', source: 'channel', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'private_channel_admin', source: 'channel', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'admin_working_group', source: 'channel', isAdmin: true, isPublic: false, workingGroupSlug: ADMIN_CHANNEL_WG_SLUG, available: adminRequest },
+    { audience: 'public_channel_member', source: 'channel', isAdmin: false, isPublic: true, available: publicRequest },
+    { audience: 'public_channel_admin', source: 'channel', isAdmin: true, isPublic: true, available: buildRequest(true, true) },
   ];
   const profiles: Profile[] = [];
 
   for (const surface of surfaces) {
     for (const [setName, set] of Object.entries(toolSets.TOOL_SETS)) {
       if (!surface.isAdmin && set.adminOnly) continue;
-      const selectedSets = surface.forceAdmin
-        ? [...new Set([setName, 'admin'])]
-        : [setName];
+      const selectedSets = selectSlackToolSets({
+        routerSelectedSets: [setName],
+        routerAvailable: true,
+        source: surface.source,
+        isAdmin: surface.isAdmin,
+        workingGroupSlug: surface.workingGroupSlug,
+      });
       const allowed = new Set(toolSets.getToolsForSets(
         selectedSets,
         surface.isAdmin,
@@ -307,8 +325,15 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
       .filter(([, set]) => surface.isAdmin || !set.adminOnly)
       .map(([name]) => name);
+    const selectedAllValidSets = selectSlackToolSets({
+      routerSelectedSets: allValidSets,
+      routerAvailable: true,
+      source: surface.source,
+      isAdmin: surface.isAdmin,
+      workingGroupSlug: surface.workingGroupSlug,
+    });
     const allAllowed = new Set(toolSets.getToolsForSets(
-      allValidSets,
+      selectedAllValidSets,
       surface.isAdmin,
       surface.isPublic,
     ));
@@ -317,7 +342,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       runtime: 'slack_bolt',
       audience: surface.audience,
       route: 'all_valid_sets_maximum',
-      selectedToolSets: allValidSets,
+      selectedToolSets: selectedAllValidSets,
       globalTools,
       requestTools: surface.available.filter((tool) => allAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -329,26 +354,80 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         'nonstreaming_web_search',
       ],
     }));
-    const certificationSets = ['certification', 'knowledge'];
-    const certificationAllowed = new Set(toolSets.getToolsForSets(
-      certificationSets,
+    const fallbackSets = selectSlackToolSets({
+      routerAvailable: false,
+      source: surface.source,
+      isAdmin: surface.isAdmin,
+      workingGroupSlug: surface.workingGroupSlug,
+    });
+    const fallbackAllowed = new Set(toolSets.getToolsForSets(
+      fallbackSets,
       surface.isAdmin,
       surface.isPublic,
     ));
     profiles.push(profile({
-      id: `slack_bolt:${surface.audience}:certification_session`,
+      id: `slack_bolt:${surface.audience}:router_unavailable`,
       runtime: 'slack_bolt',
       audience: surface.audience,
-      route: 'certification_session',
-      selectedToolSets: certificationSets,
+      route: 'router_unavailable',
+      selectedToolSets: fallbackSets,
       globalTools,
-      requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+      requestTools: surface.available.filter((tool) => fallbackAllowed.has(tool.name)),
       providerToolCount: 1,
-      conditionalMaximums: [
-        'certification_context_overrides_router_and_admin_auto_add',
-        'google_docs_configured',
-        'nonstreaming_web_search',
-      ],
+      conditionalMaximums: ['router_unavailable', 'google_docs_configured', 'nonstreaming_web_search'],
+    }));
+
+    if (surface.source === 'dm') {
+      const certificationSets = selectSlackToolSets({
+        routerSelectedSets: ['admin'],
+        routerAvailable: true,
+        source: surface.source,
+        isAdmin: surface.isAdmin,
+        hasActiveCertification: true,
+      });
+      const certificationAllowed = new Set(toolSets.getToolsForSets(
+        certificationSets,
+        surface.isAdmin,
+        surface.isPublic,
+      ));
+      profiles.push(profile({
+        id: `slack_bolt:${surface.audience}:certification_session`,
+        runtime: 'slack_bolt',
+        audience: surface.audience,
+        route: 'certification_session',
+        selectedToolSets: certificationSets,
+        globalTools,
+        requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+        providerToolCount: 1,
+        conditionalMaximums: [
+          'active_certification_overrides_router_admin_and_fallback',
+          'google_docs_configured',
+          'nonstreaming_web_search',
+        ],
+      }));
+    }
+  }
+
+  for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
+    const allValidSets = Object.keys(toolSets.TOOL_SETS);
+    const selectedSets = selectSlackToolSets({
+      routerSelectedSets: allValidSets,
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+      systemRole,
+    });
+    const allowed = new Set(toolSets.getToolsForSets(selectedSets, true, false));
+    profiles.push(profile({
+      id: `slack_bolt:system_channel_admin:${systemRole}:all_valid_sets_maximum`,
+      runtime: 'slack_bolt',
+      audience: 'system_channel_admin',
+      route: `system_role_${systemRole}_all_valid_sets_maximum`,
+      selectedToolSets: selectedSets,
+      globalTools,
+      requestTools: adminRequest.filter((tool) => allowed.has(tool.name)),
+      providerToolCount: 1,
+      conditionalMaximums: ['server_configured_system_channel', 'router_returns_all_valid_tool_sets', 'google_docs_configured', 'nonstreaming_web_search'],
     }));
   }
   profiles.push(

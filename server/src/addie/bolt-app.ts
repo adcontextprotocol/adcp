@@ -236,27 +236,19 @@ import {
   type OfficialDocsCohortReason,
   type ProfiledChannelRespondPlan,
 } from './jobs/shadow-replay-cohort.js';
+import {
+  ADMIN_CHANNEL_WG_SLUG,
+  hasActiveCertificationProgress,
+  resolveRequiredSlackChannelContext,
+  selectSlackToolSets,
+  type SystemChannelRole,
+} from './slack-tool-selection.js';
 
 /**
  * Slack's built-in system bot user ID.
  * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
-const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
-
-/**
- * Tool sets to auto-include when Addie is in a system-configured channel.
- * Keyed by the channel's system role from system_settings.
- */
-type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
-
-const SYSTEM_CHANNEL_TOOL_SETS: Record<SystemChannelRole, string[]> = {
-  prospect: ['admin', 'outreach'],
-  escalation: ['admin'],
-  billing: ['admin', 'billing'],
-  error: ['admin'],
-  admin: ['admin'],
-};
 
 let systemChannelMap: Map<string, SystemChannelRole> | null = null;
 let systemChannelMapExpiresAt = 0;
@@ -1069,7 +1061,7 @@ async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
   existingMemberContext?: MemberContext | null
-): Promise<{ requestContext: string; memberContext: MemberContext | null; hasCertificationContext: boolean }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; hasActiveCertification: boolean }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
@@ -1104,11 +1096,13 @@ async function buildRequestContext(
     // Add certification module state so Addie remembers active modules
     // even when conversation history is trimmed
     let certContextText = '';
+    let hasActiveCertification = false;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     if (workosUserId) {
       try {
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
+        hasActiveCertification = hasActiveCertificationProgress(progress);
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
@@ -1140,11 +1134,11 @@ async function buildRequestContext(
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
-      hasCertificationContext: !!certContextText,
+      hasActiveCertification,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, hasCertificationContext: false };
+    return { requestContext: '', memberContext: null, hasActiveCertification: false };
   }
 }
 
@@ -1488,7 +1482,7 @@ async function selectRoutedToolsForSlackResponse(
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; hasCertificationContext?: boolean; threadMessages?: string[] }
+  options?: { isThread?: boolean; hasActiveCertification?: boolean; threadMessages?: string[] }
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
@@ -1507,23 +1501,19 @@ async function selectRoutedToolsForSlackResponse(
 
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
-    const fallbackSets = ['knowledge'];
-    if (userIsAdmin && (source === 'dm' || threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG)) {
-      fallbackSets.push('admin');
-    }
-    const fallbackSystemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-    if (userIsAdmin && fallbackSystemRole) {
-      for (const set of SYSTEM_CHANNEL_TOOL_SETS[fallbackSystemRole] ?? []) {
-        if (!fallbackSets.includes(set)) {
-          fallbackSets.push(set);
-        }
-      }
-    }
+    const fallbackSets = selectSlackToolSets({
+      routerAvailable: false,
+      source,
+      isAdmin: userIsAdmin,
+      workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+      systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+      hasActiveCertification: options?.hasActiveCertification,
+    });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
       fallbackSets,
       userIsAdmin,
-      false
+      threadContext?.viewing_channel_is_private === false,
     );
     return {
       tools: filteredTools,
@@ -1549,35 +1539,18 @@ async function selectRoutedToolsForSlackResponse(
   // Direct interactions (DMs, mentions, assistant threads) always respond.
   // Non-respond router actions only make sense for channel messages where Addie can stay silent.
   const isDirectInteraction = source === 'dm' || source === 'mention';
-  const selectedSets = plan.action === 'respond'
+  const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
-
-  // Certification sessions use certification + knowledge tools so Addie can verify protocol claims
-  if (options?.hasCertificationContext) {
-    selectedSets.length = 0;
-    selectedSets.push('certification');
-    selectedSets.push('knowledge');
-  }
-
-  // Admin DMs and admin channels: always include admin tools.
-  // Admins DMing Addie are almost always asking operational questions; relying on
-  // the Haiku router to guess "admin" from the message is fragile.
-  const isAdminDm = userIsAdmin && source === 'dm';
-  const isAdminChannel = userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG;
-  if ((isAdminDm || isAdminChannel) && !options?.hasCertificationContext && !selectedSets.includes('admin')) {
-    selectedSets.push('admin');
-  }
-
-  // System-configured channels: auto-include relevant tool sets for admins
-  const systemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-  if (userIsAdmin && systemRole && !options?.hasCertificationContext) {
-    for (const set of SYSTEM_CHANNEL_TOOL_SETS[systemRole] ?? []) {
-      if (!selectedSets.includes(set)) {
-        selectedSets.push(set);
-      }
-    }
-  }
+  const selectedSets = selectSlackToolSets({
+    routerSelectedSets,
+    routerAvailable: true,
+    source,
+    isAdmin: userIsAdmin,
+    workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+    systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasActiveCertification: options?.hasActiveCertification,
+  });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
     userTools,
@@ -1592,7 +1565,7 @@ async function selectRoutedToolsForSlackResponse(
       action: plan.action,
       reason: plan.reason,
       selectedSets,
-      hasCertificationContext: !!options?.hasCertificationContext,
+      hasActiveCertification: !!options?.hasActiveCertification,
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
@@ -1853,7 +1826,7 @@ async function handleUserMessage({
   }
 
   // Build per-request context for system prompt
-  let { requestContext, memberContext: updatedMemberContext, hasCertificationContext } = await buildRequestContext(
+  let { requestContext, memberContext: updatedMemberContext, hasActiveCertification } = await buildRequestContext(
     userId,
     slackThreadContext
   );
@@ -1893,14 +1866,14 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasCertificationContext }
+    { isThread: true, hasActiveCertification }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
   // Admin users get higher iteration limit; certification sessions get more iterations
-  const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
+  const certIterations = hasActiveCertification && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
   const dmEffectiveModel = routedTools.requiresPrecision
@@ -3473,20 +3446,14 @@ export async function buildChannelResponseInvocation(input: {
     threadId,
     channelContext,
   );
-  const selectedToolSets = [...plan.tool_sets];
-  if (
-    userIsAdmin
-    && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG
-    && !selectedToolSets.includes('admin')
-  ) {
-    selectedToolSets.push('admin');
-  }
-  const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-  if (userIsAdmin && channelSystemRole) {
-    for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
-      if (!selectedToolSets.includes(set)) selectedToolSets.push(set);
-    }
-  }
+  const selectedToolSets = selectSlackToolSets({
+    routerSelectedSets: plan.tool_sets,
+    routerAvailable: true,
+    source: 'channel',
+    isAdmin: userIsAdmin,
+    workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
+    systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+  });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
     userTools,
@@ -3899,7 +3866,11 @@ async function handleDirectMessage(
   }
 
   // Build per-request context for system prompt (no channel context for DMs)
-  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  let {
+    requestContext,
+    memberContext: updatedMemberContext,
+    hasActiveCertification,
+  } = await buildRequestContext(userId);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
@@ -3932,7 +3903,8 @@ async function handleDirectMessage(
     memberContext,
     userId,
     thread.thread_id,
-    null
+    null,
+    { isThread: true, hasActiveCertification },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -5780,11 +5752,16 @@ async function handleReactionAdded({
   }
 
   // Fetch channel context (includes working group if channel is linked to one)
-  let channelContext: ThreadContext | undefined;
-  try {
-    channelContext = await buildChannelContext(itemChannel);
-  } catch (error) {
-    logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
+  const channelContext = await resolveRequiredSlackChannelContext(
+    itemChannel,
+    buildChannelContext,
+  );
+  if (!channelContext) {
+    logger.warn(
+      { event: 'addie_reaction_channel_context_unavailable' },
+      'Addie Bolt: Skipping reaction response because channel privacy could not be verified',
+    );
+    return;
   }
 
   // Build per-request context for system prompt (pass channelContext so public channel guard is included)
