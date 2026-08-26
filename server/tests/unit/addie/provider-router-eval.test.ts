@@ -74,6 +74,51 @@ function fakeProvider(text: string | string[], finishReason: 'stop' | 'length' |
 }
 
 describe('strict router eval', () => {
+  it('returns the production plan even when its detached observer rejects', async () => {
+    const provider = fakeProvider(
+      '{"action":"ignore","reason":"authoritative"}',
+    );
+    const observer = vi.fn(async () => {
+      throw new Error('shadow failed');
+    });
+    const plan = await new AddieRouter('unused', provider).route(
+      { message: 'route this', source: 'channel' },
+      { observer },
+    );
+    expect(plan).toMatchObject({ action: 'ignore', reason: 'authoritative' });
+    expect(observer).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(observer).toHaveBeenCalledOnce();
+  });
+
+  it('observes the exact primary request and terminal provider failure without changing fallback', async () => {
+    const provider = fakeProvider('unused');
+    provider.respond = async function* (request, options) {
+      await options?.beforeDispatch?.(this.prepare(request));
+      throw new Error('private provider failure');
+    };
+    const observer = vi.fn();
+    const plan = await new AddieRouter('unused', provider).route(
+      { message: 'route failure safely', source: 'channel' },
+      { observer },
+    );
+    expect(plan).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(observer).toHaveBeenCalledWith(expect.objectContaining({
+      requestedProvider: 'openai',
+      returnedProvider: null,
+      primaryErrorCategory: 'provider_error',
+      primaryInvocation: expect.objectContaining({
+        provider: 'openai',
+        providerRequest: expect.objectContaining({ marker: 'actual-dispatch' }),
+      }),
+      canonicalRequest: expect.objectContaining({
+        model: 'claude-haiku-4-5',
+        tools: [],
+      }),
+    }));
+  });
+
   it('uses the exact production request for the prompt-parity profile', () => {
     const testCase = MODEL_ROUTER_CORPUS[0];
     expect(buildRouterEvalRequest('router-model', 'prompt_parity', testCase))

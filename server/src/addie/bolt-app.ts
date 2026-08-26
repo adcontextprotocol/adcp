@@ -167,6 +167,7 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
+import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -4732,8 +4733,34 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
+      const shadowCandidate = selectRouterShadowCohort({
+        channelId,
+        opportunityId: event.ts,
+        // Final admission rechecks current Slack metadata inside the detached
+        // observer. These optimistic values only avoid scheduling work when
+        // the independent feature/config/sample gate is already closed.
+        channelIsPublic: true,
+        channelIsShared: false,
+      });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx),
+        addieRouter.route(routingCtx, {
+          ...(shadowCandidate.selected && {
+            observer: async (observation) => {
+              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
+                .catch(() => null);
+              await runRouterShadow({
+                channelId,
+                opportunityId: event.ts,
+                channelIsPublic: currentChannel?.is_private === false,
+                channelIsShared: currentChannel === null
+                  || currentChannel.is_shared
+                  || currentChannel.is_org_shared
+                  || currentChannel.is_pending_ext_shared === true,
+                observation,
+              });
+            },
+          }),
+        }),
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;

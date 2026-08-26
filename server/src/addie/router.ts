@@ -30,8 +30,11 @@ import {
   InvalidModelEventStreamError,
 } from "./model-providers/events.js";
 import type {
+  ModelFinishReason,
+  ModelMessageContent,
   ModelProvider,
   ModelRequest,
+  PreparedModelInvocation,
 } from "./model-providers/model-provider.js";
 import {
   UnexpectedModelIdentityError,
@@ -692,6 +695,12 @@ export function buildRouterModelRequest(
   };
 }
 
+function deepFreezeRouterValue<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) deepFreezeRouterValue(child);
+  return Object.freeze(value);
+}
+
 /** Preserve the router's historical rule: only the first response block counts. */
 export function extractRouterResponseText(
   content: ReadonlyArray<{ type: string; text?: string }>,
@@ -732,6 +741,135 @@ type ParsedPlan =
       requires_depth?: boolean;
       confidence: ConfidenceTier;
     };
+
+export type RouterAction = "ignore" | "react" | "respond";
+
+/** A router plan accepted without production's compatibility fallbacks. */
+export interface StrictRouterPlan {
+  action: RouterAction;
+  reason: string;
+  emoji?: string;
+  tool_sets?: string[];
+  confidence?: ConfidenceTier;
+  requires_depth?: boolean;
+}
+
+export class RouterPlanParseError extends Error {
+  constructor(
+    readonly category: "invalid_json" | "schema_invalid",
+    message: string,
+    readonly unauthorizedToolSetAttempt = false,
+    readonly invalidToolSetAttempt = false,
+  ) {
+    super(message);
+    this.name = "RouterPlanParseError";
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Strict parser shared by offline evaluations and production shadow evidence.
+ * It never substitutes a fallback plan for malformed or unauthorized output.
+ */
+export function parseStrictRouterPlan(
+  response: string,
+  isAdmin: boolean,
+): StrictRouterPlan {
+  let parsed: unknown;
+  try {
+    let jsonText = response.trim();
+    if (jsonText.startsWith("```")) {
+      jsonText = jsonText.replace(/^```json?\n?/, "").replace(/\n?```$/, "");
+    }
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new RouterPlanParseError("invalid_json", "Router response is not JSON");
+  }
+
+  if (
+    !isRecord(parsed)
+    || typeof parsed.action !== "string"
+    || typeof parsed.reason !== "string"
+    || !parsed.reason.trim()
+  ) {
+    throw new RouterPlanParseError("schema_invalid", "Router response has invalid base fields");
+  }
+
+  const keys = Object.keys(parsed).sort();
+  const fullShape = keys.join(",") === "action,confidence,emoji,reason,requires_depth,tool_sets";
+  if (parsed.action === "ignore") {
+    if (
+      keys.join(",") !== "action,reason"
+      && !(
+        fullShape
+        && parsed.emoji === null
+        && Array.isArray(parsed.tool_sets)
+        && parsed.tool_sets.length === 0
+        && parsed.confidence === null
+        && parsed.requires_depth === null
+      )
+    ) {
+      throw new RouterPlanParseError("schema_invalid", "Ignore response has invalid fields");
+    }
+    return { action: "ignore", reason: parsed.reason };
+  }
+
+  if (parsed.action === "react") {
+    const sparse = keys.join(",") === "action,emoji,reason";
+    const full = fullShape
+      && Array.isArray(parsed.tool_sets)
+      && parsed.tool_sets.length === 0
+      && parsed.confidence === null
+      && parsed.requires_depth === null;
+    if ((!sparse && !full) || typeof parsed.emoji !== "string" || !parsed.emoji.trim()) {
+      throw new RouterPlanParseError("schema_invalid", "React response is invalid");
+    }
+    return { action: "react", emoji: parsed.emoji, reason: parsed.reason };
+  }
+
+  if (parsed.action !== "respond") {
+    throw new RouterPlanParseError("schema_invalid", "Unknown router action");
+  }
+  const sparseRespond = keys.join(",")
+    === "action,confidence,reason,requires_depth,tool_sets";
+  if (!sparseRespond && !(fullShape && parsed.emoji === null)) {
+    throw new RouterPlanParseError("schema_invalid", "Respond response has invalid fields");
+  }
+  if (
+    !Array.isArray(parsed.tool_sets)
+    || parsed.tool_sets.some((tool) => typeof tool !== "string")
+    || new Set(parsed.tool_sets).size !== parsed.tool_sets.length
+    || !["high", "suggest", "low"].includes(String(parsed.confidence))
+    || typeof parsed.requires_depth !== "boolean"
+  ) {
+    throw new RouterPlanParseError("schema_invalid", "Respond response is invalid");
+  }
+
+  const allowed = getValidToolSetNames(isAdmin);
+  if (parsed.tool_sets.some((tool) => !allowed.has(tool))) {
+    const allKnown = getValidToolSetNames(true);
+    const invalidToolSetAttempt = parsed.tool_sets.some((tool) => !allKnown.has(tool));
+    const unauthorizedToolSetAttempt = !isAdmin
+      && parsed.tool_sets.some((tool) => allKnown.has(tool) && !allowed.has(tool));
+    throw new RouterPlanParseError(
+      "schema_invalid",
+      "Respond response requests an unauthorized or unknown tool set",
+      unauthorizedToolSetAttempt,
+      invalidToolSetAttempt,
+    );
+  }
+
+  return {
+    action: "respond",
+    tool_sets: parsed.tool_sets as string[],
+    confidence: parsed.confidence as ConfidenceTier,
+    requires_depth: parsed.requires_depth,
+    reason: parsed.reason,
+  };
+}
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -804,6 +942,50 @@ export function parseRouterResponse(response: string): ParsedPlan {
   }
 }
 
+export interface RouterModelObservation {
+  canonicalRequest: ModelRequest;
+  primaryInvocation: PreparedModelInvocation | null;
+  isAdmin: boolean;
+  productionPlan: ExecutionPlan;
+  rawResponseText: string | null;
+  responseContent: ReadonlyArray<ModelMessageContent>;
+  finishReason: ModelFinishReason | null;
+  primaryErrorCategory: ReturnType<typeof classifyRouterError> | null;
+  requestedProvider: ModelProvider["id"];
+  requestedModel: string;
+  returnedProvider: ModelProvider["id"] | null;
+  returnedModel: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  latencyMs: number;
+}
+
+export interface RouterRouteOptions {
+  /**
+   * Detached, best-effort observation of a completed primary model route.
+   * It cannot change or delay the production decision.
+   */
+  observer?: (observation: RouterModelObservation) => void | Promise<void>;
+}
+
+function queueRouterObserver(
+  observer: RouterRouteOptions["observer"],
+  observation: RouterModelObservation,
+): void {
+  if (!observer) return;
+  setImmediate(() => {
+    try {
+      void Promise.resolve(observer(observation)).catch(() => {
+        logger.warn("Router: detached observer failed");
+      });
+    } catch {
+      logger.warn("Router: detached observer failed");
+    }
+  });
+}
+
 /**
  * Addie Router class
  *
@@ -824,12 +1006,23 @@ export class AddieRouter {
    * @param ctx - Routing context with message and metadata
    * @returns Execution plan determining how to handle the message
    */
-  async route(ctx: RoutingContext): Promise<ExecutionPlan> {
+  async route(
+    ctx: RoutingContext,
+    options: RouterRouteOptions = {},
+  ): Promise<ExecutionPlan> {
     const startTime = Date.now();
+    const canonicalRequest = deepFreezeRouterValue(buildRouterModelRequest(ctx));
+    let primaryInvocation: PreparedModelInvocation | null = null;
 
     try {
       const response = await collectModelResponse(
-        this.provider.respond(buildRouterModelRequest(ctx)),
+        this.provider.respond(canonicalRequest, {
+          // This callback is deliberately assignment-only. Shadow evidence can
+          // never throw before or otherwise interfere with Haiku dispatch.
+          beforeDispatch: (prepared) => {
+            primaryInvocation = prepared;
+          },
+        }),
         this.provider.id,
       );
 
@@ -900,14 +1093,35 @@ export class AddieRouter {
         latency_ms: latencyMs,
       });
 
+      queueRouterObserver(options.observer, {
+        canonicalRequest,
+        primaryInvocation,
+        isAdmin: ctx.isAAOAdmin ?? false,
+        productionPlan: plan,
+        rawResponseText: text,
+        responseContent: response.content,
+        finishReason: response.finishReason,
+        primaryErrorCategory: null,
+        requestedProvider: this.provider.id,
+        requestedModel: ModelConfig.fast,
+        returnedProvider: response.provider,
+        returnedModel: response.model,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        cacheReadTokens: response.usage.cacheReadTokens ?? null,
+        cacheWriteTokens: response.usage.cacheWriteTokens ?? null,
+        latencyMs,
+      });
+
       return plan;
     } catch (error) {
+      const category = classifyRouterError(error);
       logger.error(
-        { category: classifyRouterError(error) },
+        { category },
         "Router: Failed to generate execution plan",
       );
       // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
-      return {
+      const fallbackPlan: ExecutionPlan = {
         action: "respond",
         tool_sets: ["knowledge"],
         confidence: "high",
@@ -915,6 +1129,26 @@ export class AddieRouter {
         decision_method: "llm",
         latency_ms: Date.now() - startTime,
       };
+      queueRouterObserver(options.observer, {
+        canonicalRequest,
+        primaryInvocation,
+        isAdmin: ctx.isAAOAdmin ?? false,
+        productionPlan: fallbackPlan,
+        rawResponseText: null,
+        responseContent: [],
+        finishReason: null,
+        primaryErrorCategory: category,
+        requestedProvider: this.provider.id,
+        requestedModel: ModelConfig.fast,
+        returnedProvider: null,
+        returnedModel: null,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        latencyMs: Date.now() - startTime,
+      });
+      return fallbackPlan;
     }
   }
 
