@@ -689,7 +689,7 @@ jobs:
             "media_buy_seller/expired_proposal_execution:8:0"
             "media_buy_seller/change_rights_state_projection:8:0"
             "media_buy_seller/acceptance_policy_discovery:3:0"
-            "media_buy_seller/governance_agent_binding_acceptance:4:0"
+            "media_buy_seller/governance_agent_binding_acceptance:5:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"
