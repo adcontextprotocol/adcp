@@ -237,7 +237,6 @@ import {
   type ProfiledChannelRespondPlan,
 } from './jobs/shadow-replay-cohort.js';
 import {
-  ADMIN_CHANNEL_WG_SLUG,
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
