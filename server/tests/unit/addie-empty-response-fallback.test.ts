@@ -469,7 +469,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     });
     expect(mocks.createMessage).toHaveBeenCalledTimes(2);
     expect(mocks.createMessage.mock.calls[0][0]).toMatchObject({
-      max_tokens: 32_768,
+      max_tokens: 16_384,
       output_config: { effort: 'medium' },
     });
     expect(mocks.createMessage.mock.calls[1][0]).toMatchObject({
