@@ -12955,13 +12955,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       impressions,
       clicks,
       ...audioMetrics,
-      ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
-      ...byCreative,
-      ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
       // Sellers may report per-package viewability; the training agent's
       // simulate_delivery viewability param is buy-scoped (mirrors totals),
       // so it applies to every package uniformly.
       ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
+      ...byCreative,
+      ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
     };
     const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {
       if (metric.scope === 'standard') {
