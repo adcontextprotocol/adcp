@@ -63,9 +63,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Check Addie tool and prompt exposure budgets
-        run: npm run test:addie-tools
-
       - name: Assert dist/ contains every server/src runtime asset
         run: node scripts/copy-server-assets.cjs --check
 

@@ -12,7 +12,7 @@
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
-    "build": "tsc --project server/tsconfig.json && node scripts/copy-server-assets.cjs && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
+    "build": "npm run test:addie-tools && tsc --project server/tsconfig.json && node scripts/copy-server-assets.cjs && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
     "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts && tsx scripts/build-addie-tool-surface-inventory.ts",
     "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check && tsx scripts/build-addie-tool-surface-inventory.ts --check && node scripts/check-addie-tool-inventory-portability.mjs",
