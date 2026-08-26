@@ -16,7 +16,6 @@
  * - Consistency between prod/dev environments
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { createLogger } from "../logger.js";
 
 const logger = createLogger("addie-router");
@@ -26,6 +25,19 @@ import type { AddieTool } from "./types.js";
 import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search.js";
 import { MEMBER_TOOLS } from "./mcp/member-tools.js";
 import { trackApiCall, ApiPurpose } from "./services/api-tracker.js";
+import {
+  collectModelResponse,
+  InvalidModelEventStreamError,
+} from "./model-providers/events.js";
+import type {
+  ModelProvider,
+  ModelRequest,
+} from "./model-providers/model-provider.js";
+import {
+  UnexpectedModelIdentityError,
+  UnsupportedModelCapabilityError,
+} from "./model-providers/model-provider.js";
+import { AnthropicRouterProvider } from "./model-providers/anthropic-router-provider.js";
 import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
@@ -661,6 +673,53 @@ Respond with ONLY the JSON object, no other text.`;
 }
 
 /**
+ * Build the provider-neutral request used by the production router.
+ * Prompt-parity evaluations use this exact request contract as well.
+ */
+export function buildRouterModelRequest(
+  ctx: RoutingContext,
+  model = ModelConfig.fast,
+): ModelRequest {
+  return {
+    model,
+    system: [],
+    messages: [{
+      role: "user",
+      content: [{ type: "text", text: buildRoutingPrompt(ctx) }],
+    }],
+    tools: [],
+    maxOutputTokens: 300,
+  };
+}
+
+/** Preserve the router's historical rule: only the first response block counts. */
+export function extractRouterResponseText(
+  content: ReadonlyArray<{ type: string; text?: string }>,
+): string {
+  const first = content[0];
+  return first?.type === "text" && typeof first.text === "string"
+    ? first.text
+    : "";
+}
+
+function classifyRouterError(error: unknown):
+  | "unexpected_model_identity"
+  | "invalid_provider_event_stream"
+  | "unsupported_provider_capability"
+  | "provider_error" {
+  if (error instanceof UnexpectedModelIdentityError) {
+    return "unexpected_model_identity";
+  }
+  if (error instanceof InvalidModelEventStreamError) {
+    return "invalid_provider_event_stream";
+  }
+  if (error instanceof UnsupportedModelCapabilityError) {
+    return "unsupported_provider_capability";
+  }
+  return "provider_error";
+}
+
+/**
  * Partial execution plan without metadata (used during parsing)
  */
 type ParsedPlan =
@@ -728,11 +787,11 @@ export function parseRouterResponse(response: string): ParsedPlan {
     }
 
     // Default to ignore if unknown action
-    logger.warn({ parsed }, "Router: Unknown action, defaulting to ignore");
+    logger.warn("Router: Unknown action, defaulting to ignore");
     return { action: "ignore", reason: "Unknown action type" };
-  } catch (error) {
+  } catch {
     logger.warn(
-      { error, response },
+      { responseBytes: Buffer.byteLength(response, "utf8") },
       "Router: Failed to parse response, using knowledge fallback",
     );
     // On parse error, default to respond with knowledge tools (safe fallback)
@@ -751,10 +810,12 @@ export function parseRouterResponse(response: string): ParsedPlan {
  * Uses Claude Haiku for fast routing decisions
  */
 export class AddieRouter {
-  private client: Anthropic;
+  private readonly provider: ModelProvider;
 
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey });
+  constructor(apiKey: string, provider?: ModelProvider) {
+    this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
+      maxRetries: 2,
+    });
   }
 
   /**
@@ -767,16 +828,12 @@ export class AddieRouter {
     const startTime = Date.now();
 
     try {
-      const prompt = buildRoutingPrompt(ctx);
+      const response = await collectModelResponse(
+        this.provider.respond(buildRouterModelRequest(ctx)),
+        this.provider.id,
+      );
 
-      const response = await this.client.messages.create({
-        model: ModelConfig.fast, // Haiku for speed
-        max_tokens: 300,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const text =
-        response.content[0].type === "text" ? response.content[0].text : "";
+      const text = extractRouterResponseText(response.content);
 
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
@@ -788,8 +845,9 @@ export class AddieRouter {
         if (filtered.length !== parsedPlan.tool_sets.length) {
           logger.warn(
             {
-              requested: parsedPlan.tool_sets,
+              requestedCount: parsedPlan.tool_sets.length,
               allowed: filtered,
+              strippedCount: parsedPlan.tool_sets.length - filtered.length,
             },
             "Router: stripped invalid tool sets from LLM response",
           );
@@ -809,8 +867,8 @@ export class AddieRouter {
         ...parsedPlan,
         decision_method: "llm",
         latency_ms: latencyMs,
-        tokens_input: response.usage?.input_tokens,
-        tokens_output: response.usage?.output_tokens,
+        tokens_input: response.usage.inputTokens,
+        tokens_output: response.usage.outputTokens,
         model: ModelConfig.fast,
         requires_precision: requiresPrecisionMode,
         requires_depth: requiresDepthMode,
@@ -820,14 +878,13 @@ export class AddieRouter {
         {
           source: ctx.source,
           action: plan.action,
-          reason: plan.reason,
           toolSets:
             parsedPlan.action === "respond" ? parsedPlan.tool_sets : undefined,
           confidence:
             parsedPlan.action === "respond" ? parsedPlan.confidence : undefined,
           durationMs: latencyMs,
-          inputTokens: response.usage?.input_tokens,
-          outputTokens: response.usage?.output_tokens,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
           requiresPrecision: requiresPrecisionMode,
           requiresDepth: requiresDepthMode,
         },
@@ -838,14 +895,17 @@ export class AddieRouter {
       void trackApiCall({
         model: ModelConfig.fast,
         purpose: ApiPurpose.ROUTER,
-        tokens_input: response.usage?.input_tokens,
-        tokens_output: response.usage?.output_tokens,
+        tokens_input: response.usage.inputTokens,
+        tokens_output: response.usage.outputTokens,
         latency_ms: latencyMs,
       });
 
       return plan;
     } catch (error) {
-      logger.error({ error }, "Router: Failed to generate execution plan");
+      logger.error(
+        { category: classifyRouterError(error) },
+        "Router: Failed to generate execution plan",
+      );
       // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
       return {
         action: "respond",

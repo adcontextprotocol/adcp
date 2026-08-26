@@ -1,6 +1,5 @@
 import type {
   JsonObject,
-  ModelMessageContent,
   ModelProvider,
   ModelRequest,
   ModelUsage,
@@ -9,7 +8,9 @@ import type {
 import { UnexpectedModelIdentityError } from '../model-providers/model-provider.js';
 import { collectModelResponse } from '../model-providers/events.js';
 import {
+  buildRouterModelRequest,
   buildRoutingPrompt,
+  extractRouterResponseText,
   type ConfidenceTier,
   type RoutingContext,
 } from '../router.js';
@@ -300,10 +301,7 @@ export async function evaluateRouterCase(
     if (response.finishReason === 'refusal') status = 'refusal';
     else if (response.finishReason === 'length') status = 'truncated';
     else {
-      const text = response.content
-        .filter((item): item is Extract<ModelMessageContent, { type: 'text' }> => item.type === 'text')
-        .map((item) => item.text)
-        .join('');
+      const text = extractRouterResponseText(response.content);
       if (!text.trim()) status = 'empty';
       else {
         plan = parseStrictRouterPlan(text, testCase.context.isAAOAdmin ?? false);
@@ -392,6 +390,12 @@ export function buildRouterEvalRequest(
   testCase: RouterEvalCase,
   reasoningEffort?: 'provider_default' | 'none' | 'low' | 'medium' | 'high',
 ): ModelRequest {
+  if (profile === 'prompt_parity') {
+    return {
+      ...buildRouterModelRequest(testCase.context, model),
+      ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
+    };
+  }
   return {
     model,
     system: [],
@@ -399,17 +403,14 @@ export function buildRouterEvalRequest(
       role: 'user',
       content: [{
         type: 'text',
-        text: buildRoutingPrompt(testCase.context) + (profile === 'native_structured'
-          ? '\n\nFor the structured response, always provide all six schema fields. Use null for emoji, confidence, and requires_depth when they do not apply, and [] for tool_sets when they do not apply.'
-          : ''),
+        text: buildRoutingPrompt(testCase.context)
+          + '\n\nFor the structured response, always provide all six schema fields. Use null for emoji, confidence, and requires_depth when they do not apply, and [] for tool_sets when they do not apply.',
       }],
     }],
     tools: [],
     maxOutputTokens: 300,
     ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
-    ...(profile === 'native_structured' && {
-      outputSchema: { name: 'addie_router_plan', schema: ROUTER_PLAN_SCHEMA, strict: true },
-    }),
+    outputSchema: { name: 'addie_router_plan', schema: ROUTER_PLAN_SCHEMA, strict: true },
   };
 }
 

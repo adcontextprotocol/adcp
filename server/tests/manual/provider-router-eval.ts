@@ -7,19 +7,12 @@
  * DOTENV_CONFIG_PATH=.env.local npx tsx --import dotenv/config \
  *   server/tests/manual/provider-router-eval.ts --soft-max-usd=1 --repetitions=1
  */
-import Anthropic from '@anthropic-ai/sdk';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { ModelConfig } from '../../src/config/models.js';
-import type {
-  ModelProvider,
-  ModelRequest,
-  ModelRespondOptions,
-  NormalizedModelEvent,
-  PreparedModelInvocation,
-} from '../../src/addie/model-providers/model-provider.js';
-import { UnexpectedModelIdentityError } from '../../src/addie/model-providers/model-provider.js';
+import type { ModelProvider } from '../../src/addie/model-providers/model-provider.js';
+import { AnthropicRouterProvider } from '../../src/addie/model-providers/anthropic-router-provider.js';
 import {
   OpenAIResponsesProvider,
   OPENAI_ROUTER_MODEL,
@@ -54,76 +47,6 @@ function argument(name: string): string | undefined {
   return process.argv.find((value) => value.startsWith(prefix))?.slice(prefix.length);
 }
 
-class ProductionRouterAnthropicProvider implements ModelProvider {
-  readonly id = 'anthropic' as const;
-  readonly capabilities = Object.freeze({
-    streaming: false,
-    structuredOutput: false,
-    reasoning: false,
-    reasoningEfforts: Object.freeze(['provider_default'] as const),
-    customTools: false,
-    providerWebSearch: false,
-    imageInput: false,
-    documentInput: false,
-  });
-  private readonly client: Anthropic;
-
-  constructor(apiKey: string) {
-    this.client = new Anthropic({ apiKey, maxRetries: 0 });
-  }
-
-  prepare(request: ModelRequest): PreparedModelInvocation {
-    if (request.outputSchema) throw new Error('Production Anthropic router has no structured-output profile');
-    if (request.messages.length !== 1 || request.messages[0].content.length !== 1 || request.messages[0].content[0].type !== 'text') {
-      throw new Error('Production Anthropic router eval requires exactly one text message');
-    }
-    const providerRequest = Object.freeze({
-      model: request.model,
-      max_tokens: request.maxOutputTokens,
-      messages: Object.freeze([{ role: 'user' as const, content: request.messages[0].content[0].text }]),
-    });
-    return Object.freeze({ provider: this.id, model: request.model, capabilities: this.capabilities, providerRequest });
-  }
-
-  async *respond(
-    request: ModelRequest,
-    options: ModelRespondOptions = {},
-  ): AsyncIterable<NormalizedModelEvent> {
-    const prepared = this.prepare(request);
-    await options.beforeDispatch?.(prepared);
-    const response = await this.client.messages.create(
-      prepared.providerRequest as never,
-      { maxRetries: 0, signal: options.signal },
-    );
-    const first = response.content[0];
-    const text = first?.type === 'text' ? first.text : '';
-    const finishReason = response.stop_reason === 'max_tokens'
-      ? 'length'
-      : response.stop_reason === 'refusal'
-        ? 'refusal'
-        : response.stop_reason === 'end_turn' || response.stop_reason === 'stop_sequence'
-          ? 'stop'
-          : (() => { throw new Error(`Unsupported Anthropic router stop reason: ${response.stop_reason}`); })();
-    if (response.model !== request.model && !response.model.startsWith(`${request.model}-`)) {
-      throw new UnexpectedModelIdentityError('anthropic', request.model, response.model);
-    }
-    yield { type: 'response_start', provider: this.id, model: response.model, id: response.id };
-    if (text) yield { type: 'text_delta', index: 0, text };
-    yield {
-      type: 'response_complete',
-      response: {
-        provider: this.id,
-        model: response.model,
-        id: response.id,
-        content: text ? [{ type: 'text', text }] : [],
-        finishReason,
-        providerFinishReason: response.stop_reason ?? 'missing',
-        usage: { inputTokens: response.usage.input_tokens, outputTokens: response.usage.output_tokens },
-      },
-    };
-  }
-}
-
 const providerNames = (argument('providers') ?? 'anthropic,openai,google').split(',') as ProviderName[];
 const profiles = (argument('profiles') ?? 'prompt_parity,native_structured').split(',') as Profile[];
 const repetitions = Number(argument('repetitions') ?? '3');
@@ -139,7 +62,10 @@ const providers: Partial<Record<ProviderName, { provider: ModelProvider; model: 
 if (providerNames.includes('anthropic')) {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY is required');
   if (ModelConfig.fast !== 'claude-haiku-4-5') throw new Error('Router eval pins Anthropic to claude-haiku-4-5');
-  providers.anthropic = { provider: new ProductionRouterAnthropicProvider(process.env.ANTHROPIC_API_KEY), model: ModelConfig.fast };
+  providers.anthropic = {
+    provider: new AnthropicRouterProvider(process.env.ANTHROPIC_API_KEY, { maxRetries: 0 }),
+    model: ModelConfig.fast,
+  };
 }
 if (providerNames.includes('openai')) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
@@ -166,6 +92,7 @@ const sourceFiles = [
   'server/src/addie/model-providers/model-provider.ts',
   'server/src/addie/model-providers/capabilities.ts',
   'server/src/addie/model-providers/events.ts',
+  'server/src/addie/model-providers/anthropic-router-provider.ts',
   'server/src/addie/model-providers/openai-responses-provider.ts',
   'server/src/addie/model-providers/google-generate-content-provider.ts',
   'server/tests/manual/provider-router-eval.ts',
