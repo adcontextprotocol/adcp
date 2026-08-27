@@ -1,6 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
-import { addModelUsage, inspectModelTurn, ModelLoopBudget } from './model-turn.js';
+import { ModelTurnLoopState } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -134,13 +134,12 @@ export async function executeReadOnlyToolLoop(
   if (byName.size < 1) throw new ReadOnlyToolLoopBoundaryError('unknown_tool_call');
 
   let messages = [...requestSnapshot.messages];
-  let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   const receipts: ReadOnlyToolExecutionReceipt[] = [];
   const seenCallIds = new Set<string>();
-  const loopBudget = new ModelLoopBudget(MAX_ITERATIONS);
+  const modelLoop = new ModelTurnLoopState(MAX_ITERATIONS);
 
-  while (loopBudget.hasRemaining) {
-    const iteration = loopBudget.startNext();
+  while (modelLoop.hasRemaining) {
+    const iteration = modelLoop.startNext();
     const request: ModelRequest = {
       ...requestSnapshot,
       messages,
@@ -151,8 +150,7 @@ export async function executeReadOnlyToolLoop(
       signal: options.signal,
       beforeDispatch: options.beforeDispatch,
     }), provider.id);
-    totalUsage = addModelUsage(totalUsage, response.usage);
-    const turn = inspectModelTurn(response);
+    const turn = modelLoop.acceptResponse(response);
 
     const calls = turn.toolCalls;
     const unsupportedContinuation = turn.providerToolCalls.length > 0
@@ -169,7 +167,7 @@ export async function executeReadOnlyToolLoop(
         response,
         text: turn.textBlocks.map((content) => content.text).join(''),
         iterations: iteration,
-        usage: totalUsage,
+        usage: modelLoop.usage,
         toolExecutions: Object.freeze([...receipts]),
       };
     }
