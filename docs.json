@@ -592,7 +592,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/releases/3.1.19/registry.yaml",
+                  "source": "https://raw.githubusercontent.com/adcontextprotocol/adcp/v3.1.19/static/openapi/registry.yaml",
                   "directory": "dist/docs/3.1.19/registry/api-reference"
                 },
                 "pages": [
@@ -1250,7 +1250,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/releases/3.2.0-beta.7/registry.yaml",
+                  "source": "https://raw.githubusercontent.com/adcontextprotocol/adcp/v3.2.0-beta.7/static/openapi/registry.yaml",
                   "directory": "dist/docs/3.2.0-beta.7/registry/api-reference"
                 },
                 "pages": [
@@ -1881,7 +1881,7 @@
               {
                 "group": "Registry API",
                 "openapi": {
-                  "source": "static/openapi/releases/3.0.26/registry.yaml",
+                  "source": "https://raw.githubusercontent.com/adcontextprotocol/adcp/v3.0.26/static/openapi/registry.yaml",
                   "directory": "dist/docs/3.0.26/registry/api-reference"
                 },
                 "pages": [

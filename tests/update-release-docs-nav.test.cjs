@@ -90,7 +90,10 @@ function sampleConfig() {
       added.groups[3].openapi.directory,
       'dist/docs/3.1.0-rc.5/registry/api-reference'
     );
-    assert.equal(added.groups[3].openapi.source, 'static/openapi/registry.yaml');
+    assert.equal(
+      added.groups[3].openapi.source,
+      'https://raw.githubusercontent.com/adcontextprotocol/adcp/v3.1.0-rc.5/static/openapi/registry.yaml'
+    );
 
     const allStrings = collectStrings(added.groups);
     assert.equal(allStrings.some((value) => value.startsWith('docs/')), false);
@@ -142,6 +145,10 @@ function sampleConfig() {
     assert.equal(
       updated.groups[1].openapi.directory,
       'dist/docs/3.1.0-rc.5/registry/api-reference'
+    );
+    assert.equal(
+      updated.groups[1].openapi.source,
+      'https://raw.githubusercontent.com/adcontextprotocol/adcp/v3.1.0-rc.5/static/openapi/registry.yaml'
     );
   });
 
