@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-resource.json",
+  "title": "Reporting Resource",
+  "x-status": "experimental",
+  "description": "Secret-free authenticated descriptor for an exact reporting materialization. The AdCP resource_ref is stable for this descriptor; native_version_ref is optional method evidence and may differ when the same AdCP revision is materialized again. Callers resolve access through the previously validated destination/share binding, never from credentials embedded here.",
+  "type": "object",
+  "properties": {
+    "resource_ref": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_resource", "description": "Seller-issued opaque reference to this exact authenticated resource descriptor." },
+    "kind": { "type": "string", "enum": ["manifest", "dataset", "warehouse_relation", "inline_webhook"], "description": "Shape through which the revision is consumed." },
+    "location": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Non-secret provider-native object, relation, or share identifier. MUST NOT contain an activation URL, signed URL, bearer token, password, private key, or embedded credential." },
+    "native_version_ref": { "type": "string", "minLength": 1, "maxLength": 512, "description": "Optional immutable provider-native table version, transaction, snapshot, manifest generation, job, or run reference. It supplements but never replaces reporting_revision_id." },
+    "expires_at": { "type": "string", "format": "date-time", "description": "When this resource stops being resolvable under the advertised retention contract, if bounded more narrowly than capability retention." },
+    "reader_compatibility": { "type": "array", "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["resource_ref", "kind", "location"],
+  "additionalProperties": false
+}

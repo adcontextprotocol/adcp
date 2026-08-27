@@ -58,6 +58,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'get_adcp_capabilities',
     'get_media_buy_delivery',
     'get_media_buys',
+    'get_reporting_status',
     'get_task_status',
     'list_accounts',
     'list_creatives',

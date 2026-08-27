@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-obligation.json",
+  "title": "Reporting Obligation",
+  "x-status": "experimental",
+  "description": "Period-level status joining what reporting was expected to any produced immutable revisions and delivery materializations. An obligation exists before its first revision or webhook, making missing-first-report detection possible.",
+  "type": "object",
+  "properties": {
+    "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
+    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config" },
+    "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition" },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing", "exposure"] },
+    "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
+    "period": {
+      "type": "object",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "source_timezone": { "type": "string", "minLength": 1 }
+      },
+      "required": ["start", "end", "source_timezone"],
+      "additionalProperties": false
+    },
+    "expected_at": { "type": "string", "format": "date-time" },
+    "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
+    "health": { "$ref": "/schemas/enums/reporting-health.json" },
+    "production_status": { "type": "string", "enum": ["not_due", "pending", "published", "failed"], "description": "Whether any revision has been produced for this obligation. published includes zero-row revisions." },
+    "revisions": { "type": "array", "description": "All retained revisions for this obligation, oldest to newest. Implementations MUST NOT collapse this to the latest restatement.", "items": { "$ref": "/schemas/core/reporting-revision.json" } },
+    "materializations": { "type": "array", "description": "All retained delivery attempts for revisions in this obligation, including failed attempts and later retries.", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
+    "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["reporting_obligation_id", "delivery_config_id", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "required_finality", "health", "production_status", "revisions", "materializations", "issues"],
+  "additionalProperties": false
+}

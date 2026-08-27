@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-status-issue.json",
+  "title": "Reporting Status Issue",
+  "x-status": "experimental",
+  "description": "Structured reporting condition that explains delayed or action_required health without exposing credentials, provider response bodies, or internal stack traces.",
+  "type": "object",
+  "properties": {
+    "code": { "type": "string", "enum": ["REPORT_OVERDUE", "PRODUCTION_FAILED", "DELIVERY_FAILED", "ACCESS_REQUIRED", "CONFIGURATION_REQUIRED", "RESOURCE_EXPIRED", "READER_INCOMPATIBLE"] },
+    "severity": { "type": "string", "enum": ["delayed", "action_required"] },
+    "responsible_party": { "type": "string", "enum": ["buyer", "seller", "provider"] },
+    "recommended_action": { "type": "string", "enum": ["wait_for_retry", "contact_buyer", "contact_seller", "contact_provider", "repair_access", "update_configuration", "use_supported_reader"] },
+    "message": { "type": "string", "maxLength": 500 },
+    "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
+    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
+    "period_start": { "type": "string", "format": "date-time" },
+    "period_end": { "type": "string", "format": "date-time" },
+    "expected_at": { "type": "string", "format": "date-time" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["code", "severity", "responsible_party", "recommended_action"],
+  "additionalProperties": false
+}

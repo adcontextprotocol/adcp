@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-capabilities.json",
+  "title": "Reporting Delivery Capabilities",
+  "x-status": "experimental",
+  "description": "Managed reporting status and durable delivery support. Presence requires media_buy.reporting_delivery in experimental_features. Polling get_media_buy_delivery remains the compatibility baseline when this block is absent.",
+  "type": "object",
+  "properties": {
+    "supported": { "type": "boolean", "const": true },
+    "configuration_task": { "type": "string", "const": "sync_accounts" },
+    "status_task": { "type": "string", "const": "get_reporting_status" },
+    "readiness_notification": { "type": "string", "const": "reporting.delivery_ready" },
+    "methods": {
+      "type": "array",
+      "description": "Supported pattern/transport/orchestration and destination-setup combinations. Capabilities describe support before account binding; account-specific destination_ref values are never advertised here.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pattern": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
+          "transports": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" }, "minItems": 1, "uniqueItems": true },
+          "orchestration": { "type": "array", "items": { "type": "string", "enum": ["producer_managed", "consumer_managed"] }, "minItems": 1, "uniqueItems": true },
+          "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
+          "providers": { "type": "array", "items": { "$ref": "/schemas/core/brand-ref.json" }, "minItems": 1 },
+          "formats": { "type": "array", "items": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] }, "minItems": 1, "uniqueItems": true },
+          "access_modes": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" }, "minItems": 1, "uniqueItems": true },
+          "producer_identities": {
+            "type": "array",
+            "description": "Seller principals a buyer grants access to when the destination is buyer-hosted. Identities are provider-relative and contain no credentials.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "provider": { "$ref": "/schemas/core/brand-ref.json" },
+                "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
+                "cloud": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+                "region": { "type": "string", "minLength": 1, "maxLength": 128 }
+              },
+              "required": ["provider", "identity"],
+              "dependencies": { "cloud": ["region"], "region": ["cloud"] },
+              "additionalProperties": false
+            },
+            "minItems": 1
+          },
+          "reader_compatibility": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true },
+          "ext": { "$ref": "/schemas/core/ext.json" }
+        },
+        "required": ["pattern", "transports", "orchestration", "destination_modes"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "reporting_profiles": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "minItems": 1, "uniqueItems": true },
+    "feed_purposes": { "type": "array", "items": { "type": "string", "enum": ["pacing", "analytics", "billing", "exposure"] }, "minItems": 1, "uniqueItems": true },
+    "schedules": { "type": "array", "description": "Schedule contracts accepted by sync_accounts. A buyer may install multiple configurations to obtain fast pacing, daily analytics, billing, and authorized exposure feeds independently.", "items": { "$ref": "/schemas/core/reporting-schedule.json" }, "minItems": 1 },
+    "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
+    "automated_recovery_window_seconds": { "type": "integer", "minimum": 0, "description": "Maximum late interval during which a due obligation may remain delayed while automated recovery continues before action_required." },
+    "status_retention_days": { "type": "integer", "minimum": 1, "description": "Minimum period for which obligations, revision history, materialization attempts, and exact resource resolution remain queryable." },
+    "supports_webhook_activity": { "type": "boolean", "default": false },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["supported", "configuration_task", "status_task", "readiness_notification", "methods", "reporting_profiles", "feed_purposes", "schedules", "supported_finality", "automated_recovery_window_seconds", "status_retention_days"],
+  "additionalProperties": false
+}

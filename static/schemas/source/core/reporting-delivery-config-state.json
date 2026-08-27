@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-config-state.json",
+  "title": "Reporting Delivery Configuration State",
+  "x-status": "experimental",
+  "description": "Seller-resolved state for one caller-owned reporting delivery configuration. It echoes the secret-free desired configuration and adds the durable binding and setup result. A setup URL is an authenticated UI/API entry point, not a bearer credential; it MUST use HTTPS and MUST NOT embed access tokens or signed credentials.",
+  "type": "object",
+  "properties": {
+    "configuration": { "$ref": "/schemas/core/reporting-delivery-config.json" },
+    "state": { "type": "string", "enum": ["pending_validation", "pending_setup", "ready", "action_required", "inactive"] },
+    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued stable binding. Present once the destination or recipient has been resolved; callers can use it with destination.mode existing on later syncs." },
+    "validated_at": { "type": "string", "format": "date-time" },
+    "setup": {
+      "type": "object",
+      "description": "Secret-free next step when provider-side authorization or recipient activation cannot be completed automatically.",
+      "properties": {
+        "action": { "type": "string", "enum": ["grant_access", "activate_recipient", "authorize_provider", "repair_access"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "expires_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "message"],
+      "additionalProperties": false
+    },
+    "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" }, "minItems": 1 }
+  },
+  "required": ["configuration", "state"],
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "ready" } } },
+      "then": { "required": ["destination_ref", "validated_at"] }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["pending_setup", "action_required"] } } },
+      "then": { "anyOf": [{ "required": ["setup"] }, { "required": ["issues"] }] }
+    },
+    {
+      "if": { "properties": { "state": { "const": "inactive" } } },
+      "then": { "properties": { "configuration": { "properties": { "active": { "const": false } } } } }
+    }
+  ],
+  "additionalProperties": false
+}

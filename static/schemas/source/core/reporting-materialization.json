@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-materialization.json",
+  "title": "Reporting Materialization",
+  "x-status": "experimental",
+  "description": "One attempt to expose an immutable reporting revision through a configured delivery method. Automated retry creates a new materialization and attempt number while preserving reporting_revision_id. available is a verified producer-hosted pull/share claim; delivered is a verified recipient/destination or inline-push claim.",
+  "type": "object",
+  "properties": {
+    "reporting_materialization_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_materialization" },
+    "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
+    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Configuration that requested this materialization. Omitted only for per-buy inline reporting without an account durable-delivery config." },
+    "method": { "type": "string", "enum": ["inline_webhook", "file_transfer", "dataset_share", "warehouse_materialization"] },
+    "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "status": { "type": "string", "enum": ["pending", "available", "delivered", "failed"], "description": "Immutable result of this attempt. Staleness is evaluated in get_reporting_status health, not stored as a materialization state." },
+    "ready_at": { "type": "string", "format": "date-time", "description": "When consumer-path or destination verification completed." },
+    "failed_at": { "type": "string", "format": "date-time" },
+    "failure_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Stable safe failure classification. MUST NOT include credentials or provider response bodies." },
+    "resource": { "$ref": "/schemas/core/reporting-resource.json" },
+    "verification": { "$ref": "/schemas/core/reporting-verification.json" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["reporting_materialization_id", "reporting_revision_id", "method", "attempt", "status", "created_at"],
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "enum": ["available", "delivered"] } }, "required": ["status"] },
+      "then": { "required": ["ready_at", "resource", "verification"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+      "then": { "required": ["failed_at", "failure_code"] }
+    }
+  ],
+  "additionalProperties": false
+}

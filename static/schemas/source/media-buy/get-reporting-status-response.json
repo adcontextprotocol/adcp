@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/get-reporting-status-response.json",
+  "title": "Get Reporting Status Response",
+  "x-status": "experimental",
+  "description": "Authoritative reporting status response. The view echoes the request and discriminates summary, periods, and exact revision shapes.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    { "$ref": "/schemas/core/protocol-envelope.json" },
+    {
+      "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
+      "then": {
+        "properties": { "scope": { "properties": { "scope_closed": { "const": true } }, "required": ["scope_closed"] } },
+        "not": { "required": ["next_expected_at"] }
+      }
+    },
+    {
+      "if": { "properties": { "health": { "const": "action_required" } }, "required": ["health"] },
+      "then": { "properties": { "issues": { "minItems": 1, "contains": { "properties": { "severity": { "const": "action_required" } }, "required": ["severity"] } } }, "required": ["issues"] }
+    },
+    {
+      "if": { "properties": { "health": { "const": "delayed" } }, "required": ["health"] },
+      "then": { "properties": { "issues": { "minItems": 1, "items": { "properties": { "severity": { "const": "delayed" } } } } }, "required": ["issues"] }
+    },
+    {
+      "if": { "properties": { "health": { "enum": ["healthy", "waiting", "complete"] } }, "required": ["health"] },
+      "then": { "properties": { "issues": { "maxItems": 0 } }, "required": ["issues"] }
+    }
+  ],
+  "properties": {
+    "view": { "type": "string", "enum": ["summary", "periods", "revision"] },
+    "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
+    "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
+    "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
+    "scope": {
+      "type": "object",
+      "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
+      "properties": {
+        "period_start": { "type": "string", "format": "date-time" },
+        "period_end": { "type": "string", "format": "date-time" },
+        "scope_closed": { "type": "boolean", "description": "True only when no new obligation can enter this evaluated scope." },
+        "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
+        "all_accessible_media_buys": { "type": "boolean", "description": "True when media_buy_ids was omitted and the scope covers all caller-accessible account buys." },
+        "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true }
+      },
+      "required": ["period_start", "period_end", "scope_closed", "all_accessible_media_buys"],
+      "additionalProperties": false
+    },
+    "health": { "$ref": "/schemas/enums/reporting-health.json" },
+    "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Conservative latest included event time across satisfied obligations in scope, or null when unavailable/unknown." },
+    "next_expected_at": { "type": "string", "format": "date-time", "description": "Next obligation due time for an open scope. Omitted for a closed complete scope." },
+    "obligation_counts": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "waiting": { "type": "integer", "minimum": 0 },
+        "healthy": { "type": "integer", "minimum": 0 },
+        "delayed": { "type": "integer", "minimum": 0 },
+        "action_required": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["total", "waiting", "healthy", "delayed", "action_required", "complete"],
+      "additionalProperties": false
+    },
+    "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
+    "periods": { "type": "array", "items": { "$ref": "/schemas/core/reporting-obligation.json" } },
+    "pagination": { "$ref": "/schemas/core/pagination-response.json" },
+    "revision": { "$ref": "/schemas/core/reporting-revision.json" },
+    "materializations": { "type": "array", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
+    "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "oneOf": [
+    {
+      "title": "Summary view",
+      "properties": { "view": { "const": "summary" } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "data_through", "obligation_counts", "issues"],
+      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }] }
+    },
+    {
+      "title": "Periods view",
+      "properties": { "view": { "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "pagination"],
+      "not": { "anyOf": [{ "required": ["revision"] }, { "required": ["materializations"] }] }
+    },
+    {
+      "title": "Revision view",
+      "properties": { "view": { "const": "revision" } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations"],
+      "not": { "anyOf": [{ "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["pagination"] }] }
+    }
+  ],
+  "additionalProperties": true
+}

@@ -231,9 +231,18 @@
     },
     "notification_configs": {
       "type": "array",
-      "description": "Account-level webhook subscriptions for creative lifecycle/assignment changes, indicators.changed, account status, durable account-change wake-ups, and wholesale feed changes. Buyers manage entries via sync_accounts and verify persisted state on list_accounts. account.change_recorded wakes receivers to drain list_account_changes; indicator and assignment payloads are invalidations repaired completely through get_media_buys; list_creatives may provide a bounded reverse projection. Distinct from per-resource push_notification_config. Entries are keyed by account-scoped subscriber_id; credentials are write-only.",
+      "description": "Account-level webhook subscriptions for creative lifecycle/assignment changes, indicators.changed, account status, durable account-change wake-ups, wholesale feed changes, and reporting.delivery_ready. Buyers manage entries via sync_accounts and verify persisted state on list_accounts. account.change_recorded wakes receivers to drain list_account_changes; reporting.delivery_ready is repaired through get_reporting_status; indicator and assignment payloads are invalidations repaired completely through get_media_buys; list_creatives may provide a bounded reverse projection. Distinct from per-resource push_notification_config. Entries are keyed by account-scoped subscriber_id; credentials are write-only.",
       "items": {
         "$ref": "/schemas/core/notification-config.json"
+      },
+      "maxItems": 16
+    },
+    "reporting_delivery_configs": {
+      "type": "array",
+      "x-status": "experimental",
+      "description": "Resolved durable reporting delivery configurations owned by the authenticated caller for this account. list_accounts MUST expose only the calling principal's set. State and seller-issued destination_ref are returned; credentials and bearer profiles MUST NOT appear. Any setup URL is a secret-free authenticated entry point, not a bearer credential.",
+      "items": {
+        "$ref": "/schemas/core/reporting-delivery-config-state.json"
       },
       "maxItems": 16
     },

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-verification.json",
+  "title": "Reporting Verification",
+  "x-status": "experimental",
+  "description": "Evidence that a materialization represents the intended reporting revision. Logical content digests are only canonical when canonicalization_id identifies the exact row ordering, value encoding, null, and schema rules. Physical object checksums and native commit evidence are method-specific and are not interchangeable with a logical digest.",
+  "type": "object",
+  "properties": {
+    "verified_at": { "type": "string", "format": "date-time", "description": "When the producer completed verification through the claimed consumer/destination path." },
+    "verification_path": { "type": "string", "enum": ["producer", "representative_consumer", "destination"], "description": "Path on which verification succeeded. dataset_share readiness requires representative_consumer; delivered warehouse state requires destination." },
+    "row_count": { "type": "integer", "minimum": 0, "description": "Verified row count. Zero explicitly distinguishes an empty committed revision from a missing revision." },
+    "canonical_content_digest": {
+      "type": "object",
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["sha256"] },
+        "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Versioned AdCP or reporting-profile canonicalization rules used to produce the digest." }
+      },
+      "required": ["algorithm", "value", "canonicalization_id"],
+      "additionalProperties": false
+    },
+    "physical_checksums": {
+      "type": "array",
+      "description": "Method-specific byte/object checksums. Different encodings of the same logical revision normally have different values.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "object_ref": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "algorithm": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "value": { "type": "string", "minLength": 1, "maxLength": 512 }
+        },
+        "required": ["object_ref", "algorithm", "value"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["verified_at", "verification_path", "row_count"],
+  "additionalProperties": false
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-revision.json",
+  "title": "Reporting Revision",
+  "x-status": "experimental",
+  "description": "One immutable emitted version of a logical reporting slice. The report_definition_id plus period and scope identify the logical slice; finality is independent of revision identity. Restatements create a new revision and preserve the superseded revision for the advertised retention window.",
+  "type": "object",
+  "properties": {
+    "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
+    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config" },
+    "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Identity or canonical fingerprint of immutable metric, grain, attribution, breakdown, action-definition, profile, and calendar/timezone semantics." },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing", "exposure"] },
+    "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "schema_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
+    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
+    "period": {
+      "type": "object",
+      "description": "Half-open reporting interval with its source calendar boundary.",
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "source_timezone": { "type": "string", "minLength": 1 }
+      },
+      "required": ["start", "end", "source_timezone"],
+      "additionalProperties": false
+    },
+    "finality": { "$ref": "/schemas/enums/reporting-finality.json" },
+    "observed_at": { "type": "string", "format": "date-time", "description": "When the seller obtained or committed this source observation." },
+    "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Latest event time conservatively included, or null when precision is unknown." },
+    "data_through_precision": { "type": "string", "enum": ["exact", "lower_bound", "unknown"] },
+    "supersedes_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Immediately superseded revision of the same logical slice. Both snapshot and official revisions may be superseded." },
+    "row_count": { "type": "integer", "minimum": 0, "description": "Logical row count, including zero for a successfully evaluated empty report." },
+    "canonical_content_digest": {
+      "type": "object",
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["sha256"] },
+        "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["algorithm", "value", "canonicalization_id"],
+      "additionalProperties": false
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["reporting_revision_id", "delivery_config_id", "report_definition_id", "feed_purpose", "reporting_profile", "schema_version", "account_id", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "created_at"],
+  "allOf": [
+    {
+      "if": { "properties": { "data_through_precision": { "const": "unknown" } }, "required": ["data_through_precision"] },
+      "then": { "properties": { "data_through": { "type": "null" } } },
+      "else": { "properties": { "data_through": { "type": "string", "format": "date-time" } } }
+    }
+  ],
+  "additionalProperties": false
+}

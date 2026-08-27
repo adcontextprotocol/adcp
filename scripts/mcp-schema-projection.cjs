@@ -805,6 +805,16 @@ function stripModelContextAnnotations(schema) {
       });
       if (matchesType) delete node.type;
     }
+    // ext is always an implementation-owned escape hatch, not a portable
+    // argument an agent can infer. Keep it in canonical/discovery validation,
+    // but do not spend prompt context repeating it through every object graph.
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) {
+      delete node.properties.ext;
+    }
+    if (Array.isArray(node.required)) {
+      node.required = node.required.filter(name => name !== 'ext');
+      if (node.required.length === 0) delete node.required;
+    }
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves
@@ -829,6 +839,42 @@ function stripModelContextAnnotations(schema) {
     }
   });
   return stripped;
+}
+
+/**
+ * Remove root $defs that became unreachable when the discovery projection
+ * removed root-only validation branches. Canonical schemas retain the full
+ * graph; this only avoids repeating dead definitions in prompt inputs.
+ */
+function pruneUnusedRootDefinitions(schema) {
+  const pruned = clone(schema);
+  const definitions = pruned.$defs;
+  if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) return pruned;
+
+  const reachable = new Set();
+  function visit(value) {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.$ref === 'string' && value.$ref.startsWith('#/$defs/')) {
+      const encodedName = value.$ref.slice('#/$defs/'.length).split('/')[0];
+      const name = encodedName.replace(/~1/g, '/').replace(/~0/g, '~');
+      if (Object.hasOwn(definitions, name) && !reachable.has(name)) {
+        reachable.add(name);
+        visit(definitions[name]);
+      }
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== '$defs') visit(child);
+    }
+  }
+
+  visit(pruned);
+  if (reachable.size === 0) delete pruned.$defs;
+  else {
+    pruned.$defs = Object.fromEntries(
+      Object.entries(definitions).filter(([name]) => reachable.has(name))
+    );
+  }
+  return pruned;
 }
 
 function enforceSchemaBounds(schema, label) {
@@ -869,7 +915,9 @@ function projectSourceSchema(
     projected = discovery.schema;
   }
   if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
-  else if (annotationMode === 'model-context') projected = stripModelContextAnnotations(projected);
+  else if (annotationMode === 'model-context') {
+    projected = pruneUnusedRootDefinitions(stripModelContextAnnotations(projected));
+  }
   else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
   if (discoveryInput && annotationMode !== 'model-context') {
     restoreRootConstraintDescriptions(projected, discoveryDescriptions);
@@ -1139,6 +1187,7 @@ module.exports = {
   projectMcpDiscoveryInputSchema,
   projectDraft07Node,
   projectSourceSchema,
+  pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripModelContextAnnotations,
   stripPresentationAnnotations,

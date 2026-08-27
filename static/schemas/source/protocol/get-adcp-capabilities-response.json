@@ -65,6 +65,24 @@
       "if": {
         "properties": {
           "media_buy": {
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.reporting_delivery" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
             "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]
@@ -1009,6 +1027,11 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "reporting_delivery": {
+          "$ref": "/schemas/core/reporting-delivery-capabilities.json",
+          "x-status": "experimental",
+          "description": "Managed reporting status and durable delivery capability. Presence requires media_buy.reporting_delivery in experimental_features. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface."
         },
         "supports_proposals": {
           "type": "boolean",

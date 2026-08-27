@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-dataset-share-destination.json",
+  "title": "Reporting Dataset Share Destination",
+  "x-status": "experimental",
+  "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued binding or asks the seller to provision one for the named recipient. No bearer profile, token, private key, password, or other credential may appear here.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "Existing binding",
+      "properties": {
+        "mode": { "type": "string", "const": "existing" },
+        "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued reference returned by an earlier sync or bilateral setup." }
+      },
+      "required": ["mode", "destination_ref"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Provision recipient",
+      "properties": {
+        "mode": { "type": "string", "const": "provision" },
+        "provider": { "$ref": "/schemas/core/brand-ref.json", "description": "Data-sharing platform, such as databricks.com or snowflake.com." },
+        "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Provider access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing." },
+        "recipient": {
+          "type": "object",
+          "description": "Intended buyer principal. The identity is interpreted by the provider and access mode; for example, a Databricks sharing identifier, Snowflake organization/account pair, or Open Sharing recipient email. It is an identifier, never a credential.",
+          "properties": {
+            "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "cloud": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+            "region": { "type": "string", "minLength": 1, "maxLength": 128 }
+          },
+          "required": ["identity"],
+          "dependencies": {
+            "cloud": ["region"],
+            "region": ["cloud"]
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["mode", "provider", "access_mode", "recipient"],
+      "additionalProperties": false
+    }
+  ]
+}

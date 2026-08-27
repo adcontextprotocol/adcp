@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-config.json",
+  "title": "Reporting Delivery Configuration",
+  "x-status": "experimental",
+  "description": "Desired durable reporting delivery for one account. Entries are owned by (authenticated caller, account) and keyed by delivery_config_id. A method destination either requests provisioning from non-secret coordinates or reuses a seller-issued binding. sync_accounts replacement semantics apply only to the calling principal's set. Omission leaves that set unchanged; [] removes that caller's set and MUST NOT affect another caller. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "properties": {
+    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Caller-selected stable identifier, unique within the authenticated caller and account." },
+    "active": { "type": "boolean", "default": true, "description": "Whether new reporting obligations should use this configuration. Inactive configurations remain visible for historical resolution." },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing", "exposure"], "description": "Operational use of this independently reconciled feed. pacing is the fast snapshot path; billing is invoice-authoritative; exposure is permitted only when the reporting profile authorizes event-level data." },
+    "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "description": "Versioned semantic profile for the report, such as media_buy_delivery_v1 or an explicitly authorized exposure-log profile." },
+    "scope": {
+      "type": "object",
+      "description": "Media buys covered by this configuration.",
+      "properties": {
+        "all_media_buys": { "type": "boolean", "const": true },
+        "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "required_finality": { "$ref": "/schemas/enums/reporting-finality.json", "description": "Finality the durable path must ultimately provide. Snapshot delivery may still precede an official requirement." },
+    "schedule": { "$ref": "/schemas/core/reporting-schedule.json" },
+    "method": { "$ref": "/schemas/core/reporting-delivery-method.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["delivery_config_id", "active", "feed_purpose", "reporting_profile", "scope", "required_finality", "schedule", "method"],
+  "allOf": [
+    {
+      "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
+      "then": { "properties": { "required_finality": { "const": "official" } } }
+    }
+  ],
+  "additionalProperties": false
+}
