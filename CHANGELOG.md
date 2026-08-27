@@ -1,5 +1,37 @@
 # Changelog
 
+## 3.2.0-beta.7
+
+### Minor Changes
+
+- 675a2f0: Add buyer-authored immutable creative revision identity across sync, review,
+  library readback, and delivery attribution, plus agent-unique served variant
+  identity for unambiguous post-flight preview replay.
+- 294cb5b: Add `nielsen_audio` to `demographic-system` (same P/M/W notation as Nielsen TV, measured on the radio panel) and broaden the enum's scope to audio channels. RAJAR remains a `measurement_source`, not a notation system. Documents radio delivery reconciliation in the channel guide: demographic notation, provider identity, and `measurement_windows` maturation as the three declarations, with weekly panel cadence as an optimization-eligibility gate. Implements the WG-ratified #6139 decisions.
+- b2ae44a: Add the static OOH channel contract (experimental in 3.2): an `ooh_metrics` delivery block — panels with multi-scheme identifiers, posting periods, share of voice, illuminated hours, modeled `estimated_impressions` with a declared methodology tier (`estimation_basis`), and posting records whose evidence artifacts use the new channel-neutral `placement-evidence` core schema (shared with print tearsheets) — plus an out-of-home channel guide. Also mirrors `measurement_source` from delivery-forecast into delivery-metrics (WG-ratified) so measured-channel rows are self-describing about whose data produced them. Static units have no play events; delivery is a period-level modeled audience estimate and settlement rests on proof-of-posting, per OAAA conventions.
+- ad899c2: Add format-scoped production tracker execution contracts for first-class pixel,
+  VAST, and DAAST tracker assets. Pin effective commitments, execution versions,
+  placement scope, and digests in immutable package format snapshots so buyers can
+  distinguish supported, unsupported, and undeclared tracker behavior before
+  spend without coupling the production promise to preview observation.
+- ba81c91: Add optional, addressable percentile and histogram distributions alongside `viewability.viewed_seconds` for comparable duration reporting.
+- dc349b0: Add audience activation method declarations (#4324), WG-approved as **experimental** for 3.2 (`media_buy.audience_activation` in `experimental_features`; schemas carry `x-status: experimental`). Products declare how buyer audience data can reach them via `audience_activation.methods` — `sync_audiences`, `tmp_identity_match`, `file_transfer`, `dataset_query`, `clean_room`, or `platform_distribution` — with vendor identity as a BrandRef domain. The seller-level union surfaces as `media_buy.audience_targeting.supported_activation_methods` in `get_adcp_capabilities` for fast-fail discovery, and buyers filter products with `filters.audience_activation_methods` (OR across entries, AND within an entry, omitted fields as wildcards). Dataset entries may publish `consumer_identities[]` with an opaque principal and optional paired cloud/region deployment metadata. Platform destinations are optional account-scoped coordinates. Clean-room declarations cover only collaborations that produce targetable audiences and compose with the declared dataset or distribution rail; analytics-only rooms do not imply audience activation. Grant-based paths are in-protocol only when the vendor flow is grantee-identified.
+- 172dae7: Add external audience source references on `sync_audiences` (#6540), the runtime leg of the audience-activation surface (experimental, `media_buy.audience_activation`). An audience carries either inline member deltas or a `source` reference (`core/audience-source.json`): `dataset` (the seller reads a grantee-identified share — Snowflake, Databricks Delta Sharing with D2D or OIDC token federation, BigQuery authorized views) or `platform_segment` (binds a vendor-distributed segment to an `audience_id`). Data never transits AdCP. Responses echo the source with `access_status` and `columns_read`; counts anchor to `last_synced_at` (required once counts populate). Normative lifecycle rules: transport fixed at creation (cross-transport upserts → `CONFLICT`), loss of source access never changes audience status (frozen membership stays targetable; `suspended` reserved for consent/policy causes), access expiry is not deletion. New error code `SOURCE_ACCESS_FAILED` with `error.field`-keyed recovery.
+- 8c0c982: Promote the reporting-cadence optimization-eligibility rule from guidance to normative: buy-side agents MUST treat a product's declared `available_reporting_frequencies` as an optimization-eligibility gate and MUST NOT make mid-flight optimization decisions against metrics whose declared cadence is `quarterly` or `post_campaign`. Enforcement routes through buyer-artifact grading (sellers have nothing to attest); an anti-drift test pins the normative language to the enum and the governing doc. Ratified with the radio and OOH WG packets (#6138/#6139/#6140).
+- 675a2f0: Add explicit creative delivery contracts for inline display tags, atomic paired redirects, and revision-bound creative representation sets. A complete representation set is one immutable buyer revision; deterministic selection identifies one `representation_id` without creating a build or served variant and carries the complete revision digest into the seller-bound manifest. Define exact VAST asset versions versus product and seller acceptance sets, VAST MediaFile delivery/MIME/container/codec/dimension/bitrate/byte requirements, decimal file-size units, and declaration-level technical completeness. Add declared macro dialect, resolver ownership, encoding depth, capability matching, per-token validation results, structured rejection errors, documentation, and conformance vectors for issues #6761–#6764.
+
+### Patch Changes
+
+- dd518c1: Complete the reference test-vector index with every published compliance and unversioned set, accurate development-snapshot guidance, and direct links to the media-buy vector files.
+- 53bd11c: Correct capability gating and fixture inputs in the current conformance storyboards, and make training-agent matrix coverage capability-resolved with explicit not-applicable and quarantine accounting.
+- 752adad: Guard empty RUNNER_ARGS array expansion in sharded runner scripts for bash 3.2 compatibility
+- 64f99dd: Define capability-driven RFC 9421 signing for sandbox functional storyboard
+  dispatch. Runners reuse the existing published compliance key, sign operations
+  advertised in `request_signing.required_for` or `supported_for`, preserve bearer
+  authentication, and never bypass seller verification or retry unsigned after a
+  signer failure.
+- bd2ef39: Align the AdCP 3.2 beta compliance surface, training agent, and current TypeScript guidance with `@adcp/sdk@14.0.0-beta.8`. The SDK embeds the exact `3.2.0-beta.6` schema and compliance bundle, so active wire pins move from `3.2-beta.5` to `3.2-beta.6`.
+
 ## 3.2.0-beta.6
 
 ### Minor Changes

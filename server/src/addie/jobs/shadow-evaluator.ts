@@ -20,6 +20,7 @@ import { createLogger } from '../../logger.js';
 import { getMemberContext } from '../member-context.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
+import { maintainRouterShadowAttempts } from '../router-shadow.js';
 import {
   buildChannelContext,
   buildChannelResponseInvocation,
@@ -409,6 +410,7 @@ export async function runShadowEvaluatorJob(
   dependencies: {
     purgeTraces?: typeof purgeRetainedShadowReplayTraces;
     recoverGenerations?: typeof recoverStaleShadowReplayGenerations;
+    maintainRouterShadow?: typeof maintainRouterShadowAttempts;
     listPending?: typeof listPendingShadowReplayCaptures;
     resolveTrace?: typeof resolveShadowReplayTrace;
     verifyTraceContext?: typeof verifyShadowReplayTraceContext;
@@ -446,6 +448,9 @@ export async function runShadowEvaluatorJob(
   });
   await (dependencies.recoverGenerations ?? recoverStaleShadowReplayGenerations)().catch(() => {
     logger.warn('Shadow evaluator: Stale replay generation recovery failed');
+  });
+  await (dependencies.maintainRouterShadow ?? maintainRouterShadowAttempts)().catch(() => {
+    logger.warn('Shadow evaluator: Router shadow maintenance failed');
   });
 
   let pendingCaptures: Awaited<ReturnType<typeof listPendingShadowReplayCaptures>>;

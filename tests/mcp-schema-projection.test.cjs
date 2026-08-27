@@ -44,12 +44,13 @@ const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
 // Macro occurrence contracts and representation-set resolution add shared,
-// structurally enforced graphs to media-buy tasks. Keep those measured
-// increases isolated from the creative profile and retain main's 400 KiB hard
-// ceiling while the shared-dictionary projection is still experimental.
+// structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
+// adds one seller-bound destination contract to build_creative; keep that
+// measured increase isolated to the creative profile while retaining the
+// 400 KiB media-buy ceiling and a tight prompt-view bound.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 400,
-  creative: 400,
+  creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product

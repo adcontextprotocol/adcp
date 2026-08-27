@@ -49,7 +49,6 @@ import {
   canonicalizeAccountRef,
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
-import { satisfiesAll, resolveRequestedMetrics, narrowMetricsRecord } from './metric-subsumption.js';
 import type {
   LegacyProduct as Product,
   Proposal,
@@ -1967,6 +1966,7 @@ function targetingForWire(targeting: PackageTargeting): PackageTargeting {
 interface VendorMetricRefView {
   vendor?: { domain?: unknown; brand_id?: unknown };
   metric_id?: unknown;
+  qualifier?: Record<string, unknown>;
   supported_targets?: unknown;
   scope?: unknown;
 }
@@ -2017,10 +2017,15 @@ function canonicalJson(value: unknown): string {
 function committedMetricKey(entry: CommittedMetricProposalView): string | null {
   if (entry.scope === 'vendor') {
     const vendorKey = vendorMetricKey(entry);
-    return vendorKey ? `vendor|${vendorKey}` : null;
+    return vendorKey ? `vendor|${vendorKey}|${canonicalJson(entry.qualifier ?? {})}` : null;
   }
   if (entry.scope !== 'standard' || typeof entry.metric_id !== 'string' || entry.metric_id.length === 0) return null;
   return `standard|${entry.metric_id}|${canonicalJson(entry.qualifier ?? {})}`;
+}
+
+function qualifiedVendorMetricKey(entry: VendorMetricRefView | undefined): string | null {
+  const baseKey = vendorMetricKey(entry);
+  return baseKey ? `${baseKey}|${canonicalJson(entry?.qualifier ?? {})}` : null;
 }
 
 function validateCommittedMetricProposals(
@@ -2078,20 +2083,174 @@ function hasOwnMetric(metrics: Record<string, unknown>, metricId: string): boole
   return Object.prototype.hasOwnProperty.call(metrics, metricId) && metrics[metricId] !== undefined;
 }
 
+const VIEWABILITY_METRIC_IDS = new Set([
+  'viewability',
+  'viewable_rate',
+  'viewable_impressions',
+  'measurable_impressions',
+  'viewed_seconds',
+  'viewed_seconds_percentiles',
+  'viewed_seconds_histogram',
+]);
+
+const REQUESTABLE_DELIVERY_FIELDS = new Set([
+  'impressions', 'spend', 'clicks', 'ctr', 'views', 'completed_views',
+  'completion_rate', 'conversions', 'conversion_value', 'commissionable_value',
+  'roas', 'cost_per_acquisition', 'new_to_brand_rate', 'leads', 'reach',
+  'frequency', 'grps', 'engagements', 'engagement_rate', 'follows', 'saves',
+  'profile_visits', 'viewability', 'quartile_data', 'time_based_views',
+  'dooh_metrics', 'cost_per_click', 'cost_per_completed_view', 'cpm',
+  'downloads', 'units_sold', 'new_to_brand_units', 'plays',
+  'incremental_sales_lift', 'brand_lift', 'foot_traffic', 'conversion_lift',
+  'brand_search_lift',
+]);
+
+const VIEWABILITY_NUMERIC_FIELDS = [
+  'viewable_rate',
+  'viewable_impressions',
+  'measurable_impressions',
+  'viewed_seconds',
+] as const;
+
+const QUARTILE_LEAF_FIELDS = {
+  quartile_25: 'q1_views',
+  quartile_50: 'q2_views',
+  quartile_75: 'q3_views',
+  quartile_100: 'q4_views',
+} as const;
+
+function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
+  if (available.has(metricId)) return true;
+  if (VIEWABILITY_NUMERIC_FIELDS.includes(metricId as typeof VIEWABILITY_NUMERIC_FIELDS[number])) {
+    return available.has('viewability');
+  }
+  if (Object.prototype.hasOwnProperty.call(QUARTILE_LEAF_FIELDS, metricId)) {
+    return available.has('quartile_data');
+  }
+  return false;
+}
+
+function narrowViewability(
+  value: Record<string, unknown>,
+  requested: ReadonlySet<string>,
+): Record<string, unknown> | undefined {
+  const selected = new Set<string>();
+  if (requested.has('viewability')) {
+    for (const field of VIEWABILITY_NUMERIC_FIELDS) selected.add(field);
+  }
+  for (const field of VIEWABILITY_NUMERIC_FIELDS) {
+    if (requested.has(field)) selected.add(field);
+  }
+  for (const distribution of ['viewed_seconds_percentiles', 'viewed_seconds_histogram'] as const) {
+    if (requested.has(distribution)) {
+      selected.add(distribution);
+      selected.add('viewed_seconds');
+      selected.add('measurable_impressions');
+    }
+  }
+  if (selected.size === 0) return undefined;
+  const narrowed: Record<string, unknown> = {};
+  for (const contextField of ['standard', 'vendor']) {
+    if (value[contextField] !== undefined) narrowed[contextField] = value[contextField];
+  }
+  for (const field of selected) {
+    if (value[field] !== undefined) narrowed[field] = value[field];
+  }
+  return Object.keys(narrowed).some(key => !['standard', 'vendor'].includes(key))
+    ? narrowed
+    : undefined;
+}
+
+function narrowQuartileData(
+  value: Record<string, unknown>,
+  requested: ReadonlySet<string>,
+): Record<string, unknown> | null | undefined {
+  if (requested.has('quartile_data')) return value;
+  const narrowed: Record<string, unknown> = {};
+  for (const [identity, field] of Object.entries(QUARTILE_LEAF_FIELDS)) {
+    if (requested.has(identity) && value[field] !== undefined) narrowed[field] = value[field];
+  }
+  return Object.keys(narrowed).length > 0 ? narrowed : undefined;
+}
+
+export function narrowDeliveryMetricObject(
+  source: Record<string, unknown>,
+  requested: ReadonlySet<string>,
+): Record<string, unknown> {
+  const narrowed: Record<string, unknown> = {};
+  const contextualFields = new Set(['reach_unit', 'reach_window', 'attribution_window']);
+
+  for (const [key, value] of Object.entries(source)) {
+    if (REQUESTABLE_DELIVERY_FIELDS.has(key) || contextualFields.has(key)) continue;
+    if (key === 'viewability' || key === 'quartile_data') continue;
+    if (Array.isArray(value) && (key.startsWith('by_') || key === 'daily_breakdown' || key === 'windows')) {
+      narrowed[key] = value.map(row => isRecord(row) ? narrowDeliveryMetricObject(row, requested) : row);
+      continue;
+    }
+    if (key === 'totals' && isRecord(value)) {
+      narrowed.totals = narrowDeliveryMetricObject(value, requested);
+      continue;
+    }
+    narrowed[key] = value;
+  }
+
+  for (const alwaysIncluded of ['impressions', 'spend']) {
+    if (source[alwaysIncluded] !== undefined) narrowed[alwaysIncluded] = source[alwaysIncluded];
+  }
+  for (const metricId of requested) {
+    if (REQUESTABLE_DELIVERY_FIELDS.has(metricId) && source[metricId] !== undefined) {
+      narrowed[metricId] = source[metricId];
+    }
+  }
+
+  if (isRecord(source.viewability)) {
+    const viewability = narrowViewability(source.viewability, requested);
+    if (viewability) narrowed.viewability = viewability;
+  }
+  if (source.quartile_data === null && (
+    requested.has('quartile_data')
+    || Object.keys(QUARTILE_LEAF_FIELDS).some(identity => requested.has(identity))
+  )) {
+    narrowed.quartile_data = null;
+  } else if (isRecord(source.quartile_data)) {
+    const quartiles = narrowQuartileData(source.quartile_data, requested);
+    if (quartiles !== undefined) narrowed.quartile_data = quartiles;
+  }
+
+  if ((requested.has('reach') || requested.has('frequency'))) {
+    if (source.reach_unit !== undefined) narrowed.reach_unit = source.reach_unit;
+    if (source.reach_window !== undefined) narrowed.reach_window = source.reach_window;
+  }
+  if ([
+    'conversions', 'conversion_value', 'commissionable_value', 'roas',
+    'cost_per_acquisition', 'new_to_brand_rate', 'incremental_sales_lift',
+    'brand_lift', 'conversion_lift', 'brand_search_lift',
+  ].some(metricId => requested.has(metricId)) && source.attribution_window !== undefined) {
+    narrowed.attribution_window = source.attribution_window;
+  }
+
+  return narrowed;
+}
+
 function standardMetricIsDelivered(
   metric: CommittedMetricProposalView,
   delivery: Record<string, unknown>,
 ): boolean {
   const metricId = metric.metric_id!;
   const qualifier = metric.qualifier;
-  if (qualifier && Object.keys(qualifier).length > 0) {
-    if (
-      metricId === 'viewability'
+  if (VIEWABILITY_METRIC_IDS.has(metricId) && isRecord(delivery.viewability)) {
+    const metricPresent = metricId === 'viewability'
+      ? true
+      : hasOwnMetric(delivery.viewability, metricId);
+    if (!metricPresent) return false;
+    if (!qualifier || Object.keys(qualifier).length === 0) return true;
+    return (
+      Object.keys(qualifier).length === 1
       && typeof qualifier.viewability_standard === 'string'
-      && isRecord(delivery.viewability)
-    ) {
-      return delivery.viewability.standard === qualifier.viewability_standard;
-    }
+      && delivery.viewability.standard === qualifier.viewability_standard
+    );
+  }
+  if (qualifier && Object.keys(qualifier).length > 0) {
     // A qualified commitment is satisfied only by a delivery path that makes
     // the same qualifier observable. The reference seller currently exposes
     // only viewability.standard at package grain.
@@ -7965,11 +8124,16 @@ async function handleGetProductsUnlocked(
     if (pricingStructures?.length) {
       products = applyPricingStructuresFilterToProducts(products, pricingStructures);
     }
+    // Filter-not-fail per product-filters.json required_metrics: superset
+    // evaluation under the container-subsumption rule (a product declaring
+    // the viewability container satisfies a viewable_rate requirement).
     const requiredMetrics = (req.filters as { required_metrics?: string[] }).required_metrics;
     if (requiredMetrics?.length) {
       products = products.filter(p => {
-        const declared = (p.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? [];
-        return satisfiesAll(declared, requiredMetrics);
+        const declared = new Set(
+          (p.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? [],
+        );
+        return requiredMetrics.every(metricId => reportingMetricIsAvailable(metricId, declared));
       });
     }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
@@ -12696,13 +12860,10 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
 }
 
 export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & { media_buy_id?: string; requested_metrics?: string[] };
-  // requested_metrics narrows every metrics-bearing object in the response
-  // (totals, by_package, breakdown rows) to the resolved carrier set, always
-  // including impressions and spend. undefined means no narrowing requested.
-  const requestedMetricsKeep = req.requested_metrics?.length
-    ? resolveRequestedMetrics(req.requested_metrics)
-    : undefined;
+  const req = args as unknown as GetMediaBuyDeliveryRequest & ToolArgs & {
+    media_buy_id?: string;
+    requested_metrics?: unknown;
+  };
   let session = await getSession(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(req, ctx),
@@ -12730,6 +12891,20 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       errors: [{ code: 'MEDIA_BUY_NOT_FOUND', message: `Media buy not found: ${mediaBuyId}` }],
     };
   }
+
+  const declaredMetrics = new Set(
+    mb.packages.flatMap(pkg => {
+      const reporting = productMap.get(pkg.productId)?.reporting_capabilities as ReportingCapabilitiesView | undefined;
+      return reporting?.available_metrics ?? [];
+    }),
+  );
+  const requestedMetrics: Set<string> | undefined = Array.isArray(req.requested_metrics)
+    ? new Set<string>(
+      req.requested_metrics.filter((metricId: unknown): metricId is string => (
+        typeof metricId === 'string' && reportingMetricIsAvailable(metricId, declaredMetrics)
+      )),
+    )
+    : undefined;
 
   const now = new Date();
   const start = new Date(mb.startTime);
@@ -12801,7 +12976,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     const deliverySuppressed = mediaBuyPaused || packagePaused || pkg.canceled;
     if (deliverySuppressed) {
       const { model, rate } = derivePricing(pkg, productMap);
-      return narrowMetricsRecord({
+      return {
         package_id: pkg.packageId,
         spend: 0,
         impressions: 0,
@@ -12812,7 +12987,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         currency: mb.currency,
         paused: packagePaused,
         delivery_status: 'delivering' as const,
-      }, requestedMetricsKeep);
+      };
     }
 
     const { model: pricingModel, rate } = derivePricing(pkg, productMap);
@@ -12885,12 +13060,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
           const spendRemainderCents = Math.round((spend - (spendBase * pkg.creativeAssignments.length)) * 100);
-          return narrowMetricsRecord({
+          return {
             creative_id: creativeId,
             impressions: impressionBase + (index < impressionRemainder ? 1 : 0),
             spend: Math.round((spendBase + (index < spendRemainderCents ? 0.01 : 0)) * 100) / 100,
             conversions: base + (index < remainder ? 1 : 0),
-          }, requestedMetricsKeep);
+          };
         }),
       }
       : {};
@@ -12933,7 +13108,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ?? [];
     const deferredVendorKeys = new Set(
       rawDeferredVendorMetrics
-        .map(metric => vendorMetricKey(metric))
+        .map(metric => qualifiedVendorMetricKey(metric))
         .filter((key): key is string => key !== null),
     );
     const rawVendorMetricValues = simDelivery?.vendorMetricValuesByPackage?.[pkg.packageId]
@@ -12947,7 +13122,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       });
     const deliveredVendorKeys = new Set(
       vendorMetricValues
-        .map(value => vendorMetricKey(value as VendorMetricRefView))
+        .map(value => qualifiedVendorMetricKey(value as VendorMetricRefView))
         .filter((key): key is string => key !== null),
     );
     const packageDeliveryMetrics: Record<string, unknown> = {
@@ -12955,11 +13130,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       impressions,
       clicks,
       ...audioMetrics,
-      // Sellers may report per-package viewability; the training agent's
-      // simulate_delivery viewability param is buy-scoped (mirrors totals),
-      // so it applies to every package uniformly.
-      ...(simDelivery?.viewability ? { viewability: simDelivery.viewability } : {}),
       ...byCreative,
+      ...(mb.packages.length === 1 && simDelivery?.viewability
+        ? { viewability: simDelivery.viewability }
+        : {}),
       ...(vendorMetricValues.length > 0 && { vendor_metric_values: vendorMetricValues }),
     };
     const missingMetrics = eligibleAuditMetrics.reduce<Array<Record<string, unknown>>>((missing, metric) => {
@@ -12973,12 +13147,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         }
         return missing;
       }
-      const key = vendorMetricKey(metric);
+      const key = qualifiedVendorMetricKey(metric);
       if (key !== null && !deliveredVendorKeys.has(key) && !deferredVendorKeys.has(key)) {
         missing.push({
           scope: 'vendor' as const,
           vendor: metric.vendor!,
           metric_id: metric.metric_id!,
+          ...(metric.qualifier && { qualifier: metric.qualifier }),
         });
       }
       return missing;
@@ -12992,7 +13167,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';
     }
 
-    return narrowMetricsRecord({
+    return {
       package_id: pkg.packageId,
       ...packageDeliveryMetrics,
       ...(isRevenueShare && simDelivery ? {
@@ -13014,7 +13189,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       paused: false,
       delivery_status: elapsed >= 1 ? 'completed' as const : 'delivering' as const,
       ...(auditMetrics.length > 0 ? { missing_metrics: missingMetrics } : {}),
-    }, requestedMetricsKeep);
+    };
   });
 
   // Add simulated delivery data from comply_test_controller
@@ -13124,6 +13299,29 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ? { viewability: simDelivery.viewability }
     : {};
 
+  const totals: Record<string, unknown> = {
+    impressions: totalImpressions,
+    spend: roundedSpend,
+    clicks: totalClicks,
+    ...clickTotals,
+    ...(totalCompletedViews > 0 ? {
+      views: totalViews,
+      completed_views: totalCompletedViews,
+      completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
+    } : {}),
+    ...goalDerivedCompletedViews,
+    ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
+      reach: totalReach,
+      reach_unit: totalReachUnit,
+      frequency: +(totalImpressions / totalReach).toFixed(1),
+    } : {}),
+    ...goalDerivedReach,
+    ...simulatedReachMetrics,
+    ...conversionTotals,
+    ...conversionValueTotals,
+    ...simulatedViewability,
+  };
+
   return {
     reporting_period: {
       start: reportingStart.toISOString(),
@@ -13135,29 +13333,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       status: deriveStatus(mb, session),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal !== undefined ? { is_final: simDelivery.isFinal } : {}),
       ...(includeThreeOneFields(ctx) && simDelivery?.isFinal === true && simDelivery.finalizedAt ? { finalized_at: simDelivery.finalizedAt } : {}),
-      totals: narrowMetricsRecord({
-        impressions: totalImpressions,
-        spend: roundedSpend,
-        clicks: totalClicks,
-        ...clickTotals,
-        ...(totalCompletedViews > 0 ? {
-          views: totalViews,
-          completed_views: totalCompletedViews,
-          completion_rate: +(totalCompletedViews / totalImpressions).toFixed(3),
-        } : {}),
-        ...goalDerivedCompletedViews,
-        ...(totalReach > 0 && totalReachUnit && totalReachUnit !== 'mixed' ? {
-          reach: totalReach,
-          reach_unit: totalReachUnit,
-          frequency: +(totalImpressions / totalReach).toFixed(1),
-        } : {}),
-        ...goalDerivedReach,
-        ...simulatedReachMetrics,
-        ...conversionTotals,
-        ...conversionValueTotals,
-        ...simulatedViewability,
-      }, requestedMetricsKeep),
-      by_package: byPackage,
+      totals: requestedMetrics ? narrowDeliveryMetricObject(totals, requestedMetrics) : totals,
+      by_package: requestedMetrics
+        ? byPackage.map(row => narrowDeliveryMetricObject(row, requestedMetrics))
+        : byPackage,
     }],
   };
 }

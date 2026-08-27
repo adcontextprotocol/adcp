@@ -120,7 +120,7 @@ function schemaKeys(id, rel) {
 function normalizeSchemaUri(uri) {
   let schemaPath = uri.replace(/^https?:\/\/[^/]+/, '');
   schemaPath = schemaPath.replace(/^\/schemas\/latest\//, '/schemas/');
-  schemaPath = schemaPath.replace(/^\/schemas\/v\d+(?:\.\d+)*(?:-[^/]+)?\//, '/schemas/');
+  schemaPath = schemaPath.replace(/^\/schemas\/v?\d+(?:\.\d+)*(?:-[^/]+)?\//, '/schemas/');
   return schemaPath;
 }
 

@@ -78,10 +78,13 @@ describe('Threads API Integration Tests', () => {
 
     // Add messages to the thread
     const msgResult = await pool.query(`
-      INSERT INTO addie_thread_messages (thread_id, role, content, sequence_number)
+      INSERT INTO addie_thread_messages (
+        thread_id, role, content, sequence_number,
+        model_execution_source, local_response_reason
+      )
       VALUES
-        ($1, 'user', 'Hello!', 1),
-        ($1, 'assistant', 'Hi! How can I help?', 2)
+        ($1, 'user', 'Hello!', 1, NULL, NULL),
+        ($1, 'assistant', 'Hi! How can I help?', 2, 'local', 'canned_response')
       RETURNING message_id
     `, [testThreadId]);
     testMessageId = msgResult.rows[1].message_id; // Get the assistant message ID
@@ -383,10 +386,13 @@ describe('Threads API Integration Tests', () => {
       const threadId = threadResult.rows[0].thread_id;
 
       await pool.query(`
-        INSERT INTO addie_thread_messages (thread_id, role, content, sequence_number)
+        INSERT INTO addie_thread_messages (
+          thread_id, role, content, sequence_number,
+          model_execution_source, local_response_reason
+        )
         VALUES
-          ($1, 'user', 'Web question', 1),
-          ($1, 'assistant', 'Web answer', 2)
+          ($1, 'user', 'Web question', 1, NULL, NULL),
+          ($1, 'assistant', 'Web answer', 2, 'local', 'canned_response')
       `, [threadId]);
     });
 

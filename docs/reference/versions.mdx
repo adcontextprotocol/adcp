@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Beta** | 3.2 (current prerelease: `beta.6`) | `"3.2-beta.6"` | Development and staging only. TypeScript SDK beta.8 embeds beta.6; Python beta.7 remains on beta.5. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Beta** | 3.2 (current prerelease: `beta.7`) | `"3.2-beta.7"` | Development and staging only. Beta.7 is the current protocol checkpoint; TypeScript SDK beta.8 remains on beta.6 and Python beta.7 remains on beta.5 pending refreshes. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.19) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.26) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -45,7 +45,8 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.2.0-beta.6** | 2026-08-23 | Current prerelease and TypeScript SDK-backed checkpoint. `@adcp/sdk@14.0.0-beta.8` embeds this exact bundle. Adds reporting negotiation and breakdown contracts, CTV experience profiles, premium display canonicals, and A2A request-signing method names. Use `"3.2-beta.6"` only when both peers explicitly advertise it. |
+| **3.2.0-beta.7** | 2026-08-27 | Current protocol checkpoint. Adds audience activation and external-source contracts, creative delivery and tracker execution contracts, static OOH and radio measurement declarations, viewed-seconds distributions, and expanded conformance coverage. No SDK release names exact beta.7 support yet; use `"3.2-beta.7"` only with the signed artifact and peers that explicitly advertise it. |
+| 3.2.0-beta.6 | 2026-08-23 | Previous protocol checkpoint and current TypeScript SDK-backed checkpoint. `@adcp/sdk@14.0.0-beta.8` embeds this exact bundle. |
 | 3.2.0-beta.5 | 2026-08-22 | Previous SDK-backed checkpoint. Python `adcp==8.0.0b7` embeds this exact bundle. |
 | 3.2.0-beta.4 | 2026-08-20 | Integration checkpoint, superseded by beta.5 for new beta testing. Adds flexible-window availability discovery and the outcome_target reverse-forecast input. |
 | 3.2.0-beta.3 | 2026-08-19 | Integration checkpoint, superseded by beta.4 for new beta testing. |
@@ -91,7 +92,7 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 | If you are… | Use |
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
-| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.6** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
+| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.7** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
 | Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.8` with exact wire pin `"3.2-beta.6"`, or Python `adcp==8.0.0b7` with exact wire pin `"3.2-beta.5"`; use Go only after its support matrix row names an exact checkpoint. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |

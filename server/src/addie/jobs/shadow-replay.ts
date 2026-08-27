@@ -256,6 +256,12 @@ export async function executeShadowReplay(
         tools_used: [],
         tool_executions: [],
         flagged: false,
+        model_execution: {
+          source: 'local',
+          requested_provider: 'anthropic',
+          requested_model: model,
+          reason: 'no_provider_response',
+        },
       },
       model,
       configVersionId,

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('db client checkout and health checks', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.doUnmock('pg');
     vi.resetModules();
   });
@@ -14,6 +15,7 @@ describe('db client checkout and health checks', () => {
     const clientConnect = vi.fn().mockResolvedValue(undefined);
     const clientQuery = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
     const clientEnd = vi.fn().mockResolvedValue(undefined);
+    const clientOn = vi.fn();
     const poolInstances: Array<{ query: typeof poolQuery; end: typeof poolEnd; on: typeof poolOn }> = [];
     const clientInstances: Array<{ connect: typeof clientConnect; query: typeof clientQuery; end: typeof clientEnd }> = [];
 
@@ -35,6 +37,7 @@ describe('db client checkout and health checks', () => {
       connect = clientConnect;
       query = clientQuery;
       end = clientEnd;
+      on = clientOn;
 
       constructor() {
         clientInstances.push(this);
@@ -53,6 +56,7 @@ describe('db client checkout and health checks', () => {
       clientConnect,
       clientQuery,
       clientEnd,
+      clientOn,
       poolInstances,
       clientInstances,
     };
@@ -74,7 +78,7 @@ describe('db client checkout and health checks', () => {
     await db.closeDatabase();
   });
 
-  it('runs health checks on a one-off client instead of the application pool', async () => {
+  it('reuses a dedicated health client instead of the application pool', async () => {
     const pg = mockPg();
     pg.poolQuery.mockRejectedValue(new Error('pool should not be used by healthCheck'));
 
@@ -82,15 +86,186 @@ describe('db client checkout and health checks', () => {
     db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
 
     await db.healthCheck(5000);
+    await db.healthCheck(5000);
 
     expect(pg.poolInstances).toHaveLength(1);
     expect(pg.poolQuery).not.toHaveBeenCalled();
     expect(pg.clientInstances).toHaveLength(1);
     expect(pg.clientConnect).toHaveBeenCalledTimes(1);
-    expect(pg.clientQuery).toHaveBeenCalledWith('SELECT 1');
+    expect(pg.clientQuery).toHaveBeenCalledTimes(2);
+    expect(pg.clientQuery).toHaveBeenNthCalledWith(1, 'SELECT 1');
+    expect(pg.clientQuery).toHaveBeenNthCalledWith(2, 'SELECT 1');
+    expect(pg.clientEnd).not.toHaveBeenCalled();
+
+    await db.closeDatabase();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one in-flight query across concurrent health checks', async () => {
+    const pg = mockPg();
+    let resolveQuery!: (value: { rows: Array<{ '?column?': number }> }) => void;
+    pg.clientQuery.mockReturnValue(new Promise((resolve) => {
+      resolveQuery = resolve;
+    }));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const first = db.healthCheck(5000);
+    const second = db.healthCheck(5000);
+    await vi.waitFor(() => expect(pg.clientQuery).toHaveBeenCalledTimes(1));
+
+    resolveQuery({ rows: [{ '?column?': 1 }] });
+    await Promise.all([first, second]);
+
+    expect(pg.clientInstances).toHaveLength(1);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(1);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('discards a failed health connection and reconnects on the next probe', async () => {
+    const pg = mockPg();
+    const failure = new Error('health query failed');
+    pg.clientQuery
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(db.healthCheck(5000)).rejects.toBe(failure);
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+
+    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+    expect(pg.clientInstances).toHaveLength(2);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(2);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(2);
+
+    await db.closeDatabase();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a stale health connection once within the original probe deadline', async () => {
+    const pg = mockPg();
+    pg.clientQuery
+      .mockRejectedValueOnce(new Error('Connection terminated unexpectedly'))
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+    expect(pg.clientInstances).toHaveLength(2);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(2);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(2);
     expect(pg.clientEnd).toHaveBeenCalledTimes(1);
 
     await db.closeDatabase();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not grant a stale-connection retry a fresh probe timeout', async () => {
+    vi.useFakeTimers();
+    const pg = mockPg();
+    pg.clientQuery
+      .mockImplementationOnce(() => new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Connection terminated unexpectedly')), 40);
+      }))
+      .mockReturnValueOnce(new Promise(() => undefined));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const rejection = expect(db.healthCheck(50)).rejects.toThrow('health check query timed out');
+    await vi.advanceTimersByTimeAsync(50);
+    await rejection;
+
+    expect(pg.clientInstances).toHaveLength(2);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(2);
+    expect(pg.clientEnd).toHaveBeenCalledTimes(2);
+    await db.closeDatabase();
+  });
+
+  it('evicts an idle failed connection without letting its handler clear a replacement', async () => {
+    const pg = mockPg();
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await db.healthCheck(5000);
+    const firstErrorHandler = pg.clientOn.mock.calls[0][1] as (error: Error) => void;
+    firstErrorHandler(new Error('idle connection closed'));
+
+    await db.healthCheck(5000);
+    expect(pg.clientInstances).toHaveLength(2);
+    firstErrorHandler(new Error('late stale-client error'));
+    await db.healthCheck(5000);
+
+    expect(pg.clientInstances).toHaveLength(2);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(2);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(3);
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    await db.closeDatabase();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(2);
+  });
+
+  it('times out a hung health query and evicts its connection', async () => {
+    vi.useFakeTimers();
+    const pg = mockPg();
+    pg.clientQuery.mockReturnValue(new Promise(() => undefined));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const rejection = expect(db.healthCheck(50)).rejects.toThrow('health check query timed out');
+    await vi.advanceTimersByTimeAsync(50);
+    await rejection;
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+
+    await db.closeDatabase();
+  });
+
+  it('recovers on the next probe after a health connection cannot be established', async () => {
+    const pg = mockPg();
+    const failure = new Error('initial connect failed');
+    pg.clientConnect.mockRejectedValueOnce(failure).mockResolvedValueOnce(undefined);
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    await expect(db.healthCheck(5000)).rejects.toBe(failure);
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    await expect(db.healthCheck(5000)).resolves.toBeUndefined();
+
+    expect(pg.clientInstances).toHaveLength(2);
+    expect(pg.clientConnect).toHaveBeenCalledTimes(2);
+    expect(pg.clientQuery).toHaveBeenCalledTimes(1);
+    await db.closeDatabase();
+    expect(pg.clientEnd).toHaveBeenCalledTimes(2);
+  });
+
+  it('waits for an in-flight health check before closing its client and pool', async () => {
+    const pg = mockPg();
+    let resolveQuery!: (value: { rows: Array<{ '?column?': number }> }) => void;
+    pg.clientQuery.mockReturnValue(new Promise((resolve) => {
+      resolveQuery = resolve;
+    }));
+
+    const db = await import('../../src/db/client.js');
+    db.initializeDatabase({ connectionString: 'postgresql://localhost/test' });
+
+    const check = db.healthCheck(5000);
+    await vi.waitFor(() => expect(pg.clientQuery).toHaveBeenCalledTimes(1));
+    const close = db.closeDatabase();
+    await Promise.resolve();
+    expect(pg.clientEnd).not.toHaveBeenCalled();
+    expect(pg.poolEnd).not.toHaveBeenCalled();
+
+    resolveQuery({ rows: [{ '?column?': 1 }] });
+    await Promise.all([check, close]);
+    expect(pg.clientEnd).toHaveBeenCalledTimes(1);
+    expect(pg.poolEnd).toHaveBeenCalledTimes(1);
   });
 
   it('opens dedicated session work outside the application pool', async () => {

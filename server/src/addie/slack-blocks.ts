@@ -87,6 +87,10 @@ export const DEFAULT_STREAM_SOFT_CAP = 9000;
 export const STREAM_DELIVERY_UNCERTAIN_NOTICE =
   "_(I streamed that response, but couldn't finish Slack's delivery metadata. Some of the response may be missing; ask again and I'll retry.)_";
 
+/** Persisted when a stream ends without its terminal provider receipt. */
+export const STREAM_COMPLETION_MISSING_NOTICE =
+  "I'm sorry, that response ended before I could verify it was complete. Please try again.";
+
 export interface StreamAppendDecision {
   /** Pass to `streamer.append({ markdown_text: appendPart })` when non-empty. */
   appendPart: string;

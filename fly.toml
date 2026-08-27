@@ -24,8 +24,23 @@ primary_region = 'iad'
   # Disabled - migrations now run via release_command
   RUN_MIGRATIONS = "false"
   PUBLISHER_CRAWL_QUEUE_ENABLED = "true"
+  # Bounded, evaluation-only Luna router shadow. The runtime additionally
+  # fails closed unless the channel is public and non-shared and the HMAC and
+  # OpenAI provider secrets are present. No shadow output reaches users.
+  ADDIE_ROUTER_LUNA_SHADOW_ENABLED = "true"
+  ADDIE_ROUTER_LUNA_SHADOW_PRODUCTION_DATA_APPROVED = "true"
+  # Governance, campaign lifecycle, creative, and the general community channel.
+  ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS = "C09NUQS93DF,C09BK148CLU,C09C7PLE5B8,C09B9S23KAP"
+  ADDIE_ROUTER_LUNA_SHADOW_SAMPLE_BPS = "10000"
+  ADDIE_ROUTER_LUNA_SHADOW_DAILY_LIMIT = "10"
+  ADDIE_ROUTER_LUNA_SHADOW_DAILY_BUDGET_MICROS = "140000"
+  ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY_VERSION = "governance-pilot-v1"
   # AdCP 3.2 beta is public; expose the deterministic proposal-negotiation labs.
   ENABLE_ADCP_3_2_PROPOSAL_PROFILES = "true"
+  # Deployment-time ceiling for the issue #6827 read-only authorization canary.
+  # The database runtime gate remains independently disabled until explicitly armed.
+  ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true"
+  ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = "organization_roles_read"
   # Use pre-cloned repos from Docker build, skip runtime git fetch.
   # Production image has no git binary — unsetting this degrades gracefully
   # (repos skip indexing) but does not crash.
