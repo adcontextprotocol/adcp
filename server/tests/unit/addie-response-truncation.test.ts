@@ -8,10 +8,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
+  APIError: class APIError extends Error {},
+  APIConnectionError: class APIConnectionError extends Error {},
   default: class {
     beta = {
       messages: {
-        create: mocks.createMessage,
+        create: async (payload: Record<string, unknown>, options?: unknown) => ({
+          id: 'msg_test_nonstreaming',
+          model: String(payload.model),
+          ...await mocks.createMessage(payload, options),
+        }),
         stream: mocks.streamMessage,
       },
     };

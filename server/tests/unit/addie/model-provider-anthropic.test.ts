@@ -303,6 +303,27 @@ describe('AnthropicModelProvider request translation', () => {
     expect(prepared.providerRequest).not.toHaveProperty('metadata');
   });
 
+  it('maps canonical medium reasoning to the Sonnet output control envelope', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    expect(provider.prepare(request({ reasoning: { effort: 'medium' } })).providerRequest)
+      .toMatchObject({ output_config: { effort: 'medium' } });
+  });
+
+  it('preserves issued text blocks as arrays for same-provider continuation', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    const continuation = normalizeAnthropicResponse(response({
+      stop_reason: 'pause_turn',
+      content: [{ type: 'text', text: 'Server work is pending.' }],
+    })).content;
+
+    expect(provider.prepare(request({
+      messages: [{ role: 'assistant', content: continuation }],
+    })).providerRequest.messages).toEqual([{
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Server work is pending.' }],
+    }]);
+  });
+
   it('fails closed on structured output instead of silently dropping it', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
     expect(() => provider.prepare(request({
@@ -428,6 +449,21 @@ describe('AnthropicModelProvider response normalization', () => {
     ]);
     await expect(collectModelResponse((async function* () { yield* events; })(), 'anthropic'))
       .resolves.toMatchObject({ finishReason: 'stop' });
+  });
+
+  it('allows the production caller to preserve two SDK transport retries', async () => {
+    const create = vi.fn(async () => response());
+    const provider = new AnthropicModelProvider(
+      'unused',
+      { beta: { messages: { create } } },
+      { transportMaxRetries: 2 },
+    );
+
+    for await (const _event of provider.respond(request())) {
+      // Drain the response.
+    }
+
+    expect(create.mock.calls[0]?.[1]).toEqual({ maxRetries: 2 });
   });
 
   it('freezes the exact nested envelope before provenance and dispatch', async () => {

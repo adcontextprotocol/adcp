@@ -33,6 +33,8 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
+  APIError: class APIError extends Error {},
+  APIConnectionError: class APIConnectionError extends Error {},
   default: class {
     beta = {
       messages: {
@@ -42,7 +44,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
           const response = sdkState.nonStreamingResponses.shift();
           if (!response) throw new Error('Missing non-streaming response fixture');
           if (response instanceof Error) throw response;
-          return response;
+          return {
+            id: `msg_test_${sdkState.calls.length}`,
+            model: String(payload.model),
+            ...response as Record<string, unknown>,
+          };
         }),
         stream: vi.fn((payload: Record<string, unknown>) => {
           sdkState.calls.push(payload);
