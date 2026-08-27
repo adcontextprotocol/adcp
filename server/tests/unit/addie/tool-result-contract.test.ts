@@ -135,6 +135,21 @@ describe('Addie tool result contract', () => {
     expect(recoverable.status).toBe('recoverable_error');
   });
 
+  it('does not classify matching prose inside successful search content as an error', () => {
+    const document = normalizeToolResult(
+      'get_doc',
+      '# Search troubleshooting\n\nA permission denied message can indicate a private channel.',
+    );
+    const results = normalizeToolResult(
+      'search_docs',
+      'Searching AdCP 3.2. Found 1 doc.\n\nThe old search failed before this fix.',
+    );
+
+    expect(document.status).toBe('ok');
+    expect(results.status).toBe('ok');
+    expect(results.presentation.user_summary).toBe('Found 1 doc.');
+  });
+
   it('keeps old-format results compatible but prevents blank legacy output', () => {
     const legacy = normalizeToolResult('old_tool', 'existing string result');
     const blank = normalizeToolResult('old_tool', '   ');

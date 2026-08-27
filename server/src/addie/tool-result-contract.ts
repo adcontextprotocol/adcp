@@ -202,7 +202,11 @@ function classifySearchResult(toolName: string, text: string): {
   summary: string;
 } | null {
   if (!CLASSIFIED_SEARCH_TOOLS.has(toolName)) return null;
-  const lower = text.toLowerCase();
+  // Legacy search handlers put their outcome on the first line. Restrict status
+  // detection to that line so matching prose inside a successful document does
+  // not turn the entire tool call into an error receipt.
+  const statusLine = text.trim().split(/\r?\n/, 1)[0] || '';
+  const lower = statusLine.toLowerCase();
 
   if (/cannot (?:search|access)|access denied|permission denied/.test(lower)) {
     return { status: 'access_denied', summary: firstParagraph(text) };
@@ -213,11 +217,11 @@ function classifySearchResult(toolName: string, text: string): {
   if (/not (?:ready|yet indexed)|search failed|temporarily unavailable/.test(lower)) {
     return { status: 'recoverable_error', summary: firstParagraph(text) };
   }
-  if (/^(?:no |document not found)/i.test(text.trim())) {
+  if (/^(?:no |document not found)/i.test(statusLine)) {
     return { status: 'empty', summary: firstParagraph(text) };
   }
 
-  const found = text.match(/\bFound (\d+) ([^.\n:]+)/i);
+  const found = statusLine.match(/\bFound (\d+) ([^.:]+)/i);
   if (found) {
     return { status: 'ok', summary: `Found ${found[1]} ${found[2].trim()}.` };
   }
