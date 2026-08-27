@@ -75,6 +75,16 @@ const toolUseTurn = {
   usage: { input_tokens: 10, output_tokens: 5 },
 };
 
+const searchToolUseTurn = {
+  ...toolUseTurn,
+  content: [{
+    type: 'tool_use',
+    id: 'toolu_search',
+    name: 'search_docs',
+    input: { query: 'missing term' },
+  }],
+};
+
 const recoveredEndTurn = {
   model: 'claude-sonnet-5-20260801',
   stop_reason: 'end_turn',
@@ -209,7 +219,7 @@ function makeThrowingStream(error: Error) {
   };
 }
 
-function makeStream(message: typeof toolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof semanticRefusalEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn | typeof ritualOnlyEndTurn) {
+function makeStream(message: typeof toolUseTurn | typeof searchToolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof semanticRefusalEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn | typeof ritualOnlyEndTurn) {
   return {
     async *[Symbol.asyncIterator]() {
       for (const block of message.content) {
@@ -232,6 +242,17 @@ const githubIssueTools = {
   handlers: new Map([['get_github_issue', getGithubIssue]]),
 };
 
+const emptyDocsResult = 'No documentation found in AdCP 3.2-beta for: "missing term"\n\nTry another query.';
+const searchDocs = vi.fn().mockResolvedValue(emptyDocsResult);
+const searchDocsTools = {
+  tools: [{
+    name: 'search_docs',
+    description: 'Search docs',
+    input_schema: { type: 'object' as const, properties: {} },
+  }],
+  handlers: new Map([['search_docs', searchDocs]]),
+};
+
 describe('Addie empty-response fallback (#4430)', () => {
   beforeEach(() => {
     mocks.createMessage.mockReset();
@@ -241,6 +262,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     mocks.checkCostCap.mockReset().mockResolvedValue({ ok: true });
     mocks.recordCost.mockReset().mockResolvedValue(undefined);
     getGithubIssue.mockClear();
+    searchDocs.mockClear();
   });
 
   it('returns fallback text and sends monitoring for non-streaming empty responses', async () => {
@@ -976,7 +998,11 @@ describe('Addie empty-response fallback (#4430)', () => {
       { uncapped: true, threadId: 'thread-web-search-empty' },
     );
 
-    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(response.text).toBe('Web search completed (0 results)');
+    expect(response.tool_executions[0]?.normalized_result).toMatchObject({
+      status: 'empty',
+      source: 'structured',
+    });
     expect(mocks.createMessage).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).toHaveBeenCalledOnce();
   });
@@ -1083,6 +1109,66 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.streamMessage).toHaveBeenCalledTimes(3);
     expect(mocks.streamMessage.mock.calls[2][0].tools).toEqual([]);
     expect(mocks.notifySystemError).toHaveBeenCalledOnce();
+  });
+
+  it('uses the normalized search summary as the non-streaming web fallback', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(searchToolUseTurn)
+      .mockResolvedValueOnce(emptyEndTurn)
+      .mockResolvedValueOnce(emptyEndTurn);
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const response = await client.processMessage(
+      'find missing term',
+      undefined,
+      searchDocsTools,
+      undefined,
+      { uncapped: true, threadId: 'thread-search-fallback' },
+    );
+
+    expect(response.text).toBe('No documentation found in AdCP 3.2-beta for: "missing term"');
+    expect(response.tool_executions[0]).toMatchObject({
+      tool_name: 'search_docs',
+      is_error: false,
+      normalized_result: {
+        status: 'empty',
+        source: 'classified',
+        user_summary: 'No documentation found in AdCP 3.2-beta for: "missing term"',
+      },
+    });
+    expect(searchDocs).toHaveBeenCalledOnce();
+  });
+
+  it('uses the same normalized search summary as the streaming Slack fallback', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeStream(searchToolUseTurn))
+      .mockReturnValueOnce(makeStream(emptyEndTurn))
+      .mockReturnValueOnce(makeStream(emptyEndTurn));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'find missing term',
+      undefined,
+      searchDocsTools,
+      { uncapped: true, threadId: 'thread-stream-search-fallback' },
+    )) events.push(event);
+
+    const text = events
+      .filter((event): event is Extract<StreamEvent, { type: 'text' }> => event.type === 'text')
+      .map((event) => event.text)
+      .join('');
+    const toolEnd = events.find(
+      (event): event is Extract<StreamEvent, { type: 'tool_end' }> => event.type === 'tool_end',
+    );
+    const done = events.find(
+      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    );
+
+    expect(text).toBe('No documentation found in AdCP 3.2-beta for: "missing term"');
+    expect(done?.response.text).toBe(text);
+    expect(toolEnd?.normalized_result).toMatchObject({ status: 'empty', source: 'classified' });
+    expect(searchDocs).toHaveBeenCalledOnce();
   });
 
   it('never repeats a tool emitted by a malformed non-streaming recovery response', async () => {

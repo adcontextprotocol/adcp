@@ -1475,7 +1475,7 @@ function filterToolsBySet(
   const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
 
   // Filter handlers to match
-  const filteredHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  const filteredHandlers: RequestTools['handlers'] = new Map();
   for (const [name, handler] of userTools.handlers) {
     if (allowedToolNames.has(name)) {
       filteredHandlers.set(name, handler);

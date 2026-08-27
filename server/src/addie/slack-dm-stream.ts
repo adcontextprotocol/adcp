@@ -1,4 +1,5 @@
 import type { AddieResponse, StreamEvent } from './claude-client.js';
+import type { ToolResultPresentation } from './tool-result-contract.js';
 import {
   DEFAULT_STREAM_SOFT_CAP,
   decideStreamAppend,
@@ -11,6 +12,7 @@ export type SlackDmToolExecution = {
   tool_name: string;
   parameters: Record<string, unknown>;
   result: string;
+  normalized_result?: ToolResultPresentation;
 };
 
 export type SlackDmStreamChunk =
@@ -466,6 +468,7 @@ export function reduceSlackDmStreamEvent(
         tool_name: event.tool_name,
         parameters: {},
         result: event.result,
+        ...(event.normalized_result && { normalized_result: event.normalized_result }),
       }],
     };
     if (toolState.delivery.tag !== 'open') return { state: toolState, effects: [] };
