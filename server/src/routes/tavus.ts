@@ -88,6 +88,7 @@ import {
   formatMemberContextForPrompt,
   type MemberContext,
 } from "../addie/member-context.js";
+import { buildAuthoritativeTemporalContext } from "../addie/temporal-context.js";
 import { WorkingGroupDatabase } from "../db/working-group-db.js";
 import {
   boundedTrimmedTavusSetting,
@@ -184,7 +185,7 @@ async function buildVoiceRequestTools(
   }
 
   // Format member context for system prompt
-  const contextSections: string[] = [];
+  const contextSections: string[] = [buildAuthoritativeTemporalContext(memberContext)];
   if (memberContext) {
     const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
     if (memberContextText) contextSections.push(memberContextText);
