@@ -36,6 +36,13 @@ narrative: |
   require IOs or human approval — the buyer sets a bid price and budget, and your platform
   runs the auction. Delivery is best-effort based on bid competitiveness.
 
+  This is deliberately the ungoverned sales baseline. Registering a governance agent changes
+  the account contract: every later commitment needs an approved `governance_context`, so a
+  registration followed by this baseline's context-free create would correctly be rejected.
+  The required governance-registration scenario separately proves valid single-agent
+  registration and rejects multiple agents; the governance-aware-seller specialism owns the
+  complete registration, approval, and governed-create loop.
+
   The buyer discovers products with bid guidance and any declared floors, creates a buy
   with bid prices per package, monitors win rates and pacing, and adjusts bids or budgets
   in-flight to optimize performance.

@@ -147,7 +147,7 @@ phases:
             domain: "acmeoutdoor.example"
           account:
             brand:
-            domain: "acmeoutdoor.example"
+              domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"

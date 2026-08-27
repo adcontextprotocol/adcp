@@ -2,7 +2,6 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/asset-union.json",
   "title": "AssetVariant",
-  "x-adcp-hoist": true,
   "description": "Canonical union of all asset variant schemas. Referenced from creative-asset.json and creative-manifest.json to ensure a single named type is emitted by schema-to-TypeScript tooling. Add new asset types here and to the creative/asset-types registry.",
   "x-adcp-hoist": true,
   "type": "object",

@@ -36,6 +36,13 @@ narrative: |
   A human reviewer on your side reviews the deal terms and signs the IO through your own
   internal workflow.
 
+  This is deliberately the seller's ungoverned IO baseline. Registering a buyer governance
+  agent changes the account contract: every later commitment needs an approved
+  `governance_context`, so registration followed by this context-free create would correctly
+  be rejected. The required governance-registration scenario separately proves valid
+  single-agent registration and rejects multiple agents; the governance-aware-seller
+  specialism owns the complete registration, approval, and governed-create loop.
+
   The buyer either invokes get_task_status with the task_id or configures a push_notification_config
   webhook to receive a callback when IO signing completes. Only on task completion does your
   platform issue a media_buy_id and the final CreateMediaBuy result; the buyer then calls

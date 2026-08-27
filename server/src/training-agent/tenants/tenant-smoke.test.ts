@@ -25,6 +25,7 @@ import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { getCanonicalBase } from '../canonical-base.js';
+import { setGovernanceAuthorityTestOverride } from '../task-handlers.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
@@ -370,16 +371,28 @@ describe('tenant routing smoke', () => {
       expect(missingKey.result?.isError).toBe(true);
       expect(missingKey.result?.content?.[0]?.text).toContain('idempotency_key');
 
-      for (const [id, governanceAgent] of [
-        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }],
-        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }],
+      for (const [id, governanceAgent, schemaRejected] of [
+        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, true],
+        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }, true],
+        [6, { url: 'https://127.0.0.1/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
+        [11, { url: 'https://localhost/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
       ] as const) {
         const invalid = await callTenantTool(url, id, 'sync_governance', {
           ...payload,
           idempotency_key: `${payload.idempotency_key}-${id}`,
           accounts: [{ account, governance_agents: [governanceAgent] }],
-        }) as { result?: { isError?: boolean } };
-        expect(invalid.result?.isError).toBe(true);
+        }) as { result?: {
+          isError?: boolean;
+          structuredContent?: { accounts?: Array<{ status?: string; errors?: Array<{ code?: string }> }> };
+        } };
+        if (schemaRejected) {
+          expect(invalid.result?.isError).toBe(true);
+        } else {
+          expect(invalid.result?.structuredContent?.accounts?.[0]).toMatchObject({
+            status: 'failed',
+            errors: [{ code: 'INVALID_REQUEST' }],
+          });
+        }
       }
 
       const invalidAccount = await callTenantTool(url, 10, 'list_accounts', {
@@ -421,10 +434,19 @@ describe('tenant routing smoke', () => {
     const stub = new GovernanceAgentStub();
     try {
       const { url: stubUrl } = await stub.start();
+      const authorityUrl = 'https://governance-stub.invalid/mcp';
+      (stub as unknown as { issuer: string }).issuer = authorityUrl;
       const salesUrl = `${baseUrl}/sales/mcp`;
-      const governanceUrl = `${baseUrl}/governance/mcp`;
       await initializeTenant(salesUrl);
-      await initializeTenant(governanceUrl);
+      const generateContext = stub.generateContext.bind(stub);
+      stub.generateContext = input => generateContext({
+        ...input,
+        phase: input.phase === 'execution' ? 'purchase' : input.phase,
+      });
+      setGovernanceAuthorityTestOverride(authorityUrl, {
+        jwk: stub.publicJwk,
+        fetch: (_input, init) => fetch(stubUrl, init),
+      });
 
       const brand = { domain: 'tenant-seller-delegation.example' };
       const account = { brand, operator: 'pinnacle-agency.example' };
@@ -442,7 +464,7 @@ describe('tenant routing smoke', () => {
         accounts: [{
           account,
           governance_agents: [{
-            url: stubUrl,
+            url: authorityUrl,
             authentication: { schemes: ['Bearer'], credentials: stub.authToken },
           }],
         }],
@@ -479,47 +501,41 @@ describe('tenant routing smoke', () => {
         idempotency_key: 'tenant-seller-delegation-create',
       };
 
-      const planId = 'tenant-seller-delegation-plan';
-      await callTenantTool(governanceUrl, 203, 'sync_plans', {
-        brand,
-        plans: [{
-          plan_id: planId,
-          brand,
-          objectives: 'Authorize the reference seller delegation test.',
-          budget: { total: 10_000, currency: 'USD', reallocation_threshold: 10_000 },
-          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
-        }],
-        idempotency_key: 'tenant-seller-delegation-plan-sync',
-      });
       const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
         .update('test-token')
         .digest('hex')
         .slice(0, 32)}`;
-      const approval = structured(await callTenantTool(governanceUrl, 204, 'check_governance', {
-        plan_id: planId,
+      const governanceContext = await stub.generateContext({
+        planId: 'opaque-plan-binding',
+        checkId: 'chk_stub_intent',
+        audience: `${getCanonicalBase()}/sales`,
         caller,
-        target_agent: `${getCanonicalBase()}/sales`,
-        tool: 'create_media_buy',
-        purchase_type: 'media_buy',
-        proposed_commitment: { amount: 500, currency: 'USD' },
+        task: 'create_media_buy',
         payload: createPayload,
-      }));
-      expect(approval?.governance_context).toEqual(expect.any(String));
+        commitment: { amount: 500, currency: 'USD' },
+        phase: 'intent',
+      });
 
       const created = structured(await callTenantTool(salesUrl, 205, 'create_media_buy', {
         ...createPayload,
-        governance_context: approval!.governance_context,
+        governance_context: governanceContext,
       }));
       expect(created?.adcp_error, JSON.stringify(created)).toBeUndefined();
       const delegated = stub.getCallsForTool('check_governance');
       expect(delegated).toHaveLength(1);
       expect(delegated[0]?.params).toMatchObject({
         caller: `${getCanonicalBase()}/sales`,
-        governance_context: approval!.governance_context,
+        governance_context: governanceContext,
         phase: 'purchase',
-        planned_delivery: { total_budget: 500, currency: 'USD' },
+        planned_delivery: expect.objectContaining({
+          media_buy_id: expect.any(String),
+          total_budget: 500,
+          currency: 'USD',
+          channels: expect.any(Array),
+        }),
       });
     } finally {
+      setGovernanceAuthorityTestOverride('https://governance-stub.invalid/mcp', undefined);
       await stub.stop();
       await close();
     }

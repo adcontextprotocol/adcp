@@ -259,7 +259,7 @@ else
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
-    "sales:131:608"
+    "sales:133:632"
     "governance:47:157"
     "creative:49:209"
     "creative-builder:50:184"
@@ -271,6 +271,8 @@ fi
 REGRESSED=0
 SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
+  "sales_non_guaranteed"
+  "sales_guaranteed"
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
   "media_buy_seller/vendor_metric_catalog_precondition"

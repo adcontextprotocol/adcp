@@ -17,12 +17,14 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
+  buildGovernanceExecutionRequest,
   canonicalize,
-  GovernanceAdapter,
   normalizeGovernanceVerdict,
   PostgresTaskStore,
+  ProtocolClient,
+  unwrapProtocolResponse,
 } from '@adcp/sdk';
-import { canonicalTargetUri } from '@adcp/sdk/signing';
+import { canonicalTargetUri, type AdcpJsonWebKey } from '@adcp/sdk/signing';
 import {
   createProposalRefinementHandler,
   type ProposalRefinementScope,
@@ -46,7 +48,8 @@ import {
 } from '@adcp/sdk/v2/projection';
 import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
-import { isPrivateHostname, normalizeExternalHostname, safeFetchAxiosLike } from '../utils/url-security.js';
+import { BrandManager } from '../brand-manager.js';
+import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
 import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
@@ -2787,7 +2790,6 @@ function resolveThreeZeroProposalAlias(proposals: Proposal[]): Proposal | undefi
 
 import {
   buildCatalog,
-  buildShowsForProducts,
   buildProposals,
   TRAINING_AUDIENCE_ACTIVATION_METHODS,
 } from './product-factory.js';
@@ -2846,6 +2848,7 @@ import {
   sandboxAccountRefForId,
   resolveAccountIdForRef,
   resolveAccountCurrencyForRef,
+  resolveAccountBrandForRef,
   resolveGovernanceAgentsForAccount,
   handleSyncAccounts,
   handleSyncGovernance,
@@ -3730,6 +3733,142 @@ function governanceErrorDetails(check: import('./types.js').GovernanceCheckState
   return details;
 }
 
+interface GovernanceAuthorityTestOverride {
+  jwk: AdcpJsonWebKey;
+  fetch: typeof fetch;
+}
+
+type GovernanceBuyerBrand = { domain: string; brand_id?: string };
+
+const governanceAuthorityTestOverrides = new Map<string, GovernanceAuthorityTestOverride>();
+
+/** Test-only seam for loopback governance agents. Production calls always use
+ * the DNS-pinned outbound transport and remote JWKS discovery below. */
+export function setGovernanceAuthorityTestOverride(
+  issuer: string,
+  override: GovernanceAuthorityTestOverride | undefined,
+): void {
+  if (override) governanceAuthorityTestOverrides.set(issuer, override);
+  else governanceAuthorityTestOverrides.delete(issuer);
+}
+
+const GOVERNANCE_NETWORK_TIMEOUT_MS = 5_000;
+const GOVERNANCE_MAX_RESPONSE_BYTES = 64 * 1024;
+const governanceBrandManager = new BrandManager();
+
+const governanceSafeFetch: typeof fetch = async (input, init) => {
+  const request = new Request(input, init);
+  const method = request.method.toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') {
+    throw new Error(`Unsupported governance transport method: ${method}`);
+  }
+  const body = method === 'POST'
+    ? new Uint8Array(await request.arrayBuffer())
+    : undefined;
+  return safeFetch(request.url, {
+    method,
+    headers: Object.fromEntries(request.headers.entries()),
+    ...(body && { body }),
+    maxRedirects: 0,
+    signal: request.signal,
+  });
+};
+
+function governanceTokenIdentity(token: string): { issuer?: string; kid?: string } {
+  const [protectedHeader, payload] = token.split('.');
+  if (!protectedHeader || !payload) return {};
+  try {
+    const header = JSON.parse(Buffer.from(protectedHeader, 'base64url').toString()) as Record<string, unknown>;
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString()) as Record<string, unknown>;
+    return {
+      ...(typeof claims.iss === 'string' && { issuer: claims.iss }),
+      ...(typeof header.kid === 'string' && { kid: header.kid }),
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function governanceVerificationJwk(
+  authority: import('./account-handlers.js').GovernanceAgentEntry,
+  token: string,
+  buyerBrand: GovernanceBuyerBrand | undefined,
+): Promise<AdcpJsonWebKey | undefined> {
+  const identity = governanceTokenIdentity(token);
+  if (identity.issuer !== authority.url || !identity.kid) return undefined;
+  const testOverride = governanceAuthorityTestOverrides.get(authority.url);
+  if (testOverride?.jwk.kid === identity.kid) return testOverride.jwk;
+
+  if (!buyerBrand?.domain) return undefined;
+  const resolvedBuyer = await governanceBrandManager.resolveBrandRef({
+    domain: buyerBrand.domain,
+    ...(buyerBrand.brand_id && { brand_id: buyerBrand.brand_id }),
+  }, { maxRedirects: 1, skipCache: true });
+  const declaredAgents = resolvedBuyer?.brand_manifest?.agents;
+  const declaredAuthority = Array.isArray(declaredAgents)
+    ? declaredAgents.find(candidate => (
+      isRecord(candidate)
+      && candidate.type === 'governance'
+      && candidate.url === authority.url
+    ))
+    : undefined;
+  if (!isRecord(declaredAuthority)) return undefined;
+
+  let issuer: URL;
+  try {
+    issuer = new URL(authority.url);
+  } catch {
+    return undefined;
+  }
+  if (issuer.protocol !== 'https:') return undefined;
+  const jwksUrl = typeof declaredAuthority.jwks_uri === 'string'
+    ? declaredAuthority.jwks_uri
+    : `${issuer.origin}/.well-known/jwks.json`;
+  try {
+    const response = await safeFetchAxiosLike(jwksUrl, {
+      timeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
+      maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
+      maxRedirects: 0,
+    });
+    if (response.status !== 200) return undefined;
+    const parsed = JSON.parse(response.data.toString('utf8')) as { keys?: unknown };
+    if (!Array.isArray(parsed.keys)) return undefined;
+    const jwk = parsed.keys.find(candidate => (
+      isRecord(candidate) && candidate.kid === identity.kid
+    ));
+    return isRecord(jwk) ? jwk as unknown as AdcpJsonWebKey : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function governedCommitmentAuthorization(
+  governanceContext: string,
+  authenticatedCaller: string | undefined,
+  expectedTool: string,
+  expectedAudience: string,
+  actualPayload: Record<string, unknown>,
+  actualAmount: number,
+  actualCurrency: string,
+  authority?: import('./account-handlers.js').GovernanceAgentEntry,
+  buyerBrand?: GovernanceBuyerBrand,
+) {
+  const verificationJwk = authority
+    ? await governanceVerificationJwk(authority, governanceContext, buyerBrand)
+    : undefined;
+  return verifyGovernedServiceAuthorization({
+    token: governanceContext,
+    expectedIssuer: authority?.url ?? `${getCanonicalBase()}/governance`,
+    expectedTask: expectedTool,
+    expectedAudience,
+    payload: actualPayload,
+    actualCommitment: { amount: actualAmount, currency: actualCurrency },
+    authenticatedCaller,
+    ...((authority !== undefined) && { allowLocalVerificationKeys: false }),
+    ...(verificationJwk && { verificationJwk }),
+  });
+}
+
 /** Verify the signed authorization at the service boundary. */
 async function governedCommitmentError(
   governanceContext: string,
@@ -3739,16 +3878,20 @@ async function governedCommitmentError(
   actualPayload: Record<string, unknown>,
   actualAmount: number,
   actualCurrency: string,
+  authority?: import('./account-handlers.js').GovernanceAgentEntry,
+  buyerBrand?: GovernanceBuyerBrand,
 ): Promise<TaskError | undefined> {
-  const result = await verifyGovernedServiceAuthorization({
-    token: governanceContext,
-    expectedIssuer: `${getCanonicalBase()}/governance`,
-    expectedTask: expectedTool,
-    expectedAudience,
-    payload: actualPayload,
-    actualCommitment: { amount: actualAmount, currency: actualCurrency },
+  const result = await governedCommitmentAuthorization(
+    governanceContext,
     authenticatedCaller,
-  });
+    expectedTool,
+    expectedAudience,
+    actualPayload,
+    actualAmount,
+    actualCurrency,
+    authority,
+    buyerBrand,
+  );
   return result.ok ? undefined : {
     code: 'PERMISSION_DENIED',
     message: result.message ?? 'The signed governance authorization is invalid.',
@@ -3763,6 +3906,8 @@ async function sellerGovernanceExecutionError(
   agent: import('./account-handlers.js').GovernanceAgentEntry,
   governanceContext: string,
   plannedDelivery: PlannedDelivery,
+  intentClaims: Record<string, unknown>,
+  buyerBrand: GovernanceBuyerBrand | undefined,
 ): Promise<TaskError | undefined> {
   if (!agent.authentication.schemes.some(scheme => scheme.toLowerCase() === 'bearer')) {
     return {
@@ -3771,35 +3916,72 @@ async function sellerGovernanceExecutionError(
     };
   }
 
-  const adapter = new GovernanceAdapter({
-    agent: {
+  try {
+    const callerUrl = `${getCanonicalBase()}/sales`;
+    const checkRequest = buildGovernanceExecutionRequest({
+      caller: callerUrl,
+      governanceContext,
+      plannedDelivery,
+      phase: 'purchase',
+    });
+    const testOverride = governanceAuthorityTestOverrides.get(agent.url);
+    const rawResponse = await ProtocolClient.callTool({
       id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
       name: 'Registered governance agent',
       agent_uri: agent.url,
       protocol: 'mcp',
       auth_token: agent.authentication.credentials,
-    },
-    callerUrl: `${getCanonicalBase()}/sales`,
-  });
-
-  try {
-    const response = await adapter.checkCommitted({
-      governanceContext,
-      plannedDelivery,
-      phase: 'purchase',
+    }, 'check_governance', checkRequest as unknown as Record<string, unknown>, {
+      transport: {
+        trustedFetchFn: testOverride?.fetch ?? governanceSafeFetch,
+        allowPrivateIp: false,
+        requestTimeoutMs: GOVERNANCE_NETWORK_TIMEOUT_MS,
+        maxResponseBytes: GOVERNANCE_MAX_RESPONSE_BYTES,
+      },
     });
+    const response = unwrapProtocolResponse(rawResponse, 'check_governance', 'mcp');
     const verdict = normalizeGovernanceVerdict(response);
-    if (verdict?.checkType === 'execution' && verdict.verdict === 'approved') return undefined;
+    if (verdict?.checkType !== 'execution' || verdict.verdict !== 'approved') {
+      return {
+        code: 'GOVERNANCE_DENIED',
+        message: verdict?.explanation ?? 'The governance agent denied the seller execution check.',
+      };
+    }
+    const executionContext = isRecord(response)
+      && typeof response.governance_context === 'string'
+      ? response.governance_context
+      : undefined;
+    if (!executionContext) {
+      return {
+        code: 'PERMISSION_DENIED',
+        message: 'The governance agent approved execution without a signed purchase authorization.',
+      };
+    }
+    const verificationJwk = await governanceVerificationJwk(agent, executionContext, buyerBrand);
+    const totalBudget = plannedDelivery.total_budget ?? 0;
+    const currency = plannedDelivery.currency ?? 'USD';
+    const verification = await verifyGovernedServiceAuthorization({
+      token: executionContext,
+      expectedIssuer: agent.url,
+      expectedAudience: callerUrl,
+      expectedTask: 'create_media_buy',
+      expectedPhase: 'purchase',
+      expectedSubject: typeof intentClaims.sub === 'string' ? intentClaims.sub : undefined,
+      payload: plannedDelivery as unknown as Record<string, unknown>,
+      actualCommitment: { amount: totalBudget, currency },
+      authenticatedCaller: callerUrl,
+      allowLocalVerificationKeys: false,
+      ...(verificationJwk && { verificationJwk }),
+    });
+    if (verification.ok) return undefined;
     return {
       code: 'PERMISSION_DENIED',
-      message: verdict?.explanation ?? 'The governance agent denied the seller execution check.',
+      message: verification.message ?? 'The governance execution authorization is invalid.',
     };
-  } catch (error) {
+  } catch {
     return {
-      code: 'PERMISSION_DENIED',
-      message: error instanceof Error
-        ? `The governance agent could not approve the seller execution check: ${error.message}`
-        : 'The governance agent could not approve the seller execution check.',
+      code: 'GOVERNANCE_UNAVAILABLE',
+      message: 'The registered governance agent is temporarily unavailable; retry with backoff.',
     };
   }
 }
@@ -12127,10 +12309,16 @@ async function handleCreateMediaBuyUnlocked(
     ctx.principal,
     req.account,
   );
+  const governanceBuyerBrand = resolveAccountBrandForRef(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    req.account,
+  );
+  let governanceIntentClaims: Record<string, unknown> | undefined;
   if (govCtx) {
     const buyBudget = req.total_budget?.amount
       ?? req.packages?.reduce((sum, pkg) => sum + ((pkg as unknown as { budget: number }).budget || 0), 0);
-    const commitmentError = await governedCommitmentError(
+    const authorization = await governedCommitmentAuthorization(
       govCtx,
       ctx.authenticatedAgentUrl,
       options.governance?.task ?? 'create_media_buy',
@@ -12138,25 +12326,16 @@ async function handleCreateMediaBuyUnlocked(
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       options.governance?.commitment.amount ?? buyBudget ?? 0,
       options.governance?.commitment.currency ?? mediaBuyCurrency,
+      governanceAgents[0],
+      governanceBuyerBrand,
     );
-    if (commitmentError) return { errors: [commitmentError] };
-    if (governanceAgents.length > 0) {
-      const executionError = await sellerGovernanceExecutionError(
-        governanceAgents[0]!,
-        govCtx,
-        {
-          ...(buyBudget !== undefined && { total_budget: buyBudget, currency: mediaBuyCurrency }),
-          ...(req.start_time !== 'asap' && { start_time: req.start_time }),
-          ...(req.end_time && { end_time: req.end_time }),
-          ...(req.daily_budget_cap !== undefined && { daily_budget_cap: req.daily_budget_cap }),
-          ...(req.budget_cap_timezone !== undefined && { budget_cap_timezone: req.budget_cap_timezone }),
-          ...(req.budget_allocation !== undefined && { budget_allocation: req.budget_allocation }),
-          ...(req.pacing !== undefined && { pacing: req.pacing }),
-          ...(req.bidding !== undefined && { bidding: req.bidding }),
-        },
-      );
-      if (executionError) return { errors: [executionError] };
+    if (!authorization.ok) {
+      return { errors: [{
+        code: 'PERMISSION_DENIED',
+        message: authorization.message ?? 'The signed governance authorization is invalid.',
+      }] };
     }
+    governanceIntentClaims = authorization.claims;
   } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
     return {
       errors: [{
@@ -13155,6 +13334,51 @@ async function handleCreateMediaBuyUnlocked(
     : `mb_${randomUUID().slice(0, 8)}`;
   const now = confirmedAt;
   const resolvedStart = buyStart === 'asap' ? now : buyStart;
+  if (govCtx && governanceAgents[0] && governanceIntentClaims) {
+    const countries = [...new Set(createdPackages.flatMap(pkg => {
+      const value = pkg.targeting?.geo_countries;
+      return Array.isArray(value) ? value.filter((country): country is string => typeof country === 'string') : [];
+    }))];
+    const channels = [...new Set(createdPackages.flatMap(pkg => (
+      productMap.get(pkg.productId)?.channels ?? []
+    )))];
+    const audienceIds = [...new Set(createdPackages.flatMap(pkg => (
+      Array.isArray(pkg.targeting?.audience_include) ? pkg.targeting.audience_include : []
+    )))];
+    const frequencyCap = createdPackages
+      .map(pkg => pkg.targeting?.frequency_cap)
+      .find(isRecord);
+    const plannedDelivery: PlannedDelivery = {
+      media_buy_id: mediaBuyId,
+      total_budget: req.total_budget?.amount
+        ?? createdPackages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0),
+      currency: mediaBuyCurrency,
+      start_time: resolvedStart,
+      end_time: buyEnd,
+      ...(countries.length > 0 && { geo: { countries } }),
+      ...(channels.length > 0 && { channels }),
+      ...(frequencyCap && { frequency_cap: frequencyCap }),
+      ...(audienceIds.length > 0 && {
+        audience_targeting: audienceIds.map(audienceId => ({
+          type: 'description' as const,
+          description: `Registered audience ${audienceId}`,
+        })) as PlannedDelivery['audience_targeting'],
+      }),
+      ...(req.daily_budget_cap !== undefined && { daily_budget_cap: req.daily_budget_cap }),
+      ...(req.budget_cap_timezone !== undefined && { budget_cap_timezone: req.budget_cap_timezone }),
+      ...(req.budget_allocation !== undefined && { budget_allocation: req.budget_allocation }),
+      ...(req.pacing !== undefined && { pacing: req.pacing }),
+      ...(req.bidding !== undefined && { bidding: req.bidding }),
+    };
+    const executionError = await sellerGovernanceExecutionError(
+      governanceAgents[0],
+      govCtx,
+      plannedDelivery,
+      governanceIntentClaims,
+      governanceBuyerBrand,
+    );
+    if (executionError) return { errors: [executionError] };
+  }
   const persistedAccountRef = ctx.resolvedAccount ?? req.account;
   persistInlineCreatives(
     session,
@@ -14898,6 +15122,7 @@ async function handleUpdateMediaBuyUnlocked(
   const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
   overlaySeededProducts(session, productMap);
   overlayConfiguredProducts(session, productMap);
+  overlayNegotiatedPricingOptions(session, productMap);
   const expectedConfiguredOwner = configuredProductOwner(req as unknown as ToolArgs, ctx);
   if (expectedConfiguredOwner) {
     for (const productId of new Set(mb.packages.map(pkg => pkg.productId))) {
@@ -15154,6 +15379,11 @@ async function handleUpdateMediaBuyUnlocked(
     ctx.principal,
     mb.accountRef,
   );
+  const updateGovernanceBuyerBrand = resolveAccountBrandForRef(
+    sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
+    ctx.principal,
+    mb.accountRef,
+  );
   if (updateGovernanceContext) {
     const commitmentError = await governedCommitmentError(
       updateGovernanceContext,
@@ -15163,6 +15393,8 @@ async function handleUpdateMediaBuyUnlocked(
       governedRequestPayload(ctx, validationReq as unknown as Record<string, unknown>),
       options.governance?.commitment.amount ?? updateDelta,
       options.governance?.commitment.currency ?? mb.currency,
+      updateGovernanceAgents[0],
+      updateGovernanceBuyerBrand,
     );
     if (commitmentError) return { errors: [commitmentError] };
   } else if (requiresGovernance && (session.governancePlans.size > 0 || updateGovernanceAgents.length > 0)) {
@@ -16582,6 +16814,8 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       signalCommitment,
       signalCurrency,
+      registeredGovernanceAgents[0],
+      resolveAccountBrandForRef(sessionKey, ctx.principal, req.account),
     );
     if (commitmentError) return { errors: [commitmentError] };
   } else if (action !== 'deactivate' && (hasRegisteredGovernanceAgent || session.governancePlans.size > 0)) {
@@ -16921,6 +17155,12 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       governedRequestPayload(ctx, req as unknown as Record<string, unknown>),
       governedAmount,
       selectedPricing?.currency ?? 'USD',
+      registeredGovernanceAgents[0],
+      resolveAccountBrandForRef(
+        creativeSessionKey(req as unknown as ToolArgs, ctx),
+        ctx.principal,
+        effectiveAccount as AccountRef | undefined,
+      ),
     );
     if (commitmentError) {
       return buildCreativeCompleted({

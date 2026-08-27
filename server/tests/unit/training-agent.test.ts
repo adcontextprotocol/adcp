@@ -11336,6 +11336,60 @@ describe('update_media_buy handler', () => {
     clearSessions();
   });
 
+  it('enforces auction floors from negotiated pricing options on bid updates', async () => {
+    const product = buildCatalog().map(entry => entry.product).find(candidate =>
+      candidate.pricing_options.some(option =>
+        typeof option.floor_price === 'number' && option.fixed_price === undefined,
+      ),
+    )!;
+    const sourcePricing = product.pricing_options.find(option =>
+      typeof option.floor_price === 'number' && option.fixed_price === undefined,
+    )!;
+    const negotiatedPricing = {
+      ...sourcePricing,
+      pricing_option_id: `${sourcePricing.pricing_option_id}_negotiated_floor`,
+    };
+    const account = {
+      brand: { domain: 'negotiated-floor-update.example' },
+      operator: 'negotiated-floor-update.example',
+    };
+    await runWithSessionContext(async () => {
+      const session = await getSession(sessionKeyFromArgs({ account }, DEFAULT_CTX.mode));
+      session.negotiatedPricingOptions.set(
+        `${product.product_id}:${negotiatedPricing.pricing_option_id}`,
+        { productId: product.product_id, option: negotiatedPricing },
+      );
+      await flushDirtySessions();
+    });
+
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: negotiatedPricing.pricing_option_id,
+        budget: 10_000,
+        bid_price: negotiatedPricing.floor_price,
+      }],
+    });
+    expect(isError, JSON.stringify(created)).toBeFalsy();
+
+    const createdPackage = (created.packages as Array<Record<string, unknown>>)[0];
+    const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: created.media_buy_id,
+      packages: [{
+        package_id: createdPackage.package_id,
+        bid_price: negotiatedPricing.floor_price! - 0.01,
+      }],
+    });
+
+    expect(rejected.code).toBe('VALIDATION_ERROR');
+    expect(rejected.message).toContain('below floor price');
+  });
+
   it('serializes controls that target the same MediaBuy revision', async () => {
     const catalog = buildCatalog();
     const product = catalog[0].product;
@@ -15592,9 +15646,8 @@ describe('activate_signal handler', () => {
     expect(updated.result.code).toBe('GOVERNANCE_DENIED');
   });
 
-  it('accepts an approved governance_context for a governed signal account', async () => {
+  it('accepts an approved governance_context for a signal account with a local plan', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
-    await syncGovernedAccount(server);
 
     await simulateCallTool(server, 'sync_plans', {
       account,

@@ -245,14 +245,6 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
     'The localization storyboard begins capability assertions without first gating on creative.has_creative_library and localization support. The sales tenant accepts inline creatives but does not advertise a localized creative library. Remove when capability gating precedes execution.',
   ],
   [
-    'sales/sales_non_guaranteed',
-    'The beta.12 packaged sales_non_guaranteed track registers a governance agent and then calls create_media_buy without the required governance_context. Current source no longer makes optional governance registration part of this baseline sales story, and the reference seller separately performs online execution checks. Remove when the SDK bundles the corrected track.',
-  ],
-  [
-    'sales/sales_guaranteed',
-    'The beta.12 packaged sales_guaranteed track registers a governance agent and then calls create_media_buy without the required governance_context. Current source no longer makes optional governance registration part of this baseline sales story, and the reference seller separately performs online execution checks. Remove when the SDK bundles the corrected track.',
-  ],
-  [
     'signals/agent_notification_configs',
     'The storyboard evaluates its capability assertion before enforcing the missing sync_agent_notification_configs tool prerequisite on a compliance-enabled signals tenant. Remove when required_tools gating precedes capability-step execution.',
   ],
