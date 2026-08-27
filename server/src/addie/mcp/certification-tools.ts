@@ -7,6 +7,7 @@
 
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { formatUtcTimestamp } from '../tool-temporal.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -631,12 +632,7 @@ function buildShareLinks(
 
 function formatUtcDate(value: string | null): string {
   if (!value) return 'the published deadline';
-  return new Date(value).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+  return formatUtcTimestamp(value);
 }
 
 /**
@@ -2227,7 +2223,7 @@ export function createCertificationToolHandlers(
         lines.push('## Earned credentials');
         for (const cred of earnedCreds) {
           const uc = userCredentials.find(u => u.credential_id === cred.id);
-          lines.push(`- **${cred.name}** (Level ${cred.tier}) — earned ${uc ? new Date(uc.awarded_at).toLocaleDateString() : ''}`);
+          lines.push(`- **${cred.name}** (Level ${cred.tier}) — earned ${uc ? formatUtcTimestamp(uc.awarded_at) : ''}`);
         }
         lines.push('');
       }
@@ -2466,7 +2462,7 @@ export function createCertificationToolHandlers(
             }
             const active = await certDb.getActiveAttemptForModule(userId, moduleId);
             if (active) {
-              return `You already have an active ${delta.delta_action_label} delta attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the delta assessment.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
+              return `You already have an active ${delta.delta_action_label} delta attempt (started ${formatUtcTimestamp(active.started_at)}). Continue the delta assessment.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
             }
           }
           if (deltaStatus.active && deltaStatus.status === 'full_recertification_required') {
@@ -2539,7 +2535,7 @@ export function createCertificationToolHandlers(
         if (options?.trainingModuleContext) {
           options.trainingModuleContext.moduleId = moduleId;
         }
-        return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
+        return `You already have an active capstone attempt (started ${formatUtcTimestamp(active.started_at)}). Continue the capstone.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
       }
 
       // Start the module and create an attempt

@@ -678,10 +678,10 @@ If the user is in a channel associated with a working group, you can omit workin
 
 For recurring meetings, use the recurrence parameter with freq, interval, count, and byDay.
 
-Required: title, start_time (ISO format without timezone suffix - use timezone parameter for that)
+Required: title, start_time (RFC 3339 with an explicit offset)
 Optional: working_group_slug (auto-detected from channel), description, agenda, duration_minutes, timezone, topic_slugs, recurrence
 
-IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix. For example, if user says "2pm ET", use "2026-01-15T14:00:00" (not "2026-01-15T14:00:00Z"). The timezone parameter (default: America/New_York) specifies what timezone the start_time is in.
+IMPORTANT: The numeric offset in start_time must agree with timezone at that instant. For example, 2pm New York in January is "2026-01-15T14:00:00-05:00" with timezone "America/New_York". This prevents daylight-saving and server-timezone ambiguity.
 
 Example prompts this handles:
 - "Schedule a technical working group call for next Tuesday at 2pm ET"
@@ -733,7 +733,7 @@ Update an existing meeting's details. Use this when someone wants to change the 
 
 This will update the meeting in the database, Zoom (if configured), and Google Calendar.
 
-IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix (same as schedule_meeting).
+IMPORTANT: start_time must be RFC 3339 with an explicit offset that agrees with the IANA timezone.
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 
@@ -813,7 +813,7 @@ Create a new AAO event. Use this when someone asks to create a meetup, webinar, 
 The event will be created in both Luma (for registration) and the AAO website.
 Returns the Luma URL for sharing and the AAO event page URL.
 
-Required: title, start_time (ISO format), event_type
+Required: title, start_time (RFC 3339 with an explicit offset), event_type
 Optional: description, end_time, timezone, location details, virtual_url, max_attendees
 
 *Source: `server/src/addie/mcp/event-tools.ts`*
@@ -860,7 +860,7 @@ Create a new AAO event. Use this when someone asks to create a meetup, webinar, 
 The event will be created in both Luma (for registration) and the AAO website.
 Returns the Luma URL for sharing and the AAO event page URL.
 
-Required: title, start_time (ISO format), event_type
+Required: title, start_time (RFC 3339 with an explicit offset), event_type
 Optional: description, end_time, timezone, location details, virtual_url, max_attendees
 
 *Source: `server/src/addie/mcp/event-tools.ts`*
