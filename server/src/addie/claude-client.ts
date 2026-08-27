@@ -56,6 +56,7 @@ import {
 } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
+  recordProviderToolResults,
   type AddieExecutionMode,
   type ToolExecution,
   type ToolExecutionPolicy,
@@ -84,10 +85,7 @@ import {
   formatTruncatedOutput,
 } from './security.js';
 import {
-  isToolResultError,
-  normalizeToolResult,
   renderToolExecutionsFallback,
-  type NormalizedToolResult,
   type ToolResultPresentation,
 } from './tool-result-contract.js';
 
@@ -1115,57 +1113,6 @@ export class AddieClaudeClient {
     return isEvaluationExecution(options) ? {} : toolInput;
   }
 
-  private recordedToolResult(
-    options: ProcessMessageOptions | undefined,
-    result: string,
-    kind: 'success' | 'error',
-  ): string {
-    if (!isEvaluationExecution(options)) return result;
-    return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
-  }
-
-  private observeNormalizedToolResult(
-    toolName: string,
-    normalized: NormalizedToolResult,
-  ): NormalizedToolResult {
-    if (normalized.display_degradation) {
-      logger.warn(
-        {
-          event: 'addie_tool_result_display_degraded',
-          toolName,
-          reason: normalized.display_degradation,
-        },
-        'Addie: Tool result display payload degraded; text result preserved',
-      );
-    }
-    if (normalized.model_context_truncated || normalized.user_summary_truncated) {
-      logger.warn(
-        {
-          event: 'addie_tool_result_content_bounded',
-          toolName,
-          modelContextTruncated: normalized.model_context_truncated,
-          userSummaryTruncated: normalized.user_summary_truncated,
-        },
-        'Addie: Oversized tool result content bounded',
-      );
-    }
-    return normalized;
-  }
-
-  private recordedToolPresentation(
-    options: ProcessMessageOptions | undefined,
-    normalized: NormalizedToolResult,
-  ): ToolResultPresentation {
-    if (!isEvaluationExecution(options)) return normalized.presentation;
-    return {
-      status: normalized.status,
-      user_summary: isToolResultError(normalized.status)
-        ? 'Tool execution failed'
-        : 'Tool execution completed',
-      source: normalized.presentation.source,
-    };
-  }
-
   /**
    * Invalidate the cached system prompt (forces re-read of rule files)
    */
@@ -1599,87 +1546,47 @@ export class AddieClaudeClient {
         outputTokens: response.usage.outputTokens,
       }, 'Addie: Claude response received');
 
-      // Post-tool empty-response recovery is intentionally text-only. Defend
-      // against a malformed provider response that nevertheless contains a
-      // tool request: discard it instead of risking a duplicate mutation.
-      if (modelLoop.emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
-        logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
-        response = {
-          ...response,
-          finishReason: 'stop',
-          providerFinishReason: 'end_turn',
-          content: [],
-        };
-      }
       const turn = activeTurn.acceptResponse(response, { countUsage: !reusedEmptyResponse });
+      response = turn.response;
+      if (turn.discardedRecoveryToolCalls) {
+        logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
+      }
 
-      // Provider-managed web results may accompany either a terminal answer or
-      // another tool-call turn. Derive their receipts through the selected
-      // adapter so private provider payloads never enter common orchestration.
-      const earlyWebSearchResults = turn.providerToolResults;
-      const earlyServerToolBlocks = turn.providerToolCalls;
-
-      if (earlyWebSearchResults.length > 0) {
-        for (const result of earlyWebSearchResults) {
-          executionSequence++;
-          toolsUsed.push('web_search');
-          const correspondingToolUse = earlyServerToolBlocks.find((call) => call.id === result.toolCallId);
-          const receipt = correspondingToolUse
-            ? this.anthropicProvider.deriveProviderToolReceipt(
-              correspondingToolUse,
-              result,
-              operationalExecution ? 'production' : 'redacted',
-            )
-            : {
-              parameters: {},
-              resultSummary: result.isError
-                ? 'Web search failed'
-                : `Web search completed (${result.resultCount} results)`,
-              resultDetails: result.isError
-                ? 'Web search failed'
-                : `Web search completed (${result.resultCount} results)`,
-              isError: result.isError,
-            };
-          const normalized = this.observeNormalizedToolResult('web_search', normalizeToolResult('web_search', {
-            status: receipt.isError ? 'error' : result.resultCount === 0 ? 'empty' : 'ok',
-            model_context: receipt.resultDetails,
-            user_summary: receipt.resultSummary,
-          }));
-          const presentation = this.recordedToolPresentation(options, normalized);
-
-          toolExecutions.push({
-            tool_name: 'web_search',
-            parameters: this.recordedToolParameters(options, receipt.parameters),
-            result: this.recordedToolResult(options, normalized.model_context, receipt.isError ? 'error' : 'success'),
-            result_summary: this.recordedToolResult(options, presentation.user_summary, receipt.isError ? 'error' : 'success'),
-            is_error: receipt.isError,
-            duration_ms: 0,
-            sequence: executionSequence,
-            normalized_result: presentation,
-          });
-
-          logger.debug(
-            {
-              resultCount: result.resultCount,
-              ...(operationalExecution && {
-                query: (receipt.parameters as Record<string, unknown>).query,
-              }),
-            },
-            'Addie: Web search completed',
-          );
-        }
+      // Provider results may accompany a terminal, provider-continuation, or
+      // mixed custom-tool turn. Record them once at the normalized boundary.
+      const providerToolExecutions = recordProviderToolResults(
+        this.anthropicProvider,
+        turn.providerToolCalls,
+        turn.providerToolResults,
+        {
+          executionMode: options?.executionMode ?? 'production',
+          startingSequence: executionSequence,
+        },
+      );
+      for (const recorded of providerToolExecutions) {
+        executionSequence = recorded.execution.sequence;
+        toolsUsed.push(recorded.execution.tool_name);
+        toolExecutions.push(recorded.execution);
+        logger.debug(
+          {
+            toolName: recorded.execution.tool_name,
+            resultCount: recorded.result.resultCount,
+            parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
+          },
+          'Addie: Provider tool completed',
+        );
       }
 
       const stopAction = turn.action;
 
-      if (stopAction === 'continue') {
+      if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
         appendModelTurnContinuation(modelMessages, response);
         logger.info(
           { stopReason: response.providerFinishReason, iteration },
-          'Addie: Continuing resumable Anthropic turn',
+          'Addie: Continuing resumable provider turn',
         );
         continue;
       }
@@ -1842,107 +1749,10 @@ export class AddieClaudeClient {
         };
       }
 
-      // Handle tool use (both custom tools and server-managed tools like web_search)
-      if (stopAction === 'tool_use') {
+      // Handle custom tool use. Provider-managed results were recorded above.
+      if (stopAction === 'execute_tools') {
         // Get custom tool use blocks (these need our handlers)
         const toolUseBlocks = turn.toolCalls;
-
-        // Get server tool use blocks (web_search - handled by Anthropic)
-        const serverToolBlocks = turn.providerToolCalls;
-
-        // Get web search results (already executed by Anthropic)
-        const webSearchResults = turn.providerToolResults;
-
-        // Track server-managed tool uses (web search)
-        for (const block of serverToolBlocks) {
-          executionSequence++;
-          toolsUsed.push(block.name);
-
-          // Find corresponding result by matching tool_use_id
-          const resultBlock = webSearchResults.find((result) => result.toolCallId === block.id);
-          const receipt = resultBlock
-            ? this.anthropicProvider.deriveProviderToolReceipt(
-              block,
-              resultBlock,
-              operationalExecution ? 'production' : 'redacted',
-            )
-            : {
-              parameters: {},
-              resultSummary: 'Web search completed',
-              resultDetails: 'Web search completed',
-              isError: false,
-            };
-          const normalized = this.observeNormalizedToolResult(block.name, normalizeToolResult(block.name, {
-            status: receipt.isError ? 'error' : (resultBlock?.resultCount ?? 0) === 0 ? 'empty' : 'ok',
-            model_context: receipt.resultDetails,
-            user_summary: receipt.resultSummary,
-          }));
-          const presentation = this.recordedToolPresentation(options, normalized);
-
-          toolExecutions.push({
-            tool_name: block.name,
-            parameters: this.recordedToolParameters(options, receipt.parameters),
-            result: this.recordedToolResult(options, normalized.model_context, receipt.isError ? 'error' : 'success'),
-            result_summary: this.recordedToolResult(options, presentation.user_summary, receipt.isError ? 'error' : 'success'),
-            is_error: receipt.isError,
-            duration_ms: 0, // Server-managed, we don't have timing
-            sequence: executionSequence,
-            normalized_result: presentation,
-          });
-
-          logger.debug({
-            toolName: block.name,
-            ...(operationalExecution && { inputKeys: block.inputKeys }),
-            resultCount: resultBlock?.resultCount ?? 0,
-          }, 'Addie: Server tool executed (web_search)');
-        }
-
-        // If only server tools were used (no custom tools), continue the loop
-        // The web search results are already in the response, we just need to continue
-        if (toolUseBlocks.length === 0 && serverToolBlocks.length > 0) {
-          // Add the response content (including provider continuation state).
-          appendModelTurnContinuation(modelMessages, response);
-          continue;
-        }
-
-        if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
-          const rawText = turn.textBlocks[0]?.text ?? '';
-          const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
-          const text = finalized.text;
-          if (finalized.emptyReason) {
-            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
-          }
-          totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const terminalUsage = toAddieUsage(modelLoop.usage);
-          if (finalized.lengthExceeded) {
-            logger.error(
-              { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
-              'Addie: Normally completed response exceeded output cap',
-            );
-          }
-          if (operationalExecution && options?.costScope) {
-            await recordCost(options.costScope.userId, options.modelOverride ?? AddieModelConfig.chat, terminalUsage);
-          }
-          return {
-            text,
-            tools_used: toolsUsed,
-            tool_executions: toolExecutions,
-            flagged: finalized.lengthExceeded || !!finalized.emptyReason,
-            flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
-            active_rule_ids: undefined,
-            config_version_id: configVersionId ?? undefined,
-            model_execution: finalized.emptyReason
-              ? localModelExecution('no_provider_response', effectiveModel)
-              : anthropicModelExecution(response.model, effectiveModel),
-            timing: {
-              system_prompt_ms: systemPromptMs,
-              total_llm_ms: totalLlmMs,
-              total_tool_execution_ms: totalToolExecutionMs,
-              iterations: iteration,
-            },
-            usage: terminalUsage,
-          };
-        }
 
         const toolResults: ModelToolResultContent[] = [];
 
@@ -2395,16 +2205,45 @@ export class AddieClaudeClient {
           outputTokens: currentResponse.usage.outputTokens,
         }, 'Addie Stream: Claude response received');
 
-        // The post-tool recovery iteration has no tools. If the provider still returns
-        // a tool_use block, ignore it rather than executing a mutation twice.
-        if (modelLoop.emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
+        const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
+        currentResponse = turn.response;
+        if (turn.discardedRecoveryToolCalls) {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
-          currentResponse = {
-            ...currentResponse,
-            finishReason: 'stop',
-            providerFinishReason: 'end_turn',
-            content: [],
+        }
+
+        const providerToolExecutions = recordProviderToolResults(
+          this.anthropicProvider,
+          turn.providerToolCalls,
+          turn.providerToolResults,
+          {
+            executionMode: options?.executionMode ?? 'production',
+            startingSequence: executionSequence,
+          },
+        );
+        for (const recorded of providerToolExecutions) {
+          executionSequence = recorded.execution.sequence;
+          toolsUsed.push(recorded.execution.tool_name);
+          toolExecutions.push(recorded.execution);
+          yield {
+            type: 'tool_start',
+            tool_name: recorded.execution.tool_name,
+            parameters: recorded.execution.parameters,
           };
+          yield {
+            type: 'tool_end',
+            tool_name: recorded.execution.tool_name,
+            result: recorded.execution.result,
+            is_error: recorded.execution.is_error,
+            normalized_result: recorded.execution.normalized_result,
+          };
+          logger.debug(
+            {
+              toolName: recorded.execution.tool_name,
+              resultCount: recorded.result.resultCount,
+              parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
+            },
+            'Addie Stream: Provider tool completed',
+          );
         }
 
         // Build the final usage block + charge the user's cost
@@ -2421,17 +2260,16 @@ export class AddieClaudeClient {
           }
         };
 
-        const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         const stopAction = turn.action;
         const iterationText = turn.textBlocks
           .map((block) => block.text)
           .join('\n\n');
-        if (stopAction === 'continue') {
+        if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
           // Resume from the provider response without exposing interim text.
           appendModelTurnContinuation(modelMessages, currentResponse);
           logger.info(
             { stopReason: currentResponse.providerFinishReason, iteration },
-            'Addie Stream: Continuing resumable Anthropic turn',
+            'Addie Stream: Continuing resumable provider turn',
           );
           continue;
         }
@@ -2577,51 +2415,9 @@ export class AddieClaudeClient {
         }
 
         // Handle tool use
-        if (stopAction === 'tool_use') {
+        if (stopAction === 'execute_tools') {
           logicalText += iterationText;
           const toolUseBlocks = turn.toolCalls;
-
-          if (toolUseBlocks.length === 0) {
-            // No tools to execute, return current text
-            totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-            const streamUsage = buildStreamUsage();
-            const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
-            if (finalized.emptyReason) {
-              reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
-            }
-            if (finalized.lengthExceeded) {
-              logger.error(
-                { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: finalized.text.length, localCapExceeded: true },
-                'Addie Stream: Normally completed response exceeded output cap',
-              );
-            }
-            await chargeStreamCost(streamUsage);
-            yield { type: 'text', text: finalized.text };
-            yield {
-              type: 'done',
-              response: {
-                text: finalized.text,
-                tools_used: toolsUsed,
-                tool_executions: toolExecutions,
-                flagged: finalized.lengthExceeded || !!finalized.emptyReason,
-                flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
-                active_rule_ids: undefined,
-                config_version_id: configVersionId ?? undefined,
-                model_execution: finalized.emptyReason
-                  ? localModelExecution('no_provider_response', effectiveModel)
-                  : anthropicModelExecution(currentResponse.model, effectiveModel),
-                timing: {
-                  system_prompt_ms: systemPromptMs,
-                  total_llm_ms: totalLlmMs,
-                  total_tool_execution_ms: totalToolExecutionMs,
-                  iterations: iteration,
-                },
-                usage: streamUsage,
-                capacity: { certification_reserve_used: certificationReserveUsed },
-              },
-            };
-            return;
-          }
 
           const toolResults: ModelToolResultContent[] = [];
 

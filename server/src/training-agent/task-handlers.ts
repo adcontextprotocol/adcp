@@ -8841,6 +8841,18 @@ async function handleGetProductsUnlocked(
     if (pricingStructures?.length) {
       products = applyPricingStructuresFilterToProducts(products, pricingStructures);
     }
+    // Filter-not-fail per product-filters.json required_metrics: superset
+    // evaluation under the container-subsumption rule (a product declaring
+    // the viewability container satisfies a viewable_rate requirement).
+    const requiredMetrics = (req.filters as { required_metrics?: string[] }).required_metrics;
+    if (requiredMetrics?.length) {
+      products = products.filter(p => {
+        const declared = new Set(
+          (p.reporting_capabilities as { available_metrics?: string[] } | undefined)?.available_metrics ?? [],
+        );
+        return requiredMetrics.every(metricId => reportingMetricIsAvailable(metricId, declared));
+      });
+    }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
       products = products.filter(p => {

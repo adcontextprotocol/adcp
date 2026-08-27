@@ -1546,7 +1546,7 @@ Ask the author to revise and resubmit content. The article stays visible in the 
 
 ### `read_google_doc`
 
-Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with ${...}).
+Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
 
 *Source: `server/src/addie/mcp/google-docs.ts`*
 

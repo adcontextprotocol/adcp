@@ -13,7 +13,12 @@ import type {
 } from './model-provider.js';
 import { collectModelResponse } from './events.js';
 
-export type ModelTurnAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
+export type ModelTurnAction =
+  | 'complete'
+  | 'truncated'
+  | 'execute_tools'
+  | 'continue'
+  | 'continue_provider_tools';
 
 export interface InspectedModelTurn {
   action: ModelTurnAction;
@@ -21,6 +26,11 @@ export interface InspectedModelTurn {
   toolCalls: ReadonlyArray<ModelToolCallContent>;
   providerToolCalls: ReadonlyArray<ModelProviderToolCallContent>;
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
+}
+
+export interface AcceptedModelTurn extends InspectedModelTurn {
+  response: ModelResponse;
+  discardedRecoveryToolCalls: boolean;
 }
 
 /** Append one canonical assistant continuation and any custom-tool results. */
@@ -156,16 +166,32 @@ export class ModelTurnLoopState {
   acceptResponse(
     response: ModelResponse,
     options: { countUsage?: boolean } = {},
-  ): InspectedModelTurn {
+  ): AcceptedModelTurn {
     if (!this.awaitingResponse) {
       throw new Error('Model loop response has no active iteration');
     }
-    const turn = inspectModelTurn(response);
+    // Post-tool recovery is permanently text-only. A malformed provider
+    // response must not be able to request the same mutation a second time.
+    const discardedRecoveryToolCalls = this.emptyResponseRecovery.postToolAttempted
+      && response.finishReason === 'tool_calls';
+    const acceptedResponse: ModelResponse = discardedRecoveryToolCalls
+      ? {
+          ...response,
+          finishReason: 'stop',
+          providerFinishReason: 'end_turn',
+          content: [],
+        }
+      : response;
+    const turn = inspectModelTurn(acceptedResponse);
     if (options.countUsage !== false) {
-      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, response.usage);
+      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
     }
     this.awaitingResponse = false;
-    return turn;
+    return Object.freeze({
+      ...turn,
+      response: acceptedResponse,
+      discardedRecoveryToolCalls,
+    });
   }
 }
 
@@ -204,7 +230,7 @@ export class ActiveModelTurn {
   acceptResponse(
     response: ModelResponse,
     options: { countUsage?: boolean } = {},
-  ): InspectedModelTurn {
+  ): AcceptedModelTurn {
     if (this.invocationInFlight) {
       throw new Error('Cannot accept a response while provider invocation is in flight');
     }
@@ -235,6 +261,14 @@ export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage 
  * canonical finish reason and canonical content variants exclusively.
  */
 export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
+  const textBlocks = Object.freeze(response.content.filter((content) => content.type === 'text'));
+  const toolCalls = Object.freeze(response.content.filter((content) => content.type === 'tool_call'));
+  const providerToolCalls = Object.freeze(response.content.filter(
+    (content) => content.type === 'provider_tool_call',
+  ));
+  const providerToolResults = Object.freeze(response.content.filter(
+    (content) => content.type === 'provider_tool_result',
+  ));
   let action: ModelTurnAction;
   switch (response.finishReason) {
     case 'stop':
@@ -245,7 +279,15 @@ export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
       action = 'truncated';
       break;
     case 'tool_calls':
-      action = 'tool_use';
+      // A provider-managed tool is continuation state, not an application
+      // mutation. When custom and provider-managed calls coexist, the custom
+      // calls must execute before the next model turn. A malformed tool-call
+      // finish with no canonical calls remains terminal and side-effect free.
+      action = toolCalls.length > 0
+        ? 'execute_tools'
+        : providerToolCalls.length > 0
+          ? 'continue_provider_tools'
+          : 'complete';
       break;
     case 'continue':
       action = 'continue';
@@ -258,13 +300,9 @@ export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
 
   return Object.freeze({
     action,
-    textBlocks: Object.freeze(response.content.filter((content) => content.type === 'text')),
-    toolCalls: Object.freeze(response.content.filter((content) => content.type === 'tool_call')),
-    providerToolCalls: Object.freeze(response.content.filter(
-      (content) => content.type === 'provider_tool_call',
-    )),
-    providerToolResults: Object.freeze(response.content.filter(
-      (content) => content.type === 'provider_tool_result',
-    )),
+    textBlocks,
+    toolCalls,
+    providerToolCalls,
+    providerToolResults,
   });
 }

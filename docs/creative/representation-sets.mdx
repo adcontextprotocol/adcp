@@ -235,7 +235,6 @@ bytes to change without changing either review fingerprint.
 
 ## Resolution failure
 
-<!-- Unreleased 3.2 schema: use /schemas/latest until publication. -->
 When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-representation-unresolved.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.7/error-details/creative-representation-unresolved.json), with exactly one `representation_rejections` entry for every candidate. Unsupported representations remain in the immutable set; failure does not delete or rewrite them.
 
 ```json

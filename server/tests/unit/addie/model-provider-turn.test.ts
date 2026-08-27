@@ -85,7 +85,6 @@ describe('inspectModelTurn', () => {
     ['stop', 'complete'],
     ['refusal', 'complete'],
     ['length', 'truncated'],
-    ['tool_calls', 'tool_use'],
     ['continue', 'continue'],
   ] as const)('maps canonical %s without consulting provider diagnostics', (finishReason, action) => {
     expect(inspectModelTurn(response(finishReason)).action).toBe(action);
@@ -94,12 +93,27 @@ describe('inspectModelTurn', () => {
   it('partitions canonical content while retaining text block order', () => {
     const turn = inspectModelTurn(response('tool_calls', partitionedContent));
 
+    expect(turn.action).toBe('execute_tools');
     expect(turn.textBlocks.map((block) => block.text)).toEqual(['before', 'after']);
     expect(turn.toolCalls.map((call) => call.id)).toEqual(['tool-1']);
     expect(turn.providerToolCalls.map((call) => call.id)).toEqual(['provider-1']);
     expect(turn.providerToolResults.map((result) => result.toolCallId)).toEqual(['provider-1']);
     expect(Object.isFrozen(turn)).toBe(true);
     expect(Object.isFrozen(turn.toolCalls)).toBe(true);
+  });
+
+  it('continues provider-managed tools without treating them as application mutations', () => {
+    const providerOnly = partitionedContent.filter((content) => (
+      content.type === 'provider_tool_call' || content.type === 'provider_tool_result'
+    ));
+
+    expect(inspectModelTurn(response('tool_calls', providerOnly)).action)
+      .toBe('continue_provider_tools');
+  });
+
+  it('completes a malformed tool-call finish with no canonical calls', () => {
+    expect(inspectModelTurn(response('tool_calls', [{ type: 'text', text: 'done' }])).action)
+      .toBe('complete');
   });
 });
 
@@ -243,6 +257,31 @@ describe('ModelTurnLoopState', () => {
     loop.startNext();
     loop.acceptResponse(original, { countUsage: false });
     expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('discards tool calls returned by a post-tool text-only recovery', () => {
+    const loop = new ModelTurnLoopState(1);
+    const original = response('stop');
+    const repeatedMutation = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'repeat-1',
+      name: 'mutate_again',
+      input: {},
+    }]);
+
+    loop.emptyResponseRecovery.schedule('post_tool', original);
+    const activeTurn = loop.beginNext();
+    const accepted = activeTurn.acceptResponse(repeatedMutation);
+
+    expect(accepted.action).toBe('complete');
+    expect(accepted.toolCalls).toEqual([]);
+    expect(accepted.discardedRecoveryToolCalls).toBe(true);
+    expect(accepted.response).toMatchObject({
+      finishReason: 'stop',
+      providerFinishReason: 'end_turn',
+      content: [],
+    });
+    expect(loop.usage).toEqual({ inputTokens: 1, outputTokens: 1 });
   });
 
   it('enforces one response per started iteration', () => {
