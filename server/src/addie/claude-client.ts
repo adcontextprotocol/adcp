@@ -50,6 +50,7 @@ import {
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
 import { collectModelResponse } from './model-providers/events.js';
+import { inspectModelTurn } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
   type AddieExecutionMode,
@@ -159,39 +160,6 @@ function hashPreparedPayload(
       .digest('hex');
   }
   return createHash('sha256').update(value, 'utf8').digest('hex');
-}
-
-type StopAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
-
-/**
- * Keep every Anthropic stop reason explicit. In particular, truncation is a
- * terminal response (never a reason to sample the same prompt again), while
- * pause_turn/compaction continue with the provider response in history.
- * Do not infer truncation from an alphanumeric final character: headings,
- * URLs, code, and terse list items commonly end that way. The provider's
- * stop_reason is the reliable under-10k completion sentinel.
- */
-function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopAction {
-  switch (reason) {
-    case 'end_turn':
-    case 'stop_sequence':
-    case 'refusal':
-      return 'complete';
-    case 'max_tokens':
-    case 'model_context_window_exceeded':
-      return 'truncated';
-    case 'tool_use':
-      return 'tool_use';
-    case 'pause_turn':
-    case 'compaction':
-      return 'continue';
-    case null:
-      throw new Error('Anthropic response completed without a stop reason');
-    default: {
-      const exhaustiveReason: never = reason;
-      throw new Error(`Unhandled Anthropic stop reason: ${String(exhaustiveReason)}`);
-    }
-  }
 }
 
 /**
@@ -1639,12 +1607,13 @@ export class AddieClaudeClient {
           content: [],
         };
       }
+      const turn = inspectModelTurn(response);
 
       // Provider-managed web results may accompany either a terminal answer or
       // another tool-call turn. Derive their receipts through the selected
       // adapter so private provider payloads never enter common orchestration.
-      const earlyWebSearchResults = response.content.filter((c) => c.type === 'provider_tool_result');
-      const earlyServerToolBlocks = response.content.filter((c) => c.type === 'provider_tool_call');
+      const earlyWebSearchResults = turn.providerToolResults;
+      const earlyServerToolBlocks = turn.providerToolCalls;
 
       if (earlyWebSearchResults.length > 0) {
         for (const result of earlyWebSearchResults) {
@@ -1697,9 +1666,7 @@ export class AddieClaudeClient {
         }
       }
 
-      const stopAction = classifyStopReason(
-        response.providerFinishReason as Anthropic.Beta.BetaStopReason,
-      );
+      const stopAction = turn.action;
 
       if (stopAction === 'continue') {
         // Anthropic pause_turn and compaction responses are resumable only
@@ -1714,9 +1681,8 @@ export class AddieClaudeClient {
       }
 
       if (stopAction === 'truncated') {
-        const rawText = response.content
-          .map((block) => block.type === 'text' ? block.text : '')
-          .filter(Boolean)
+        const rawText = turn.textBlocks
+          .map((block) => block.text)
           .join('\n\n')
           .trim();
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
@@ -1775,9 +1741,8 @@ export class AddieClaudeClient {
       // Done - no tool use, just text
       if (stopAction === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
-        const textBlocks = response.content.filter((c) => c.type === 'text');
-        const rawText = textBlocks
-          .map(block => block.type === 'text' ? block.text : '')
+        const rawText = turn.textBlocks
+          .map((block) => block.text)
           .join('\n\n')
           .trim();
         // A provider-successful but wholly empty first sample has no visible
@@ -1888,13 +1853,13 @@ export class AddieClaudeClient {
       // Handle tool use (both custom tools and server-managed tools like web_search)
       if (stopAction === 'tool_use') {
         // Get custom tool use blocks (these need our handlers)
-        const toolUseBlocks = response.content.filter((c) => c.type === 'tool_call');
+        const toolUseBlocks = turn.toolCalls;
 
         // Get server tool use blocks (web_search - handled by Anthropic)
-        const serverToolBlocks = response.content.filter((c) => c.type === 'provider_tool_call');
+        const serverToolBlocks = turn.providerToolCalls;
 
         // Get web search results (already executed by Anthropic)
-        const webSearchResults = response.content.filter((c) => c.type === 'provider_tool_result');
+        const webSearchResults = turn.providerToolResults;
 
         // Track server-managed tool uses (web search)
         for (const block of serverToolBlocks) {
@@ -1949,8 +1914,7 @@ export class AddieClaudeClient {
         }
 
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
-          const textContent = response.content.find((c) => c.type === 'text');
-          const rawText = textContent && textContent.type === 'text' ? textContent.text : '';
+          const rawText = turn.textBlocks[0]?.text ?? '';
           const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
           const text = finalized.text;
           if (finalized.emptyReason) {
@@ -2495,11 +2459,9 @@ export class AddieClaudeClient {
           }
         };
 
-        const stopAction = classifyStopReason(
-          currentResponse.providerFinishReason as Anthropic.Beta.BetaStopReason,
-        );
-        const iterationText = currentResponse.content
-          .filter((block) => block.type === 'text')
+        const turn = inspectModelTurn(currentResponse);
+        const stopAction = turn.action;
+        const iterationText = turn.textBlocks
           .map((block) => block.text)
           .join('\n\n');
         if (stopAction === 'continue') {
@@ -2657,7 +2619,7 @@ export class AddieClaudeClient {
         // Handle tool use
         if (stopAction === 'tool_use') {
           logicalText += iterationText;
-          const toolUseBlocks = currentResponse.content.filter((content) => content.type === 'tool_call');
+          const toolUseBlocks = turn.toolCalls;
 
           if (toolUseBlocks.length === 0) {
             // No tools to execute, return current text
