@@ -11,7 +11,7 @@
     "note": "Directional consolidation target; current exact baselines remain the enforced no-growth ceilings."
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "3f403b0d27841b1c16f45dd4c9fdc651b03889a6ee6dac26d4a552c8fec17a14",
+    "server/src/addie/claude-client.ts": "f4dabf3d00d63354bd108928dccdd81b53a62e6ce2f13d1c6af38ff29499e11b",
     "server/src/addie/tool-wire-shape.ts": "103f31ca6d8e15b34a67e88a9ba69f08827571b293f4cb9ab9c1ad3d03b7e6cc",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "54a62e0d89023ff9c67321639da80e67559f181eccdecf80dbdc57cc42af5b05",
