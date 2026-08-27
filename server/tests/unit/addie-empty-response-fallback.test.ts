@@ -20,7 +20,17 @@ vi.mock('@anthropic-ai/sdk', () => ({
           model: String(payload.model),
           ...await mocks.createMessage(payload, options),
         }),
-        stream: mocks.streamMessage,
+        stream: (payload: Record<string, unknown>, options?: unknown) => {
+          const stream = mocks.streamMessage(payload, options);
+          return {
+            [Symbol.asyncIterator]: () => stream[Symbol.asyncIterator](),
+            finalMessage: async () => ({
+              id: 'msg_test_streaming',
+              model: String(payload.model),
+              ...await stream.finalMessage(),
+            }),
+          };
+        },
       },
     };
   },
@@ -198,7 +208,7 @@ function makeEmptyStream() {
 function makeTextDeltaStreamWithEmptyFinal(text: string) {
   return {
     async *[Symbol.asyncIterator]() {
-      yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
+      yield { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } };
     },
     finalMessage: vi.fn().mockResolvedValue(emptyEndTurn),
   };
@@ -228,9 +238,10 @@ function makeThrowingStream(error: Error) {
 function makeStream(message: typeof toolUseTurn | typeof searchToolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof semanticRefusalEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn | typeof ritualOnlyEndTurn) {
   return {
     async *[Symbol.asyncIterator]() {
-      for (const block of message.content) {
+      for (let index = 0; index < message.content.length; index++) {
+        const block = message.content[index];
         if (block.type === 'text') {
-          yield { type: 'content_block_delta', delta: { type: 'text_delta', text: block.text } };
+          yield { type: 'content_block_delta', index, delta: { type: 'text_delta', text: block.text } };
         }
       }
     },
@@ -411,7 +422,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
 
-  it('rejects a malformed non-streaming tool turn while streaming retains its local fallback', async () => {
+  it('rejects a malformed tool turn on both response paths', async () => {
     mocks.createMessage.mockResolvedValueOnce(emptyToolUseTurn);
     mocks.streamMessage.mockReturnValueOnce(makeStream(emptyToolUseTurn));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
@@ -423,13 +434,11 @@ describe('Addie empty-response fallback (#4430)', () => {
     for await (const event of client.processMessageStream(
       'hello', undefined, undefined, { uncapped: true },
     )) streamEvents.push(event);
-    const done = streamEvents.find(
-      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    const streamError = streamEvents.find(
+      (event): event is Extract<StreamEvent, { type: 'stream_error' }> => event.type === 'stream_error',
     );
 
-    expect(done?.response.model_execution).toEqual({
-      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'no_provider_response',
-    });
+    expect(streamError?.reason).toBe('Tool-call finish has no tool call');
   });
 
   it('classifies the non-streaming max-iteration apology as local', async () => {
@@ -536,7 +545,7 @@ describe('Addie empty-response fallback (#4430)', () => {
       max_tokens: 8_192,
       output_config: { effort: 'medium' },
     });
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
@@ -588,7 +597,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.text).toBe('Issue 42 is open.');
     expect(done?.response.usage).toMatchObject({ input_tokens: 22, output_tokens: 15 });
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
@@ -649,7 +658,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
     expect(done?.response.text).toBe('Issue 42 is open.');
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
   });
 
   it('recovers once when streaming text is entirely removed by postprocessing', async () => {
@@ -674,7 +683,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(emittedText).toBe('Issue 42 is open.');
     expect(done?.response.text).toBe('Issue 42 is open.');
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
@@ -728,7 +737,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
 
-  it('does not resample a streaming end_turn containing a tool block', async () => {
+  it('rejects a streaming end_turn containing a tool block', async () => {
     mocks.streamMessage.mockReturnValueOnce(makeStream(toolBlockEndTurn));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
     const events: StreamEvent[] = [];
@@ -740,10 +749,10 @@ describe('Addie empty-response fallback (#4430)', () => {
       { uncapped: true },
     )) events.push(event);
 
-    const done = events.find(
-      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    const streamError = events.find(
+      (event): event is Extract<StreamEvent, { type: 'stream_error' }> => event.type === 'stream_error',
     );
-    expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
+    expect(streamError?.reason).toBe('Client tool call has incompatible finish reason');
     expect(mocks.streamMessage).toHaveBeenCalledOnce();
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
@@ -859,11 +868,11 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(done?.response.usage).toMatchObject({ input_tokens: 10, output_tokens: 0 });
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
     expect(mocks.notifySystemError).toHaveBeenCalledOnce();
   });
 
-  it('does not resample when streaming deltas contain text but the final content is empty', async () => {
+  it('rejects streamed text when the terminal content is empty', async () => {
     mocks.streamMessage.mockReturnValueOnce(makeTextDeltaStreamWithEmptyFinal('A complete answer.'));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
     const events: StreamEvent[] = [];
@@ -875,8 +884,10 @@ describe('Addie empty-response fallback (#4430)', () => {
       { uncapped: true },
     )) events.push(event);
 
-    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
-    expect(done?.response.text).toBe('A complete answer.');
+    const streamError = events.find(
+      (event): event is Extract<StreamEvent, { type: 'stream_error' }> => event.type === 'stream_error',
+    );
+    expect(streamError?.reason).toBe('Anthropic stream text does not match terminal response');
     expect(mocks.streamMessage).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
@@ -924,8 +935,8 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.text).toBe('Issue 42 is open.');
     expect(getGithubIssue).toHaveBeenCalledOnce();
     expect(mocks.streamMessage).toHaveBeenCalledTimes(3);
-    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
-    expect(mocks.streamMessage.mock.calls[2][1]).toBeUndefined();
+    expect(mocks.streamMessage.mock.calls[1][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
+    expect(mocks.streamMessage.mock.calls[2][1]).toEqual({ maxRetries: 2, signal: expect.any(AbortSignal) });
   });
 
   it('recovers ritual-only text after tool use in both paths', async () => {
@@ -1037,7 +1048,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(done?.response.timing?.iterations).toBe(3);
     expect(getGithubIssue).toHaveBeenCalledOnce();
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
-    expect(mocks.streamMessage.mock.calls[2][1]).toEqual({ maxRetries: 0 });
+    expect(mocks.streamMessage.mock.calls[2][1]).toEqual({ maxRetries: 0, signal: expect.any(AbortSignal) });
   });
 
   it('falls back without retrying when post-tool recovery transport fails', async () => {

@@ -18,7 +18,17 @@ vi.mock('@anthropic-ai/sdk', () => ({
           model: String(payload.model),
           ...await mocks.createMessage(payload, options),
         }),
-        stream: mocks.streamMessage,
+        stream: (payload: Record<string, unknown>, options?: unknown) => {
+          const stream = mocks.streamMessage(payload, options);
+          return {
+            [Symbol.asyncIterator]: () => stream[Symbol.asyncIterator](),
+            finalMessage: async () => ({
+              id: 'msg_test_streaming',
+              model: String(payload.model),
+              ...await stream.finalMessage(),
+            }),
+          };
+        },
       },
     };
   },
@@ -88,6 +98,7 @@ function streamFor(finalResponse: MockMessage, chunks: string[]) {
       for (const text of chunks) {
         yield {
           type: 'content_block_delta',
+          index: 0,
           delta: { type: 'text_delta', text },
         };
       }

@@ -30,6 +30,7 @@ function makeKeywordErrorStub() {
     async *[Symbol.asyncIterator]() {
       yield {
         type: 'content_block_delta',
+        index: 0,
         delta: { type: 'text_delta', text: 'Sure, the answer is ' },
       };
       throw new Error("overloaded_error: Anthropic API is overloaded");
@@ -43,6 +44,7 @@ function makeApiErrorStub(MockedAPIError: { new (msg: string): Error & { status?
     async *[Symbol.asyncIterator]() {
       yield {
         type: 'content_block_delta',
+        index: 0,
         delta: { type: 'text_delta', text: 'Sure, the answer is ' },
       };
       const apiErr = new MockedAPIError("Streaming error");
@@ -216,6 +218,8 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
       streamCalls++;
       if (streamCalls === 2) {
         const recovered = {
+          id: 'msg_recovered',
+          model: 'claude-sonnet-4-6-20260801',
           stop_reason: 'end_turn',
           content: [{ type: 'text', text: 'Recovered response.' }],
           usage: { input_tokens: 4, output_tokens: 3 },
@@ -224,6 +228,7 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
           async *[Symbol.asyncIterator]() {
             yield {
               type: 'content_block_delta',
+              index: 0,
               delta: { type: 'text_delta', text: 'Recovered response.' },
             };
           },

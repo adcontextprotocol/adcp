@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   UnsupportedModelCapabilityError,
   type ModelFinishReason,
@@ -56,6 +57,8 @@ export interface AnthropicMessagesTransport {
 export interface AnthropicModelProviderOptions {
   /** Preserve a caller's established SDK transport retry posture. */
   transportMaxRetries?: 0 | 2;
+  /** Maximum silence between stream events and before the terminal message. */
+  streamIdleTimeoutMs?: number;
 }
 
 export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
@@ -92,6 +95,7 @@ function deepFreeze<T>(value: T): T {
 const MAX_CONTINUATION_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BLOCKS = 1_000;
 const MAX_STREAM_EVENTS = 100_000;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000;
 const ANTHROPIC_WEB_SEARCH_ERROR_CODES = new Set([
   'invalid_tool_input',
   'unavailable',
@@ -374,30 +378,75 @@ export function normalizeAnthropicResponse(response: AnthropicResponseLike): Mod
 
 async function collectAnthropicStream(
   stream: AnthropicMessageStreamTransport,
+  options: {
+    idleTimeoutMs: number;
+    abort: (reason: Error) => void;
+    onStreamProgress?: ModelRespondOptions['onStreamProgress'];
+  },
 ): Promise<{ response: ModelResponse; textDeltas: AnthropicTextDelta[] }> {
   const textDeltas: AnthropicTextDelta[] = [];
   let eventCount = 0;
   let textBytes = 0;
-  for await (const event of stream) {
-    eventCount++;
-    if (eventCount > MAX_STREAM_EVENTS) throw new Error('Anthropic stream event limit exceeded');
-    const record = requireRecord(event, 'stream event');
-    if (record.type !== 'content_block_delta') continue;
-    const delta = requireRecord(record.delta, 'stream delta');
-    if (delta.type !== 'text_delta') continue;
-    if (
-      !Number.isSafeInteger(record.index)
-      || (record.index as number) < 0
-      || typeof delta.text !== 'string'
-    ) throw new Error('Malformed Anthropic text stream delta');
-    textBytes += Buffer.byteLength(delta.text, 'utf8');
-    if (textBytes > MAX_CONTINUATION_BYTES) {
-      throw new Error('Anthropic stream text exceeds size limit');
+  const iterator = stream[Symbol.asyncIterator]();
+  let completed = false;
+
+  const withIdleTimeout = async <T>(operation: PromiseLike<T>): Promise<T> => {
+    const timeoutController = new AbortController();
+    const timeoutError = new Error('Anthropic stream idle timeout');
+    timeoutError.name = 'TimeoutError';
+    try {
+      try {
+        return await Promise.race([
+          Promise.resolve(operation),
+          delay(options.idleTimeoutMs, undefined, { signal: timeoutController.signal })
+            .then(() => { throw timeoutError; }),
+        ]);
+      } catch (error) {
+        // Settle the race with our stable error before aborting the SDK. Some
+        // transports reject synchronously on abort with a provider-specific
+        // error, which must not replace the authoritative timeout reason.
+        if (error === timeoutError) options.abort(timeoutError);
+        throw error;
+      }
+    } finally {
+      timeoutController.abort();
     }
-    textDeltas.push({ index: record.index as number, text: delta.text });
+  };
+
+  try {
+    while (true) {
+      const next = await withIdleTimeout(iterator.next());
+      if (next.done) {
+        completed = true;
+        break;
+      }
+      eventCount++;
+      if (eventCount > MAX_STREAM_EVENTS) throw new Error('Anthropic stream event limit exceeded');
+      const record = requireRecord(next.value, 'stream event');
+      if (record.type !== 'content_block_delta') continue;
+      options.onStreamProgress?.({ type: 'content_delta' });
+      const delta = requireRecord(record.delta, 'stream delta');
+      if (delta.type !== 'text_delta') continue;
+      if (
+        !Number.isSafeInteger(record.index)
+        || (record.index as number) < 0
+        || typeof delta.text !== 'string'
+      ) throw new Error('Malformed Anthropic text stream delta');
+      textBytes += Buffer.byteLength(delta.text, 'utf8');
+      if (textBytes > MAX_CONTINUATION_BYTES) {
+        throw new Error('Anthropic stream text exceeds size limit');
+      }
+      textDeltas.push({ index: record.index as number, text: delta.text });
+    }
+    const response = normalizeAnthropicResponse(
+      await withIdleTimeout(stream.finalMessage()),
+    );
+    return { response, textDeltas };
+  } finally {
+    if (!completed) {
+      void Promise.resolve(iterator.return?.()).catch(() => undefined);
+    }
   }
-  const response = normalizeAnthropicResponse(await stream.finalMessage());
-  return { response, textDeltas };
 }
 
 function* normalizedResponseEvents(
@@ -498,6 +547,7 @@ export class AnthropicModelProvider implements ModelProvider {
   readonly capabilities = ANTHROPIC_PROVIDER_CAPABILITIES;
   private readonly transport: AnthropicMessagesTransport;
   private readonly transportMaxRetries: 0 | 2;
+  private readonly streamIdleTimeoutMs: number;
 
   constructor(
     apiKey: string,
@@ -506,6 +556,10 @@ export class AnthropicModelProvider implements ModelProvider {
   ) {
     this.transport = transport ?? new Anthropic({ apiKey }) as unknown as AnthropicMessagesTransport;
     this.transportMaxRetries = options.transportMaxRetries ?? 0;
+    this.streamIdleTimeoutMs = options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
+    if (!Number.isSafeInteger(this.streamIdleTimeoutMs) || this.streamIdleTimeoutMs <= 0) {
+      throw new RangeError('Anthropic stream idle timeout must be a positive integer');
+    }
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -568,10 +622,23 @@ export class AnthropicModelProvider implements ModelProvider {
     if (options?.stream) {
       const messages = this.transport.beta.messages;
       if (!messages.stream) throw new UnsupportedModelCapabilityError('anthropic', 'streaming');
-      const streamed = await collectAnthropicStream(messages.stream(
-        prepared.providerRequest as AnthropicRequest,
-        transportOptions,
-      ));
+      const streamController = new AbortController();
+      const abortFromCaller = () => streamController.abort(options.signal?.reason);
+      if (options.signal?.aborted) abortFromCaller();
+      else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+      let streamed: Awaited<ReturnType<typeof collectAnthropicStream>>;
+      try {
+        streamed = await collectAnthropicStream(messages.stream(
+          prepared.providerRequest as AnthropicRequest,
+          { ...transportOptions, signal: streamController.signal },
+        ), {
+          idleTimeoutMs: this.streamIdleTimeoutMs,
+          abort: (reason) => streamController.abort(reason),
+          onStreamProgress: options.onStreamProgress,
+        });
+      } finally {
+        options.signal?.removeEventListener('abort', abortFromCaller);
+      }
       yield* normalizedResponseEvents(streamed.response, streamed.textDeltas);
       return;
     }

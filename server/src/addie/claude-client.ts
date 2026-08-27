@@ -6,7 +6,6 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { BetaMessageStream } from '@anthropic-ai/sdk/lib/BetaMessageStream';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
 
@@ -203,27 +202,6 @@ function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopA
  * disclosures may contain semantic refusals, so they are not retryable.
  * Unknown, tool, server-tool, and result blocks remain fail-closed.
  */
-function isSideEffectFreeEmptyEndTurn(
-  response: Pick<Anthropic.Beta.BetaMessage, 'stop_reason' | 'content'>,
-  visibleText: string,
-): boolean {
-  const deliverableText = stripBannedRituals(visibleText);
-  if (response.stop_reason !== 'end_turn' || deliverableText.trim().length > 0) {
-    return false;
-  }
-
-  return response.content.every((block) => {
-    switch (block.type) {
-      case 'text':
-      case 'thinking':
-      case 'redacted_thinking':
-        return true;
-      default:
-        return false;
-    }
-  });
-}
-
 function isSideEffectFreeEmptyModelResponse(
   response: ModelResponse,
   visibleText: string,
@@ -500,34 +478,6 @@ function buildModelToolDefinitions(tools: readonly AddieTool[]): ModelToolDefini
     };
   }
   return definitions;
-}
-
-/** Adapt the common-loop tool result to Anthropic's continuation wire shape. */
-function toAnthropicToolResultContent(
-  content: ModelToolResultContent['content'],
-): string | Anthropic.ToolResultBlockParam['content'] {
-  if (typeof content === 'string') return content;
-  return content.map((block) => {
-    if (block.type === 'text') return block;
-    if (block.type === 'image') {
-      return {
-        type: 'image' as const,
-        source: {
-          type: 'base64' as const,
-          media_type: block.mediaType,
-          data: block.data,
-        },
-      };
-    }
-    return {
-      type: 'document' as const,
-      source: {
-        type: 'base64' as const,
-        media_type: block.mediaType,
-        data: block.data,
-      },
-    };
-  });
 }
 
 /**
@@ -958,8 +908,8 @@ interface PayloadDebugStats {
 
 export class AddieClaudeClient {
   private client: Anthropic;
-  private readonly nonStreamingProvider: AnthropicModelProvider;
-  private readonly exactlyOnceNonStreamingProvider: AnthropicModelProvider;
+  private readonly anthropicProvider: AnthropicModelProvider;
+  private readonly exactlyOnceAnthropicProvider: AnthropicModelProvider;
   private model: string;
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
@@ -974,12 +924,12 @@ export class AddieClaudeClient {
   ) {
     this.client = new Anthropic({ apiKey });
     const transport = this.client as unknown as AnthropicMessagesTransport;
-    this.nonStreamingProvider = new AnthropicModelProvider(
+    this.anthropicProvider = new AnthropicModelProvider(
       apiKey,
       transport,
       { transportMaxRetries: 2 },
     );
-    this.exactlyOnceNonStreamingProvider = new AnthropicModelProvider(
+    this.exactlyOnceAnthropicProvider = new AnthropicModelProvider(
       apiKey,
       transport,
       { transportMaxRetries: 0 },
@@ -1343,8 +1293,9 @@ export class AddieClaudeClient {
     messages: ModelMessage[],
     providerWebSearchEnabled: boolean,
     maxOutputTokens?: number,
+    streaming = false,
   ): ModelRequest {
-    const safeMaxOutputTokens = /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
+    const safeMaxOutputTokens = !streaming && /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
       ? Math.min(
         SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
         maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
@@ -1395,7 +1346,7 @@ export class AddieClaudeClient {
       prepared.modelMessages,
       prepared.requestWebSearchEnabled,
     );
-    const providerRequest = this.nonStreamingProvider.prepare(modelRequest)
+    const providerRequest = this.anthropicProvider.prepare(modelRequest)
       .providerRequest as unknown as PreparedProviderRequest;
     return this.buildInvocationPreparedSnapshot(
       options,
@@ -1592,8 +1543,8 @@ export class AddieClaudeClient {
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
           const provider = exactlyOnce
-            ? this.exactlyOnceNonStreamingProvider
-            : this.nonStreamingProvider;
+            ? this.exactlyOnceAnthropicProvider
+            : this.anthropicProvider;
           return collectModelResponse(
             provider.respond(modelRequest, {
               beforeDispatch: async (preparedInvocation) => {
@@ -1701,7 +1652,7 @@ export class AddieClaudeClient {
           toolsUsed.push('web_search');
           const correspondingToolUse = earlyServerToolBlocks.find((call) => call.id === result.toolCallId);
           const receipt = correspondingToolUse
-            ? this.nonStreamingProvider.deriveProviderToolReceipt(
+            ? this.anthropicProvider.deriveProviderToolReceipt(
               correspondingToolUse,
               result,
               operationalExecution ? 'production' : 'redacted',
@@ -1953,7 +1904,7 @@ export class AddieClaudeClient {
           // Find corresponding result by matching tool_use_id
           const resultBlock = webSearchResults.find((result) => result.toolCallId === block.id);
           const receipt = resultBlock
-            ? this.nonStreamingProvider.deriveProviderToolReceipt(
+            ? this.anthropicProvider.deriveProviderToolReceipt(
               block,
               resultBlock,
               operationalExecution ? 'production' : 'redacted',
@@ -2303,15 +2254,20 @@ export class AddieClaudeClient {
       toAnthropicMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
+    const modelMessages = appendModelInputAttachments(
+      toModelMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
     const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
+    const modelTools = buildModelToolDefinitions(allTools);
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
     let retriedEmptyPostToolResponse = false;
     let retriedEmptyInitialResponse = false;
-    let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
+    let emptyResponseBeforeRecovery: ModelResponse | null = null;
     let lastProviderModel: string | undefined;
 
       while (iteration < maxIterations) {
@@ -2320,8 +2276,7 @@ export class AddieClaudeClient {
         const llmStart = Date.now();
 
         // Collect full response for tool handling
-        let currentResponse: Anthropic.Beta.BetaMessage | null = null;
-        const textChunks: string[] = [];
+        let currentResponse: ModelResponse | null = null;
         let reusedEmptyResponse = false;
 
         // Retry loop for streaming API calls (handles overloaded_error).
@@ -2336,46 +2291,37 @@ export class AddieClaudeClient {
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           const isEmptyResponseRecovery: boolean = emptyResponseBeforeRecovery !== null;
           try {
-            const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
-            const providerRequest: PreparedProviderRequest = {
-              model: effectiveModel,
-              ...addieModelOutputControls(
-                effectiveModel,
-                isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
-              ),
-              system: systemBlocks,
-              tools: invocationTools as unknown as Array<Record<string, unknown>>,
-              messages,
-            };
-            await this.notifyInvocationPrepared(
-              options,
-              providerRequest,
-              iteration,
-              streamRetryCount + 1,
+            const invocationTools = retriedEmptyPostToolResponse ? [] : modelTools;
+            const modelRequest = this.buildModelRequest(
+              effectiveModel,
+              systemBlocks,
+              invocationTools,
+              modelMessages,
+              false,
+              isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              true,
             );
-            const anthropicStream: BetaMessageStream = this.client.beta.messages.stream(
-              providerRequest as unknown as Anthropic.Beta.MessageCreateParamsStreaming,
-              isEmptyResponseRecovery ? { maxRetries: 0 } : undefined,
+            const provider = isEmptyResponseRecovery
+              ? this.exactlyOnceAnthropicProvider
+              : this.anthropicProvider;
+            currentResponse = await collectModelResponse(
+              provider.respond(modelRequest, {
+                stream: true,
+                onStreamProgress: () => {
+                  totalReceivedDeltas++;
+                  receivedDeltaCount++;
+                },
+                beforeDispatch: async (preparedInvocation) => {
+                  await this.notifyInvocationPrepared(
+                    options,
+                    preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                    iteration,
+                    streamRetryCount + 1,
+                  );
+                },
+              }),
+              'anthropic',
             );
-
-            // Process stream events
-            for await (const event of anthropicStream) {
-              if (event.type === 'content_block_delta') {
-                totalReceivedDeltas++;
-                receivedDeltaCount++;
-                const delta = event.delta;
-                if ('text' in delta && delta.text) {
-                  textChunks.push(delta.text);
-                }
-              } else if (event.type === 'message_stop') {
-                // Get the final message
-                currentResponse = await anthropicStream.finalMessage();
-              }
-            }
-
-            if (!currentResponse) {
-              currentResponse = await anthropicStream.finalMessage();
-            }
 
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
@@ -2388,7 +2334,6 @@ export class AddieClaudeClient {
               logger.warn({ iteration }, 'Addie Stream: Empty-response recovery failed');
               currentResponse = emptyResponseBeforeRecovery;
               reusedEmptyResponse = true;
-              textChunks.length = 0;
               receivedDeltaCount = 0;
               break;
             }
@@ -2489,7 +2434,6 @@ export class AddieClaudeClient {
             await new Promise(resolve => setTimeout(resolve, totalDelay));
 
             // Discard the failed, never-exposed sample before retrying.
-            textChunks.length = 0;
             receivedDeltaCount = 0;
             currentResponse = null;
           }
@@ -2503,35 +2447,31 @@ export class AddieClaudeClient {
         }
 
         // Track token usage
-        if (currentResponse.usage && !reusedEmptyResponse) {
-          totalInputTokens += currentResponse.usage.input_tokens;
-          totalOutputTokens += currentResponse.usage.output_tokens;
-          if ('cache_creation_input_tokens' in currentResponse.usage) {
-            totalCacheCreationTokens += (currentResponse.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens || 0;
-          }
-          if ('cache_read_input_tokens' in currentResponse.usage) {
-            totalCacheReadTokens += (currentResponse.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens || 0;
-          }
+        if (!reusedEmptyResponse) {
+          totalInputTokens += currentResponse.usage.inputTokens;
+          totalOutputTokens += currentResponse.usage.outputTokens;
+          totalCacheCreationTokens += currentResponse.usage.cacheWriteTokens ?? 0;
+          totalCacheReadTokens += currentResponse.usage.cacheReadTokens ?? 0;
         }
 
         logger.debug({
-          stopReason: currentResponse.stop_reason,
+          stopReason: currentResponse.providerFinishReason,
           iteration,
           llmDurationMs: llmDuration,
-          inputTokens: currentResponse.usage?.input_tokens,
-          outputTokens: currentResponse.usage?.output_tokens,
+          inputTokens: currentResponse.usage.inputTokens,
+          outputTokens: currentResponse.usage.outputTokens,
         }, 'Addie Stream: Claude response received');
 
         // The recovery iteration has no tools. If the provider still returns
         // a tool_use block, ignore it rather than executing a mutation twice.
-        if (retriedEmptyPostToolResponse && currentResponse.stop_reason === 'tool_use') {
+        if (retriedEmptyPostToolResponse && currentResponse.finishReason === 'tool_calls') {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
           currentResponse = {
             ...currentResponse,
-            stop_reason: 'end_turn',
+            finishReason: 'stop',
+            providerFinishReason: 'end_turn',
             content: [],
           };
-          textChunks.length = 0;
         }
 
         // Build the final usage block + charge the user's cost
@@ -2555,17 +2495,18 @@ export class AddieClaudeClient {
           }
         };
 
-        const stopAction = classifyStopReason(currentResponse.stop_reason);
-        const iterationText = textChunks.join('') || currentResponse.content
-          .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+        const stopAction = classifyStopReason(
+          currentResponse.providerFinishReason as Anthropic.Beta.BetaStopReason,
+        );
+        const iterationText = currentResponse.content
+          .filter((block) => block.type === 'text')
           .map((block) => block.text)
           .join('\n\n');
         if (stopAction === 'continue') {
           // Resume from the provider response without exposing interim text.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages.push({ role: 'assistant', content: currentResponse.content as any });
+          modelMessages.push({ role: 'assistant', content: currentResponse.content });
           logger.info(
-            { stopReason: currentResponse.stop_reason, iteration },
+            { stopReason: currentResponse.providerFinishReason, iteration },
             'Addie Stream: Continuing resumable Anthropic turn',
           );
           continue;
@@ -2583,14 +2524,13 @@ export class AddieClaudeClient {
             {
               event: 'addie_response_truncated',
               source: 'processMessageStream',
-              stopReason: currentResponse.stop_reason,
+              stopReason: currentResponse.providerFinishReason,
               iteration,
               originalLength: logicalText.length,
               deliveredLength: finalized.text.length,
               localCapExceeded: finalized.lengthExceeded,
-              contentTypes: boundedContentTypes(currentResponse.content),
-              outputTokens: currentResponse.usage?.output_tokens,
-              thinkingTokens: currentResponse.usage?.output_tokens_details?.thinking_tokens,
+              contentTypes: boundedModelContentTypes(currentResponse.content),
+              outputTokens: currentResponse.usage.outputTokens,
             },
             'Addie Stream: Response stopped before completion',
           );
@@ -2603,7 +2543,7 @@ export class AddieClaudeClient {
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
               flagged: true,
-              flag_reason: `Response truncated: ${currentResponse.stop_reason}`,
+              flag_reason: `Response truncated: ${currentResponse.providerFinishReason}`,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
@@ -2626,12 +2566,12 @@ export class AddieClaudeClient {
         if (stopAction === 'complete') {
           if (
             operationalExecution
-            && currentResponse.stop_reason === 'end_turn'
+            && currentResponse.providerFinishReason === 'end_turn'
             && iteration === 1
             && !retriedEmptyInitialResponse
             && toolExecutions.length === 0
             && logicalText.length === 0
-            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
+            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && iteration < maxIterations
           ) {
             retriedEmptyInitialResponse = true;
@@ -2643,8 +2583,8 @@ export class AddieClaudeClient {
           // Logical-turn buffering means no text from this iteration has been
           // emitted, so retrying ritual-only output cannot duplicate text.
           if (
-            currentResponse.stop_reason === 'end_turn'
-            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
+            currentResponse.providerFinishReason === 'end_turn'
+            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && toolExecutions.length > 0
             && !retriedEmptyPostToolResponse
             && iteration < maxIterations
@@ -2672,7 +2612,7 @@ export class AddieClaudeClient {
               {
                 event: 'addie_response_truncated',
                 source: 'processMessageStream',
-                stopReason: currentResponse.stop_reason,
+                stopReason: currentResponse.providerFinishReason,
                 iteration,
                 originalLength: logicalText.length,
                 deliveredLength: finalText.length,
@@ -2717,7 +2657,7 @@ export class AddieClaudeClient {
         // Handle tool use
         if (stopAction === 'tool_use') {
           logicalText += iterationText;
-          const toolUseBlocks = currentResponse.content.filter((c: Anthropic.Beta.BetaContentBlock) => c.type === 'tool_use');
+          const toolUseBlocks = currentResponse.content.filter((content) => content.type === 'tool_call');
 
           if (toolUseBlocks.length === 0) {
             // No tools to execute, return current text
@@ -2761,21 +2701,11 @@ export class AddieClaudeClient {
             return;
           }
 
-          // Tool results can contain multimodal content (images, PDFs)
-          type StreamToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
-          interface ToolResult {
-            tool_use_id: string;
-            content: StreamToolResultContent;
-            is_error?: boolean;
-          }
-
-          const toolResults: ToolResult[] = [];
+          const toolResults: ModelToolResultContent[] = [];
 
           for (const block of toolUseBlocks) {
-            if (block.type !== 'tool_use') continue;
-
             const toolName = block.name;
-            const toolInput = block.input as Record<string, unknown>;
+            const toolInput = block.input;
 
             logger.debug(
               { toolName, ...(operationalExecution && { toolInput }) },
@@ -2791,17 +2721,8 @@ export class AddieClaudeClient {
               parameters: this.recordedToolParameters(options, toolInput),
             };
 
-            const executed = await executeToolCall({
-              type: 'tool_call',
-              id: block.id,
-              name: toolName,
-              input: toolInput as ModelToolCallContent['input'],
-            }, executionSequence);
-            toolResults.push({
-              tool_use_id: executed.result.toolCallId,
-              content: toAnthropicToolResultContent(executed.result.content),
-              is_error: executed.result.isError,
-            });
+            const executed = await executeToolCall(block, executionSequence);
+            toolResults.push(executed.result);
             toolExecutions.push(executed.execution);
             yield {
               type: 'tool_end',
@@ -2813,17 +2734,8 @@ export class AddieClaudeClient {
           }
 
           // Continue the conversation with tool results
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages.push({ role: 'assistant', content: currentResponse.content as any });
-          messages.push({
-            role: 'user',
-            content: toolResults.map((r) => ({
-              type: 'tool_result' as const,
-              tool_use_id: r.tool_use_id,
-              content: r.content,
-              is_error: r.is_error,
-            })),
-          });
+          modelMessages.push({ role: 'assistant', content: currentResponse.content });
+          modelMessages.push({ role: 'user', content: toolResults });
 
           // Add spacing between tool use and subsequent text to prevent run-on text
           if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
