@@ -91,6 +91,63 @@ export class ModelLoopBudget {
   }
 }
 
+/**
+ * Canonical state boundary for a provider-neutral model loop. It owns the
+ * logical turn wall, normalized usage, one-response-per-turn discipline, and
+ * optional empty-terminal recovery state. Delivery adapters still own
+ * transport retries and user-facing events.
+ */
+export class ModelTurnLoopState {
+  readonly emptyResponseRecovery = new EmptyResponseRecoveryState();
+  private readonly budget: ModelLoopBudget;
+  private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
+  private awaitingResponse = false;
+
+  constructor(limit: number) {
+    this.budget = new ModelLoopBudget(limit);
+  }
+
+  get limit(): number {
+    return this.budget.limit;
+  }
+
+  get iteration(): number {
+    return this.budget.iteration;
+  }
+
+  get hasRemaining(): boolean {
+    return this.budget.hasRemaining;
+  }
+
+  get usage(): ModelUsage {
+    return { ...this.accumulatedUsage };
+  }
+
+  startNext(): number {
+    if (this.awaitingResponse) {
+      throw new Error('Previous model loop iteration has no response');
+    }
+    const iteration = this.budget.startNext();
+    this.awaitingResponse = true;
+    return iteration;
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): InspectedModelTurn {
+    if (!this.awaitingResponse) {
+      throw new Error('Model loop response has no active iteration');
+    }
+    const turn = inspectModelTurn(response);
+    if (options.countUsage !== false) {
+      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, response.usage);
+    }
+    this.awaitingResponse = false;
+    return turn;
+  }
+}
+
 /** Accumulate normalized usage without inventing absent provider cache metrics. */
 export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
   return {

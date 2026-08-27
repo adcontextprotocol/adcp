@@ -52,10 +52,7 @@ import {
 } from './model-providers/anthropic-provider.js';
 import { collectModelResponse } from './model-providers/events.js';
 import {
-  addModelUsage,
-  EmptyResponseRecoveryState,
-  inspectModelTurn,
-  ModelLoopBudget,
+  ModelTurnLoopState,
 } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
@@ -1434,9 +1431,6 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
-    // Token usage tracking (aggregated across iterations)
-    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
-
     const prepared = this.prepareFirstNonStreamingInvocation(
       userMessage,
       threadContext,
@@ -1481,7 +1475,7 @@ export class AddieClaudeClient {
       ? undefined
       : await getCurrentConfigVersionId();
 
-    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
@@ -1500,19 +1494,18 @@ export class AddieClaudeClient {
       );
     }
     let iteration = 0;
-    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let hasExecutedCustomTool = false;
 
-    while (loopBudget.hasRemaining) {
-      iteration = loopBudget.startNext();
+    while (modelLoop.hasRemaining) {
+      iteration = modelLoop.startNext();
 
       // Use beta API to access web search
       const llmStart = Date.now();
       let response: ModelResponse;
       let reusedEmptyResponse = false;
-      const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
+      const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      const isEmptyResponseRecovery = emptyResponseRecovery.pending;
+      const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
       try {
         const invokeProvider = async (exactlyOnce: boolean) => {
           invocationAttempt++;
@@ -1521,7 +1514,7 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools,
             modelMessages,
-            emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
+            modelLoop.emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
           const provider = exactlyOnce
@@ -1552,10 +1545,10 @@ export class AddieClaudeClient {
             'processMessage',
           );
         if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
-        if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
+        if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
       } catch (error) {
         const fallbackResponse = isEmptyResponseRecovery
-          ? emptyResponseRecovery.takeFallback()
+          ? modelLoop.emptyResponseRecovery.takeFallback()
           : null;
         if (fallbackResponse) {
           // The empty end_turn was a valid terminal response. Recovery is
@@ -1595,11 +1588,6 @@ export class AddieClaudeClient {
       const llmDuration = Date.now() - llmStart;
       totalLlmMs += llmDuration;
 
-      // Track token usage from this iteration
-      if (!reusedEmptyResponse) {
-        totalUsage = addModelUsage(totalUsage, response.usage);
-      }
-
       logger.debug({
         stopReason: response.providerFinishReason,
         contentTypes: response.content.map(c => c.type),
@@ -1612,7 +1600,7 @@ export class AddieClaudeClient {
       // Post-tool empty-response recovery is intentionally text-only. Defend
       // against a malformed provider response that nevertheless contains a
       // tool request: discard it instead of risking a duplicate mutation.
-      if (emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
+      if (modelLoop.emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
         response = {
           ...response,
@@ -1621,7 +1609,7 @@ export class AddieClaudeClient {
           content: [],
         };
       }
-      const turn = inspectModelTurn(response);
+      const turn = modelLoop.acceptResponse(response, { countUsage: !reusedEmptyResponse });
 
       // Provider-managed web results may accompany either a terminal answer or
       // another tool-call turn. Derive their receipts through the selected
@@ -1705,7 +1693,7 @@ export class AddieClaudeClient {
         }
         const text = finalized.text;
         totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
-        const finalUsage = toAddieUsage(totalUsage);
+        const finalUsage = toAddieUsage(modelLoop.usage);
         logger.error(
           {
             event: 'addie_response_truncated',
@@ -1761,13 +1749,13 @@ export class AddieClaudeClient {
           operationalExecution
           && response.providerFinishReason === 'end_turn'
           && iteration === 1
-          && !emptyResponseRecovery.hasAttempted('initial')
+          && !modelLoop.emptyResponseRecovery.hasAttempted('initial')
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
           && isSideEffectFreeEmptyModelResponse(response, rawText)
-          && loopBudget.hasRemaining
+          && modelLoop.hasRemaining
         ) {
-          emptyResponseRecovery.schedule('initial', response);
+          modelLoop.emptyResponseRecovery.schedule('initial', response);
           logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
           continue;
         }
@@ -1778,10 +1766,10 @@ export class AddieClaudeClient {
           response.providerFinishReason === 'end_turn'
           && isSideEffectFreeEmptyModelResponse(response, rawText)
           && hasExecutedCustomTool
-          && !emptyResponseRecovery.hasAttempted('post_tool')
-          && loopBudget.hasRemaining
+          && !modelLoop.emptyResponseRecovery.hasAttempted('post_tool')
+          && modelLoop.hasRemaining
         ) {
-          emptyResponseRecovery.schedule('post_tool', response);
+          modelLoop.emptyResponseRecovery.schedule('post_tool', response);
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
@@ -1818,7 +1806,7 @@ export class AddieClaudeClient {
           ? 'Output truncated due to length'
           : hallucinationReason ?? finalized.emptyReason;
 
-        const finalUsage = toAddieUsage(totalUsage);
+        const finalUsage = toAddieUsage(modelLoop.usage);
         // Record the call against the user's daily budget (#2790).
         // Runs after the response is built so a successful charge
         // counts even if a downstream flag/logging failure occurs.
@@ -1923,7 +1911,7 @@ export class AddieClaudeClient {
             reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
           }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const terminalUsage = toAddieUsage(totalUsage);
+          const terminalUsage = toAddieUsage(modelLoop.usage);
           if (finalized.lengthExceeded) {
             logger.error(
               { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
@@ -1979,7 +1967,7 @@ export class AddieClaudeClient {
 
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-    const maxIterationsUsage = toAddieUsage(totalUsage);
+    const maxIterationsUsage = toAddieUsage(modelLoop.usage);
     // Still charge the user for tokens actually consumed on the way
     // to hitting max-iterations — those bytes DID go to Anthropic
     // and DID cost money, regardless of whether the session converged.
@@ -2003,7 +1991,7 @@ export class AddieClaudeClient {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
         total_tool_execution_ms: totalToolExecutionMs,
-        iterations: loopBudget.limit,
+        iterations: modelLoop.limit,
       },
       usage: maxIterationsUsage,
     };
@@ -2118,9 +2106,6 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
-    // Token usage tracking (aggregated across iterations)
-    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
-
     // Get system prompt from rule files (or fallback)
     const promptStart = Date.now();
     const { prompt: systemPrompt } = this.getSystemPrompt();
@@ -2216,13 +2201,12 @@ export class AddieClaudeClient {
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
     const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
     const modelTools = buildModelToolDefinitions(allTools);
-    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
-    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let lastProviderModel: string | undefined;
 
-      while (loopBudget.hasRemaining) {
-        iteration = loopBudget.startNext();
+      while (modelLoop.hasRemaining) {
+        iteration = modelLoop.startNext();
 
         const llmStart = Date.now();
 
@@ -2240,9 +2224,9 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
-          const isEmptyResponseRecovery = emptyResponseRecovery.pending;
+          const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
           try {
-            const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
+            const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
               effectiveModel,
               systemBlocks,
@@ -2277,10 +2261,10 @@ export class AddieClaudeClient {
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
-            if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
+            if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
           } catch (streamError) {
             const fallbackResponse = isEmptyResponseRecovery
-              ? emptyResponseRecovery.takeFallback()
+              ? modelLoop.emptyResponseRecovery.takeFallback()
               : null;
             if (fallbackResponse) {
               // See the non-streaming path: recovery is an optional UX
@@ -2400,11 +2384,6 @@ export class AddieClaudeClient {
           throw new Error('Stream completed without response');
         }
 
-        // Track token usage
-        if (!reusedEmptyResponse) {
-          totalUsage = addModelUsage(totalUsage, currentResponse.usage);
-        }
-
         logger.debug({
           stopReason: currentResponse.providerFinishReason,
           iteration,
@@ -2415,7 +2394,7 @@ export class AddieClaudeClient {
 
         // The post-tool recovery iteration has no tools. If the provider still returns
         // a tool_use block, ignore it rather than executing a mutation twice.
-        if (emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
+        if (modelLoop.emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
           currentResponse = {
             ...currentResponse,
@@ -2428,7 +2407,7 @@ export class AddieClaudeClient {
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
         // no-tool-blocks) serialize the same normalized accumulator.
-        const buildStreamUsage = () => toAddieUsage(totalUsage);
+        const buildStreamUsage = () => toAddieUsage(modelLoop.usage);
         const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
           if (operationalExecution && options?.costScope) {
             await recordCost(
@@ -2439,7 +2418,7 @@ export class AddieClaudeClient {
           }
         };
 
-        const turn = inspectModelTurn(currentResponse);
+        const turn = modelLoop.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         const stopAction = turn.action;
         const iterationText = turn.textBlocks
           .map((block) => block.text)
@@ -2510,13 +2489,13 @@ export class AddieClaudeClient {
             operationalExecution
             && currentResponse.providerFinishReason === 'end_turn'
             && iteration === 1
-            && !emptyResponseRecovery.hasAttempted('initial')
+            && !modelLoop.emptyResponseRecovery.hasAttempted('initial')
             && toolExecutions.length === 0
             && logicalText.length === 0
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
-            && loopBudget.hasRemaining
+            && modelLoop.hasRemaining
           ) {
-            emptyResponseRecovery.schedule('initial', currentResponse);
+            modelLoop.emptyResponseRecovery.schedule('initial', currentResponse);
             logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
             continue;
           }
@@ -2527,10 +2506,10 @@ export class AddieClaudeClient {
             currentResponse.providerFinishReason === 'end_turn'
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && toolExecutions.length > 0
-            && !emptyResponseRecovery.hasAttempted('post_tool')
-            && loopBudget.hasRemaining
+            && !modelLoop.emptyResponseRecovery.hasAttempted('post_tool')
+            && modelLoop.hasRemaining
           ) {
-            emptyResponseRecovery.schedule('post_tool', currentResponse);
+            modelLoop.emptyResponseRecovery.schedule('post_tool', currentResponse);
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
@@ -2687,7 +2666,7 @@ export class AddieClaudeClient {
       // Max iterations reached
       logger.warn('Addie Stream: Hit max tool iterations');
       totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-      const maxIterUsage = toAddieUsage(totalUsage);
+      const maxIterUsage = toAddieUsage(modelLoop.usage);
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
       if (operationalExecution && options?.costScope) {
@@ -2726,7 +2705,7 @@ export class AddieClaudeClient {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
             total_tool_execution_ms: totalToolExecutionMs,
-            iterations: loopBudget.limit,
+            iterations: modelLoop.limit,
           },
           usage: maxIterUsage,
           capacity: { certification_reserve_used: certificationReserveUsed },

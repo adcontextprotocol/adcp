@@ -9,6 +9,7 @@ import {
   EmptyResponseRecoveryState,
   inspectModelTurn,
   ModelLoopBudget,
+  ModelTurnLoopState,
 } from '../../../src/addie/model-providers/model-turn.js';
 
 function response(
@@ -148,5 +149,44 @@ describe('ModelLoopBudget', () => {
 
     expect(budget.hasRemaining).toBe(false);
     expect(budget.iteration).toBe(0);
+  });
+});
+
+describe('ModelTurnLoopState', () => {
+  it('accepts one canonical response per iteration and accumulates usage', () => {
+    const loop = new ModelTurnLoopState(2);
+    const first = response('stop', [{ type: 'text', text: 'done' }]);
+    first.usage = { inputTokens: 5, outputTokens: 2, cacheReadTokens: 3 };
+
+    expect(loop.startNext()).toBe(1);
+    expect(loop.acceptResponse(first).action).toBe('complete');
+    expect(loop.usage).toEqual({
+      inputTokens: 5,
+      outputTokens: 2,
+      cacheReadTokens: 3,
+    });
+    expect(loop.iteration).toBe(1);
+    expect(loop.hasRemaining).toBe(true);
+  });
+
+  it('does not count a retained fallback response twice', () => {
+    const loop = new ModelTurnLoopState(1);
+    const original = response('stop', []);
+    original.usage = { inputTokens: 7, outputTokens: 1 };
+
+    loop.startNext();
+    loop.acceptResponse(original, { countUsage: false });
+    expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('enforces one response per started iteration', () => {
+    const loop = new ModelTurnLoopState(2);
+    const terminal = response('stop', []);
+
+    expect(() => loop.acceptResponse(terminal)).toThrow('no active iteration');
+    loop.startNext();
+    expect(() => loop.startNext()).toThrow('has no response');
+    loop.acceptResponse(terminal);
+    expect(() => loop.acceptResponse(terminal)).toThrow('no active iteration');
   });
 });
