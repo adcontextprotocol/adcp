@@ -42,6 +42,10 @@ import {
 } from "./model-providers/model-provider.js";
 import { AnthropicRouterProvider } from "./model-providers/anthropic-router-provider.js";
 import {
+  ProviderCircuitOpenError,
+  ProviderHealthController,
+} from "./model-providers/provider-health.js";
+import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
   requiresPrecision as checkPrecision,
@@ -993,11 +997,17 @@ function queueRouterObserver(
  */
 export class AddieRouter {
   private readonly provider: ModelProvider;
+  private readonly providerHealth: ProviderHealthController;
 
-  constructor(apiKey: string, provider?: ModelProvider) {
+  constructor(
+    apiKey: string,
+    provider?: ModelProvider,
+    providerHealth: ProviderHealthController = new ProviderHealthController(),
+  ) {
     this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
       maxRetries: 2,
     });
+    this.providerHealth = providerHealth;
   }
 
   /**
@@ -1015,6 +1025,8 @@ export class AddieRouter {
     let primaryInvocation: PreparedModelInvocation | null = null;
 
     try {
+      const availability = this.providerHealth.acquire(this.provider.id, 'router');
+      if (!availability.allowed) throw new ProviderCircuitOpenError(availability);
       const response = await collectModelResponse(
         this.provider.respond(canonicalRequest, {
           // This callback is deliberately assignment-only. Shadow evidence can
@@ -1025,6 +1037,7 @@ export class AddieRouter {
         }),
         this.provider.id,
       );
+      this.providerHealth.recordSuccess(this.provider.id, 'router');
 
       const text = extractRouterResponseText(response.content);
 
@@ -1115,6 +1128,9 @@ export class AddieRouter {
 
       return plan;
     } catch (error) {
+      if (!(error instanceof ProviderCircuitOpenError)) {
+        this.providerHealth.recordFailure(this.provider.id, 'router', error);
+      }
       const category = classifyRouterError(error);
       logger.error(
         { category },

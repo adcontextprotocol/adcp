@@ -39,6 +39,12 @@ import {
 import type { AddieInputAttachment } from './chat-attachments.js';
 import type { ModelExecution } from './model-providers/model-provider.js';
 import {
+  formatProviderUnavailableMessage,
+  ProviderHealthController,
+  type ProviderAvailability,
+} from './model-providers/provider-health.js';
+import { getProviderRetryAfterSeconds } from './model-providers/provider-errors.js';
+import {
   buildAddieProviderTools,
   buildAddieWireTools,
   mergeAddieToolDefinitions,
@@ -794,6 +800,28 @@ function localModelExecution(
   };
 }
 
+function providerUnavailableResponse(
+  availability: ProviderAvailability,
+  requestedModel: string,
+  toolsUsed: string[] = [],
+  toolExecutions: ToolExecution[] = [],
+  certificationReserveUsed = false,
+): AddieResponse {
+  const baseMessage = formatProviderUnavailableMessage(availability);
+  const text = toolExecutions.some(execution => !execution.is_error)
+    ? `${baseMessage} Some requested actions may already have completed, so review the results above before retrying.`
+    : baseMessage;
+  return {
+    text,
+    tools_used: [...toolsUsed],
+    tool_executions: [...toolExecutions],
+    flagged: true,
+    flag_reason: `provider_unavailable:${availability.category ?? 'unknown'}`,
+    model_execution: localModelExecution('provider_error', requestedModel),
+    capacity: { certification_reserve_used: certificationReserveUsed },
+  };
+}
+
 /**
  * Event types emitted during streaming
  */
@@ -836,12 +864,18 @@ export class AddieClaudeClient {
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
   private addieDb: AddieDatabase;
+  private readonly providerHealth: ProviderHealthController;
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
-  constructor(apiKey: string, model: string = AddieModelConfig.chat) {
+  constructor(
+    apiKey: string,
+    model: string = AddieModelConfig.chat,
+    providerHealth: ProviderHealthController = new ProviderHealthController(),
+  ) {
     this.client = new Anthropic({ apiKey });
     this.model = model;
     this.addieDb = new AddieDatabase();
+    this.providerHealth = providerHealth;
   }
 
   /**
@@ -1305,6 +1339,15 @@ export class AddieClaudeClient {
       }
     }
 
+    // Reserve a half-open probe only after local gates have passed so a
+    // request that never reaches the provider cannot hold the probe lease.
+    if (operationalExecution) {
+      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      if (!availability.allowed) {
+        return providerUnavailableResponse(availability, requestedModel);
+      }
+    }
+
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
@@ -1416,6 +1459,7 @@ export class AddieClaudeClient {
             { maxRetries: 3, initialDelayMs: 1000 },
             'processMessage',
           );
+        if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
         if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
       } catch (error) {
         if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
@@ -1437,6 +1481,17 @@ export class AddieClaudeClient {
             );
           } else {
             this.logPromptOverflow(error, stats, 'processMessage');
+          }
+          if (operationalExecution) {
+            const availability = this.providerHealth.recordFailure('anthropic', 'chat', error);
+            if (!availability.allowed) {
+              return providerUnavailableResponse(
+                availability,
+                requestedModel,
+                toolsUsed,
+                toolExecutions,
+              );
+            }
           }
           throw error;
         }
@@ -2120,11 +2175,25 @@ export class AddieClaudeClient {
         };
         return;
       }
-      if (certificationLeaseId) {
-        certificationLeaseHeartbeat = setInterval(() => {
-          void renewCertificationReserve(options.costScope?.userId, certificationLeaseId);
-        }, 30_000);
+    }
+
+    // As above, cost-capped requests must not consume the one half-open probe.
+    if (operationalExecution) {
+      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      if (!availability.allowed) {
+        await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+        certificationLeaseId = undefined;
+        yield {
+          type: 'done',
+          response: providerUnavailableResponse(availability, requestedModel),
+        };
+        return;
       }
+    }
+    if (certificationLeaseId) {
+      certificationLeaseHeartbeat = setInterval(() => {
+        void renewCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+      }, 30_000);
     }
 
     const toolsUsed: string[] = [];
@@ -2300,6 +2369,7 @@ export class AddieClaudeClient {
               currentResponse = await anthropicStream.finalMessage();
             }
 
+            if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
             if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
@@ -2319,11 +2389,40 @@ export class AddieClaudeClient {
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
             const retryable = isRetryableError(streamError);
+            const retryAfterSeconds = getProviderRetryAfterSeconds(streamError);
+            const retryAfterWithinRequestBudget = retryAfterSeconds === undefined
+              || retryAfterSeconds <= 30;
             const canRetry = retryable &&
-                             streamRetryCount <= maxStreamRetries;
+                             streamRetryCount <= maxStreamRetries &&
+                             retryAfterWithinRequestBudget;
 
             if (!canRetry) {
-              const isExhausted = retryable && streamRetryCount > maxStreamRetries;
+              const isExhausted = retryable && (
+                streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
+              );
+              if (operationalExecution) {
+                const availability = this.providerHealth.recordFailure('anthropic', 'chat', streamError);
+                if (!availability.allowed) {
+                  const terminalResponse = providerUnavailableResponse(
+                    availability,
+                    requestedModel,
+                    toolsUsed,
+                    toolExecutions,
+                    certificationReserveUsed,
+                  );
+                  // A terminal provider response is separate from any partial
+                  // prose already emitted. Surface it as a final chunk so every
+                  // consumer retains the recovery and mutation-safety warning.
+                  if (receivedDeltaCount > 0) {
+                    yield { type: 'text', text: `\n\n${terminalResponse.text}` };
+                  }
+                  yield {
+                    type: 'done',
+                    response: terminalResponse,
+                  };
+                  return;
+                }
+              }
               if (isExhausted) {
                 if (receivedDeltaCount > 0) {
                   const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
@@ -2349,7 +2448,8 @@ export class AddieClaudeClient {
             // Calculate delay with exponential backoff
             const delayMs = Math.min(1000 * Math.pow(2, streamRetryCount - 1), 30000);
             const jitter = delayMs * 0.25 * (Math.random() * 2 - 1);
-            const totalDelay = Math.round(delayMs + jitter);
+            const retryAfterMs = retryAfterSeconds === undefined ? 0 : retryAfterSeconds * 1000;
+            const totalDelay = Math.max(Math.round(delayMs + jitter), retryAfterMs);
 
             // Determine user-friendly reason
             const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
@@ -2363,6 +2463,7 @@ export class AddieClaudeClient {
                 attempt: streamRetryCount,
                 maxRetries: maxStreamRetries,
                 delayMs: totalDelay,
+                retryAfterSeconds,
                 error: errorMsg,
               },
               'Addie Stream: Retryable error, waiting before retry'
