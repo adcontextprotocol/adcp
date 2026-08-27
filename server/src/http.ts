@@ -87,6 +87,12 @@ import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
+import {
+  consumeAccountLinkCorrelation,
+  isAccountLinkCorrelationToken,
+  recordProactiveEvent,
+  type AccountLinkCorrelation,
+} from './db/addie-account-link-correlation-db.js';
 import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./db/org-filters.js";
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
@@ -7388,6 +7394,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
           const slackUserId = req.query.slack_user_id as string;
+          const accountLinkCorrelation = isAccountLinkCorrelationToken(req.query.account_link_correlation)
+            ? req.query.account_link_correlation
+            : undefined;
           // Keep the return_to as an AdCP URL so the callback bridges the session back
           let aaoReturnTo = returnTo;
           if (returnTo && returnTo.startsWith('/')) {
@@ -7397,12 +7406,16 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const params = new URLSearchParams();
           if (aaoReturnTo) params.append('return_to', aaoReturnTo);
           if (slackUserId) params.append('slack_user_id', slackUserId);
+          if (accountLinkCorrelation) params.append('account_link_correlation', accountLinkCorrelation);
           if (params.toString()) redirectUrl += `?${params.toString()}`;
           return res.redirect(redirectUrl);
         }
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
+        const accountLinkCorrelation = isAccountLinkCorrelationToken(req.query.account_link_correlation)
+          ? req.query.account_link_correlation
+          : undefined;
 
         // Native OAuth v1 put a bearer session directly in a custom-scheme
         // URI and had no client-bound state. It is intentionally disabled;
@@ -7415,9 +7428,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         }
 
         // Build state object with return_to and slack_user_id for auto-linking.
-        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        const stateObj: { return_to?: string; slack_user_id?: string; account_link_correlation?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
+        if (accountLinkCorrelation) stateObj.account_link_correlation = accountLinkCorrelation;
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -7493,6 +7507,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (this.isAdcpDomain(req)) {
           const returnTo = req.query.return_to as string;
           const slackUserId = req.query.slack_user_id as string;
+          const accountLinkCorrelation = isAccountLinkCorrelationToken(req.query.account_link_correlation)
+            ? req.query.account_link_correlation
+            : undefined;
           let aaoReturnTo = returnTo;
           if (returnTo && returnTo.startsWith('/')) {
             aaoReturnTo = `https://agenticadvertising.org${returnTo}`;
@@ -7501,17 +7518,22 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const params = new URLSearchParams();
           if (aaoReturnTo) params.append('return_to', aaoReturnTo);
           if (slackUserId) params.append('slack_user_id', slackUserId);
+          if (accountLinkCorrelation) params.append('account_link_correlation', accountLinkCorrelation);
           if (params.toString()) redirectUrl += `?${params.toString()}`;
           return res.redirect(redirectUrl);
         }
 
         const returnTo = req.query.return_to as string;
         const slackUserId = req.query.slack_user_id as string;
+        const accountLinkCorrelation = isAccountLinkCorrelationToken(req.query.account_link_correlation)
+          ? req.query.account_link_correlation
+          : undefined;
 
         // Build state object with return_to and slack_user_id for auto-linking
-        const stateObj: { return_to?: string; slack_user_id?: string } = {};
+        const stateObj: { return_to?: string; slack_user_id?: string; account_link_correlation?: string } = {};
         if (returnTo) stateObj.return_to = returnTo;
         if (slackUserId) stateObj.slack_user_id = slackUserId;
+        if (accountLinkCorrelation) stateObj.account_link_correlation = accountLinkCorrelation;
         const state = Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : undefined;
 
         const authUrl = workos!.userManagement.getAuthorizationUrl({
@@ -7903,7 +7925,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Parse return_to and slack_user_id from web state
         let returnTo = '/member-hub';
         let slackUserIdToLink: string | undefined;
-        logger.debug({ state, hasState: !!state }, 'Parsing state for return_to');
+        let accountLinkCorrelation: string | undefined;
+        logger.debug({ hasState: !!state }, 'Parsing state for return_to');
         if (state) {
           try {
             const parsedState = JSON.parse(state);
@@ -7915,76 +7938,187 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
               logger.warn({ returnTo: candidateReturnTo }, 'Blocked invalid return_to from OAuth state');
             }
             slackUserIdToLink = parsedState.slack_user_id;
-            logger.debug({ returnTo, slackUserIdToLink }, 'Parsed state successfully');
+            accountLinkCorrelation = isAccountLinkCorrelationToken(parsedState.account_link_correlation)
+              ? parsedState.account_link_correlation
+              : undefined;
+            logger.debug({
+              returnTo,
+              slackUserIdToLink,
+              hasAccountLinkCorrelation: !!accountLinkCorrelation,
+            }, 'Parsed state successfully');
           } catch (e) {
             // Invalid state, use default
-            logger.debug({ state, error: String(e) }, 'Failed to parse state');
+            logger.debug({ error: String(e) }, 'Failed to parse state');
           }
+        }
+
+        if (accountLinkCorrelation && !slackUserIdToLink) {
+          // Web chat does not have a durable server-push surface. Never infer a
+          // destination from a recent browser conversation.
+          try {
+            await recordProactiveEvent({
+              eventType: 'account_linked',
+              surface: 'web',
+              initiatingUserId: user.id,
+              deliveryStatus: 'skipped',
+              reasonCode: 'web_async_delivery_unsupported',
+            });
+          } catch (eventError) {
+            logger.error({
+              error: eventError,
+              initiatingUserId: user.id,
+              reasonCode: 'proactive_event_persistence_failed',
+            }, 'Failed to persist skipped web account-link event');
+          }
+          logger.info({
+            initiatingUserId: user.id,
+            reasonCode: 'web_async_delivery_unsupported',
+          }, 'Skipped proactive web account-link delivery');
         }
 
         // Auto-link Slack account if slack_user_id was provided during signup
         if (slackUserIdToLink) {
           try {
-            const slackDb = new SlackDatabase();
-            const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
-
-            let accountLinked = false;
-
-            if (existingMapping && !existingMapping.workos_user_id) {
-              // Link the Slack user to the newly authenticated WorkOS user
-              await slackDb.mapUser({
-                slack_user_id: slackUserIdToLink,
-                workos_user_id: user.id,
-                mapping_source: 'user_claimed',
-              });
-              accountLinked = true;
-              logger.info(
-                { slackUserId: slackUserIdToLink, workosUserId: user.id },
-                'Auto-linked Slack account after signup'
-              );
-
-              // Record account linking in the relationship system
+            let correlatedOrigin: AccountLinkCorrelation | undefined;
+            if (accountLinkCorrelation) {
               try {
-                const { resolvePersonId } = await import('./db/relationship-db.js');
-                const { recordEvent } = await import('./db/person-events-db.js');
-                const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
-                await recordEvent(personId, 'account_linked', {
-                  channel: 'web',
-                  data: { workos_user_id: user.id },
+                correlatedOrigin = await consumeAccountLinkCorrelation(accountLinkCorrelation, {
+                  surface: 'slack',
+                  initiatingUserId: slackUserIdToLink,
                 });
-                logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
-              } catch (trackingError) {
-                logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+              } catch (correlationError) {
+                logger.error({
+                  error: correlationError,
+                  initiatingUserId: slackUserIdToLink,
+                  reasonCode: 'correlation_validation_failed',
+                }, 'Failed to validate account-link correlation');
               }
-
-              // Send proactive Addie message if user has a recent conversation
-              const firstName = user.firstName || undefined;
-              sendAccountLinkedMessage(slackUserIdToLink, firstName).catch((err) => {
-                logger.warn({ error: err, slackUserId: slackUserIdToLink }, 'Failed to send Addie account linked message');
-              });
-            } else if (!existingMapping) {
-              logger.debug(
-                { slackUserId: slackUserIdToLink },
-                'Slack user not found in mapping table, skipping auto-link'
-              );
-            } else if (existingMapping.workos_user_id === user.id) {
-              // Already correctly linked — user clicked the link again.
-              // We still mark the goal as success (below) but don't re-send the
-              // "you're now linked" Addie message to avoid duplicate notifications.
-              accountLinked = true;
-              logger.debug(
-                { slackUserId: slackUserIdToLink, workosUserId: user.id },
-                'Slack account already linked to this WorkOS user'
-              );
-            } else {
-              logger.debug(
-                { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
-                'Slack user already mapped to different WorkOS user'
-              );
             }
 
-            if (accountLinked) {
-              invalidateMemberContextCache(slackUserIdToLink);
+            if (!correlatedOrigin) {
+              const reasonCode = accountLinkCorrelation
+                ? 'correlation_invalid_expired_reused_or_mismatched'
+                : 'correlation_missing';
+              try {
+                await recordProactiveEvent({
+                  eventType: 'account_linked',
+                  surface: 'slack',
+                  initiatingUserId: slackUserIdToLink,
+                  deliveryStatus: 'skipped',
+                  reasonCode,
+                });
+              } catch (eventError) {
+                logger.error({
+                  error: eventError,
+                  initiatingUserId: slackUserIdToLink,
+                  reasonCode: 'proactive_event_persistence_failed',
+                }, 'Failed to persist rejected Slack account-link event');
+              }
+              logger.warn({
+                initiatingUserId: slackUserIdToLink,
+                reasonCode,
+              }, 'Skipped uncorrelated Slack account linking and proactive delivery');
+            } else {
+              const validatedOrigin = correlatedOrigin;
+              const slackDb = new SlackDatabase();
+              const existingMapping = await slackDb.getBySlackUserId(slackUserIdToLink);
+
+              let accountLinked = false;
+              let accountNewlyLinked = false;
+
+              if (existingMapping && !existingMapping.workos_user_id) {
+                // Link the Slack user to the newly authenticated WorkOS user
+                await slackDb.mapUser({
+                  slack_user_id: slackUserIdToLink,
+                  workos_user_id: user.id,
+                  mapping_source: 'user_claimed',
+                });
+                accountLinked = true;
+                accountNewlyLinked = true;
+                logger.info(
+                  { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                  'Auto-linked Slack account after signup'
+                );
+
+                // Record account linking in the relationship system
+                try {
+                  const { resolvePersonId } = await import('./db/relationship-db.js');
+                  const { recordEvent } = await import('./db/person-events-db.js');
+                  const personId = await resolvePersonId({ slack_user_id: slackUserIdToLink, workos_user_id: user.id });
+                  await recordEvent(personId, 'account_linked', {
+                    channel: 'web',
+                    data: { workos_user_id: user.id },
+                  });
+                  logger.info({ slackUserId: slackUserIdToLink, personId }, 'Recorded account_linked event');
+                } catch (trackingError) {
+                  logger.warn({ error: trackingError, slackUserId: slackUserIdToLink }, 'Failed to record account_linked event');
+                }
+
+              } else if (!existingMapping) {
+                logger.debug(
+                  { slackUserId: slackUserIdToLink },
+                  'Slack user not found in mapping table, skipping auto-link'
+                );
+              } else if (existingMapping.workos_user_id === user.id) {
+                // Already correctly linked — user clicked the link again.
+                // We still mark the goal as success (below) but don't re-send the
+                // "you're now linked" Addie message to avoid duplicate notifications.
+                accountLinked = true;
+                logger.debug(
+                  { slackUserId: slackUserIdToLink, workosUserId: user.id },
+                  'Slack account already linked to this WorkOS user'
+                );
+              } else {
+                logger.debug(
+                  { slackUserId: slackUserIdToLink, existingWorkosId: existingMapping.workos_user_id },
+                  'Slack user already mapped to different WorkOS user'
+                );
+              }
+
+              if (accountLinked) {
+                invalidateMemberContextCache(slackUserIdToLink);
+              }
+
+              if (accountNewlyLinked) {
+                const firstName = user.firstName || undefined;
+                sendAccountLinkedMessage(validatedOrigin, firstName).catch((err) => {
+                  logger.warn({
+                    error: err,
+                    correlationId: validatedOrigin.correlationId,
+                    threadId: validatedOrigin.threadId,
+                    reasonCode: 'proactive_delivery_unhandled_error',
+                  }, 'Failed to send correlated Addie account linked message');
+                });
+              } else {
+                const reasonCode = accountLinked
+                  ? 'account_already_linked'
+                  : 'account_link_not_completed';
+                try {
+                  await recordProactiveEvent({
+                    eventType: 'account_linked',
+                    correlationId: validatedOrigin.correlationId,
+                    surface: 'slack',
+                    threadId: validatedOrigin.threadId,
+                    initiatingUserId: slackUserIdToLink,
+                    deliveryStatus: 'skipped',
+                    reasonCode,
+                  });
+                } catch (eventError) {
+                  logger.error({
+                    error: eventError,
+                    correlationId: validatedOrigin.correlationId,
+                    threadId: validatedOrigin.threadId,
+                    initiatingUserId: slackUserIdToLink,
+                    reasonCode: 'proactive_event_persistence_failed',
+                  }, 'Failed to persist skipped Slack account-link event');
+                }
+                logger.info({
+                  correlationId: validatedOrigin.correlationId,
+                  threadId: validatedOrigin.threadId,
+                  initiatingUserId: slackUserIdToLink,
+                  reasonCode,
+                }, 'Skipped proactive Slack account-link delivery');
+              }
             }
           } catch (linkError) {
             // Log but don't fail authentication if linking fails

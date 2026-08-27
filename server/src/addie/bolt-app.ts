@@ -40,6 +40,11 @@ import {
 } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import {
+  recordProactiveEvent,
+  type AccountLinkCorrelation,
+  type ProactiveDeliveryStatus,
+} from '../db/addie-account-link-correlation-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
@@ -1169,7 +1174,14 @@ async function createUserScopedTools(
   threadContext?: ThreadContext | null,
   directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
-  const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
+  const memberHandlers = createMemberToolHandlers(
+    memberContext,
+    slackUserId,
+    undefined,
+    threadId
+      ? { surface: 'slack', threadId, initiatingUserId: slackUserId }
+      : undefined,
+  );
   const trainingModuleContext: { moduleId?: string } = {
     moduleId: memberContext?.certification?.status === 'in_progress'
       ? memberContext.certification.module_id ?? undefined
@@ -5074,27 +5086,99 @@ async function handleChannelMessage({
  * Send a proactive message when a user links their account
  */
 export async function sendAccountLinkedMessage(
-  slackUserId: string,
+  origin: AccountLinkCorrelation,
   userName?: string
 ): Promise<boolean> {
+  const recordOutcome = async (
+    deliveryStatus: ProactiveDeliveryStatus,
+    reasonCode: string,
+  ): Promise<void> => {
+    try {
+      await recordProactiveEvent({
+        eventType: 'account_linked',
+        correlationId: origin.correlationId,
+        surface: origin.surface,
+        threadId: origin.threadId,
+        initiatingUserId: origin.initiatingUserId,
+        deliveryStatus,
+        reasonCode,
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        correlationId: origin.correlationId,
+        threadId: origin.threadId,
+        reasonCode: 'proactive_event_persistence_failed',
+      }, 'Addie Bolt: Failed to persist proactive account-link event');
+    }
+  };
+
   if (!initialized || !boltApp) {
-    logger.warn('Addie Bolt: Not initialized, cannot send account linked message');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_not_initialized',
+    }, 'Addie Bolt: Cannot deliver account linked message');
+    await recordOutcome('failed', 'slack_not_initialized');
     return false;
   }
 
   const threadService = getThreadService();
 
-  // Find the user's most recent Addie thread (within 30 minutes)
-  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', 30);
-  if (!recentThread) {
-    logger.debug({ slackUserId }, 'Addie Bolt: No recent thread found for account linked message');
+  if (origin.surface !== 'slack') {
+    logger.warn({
+      correlationId: origin.correlationId,
+      surface: origin.surface,
+      reasonCode: 'surface_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'surface_mismatch');
     return false;
   }
 
-  // Parse external_id back to channel_id:thread_ts
-  const [channelId, threadTs] = recentThread.external_id.split(':');
+  // Revalidate the exact thread immediately before delivery. Correlation
+  // consumption already performs the same checks atomically; this protects
+  // against state changes between OAuth completion and the Slack API call.
+  let thread;
+  try {
+    thread = await threadService.getThread(origin.threadId);
+  } catch (error) {
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'thread_validation_failed',
+    }, 'Addie Bolt: Failed to validate account-link delivery thread');
+    await recordOutcome('failed', 'thread_validation_failed');
+    return false;
+  }
+  if (
+    !thread
+    || thread.channel !== 'slack'
+    || thread.user_type !== 'slack'
+    || thread.user_id !== origin.initiatingUserId
+    || thread.external_id !== origin.externalId
+  ) {
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      initiatingUserId: origin.initiatingUserId,
+      reasonCode: 'thread_identity_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'thread_identity_mismatch');
+    return false;
+  }
+
+  // Parse the validated external_id back to channel_id:thread_ts.
+  const separator = origin.externalId.indexOf(':');
+  const channelId = separator > 0 ? origin.externalId.slice(0, separator) : '';
+  const threadTs = separator > 0 ? origin.externalId.slice(separator + 1) : '';
   if (!channelId || !threadTs) {
-    logger.warn({ slackUserId, externalId: recentThread.external_id }, 'Addie Bolt: Invalid external_id format');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'invalid_slack_thread_identity',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'invalid_slack_thread_identity');
     return false;
   }
 
@@ -5110,22 +5194,42 @@ export async function sendAccountLinkedMessage(
       thread_ts: threadTs,
     });
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Addie Bolt: Failed to send account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_delivery_failed',
+    }, 'Addie Bolt: Failed to send account linked message');
+    await recordOutcome('failed', 'slack_delivery_failed');
     return false;
   }
 
   // Log as a system message in the unified thread (separate from Slack send)
   try {
     await threadService.addMessage({
-      thread_id: recentThread.thread_id,
+      thread_id: origin.threadId,
       role: 'system',
       content: messageText,
     });
   } catch (error) {
-    logger.error({ error, threadId: recentThread.thread_id }, 'Addie Bolt: Failed to save account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'system_event_persistence_failed',
+    }, 'Addie Bolt: Failed to save account linked system event');
+    await recordOutcome('delivered', 'slack_delivered_system_persistence_failed');
+    return true;
   }
 
-  logger.info({ slackUserId, channelId }, 'Addie Bolt: Sent account linked message');
+  await recordOutcome('delivered', 'slack_correlated_thread_delivered');
+  logger.info({
+    correlationId: origin.correlationId,
+    threadId: origin.threadId,
+    initiatingUserId: origin.initiatingUserId,
+    channelId,
+    reasonCode: 'slack_correlated_thread_delivered',
+  }, 'Addie Bolt: Sent account linked message');
   return true;
 }
 
