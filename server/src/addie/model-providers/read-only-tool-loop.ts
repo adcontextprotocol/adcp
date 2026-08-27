@@ -152,17 +152,16 @@ export async function executeReadOnlyToolLoop(
     });
     const turn = activeTurn.acceptResponse(response);
 
-    const calls = turn.toolCalls;
     const unsupportedContinuation = turn.providerToolCalls.length > 0
       || turn.providerToolResults.length > 0;
     if (unsupportedContinuation) {
       throw new ReadOnlyToolLoopBoundaryError('provider_continuation_not_allowed');
     }
-    if (calls.length === 0) {
-      if (turn.action === 'continue') {
-        appendModelTurnContinuation(messages, response);
-        continue;
-      }
+    if (turn.action === 'continue') {
+      appendModelTurnContinuation(messages, response);
+      continue;
+    }
+    if (turn.action !== 'execute_tools') {
       return {
         response,
         text: turn.textBlocks.map((content) => content.text).join(''),
@@ -171,6 +170,7 @@ export async function executeReadOnlyToolLoop(
         toolExecutions: Object.freeze([...receipts]),
       };
     }
+    const calls = turn.toolCalls;
 
     if (receipts.length + calls.length > MAX_TOOL_CALLS) {
       throw new ReadOnlyToolLoopBoundaryError('tool_call_limit_exceeded');

@@ -1664,14 +1664,14 @@ export class AddieClaudeClient {
 
       const stopAction = turn.action;
 
-      if (stopAction === 'continue') {
+      if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
         appendModelTurnContinuation(modelMessages, response);
         logger.info(
           { stopReason: response.providerFinishReason, iteration },
-          'Addie: Continuing resumable Anthropic turn',
+          'Addie: Continuing resumable provider turn',
         );
         continue;
       }
@@ -1835,7 +1835,7 @@ export class AddieClaudeClient {
       }
 
       // Handle tool use (both custom tools and server-managed tools like web_search)
-      if (stopAction === 'tool_use') {
+      if (stopAction === 'execute_tools') {
         // Get custom tool use blocks (these need our handlers)
         const toolUseBlocks = turn.toolCalls;
 
@@ -1887,53 +1887,6 @@ export class AddieClaudeClient {
             ...(operationalExecution && { inputKeys: block.inputKeys }),
             resultCount: resultBlock?.resultCount ?? 0,
           }, 'Addie: Server tool executed (web_search)');
-        }
-
-        // If only server tools were used (no custom tools), continue the loop
-        // The web search results are already in the response, we just need to continue
-        if (toolUseBlocks.length === 0 && serverToolBlocks.length > 0) {
-          // Add the response content (including provider continuation state).
-          appendModelTurnContinuation(modelMessages, response);
-          continue;
-        }
-
-        if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
-          const rawText = turn.textBlocks[0]?.text ?? '';
-          const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
-          const text = finalized.text;
-          if (finalized.emptyReason) {
-            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
-          }
-          totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const terminalUsage = toAddieUsage(modelLoop.usage);
-          if (finalized.lengthExceeded) {
-            logger.error(
-              { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
-              'Addie: Normally completed response exceeded output cap',
-            );
-          }
-          if (operationalExecution && options?.costScope) {
-            await recordCost(options.costScope.userId, options.modelOverride ?? AddieModelConfig.chat, terminalUsage);
-          }
-          return {
-            text,
-            tools_used: toolsUsed,
-            tool_executions: toolExecutions,
-            flagged: finalized.lengthExceeded || !!finalized.emptyReason,
-            flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
-            active_rule_ids: undefined,
-            config_version_id: configVersionId ?? undefined,
-            model_execution: finalized.emptyReason
-              ? localModelExecution('no_provider_response', effectiveModel)
-              : anthropicModelExecution(response.model, effectiveModel),
-            timing: {
-              system_prompt_ms: systemPromptMs,
-              total_llm_ms: totalLlmMs,
-              total_tool_execution_ms: totalToolExecutionMs,
-              iterations: iteration,
-            },
-            usage: terminalUsage,
-          };
         }
 
         const toolResults: ModelToolResultContent[] = [];
@@ -2411,12 +2364,12 @@ export class AddieClaudeClient {
         const iterationText = turn.textBlocks
           .map((block) => block.text)
           .join('\n\n');
-        if (stopAction === 'continue') {
+        if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
           // Resume from the provider response without exposing interim text.
           appendModelTurnContinuation(modelMessages, currentResponse);
           logger.info(
             { stopReason: currentResponse.providerFinishReason, iteration },
-            'Addie Stream: Continuing resumable Anthropic turn',
+            'Addie Stream: Continuing resumable provider turn',
           );
           continue;
         }
@@ -2562,51 +2515,9 @@ export class AddieClaudeClient {
         }
 
         // Handle tool use
-        if (stopAction === 'tool_use') {
+        if (stopAction === 'execute_tools') {
           logicalText += iterationText;
           const toolUseBlocks = turn.toolCalls;
-
-          if (toolUseBlocks.length === 0) {
-            // No tools to execute, return current text
-            totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-            const streamUsage = buildStreamUsage();
-            const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
-            if (finalized.emptyReason) {
-              reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
-            }
-            if (finalized.lengthExceeded) {
-              logger.error(
-                { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: finalized.text.length, localCapExceeded: true },
-                'Addie Stream: Normally completed response exceeded output cap',
-              );
-            }
-            await chargeStreamCost(streamUsage);
-            yield { type: 'text', text: finalized.text };
-            yield {
-              type: 'done',
-              response: {
-                text: finalized.text,
-                tools_used: toolsUsed,
-                tool_executions: toolExecutions,
-                flagged: finalized.lengthExceeded || !!finalized.emptyReason,
-                flag_reason: finalized.lengthExceeded ? 'Output truncated due to length' : finalized.emptyReason ?? undefined,
-                active_rule_ids: undefined,
-                config_version_id: configVersionId ?? undefined,
-                model_execution: finalized.emptyReason
-                  ? localModelExecution('no_provider_response', effectiveModel)
-                  : anthropicModelExecution(currentResponse.model, effectiveModel),
-                timing: {
-                  system_prompt_ms: systemPromptMs,
-                  total_llm_ms: totalLlmMs,
-                  total_tool_execution_ms: totalToolExecutionMs,
-                  iterations: iteration,
-                },
-                usage: streamUsage,
-                capacity: { certification_reserve_used: certificationReserveUsed },
-              },
-            };
-            return;
-          }
 
           const toolResults: ModelToolResultContent[] = [];
 

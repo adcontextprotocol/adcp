@@ -92,6 +92,27 @@ function message(
   };
 }
 
+function providerToolTurn(): MockMessage {
+  return {
+    model: 'claude-sonnet-4-6-20260801',
+    stop_reason: 'tool_use',
+    content: [
+      {
+        type: 'server_tool_use',
+        id: 'server_web_4431',
+        name: 'web_search',
+        input: { query: 'AdCP' },
+      },
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'server_web_4431',
+        content: [{ type: 'web_search_result', title: 'AdCP', url: 'https://adcontextprotocol.org' }],
+      },
+    ],
+    usage: { input_tokens: 4, output_tokens: 5 },
+  };
+}
+
 function streamFor(finalResponse: MockMessage, chunks: string[]) {
   return {
     async *[Symbol.asyncIterator]() {
@@ -474,6 +495,33 @@ describe('Addie response truncation (#4431)', () => {
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
     expect(mocks.streamMessage.mock.calls[1][0].messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'assistant', content: [{ type: 'text', text: 'Interim server status.' }] }),
+    ]));
+  });
+
+  it('continues a streaming provider-managed tool turn before delivering the terminal answer', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(streamFor(providerToolTurn(), []))
+      .mockReturnValueOnce(streamFor(message('end_turn', 'Search complete.'), ['Search complete.']));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'Search for AdCP',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) events.push(event);
+
+    const textEvents = events.filter((event): event is Extract<StreamEvent, { type: 'text' }> => event.type === 'text');
+    const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
+    expect(textEvents).toEqual([{ type: 'text', text: 'Search complete.' }]);
+    expect(done?.response.text).toBe('Search complete.');
+    expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
+    expect(mocks.streamMessage.mock.calls[1][0].messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        role: 'assistant',
+        content: expect.arrayContaining([expect.objectContaining({ type: 'server_tool_use' })]),
+      }),
     ]));
   });
 

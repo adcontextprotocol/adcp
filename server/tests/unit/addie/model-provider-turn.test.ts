@@ -85,7 +85,6 @@ describe('inspectModelTurn', () => {
     ['stop', 'complete'],
     ['refusal', 'complete'],
     ['length', 'truncated'],
-    ['tool_calls', 'tool_use'],
     ['continue', 'continue'],
   ] as const)('maps canonical %s without consulting provider diagnostics', (finishReason, action) => {
     expect(inspectModelTurn(response(finishReason)).action).toBe(action);
@@ -94,12 +93,27 @@ describe('inspectModelTurn', () => {
   it('partitions canonical content while retaining text block order', () => {
     const turn = inspectModelTurn(response('tool_calls', partitionedContent));
 
+    expect(turn.action).toBe('execute_tools');
     expect(turn.textBlocks.map((block) => block.text)).toEqual(['before', 'after']);
     expect(turn.toolCalls.map((call) => call.id)).toEqual(['tool-1']);
     expect(turn.providerToolCalls.map((call) => call.id)).toEqual(['provider-1']);
     expect(turn.providerToolResults.map((result) => result.toolCallId)).toEqual(['provider-1']);
     expect(Object.isFrozen(turn)).toBe(true);
     expect(Object.isFrozen(turn.toolCalls)).toBe(true);
+  });
+
+  it('continues provider-managed tools without treating them as application mutations', () => {
+    const providerOnly = partitionedContent.filter((content) => (
+      content.type === 'provider_tool_call' || content.type === 'provider_tool_result'
+    ));
+
+    expect(inspectModelTurn(response('tool_calls', providerOnly)).action)
+      .toBe('continue_provider_tools');
+  });
+
+  it('completes a malformed tool-call finish with no canonical calls', () => {
+    expect(inspectModelTurn(response('tool_calls', [{ type: 'text', text: 'done' }])).action)
+      .toBe('complete');
   });
 });
 
