@@ -24,7 +24,7 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 // Legacy aliases remain available for callers that already use them.
 export const DOCS_SCHEMA_RELEASES = Object.freeze({
   '3.1': '3.1.19',
-  '3.2-beta': '3.2.0-beta.7',
+  '3.2-beta': '3.2.0-beta.8',
   '3.0': '3.0.26',
   '2.5': '2.5.3',
 });
@@ -87,7 +87,7 @@ const INFERRED_PRERELEASE_RANGES: Readonly<
 > = Object.freeze({
   '3.0': Object.freeze({ beta: [1, 3] as const, rc: [1, 3] as const }),
   '3.1': Object.freeze({ beta: [0, 7] as const, rc: [1, 15] as const }),
-  '3.2-beta': Object.freeze({ beta: [0, 7] as const }),
+  '3.2-beta': Object.freeze({ beta: [0, 8] as const }),
 });
 
 /**
@@ -750,7 +750,7 @@ ${formatCandidates(requestedPath, registry)}`);
 | Version | URL | Notes |
 |---------|-----|-------|
 | 3.1 | ${SCHEMA_BASE_URLS['3.1']} | Current stable schema snapshot (${DOCS_SCHEMA_RELEASES['3.1']}) |
-| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (3.2.0-beta.7) |
+| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (3.2.0-beta.8) |
 | 3.0 | ${SCHEMA_BASE_URLS['3.0']} | Previous 3.x snapshot (3.0.26) |
 | 2.5 | ${SCHEMA_BASE_URLS['2.5']} | Archived snapshot (2.5.3) |
 | v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |
