@@ -803,6 +803,36 @@ function surfaceMaximums(profiles: Profile[]): Record<string, SurfaceMaximum> {
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)));
 }
 
+const CERTIFICATION_WIRE_REQUIREMENTS = [
+  'start_certification_module',
+  'complete_certification_module',
+  'check_credentials',
+  'checkpoint_teaching_progress',
+  'get_build_phase_instructions',
+  'save_learner_feedback',
+  'set_my_name',
+  'find_membership_products',
+  'call_adcp_task',
+] as const;
+
+function assertCertificationWireContract(profiles: Profile[]): void {
+  const certificationProfiles = profiles.filter((entry) =>
+    entry.selected_tool_sets?.includes('certification'));
+  if (certificationProfiles.length === 0) {
+    throw new Error('Addie tool inventory has no certification profiles');
+  }
+
+  const errors = certificationProfiles.flatMap((entry) => {
+    const available = new Set(entry.ordered_tool_names);
+    return CERTIFICATION_WIRE_REQUIREMENTS
+      .filter((name) => !available.has(name))
+      .map((name) => `${entry.id} is missing ${name}`);
+  });
+  if (errors.length > 0) {
+    throw new Error(`Certification wire contract failed:\n- ${errors.join('\n- ')}`);
+  }
+}
+
 function loadBudget(): BudgetFile | null {
   if (!fs.existsSync(BUDGET_FILE)) return null;
   const parsed = JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8')) as BudgetFile;
@@ -880,6 +910,7 @@ async function buildSnapshot() {
     ...buildAuxiliaryProfiles(defs),
     buildBoundedReplayProfile(defs),
   ].sort((left, right) => left.id.localeCompare(right.id));
+  assertCertificationWireContract(profiles);
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,

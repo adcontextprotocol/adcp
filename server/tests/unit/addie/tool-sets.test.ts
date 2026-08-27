@@ -72,6 +72,24 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('certification workflow', () => {
+    it('keeps every instructed checkpoint, build, feedback, and credential-recovery tool on the routed surface', () => {
+      const tools = getToolsForSets(['certification'], false, false);
+
+      expect(tools).toEqual(expect.arrayContaining([
+        'start_certification_module',
+        'complete_certification_module',
+        'check_credentials',
+        'checkpoint_teaching_progress',
+        'get_build_phase_instructions',
+        'save_learner_feedback',
+        'set_my_name',
+        'find_membership_products',
+        'call_adcp_task',
+      ]));
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);

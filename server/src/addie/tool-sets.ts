@@ -523,6 +523,15 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "test_out_modules",
       "start_certification_exam",
       "complete_certification_exam",
+      "check_credentials",
+      "checkpoint_teaching_progress",
+      "get_build_phase_instructions",
+      "save_learner_feedback",
+      // Credential issuance can require the learner to supply a display name.
+      // Keep the recovery pair on the same routed surface.
+      "set_my_name",
+      // Certification paywalls direct learners to the read-only product lookup.
+      "find_membership_products",
       // AdCP tasks (route to training agent during certification via call_adcp_task)
       "call_adcp_task",
     ],

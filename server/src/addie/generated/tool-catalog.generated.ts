@@ -37,7 +37,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
 - **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact
 - **collaboration** — send_member_dm
-- **certification** — list_certification_tracks, get_certification_module, start_certification_module, complete_certification_module, get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, call_adcp_task
+- **certification** — list_certification_tracks, get_certification_module, start_certification_module, complete_certification_module, get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, check_credentials, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, find_membership_products, call_adcp_task
 
 ### Always available
 
@@ -51,7 +51,7 @@ resolve_escalation, list_escalations
 
 Conditionally registered (channel- or env-gated). Available when their preconditions are met.
 
-research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, confirm_send_invoice, get_billing_portal, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification, parse_brand_properties, import_brand_properties, upload_brand_logo, check_credentials, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry, get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
+research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, confirm_send_invoice, get_billing_portal, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification, parse_brand_properties, import_brand_properties, upload_brand_logo, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry, get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 `;
 
 /** Explicit catalog names for runtime/inventory parity checks. */
