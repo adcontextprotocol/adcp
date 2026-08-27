@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadRules, loadResponseStyle, invalidateRulesCache } from '../../src/addie/rules/index.js';
-import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
+import {
+  ADDIE_TOOL_REFERENCE,
+  buildAddieScopedToolReference,
+  buildAddieStableToolReference,
+  buildAddieToolReference,
+} from '../../src/addie/prompts.js';
+import { getToolsForSets } from '../../src/addie/tool-sets.js';
 
 describe('Rules Loader', () => {
   beforeEach(() => {
@@ -117,9 +123,117 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
   });
 
+  it('scopes admin guidance and the authoritative catalog to routed domains', () => {
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_prospects'], true, false),
+      selectedToolSetNames: ['admin_prospects'],
+    });
+
+    expect(reference).toContain('### Admin prospect operations');
+    expect(reference).toContain('- **admin_prospects** *(admin only)*');
+    expect(reference).toContain('query_prospects');
+    expect(reference).not.toContain('### Admin organization operations');
+    expect(reference).not.toContain('- **admin_organizations**');
+    expect(reference).not.toContain('merge_organizations');
+    expect(reference).not.toContain('### Admin workflow operations');
+  });
+
+  it('keeps the cacheable guidance stable while domain instructions vary', () => {
+    const stable = buildAddieStableToolReference();
+    const scoped = buildAddieScopedToolReference({
+      availableToolNames: getToolsForSets(['admin_workflows'], true, false),
+      selectedToolSetNames: ['admin_workflows'],
+    });
+
+    expect(stable).toContain('## Behavioral Guidelines');
+    expect(stable).not.toContain('### Admin workflow operations');
+    expect(stable).not.toContain('## Authoritative custom-tool catalog');
+    expect(scoped).toContain('### Admin workflow operations');
+    expect(scoped).toContain('- **admin_workflows** *(admin only)*');
+  });
+
+  it('loads knowledge guidance only for the routed knowledge domain', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const directory = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+
+    expect(knowledge).toContain('### Knowledge search operations');
+    expect(knowledge).not.toContain('### Member-directory operations');
+    expect(directory).toContain('### Member-directory operations');
+    expect(directory).not.toContain('### Knowledge search operations');
+  });
+
+  it('scopes community and content guidance to their selected sets', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const meetings = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meetings'], false, false),
+      selectedToolSetNames: ['meetings'],
+    });
+
+    expect(member).toContain('### Working-group operations');
+    expect(member).toContain('### Member profile and company-listing operations');
+    expect(member).toContain('### Member content operations');
+    expect(member).not.toContain('### Meeting operations');
+    expect(meetings).toContain('### Meeting operations');
+    expect(meetings).not.toContain('### Member profile and company-listing operations');
+  });
+
+  it('does not advertise neighboring domain mutations in scoped guidance', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const events = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['events'], false, false),
+      selectedToolSetNames: ['events'],
+    });
+    const content = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['content'], false, false),
+      selectedToolSetNames: ['content'],
+    });
+
+    expect(member).not.toContain('add_committee_document:');
+    expect(member).not.toContain('get_member_engagement:');
+    expect(events).not.toContain('create_event:');
+    expect(events).not.toContain('manage_event_registrations:');
+    expect(content).not.toContain('attach_content_asset:');
+    expect(content).toContain('### Editorial content operations');
+  });
+
+  it('omits selected-domain guidance when no domain tool reached the wire', () => {
+    const scoped = buildAddieScopedToolReference({
+      availableToolNames: ['search_docs'],
+      selectedToolSetNames: ['admin_workflows'],
+    });
+
+    expect(scoped).not.toContain('### Admin workflow operations');
+    expect(scoped).not.toContain('- **admin_workflows**');
+  });
+
+  it('lists only tool names present on the request wire surface', () => {
+    const reference = buildAddieToolReference({
+      availableToolNames: ['search_docs', 'get_doc', 'not_a_registered_tool'],
+      selectedToolSetNames: ['knowledge'],
+    });
+    const catalog = reference.slice(reference.indexOf('## Authoritative custom-tool catalog (request-scoped)'));
+
+    expect(catalog).toContain('- **knowledge** — search_docs, get_doc');
+    expect(catalog).not.toContain('search_repos');
+    expect(catalog).not.toContain('not_a_registered_tool');
+    expect(catalog).not.toContain('- **admin_prospects**');
+  });
+
   it('response-style.md lands at the END of the assembled system prompt', () => {
-    // Mirror the concat in claude-client.ts:getSystemPrompt — base rules,
-    // tool reference, then response-style.md. Style instructions need to
+    // Mirror the production ordering — base rules, tool reference, then
+    // response-style.md. Style instructions need to
     // be the LAST section the model reads. The prior ordering (style
     // before tool reference) was contradicted by the rules/index.ts
     // comment claiming style was last; the prompt-variant eval confirmed

@@ -12,6 +12,7 @@ import {
   mergeAddieToolDefinitions,
 } from '../server/src/addie/tool-wire-shape.js';
 import { assembleAddieSystemPrompt } from '../server/src/addie/prompt-assembly.js';
+import { buildAddieToolReference } from '../server/src/addie/prompts.js';
 import {
   ADMIN_CHANNEL_WG_SLUG,
   selectSlackToolSets,
@@ -49,6 +50,8 @@ interface Profile {
   maximum_provider_tool_wire_bytes: number;
   maximum_provider_tool_wire_sha256: string;
   wire_schema_bytes: number;
+  tool_reference_bytes: number;
+  tool_reference_sha256: string;
   overridden_tool_count: number;
   conflicting_override_count: number;
   conflicting_override_names: string[];
@@ -66,6 +69,7 @@ const OUTPUT_FILE = path.join(
 const BUDGET_FILE = path.join(REPO_ROOT, 'scripts/addie-tool-surface-budget.json');
 const REGISTRATION_SOURCES = [
   'server/src/addie/claude-client.ts',
+  'server/src/addie/prompts.ts',
   'server/src/addie/tool-wire-shape.ts',
   'server/src/addie/prompt-assembly.ts',
   'server/src/addie/register-baseline-tools.ts',
@@ -136,6 +140,10 @@ function profile(input: {
   const wire = buildAddieWireTools(merged);
   const orderedNames = merged.map((tool) => tool.name);
   const renderedWire = JSON.stringify(wire);
+  const toolReference = buildAddieToolReference({
+    availableToolNames: orderedNames,
+    selectedToolSetNames: input.selectedToolSets,
+  });
   const providerTools = buildAddieProviderTools((input.providerToolCount ?? 0) > 0);
   const renderedProviderTools = JSON.stringify(providerTools);
   return {
@@ -151,6 +159,8 @@ function profile(input: {
     maximum_provider_tool_wire_bytes: Buffer.byteLength(renderedProviderTools, 'utf8'),
     maximum_provider_tool_wire_sha256: sha256(renderedProviderTools),
     wire_schema_bytes: Buffer.byteLength(renderedWire, 'utf8'),
+    tool_reference_bytes: Buffer.byteLength(toolReference, 'utf8'),
+    tool_reference_sha256: sha256(toolReference),
     overridden_tool_count: overriddenNames.size,
     conflicting_override_count: conflictingNames.size,
     conflicting_override_names: [...conflictingNames].sort(),
@@ -895,7 +905,14 @@ async function buildSnapshot() {
   const { loadResponseStyle, loadRules } = await import('../server/src/addie/rules/index.js');
   const rules = loadRules();
   const responseStyle = loadResponseStyle();
-  const systemPrompt = assembleAddieSystemPrompt(rules, ADDIE_TOOL_REFERENCE, responseStyle);
+  const maximumPromptProfile = profiles.reduce((maximum, entry) =>
+    entry.tool_reference_bytes > maximum.tool_reference_bytes ? entry : maximum,
+  );
+  const maximumToolReference = buildAddieToolReference({
+    availableToolNames: maximumPromptProfile.ordered_tool_names,
+    selectedToolSetNames: maximumPromptProfile.selected_tool_sets,
+  });
+  const systemPrompt = assembleAddieSystemPrompt(rules, maximumToolReference, responseStyle);
   const catalogTokens = new Set<string>(ADDIE_TOOL_NAMES);
   const runtimeToolsMissingFromCatalog = [...runtimeNames]
     .filter((name) => !catalogTokens.has(name))
@@ -909,6 +926,7 @@ async function buildSnapshot() {
     measurement: {
       scope: 'Declared maximum runtime profiles. Conditional integrations and permissions are treated as enabled; actual requests can be smaller.',
       wire_shape: 'Exact ordered Anthropic custom-tool JSON after global/request last-value deduplication and final ephemeral cache breakpoint.',
+      prompt_shape: 'Each profile records the request-scoped tool reference built from its exact ordered tool names and selected capability sets; top-level prompt bytes are the largest measured production profile.',
       provider_tools: 'Provider-native web search is counted separately and is unavailable on the streaming path.',
       registration_guard: 'Registration-source hashes force review when runtime assembly changes; the shared wire projector prevents measurement drift.',
     },
@@ -939,7 +957,8 @@ async function buildSnapshot() {
     },
     prompt: {
       rules_bytes: Buffer.byteLength(rules, 'utf8'),
-      tool_reference_bytes: Buffer.byteLength(ADDIE_TOOL_REFERENCE, 'utf8'),
+      tool_reference_bytes: Buffer.byteLength(maximumToolReference, 'utf8'),
+      complete_offline_tool_reference_bytes: Buffer.byteLength(ADDIE_TOOL_REFERENCE, 'utf8'),
       response_style_bytes: Buffer.byteLength(responseStyle, 'utf8'),
       system_prompt_bytes: Buffer.byteLength(systemPrompt, 'utf8'),
       system_prompt_sha256: sha256(systemPrompt),
