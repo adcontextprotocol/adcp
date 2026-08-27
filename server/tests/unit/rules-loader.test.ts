@@ -186,6 +186,37 @@ describe('Addie tool reference', () => {
     expect(meetings).not.toContain('### Member profile and company-listing operations');
   });
 
+  it('scopes account self-service guidance to member requests', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(member).toContain('### Member account and organization self-service');
+    expect(member).toContain('https://agenticadvertising.org/onboarding');
+    expect(knowledge).not.toContain('### Member account and organization self-service');
+  });
+
+  it('scopes roadmap and file-handling guidance to knowledge requests', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const events = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['events'], false, false),
+      selectedToolSetNames: ['events'],
+    });
+
+    expect(knowledge).toContain('### GitHub roadmap research');
+    expect(knowledge).toContain('### Slack file handling');
+    expect(events).not.toContain('### GitHub roadmap research');
+    expect(events).not.toContain('### Slack file handling');
+  });
+
   it('scopes protocol and agent-testing guidance to their routed domains', () => {
     const protocol = buildAddieToolReference({
       availableToolNames: getToolsForSets(['adcp_operations'], false, false),
@@ -254,6 +285,21 @@ describe('Addie tool reference', () => {
     expect(withConditionalTools).toContain('### Property-list enrichment');
   });
 
+  it('requires exact knowledge tools before advertising conditional guidance', () => {
+    const knowledgeTools = getToolsForSets(['knowledge'], false, false);
+    const withoutSlackFile = buildAddieToolReference({
+      availableToolNames: knowledgeTools.filter(name => name !== 'read_slack_file'),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const withoutGithubList = buildAddieToolReference({
+      availableToolNames: knowledgeTools.filter(name => name !== 'list_github_issues'),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(withoutSlackFile).not.toContain('### Slack file handling');
+    expect(withoutGithubList).not.toContain('### GitHub roadmap research');
+  });
+
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
     const stable = buildAddieStableToolReference();
 
@@ -263,6 +309,9 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Brand-registry operations');
     expect(stable).not.toContain('### Property-registry operations');
     expect(stable).not.toContain('### Building with AdCP');
+    expect(stable).not.toContain('### Member account and organization self-service');
+    expect(stable).not.toContain('### GitHub roadmap research');
+    expect(stable).not.toContain('### Slack file handling');
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {
