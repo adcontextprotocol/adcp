@@ -56,7 +56,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
           if (!response) throw new Error('Missing streaming response fixture');
           return {
             async *[Symbol.asyncIterator]() {},
-            finalMessage: vi.fn().mockResolvedValue(response),
+            finalMessage: vi.fn().mockResolvedValue({
+              id: `msg_test_${sdkState.calls.length}`,
+              model: String(payload.model),
+              ...response,
+            }),
           };
         }),
       },

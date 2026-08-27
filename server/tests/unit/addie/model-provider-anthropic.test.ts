@@ -488,9 +488,10 @@ describe('AnthropicModelProvider response normalization', () => {
       { beta: { messages: { create, stream } } },
       { transportMaxRetries: 2 },
     );
+    const onStreamProgress = vi.fn();
 
     const events: NormalizedModelEvent[] = [];
-    for await (const event of provider.respond(request(), { stream: true })) events.push(event);
+    for await (const event of provider.respond(request(), { stream: true, onStreamProgress })) events.push(event);
     const normalized = await collectModelResponse((async function* () { yield* events; })());
 
     expect(normalized.content).toEqual([{ type: 'text', text: 'done' }]);
@@ -499,10 +500,79 @@ describe('AnthropicModelProvider response normalization', () => {
       { type: 'text_delta', index: 0, text: 'ne' },
     ]);
     expect(create).not.toHaveBeenCalled();
+    expect(onStreamProgress).toHaveBeenCalledTimes(2);
+    expect(onStreamProgress).toHaveBeenNthCalledWith(1, { type: 'content_delta' });
     expect(stream).toHaveBeenCalledWith(
       provider.prepare(request()).providerRequest,
-      { maxRetries: 2 },
+      { maxRetries: 2, signal: expect.any(AbortSignal) },
     );
+  });
+
+  it('aborts a stream that stays idle before its first event', async () => {
+    let transportSignal: AbortSignal | undefined;
+    const iteratorReturn = vi.fn(async () => ({ done: true, value: undefined }));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      {
+        beta: {
+          messages: {
+            create: vi.fn(),
+            stream: vi.fn((_payload, options) => {
+              transportSignal = options.signal;
+              return {
+                [Symbol.asyncIterator]() {
+                  return {
+                    next: () => new Promise<IteratorResult<unknown>>(() => undefined),
+                    return: iteratorReturn,
+                  };
+                },
+                finalMessage: vi.fn(),
+              };
+            }),
+          },
+        },
+      },
+      { streamIdleTimeoutMs: 10 },
+    );
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toMatchObject({ name: 'TimeoutError', message: 'Anthropic stream idle timeout' });
+    expect(transportSignal?.aborted).toBe(true);
+    expect(iteratorReturn).toHaveBeenCalledOnce();
+  });
+
+  it('aborts a stream that stays idle waiting for its terminal message', async () => {
+    let transportSignal: AbortSignal | undefined;
+    const finalMessage = vi.fn(() => new Promise<never>(() => undefined));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      {
+        beta: {
+          messages: {
+            create: vi.fn(),
+            stream: vi.fn((_payload, options) => {
+              transportSignal = options.signal;
+              return {
+                async *[Symbol.asyncIterator]() {
+                  yield {
+                    type: 'content_block_delta',
+                    index: 0,
+                    delta: { type: 'text_delta', text: 'partial' },
+                  };
+                },
+                finalMessage,
+              };
+            }),
+          },
+        },
+      },
+      { streamIdleTimeoutMs: 10 },
+    );
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toMatchObject({ name: 'TimeoutError', message: 'Anthropic stream idle timeout' });
+    expect(finalMessage).toHaveBeenCalledOnce();
+    expect(transportSignal?.aborted).toBe(true);
   });
 
   it('rejects streamed text that disagrees with the terminal response', async () => {
