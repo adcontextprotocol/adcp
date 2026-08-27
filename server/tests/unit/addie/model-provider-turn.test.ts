@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type {
   ModelFinishReason,
+  ModelMessage,
   ModelMessageContent,
+  ModelProvider,
+  ModelRequest,
   ModelResponse,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
   addModelUsage,
+  appendModelTurnContinuation,
   EmptyResponseRecoveryState,
   inspectModelTurn,
   ModelLoopBudget,
+  ModelTurnLoopState,
 } from '../../../src/addie/model-providers/model-turn.js';
 
 function response(
@@ -23,6 +28,34 @@ function response(
     providerFinishReason: 'provider-value-must-not-drive-orchestration',
     usage: { inputTokens: 1, outputTokens: 1 },
     content,
+  };
+}
+
+const request: ModelRequest = {
+  model: 'test-model',
+  system: [],
+  messages: [],
+  tools: [],
+  maxOutputTokens: 100,
+};
+
+function providerFor(
+  respond: ModelProvider['respond'],
+): ModelProvider {
+  return {
+    id: 'anthropic',
+    capabilities: {
+      streaming: true,
+      structuredOutput: true,
+      reasoning: true,
+      reasoningEfforts: ['provider_default'],
+      customTools: true,
+      providerWebSearch: true,
+      imageInput: true,
+      documentInput: true,
+    },
+    prepare: () => { throw new Error('not used'); },
+    respond,
   };
 }
 
@@ -67,6 +100,40 @@ describe('inspectModelTurn', () => {
     expect(turn.providerToolResults.map((result) => result.toolCallId)).toEqual(['provider-1']);
     expect(Object.isFrozen(turn)).toBe(true);
     expect(Object.isFrozen(turn.toolCalls)).toBe(true);
+  });
+});
+
+describe('appendModelTurnContinuation', () => {
+  it('appends the assistant response and optional tool-result turn', () => {
+    const messages: ModelMessage[] = [];
+    const assistant = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'call-1',
+      name: 'lookup',
+      input: {},
+    }]);
+    const results = [{
+      type: 'tool_result' as const,
+      toolCallId: 'call-1',
+      toolName: 'lookup',
+      content: 'found',
+    }];
+
+    appendModelTurnContinuation(messages, assistant, results);
+
+    expect(messages).toEqual([
+      { role: 'assistant', content: assistant.content },
+      { role: 'user', content: results },
+    ]);
+  });
+
+  it('appends only the assistant turn for provider continuation', () => {
+    const messages: ModelMessage[] = [];
+    const assistant = response('continue', []);
+
+    appendModelTurnContinuation(messages, assistant);
+
+    expect(messages).toEqual([{ role: 'assistant', content: [] }]);
   });
 });
 
@@ -148,5 +215,84 @@ describe('ModelLoopBudget', () => {
 
     expect(budget.hasRemaining).toBe(false);
     expect(budget.iteration).toBe(0);
+  });
+});
+
+describe('ModelTurnLoopState', () => {
+  it('accepts one canonical response per iteration and accumulates usage', () => {
+    const loop = new ModelTurnLoopState(2);
+    const first = response('stop', [{ type: 'text', text: 'done' }]);
+    first.usage = { inputTokens: 5, outputTokens: 2, cacheReadTokens: 3 };
+
+    expect(loop.startNext()).toBe(1);
+    expect(loop.acceptResponse(first).action).toBe('complete');
+    expect(loop.usage).toEqual({
+      inputTokens: 5,
+      outputTokens: 2,
+      cacheReadTokens: 3,
+    });
+    expect(loop.iteration).toBe(1);
+    expect(loop.hasRemaining).toBe(true);
+  });
+
+  it('does not count a retained fallback response twice', () => {
+    const loop = new ModelTurnLoopState(1);
+    const original = response('stop', []);
+    original.usage = { inputTokens: 7, outputTokens: 1 };
+
+    loop.startNext();
+    loop.acceptResponse(original, { countUsage: false });
+    expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('enforces one response per started iteration', () => {
+    const loop = new ModelTurnLoopState(2);
+    const terminal = response('stop', []);
+
+    expect(() => loop.acceptResponse(terminal)).toThrow('no active iteration');
+    loop.startNext();
+    expect(() => loop.startNext()).toThrow('has no response');
+    loop.acceptResponse(terminal);
+    expect(() => loop.acceptResponse(terminal)).toThrow('no active iteration');
+  });
+
+  it('invokes and accepts a provider response through one active turn', async () => {
+    const loop = new ModelTurnLoopState(1);
+    const terminal = response('stop', [{ type: 'text', text: 'done' }]);
+    const provider = providerFor(async function* (_request, options) {
+      expect(options?.stream).toBe(true);
+      yield { type: 'response_start', provider: 'anthropic', model: 'test-model' };
+      yield { type: 'text_delta', index: 0, text: 'done' };
+      yield { type: 'response_complete', response: terminal };
+    });
+
+    const activeTurn = loop.beginNext();
+    const invoked = await activeTurn.invoke(provider, request, { stream: true });
+    const inspected = activeTurn.acceptResponse(invoked);
+
+    expect(activeTurn.iteration).toBe(1);
+    expect(inspected.action).toBe('complete');
+    expect(loop.usage).toEqual({ inputTokens: 1, outputTokens: 1 });
+  });
+
+  it('allows sequential transport retries but accepts only one response', async () => {
+    const loop = new ModelTurnLoopState(1);
+    const terminal = response('stop');
+    let attempts = 0;
+    const provider = providerFor(async function* () {
+      attempts++;
+      if (attempts === 1) throw new Error('temporary failure');
+      yield { type: 'response_start', provider: 'anthropic', model: 'test-model' };
+      yield { type: 'response_complete', response: terminal };
+    });
+    const activeTurn = loop.beginNext();
+
+    await expect(activeTurn.invoke(provider, request)).rejects.toThrow('temporary failure');
+    const invoked = await activeTurn.invoke(provider, request);
+    activeTurn.acceptResponse(invoked);
+
+    expect(attempts).toBe(2);
+    await expect(activeTurn.invoke(provider, request)).rejects.toThrow('already accepted');
+    expect(() => activeTurn.acceptResponse(terminal)).toThrow('already accepted');
   });
 });

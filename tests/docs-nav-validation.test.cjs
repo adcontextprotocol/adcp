@@ -71,18 +71,20 @@ function collectOpenApiDirectories(node) {
   if (!node || typeof node !== 'object') return [];
 
   const directories = node.openapi?.directory ? [node.openapi.directory] : [];
+  if (node.groups) directories.push(...collectOpenApiDirectories(node.groups));
   if (node.pages) directories.push(...collectOpenApiDirectories(node.pages));
   return directories;
 }
 
 /**
- * Collect OpenAPI sources so deployments cannot depend on a remote fetch.
+ * Collect OpenAPI sources from every navigation level.
  */
 function collectOpenApiSources(node) {
   if (Array.isArray(node)) return node.flatMap(collectOpenApiSources);
   if (!node || typeof node !== 'object') return [];
 
   const sources = node.openapi?.source ? [node.openapi.source] : [];
+  if (node.groups) sources.push(...collectOpenApiSources(node.groups));
   if (node.pages) sources.push(...collectOpenApiSources(node.pages));
   return sources;
 }
@@ -148,21 +150,28 @@ test('default version carries the Latest tag', () => {
   }
 });
 
-test('OpenAPI navigation uses repository-local sources', () => {
+test('OpenAPI navigation uses release-pinned public sources', () => {
   const sources = collectOpenApiSources(navigation.versions);
-  const remoteSources = sources.filter(source => /^https?:\/\//i.test(source));
-  if (remoteSources.length > 0) {
-    throw new Error(
-      `Remote OpenAPI sources make Mintlify deployment depend on an external fetch: ` +
-      remoteSources.join(', ')
-    );
+  if (sources.length === 0) {
+    throw new Error('Versioned navigation must include an OpenAPI source');
   }
 
-  const missingSources = sources.filter(source => !fs.existsSync(
-    path.join(rootDir, source.replace(/^\//, ''))
-  ));
-  if (missingSources.length > 0) {
-    throw new Error(`Missing local OpenAPI sources: ${missingSources.join(', ')}`);
+  for (const entry of navigation.versions) {
+    const pages = collectPages(entry.groups);
+    const snapshot = pages
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .find(Boolean);
+    const entrySources = collectOpenApiSources(entry.groups);
+    const mutableSources = entrySources.filter(
+      source => !snapshot || source !==
+        `https://raw.githubusercontent.com/adcontextprotocol/adcp/v${snapshot}/static/openapi/registry.yaml`
+    );
+    if (mutableSources.length > 0) {
+      throw new Error(
+        `Docs version ${entry.version} must use its immutable snapshot OpenAPI source: ` +
+        mutableSources.join(', ')
+      );
+    }
   }
 });
 

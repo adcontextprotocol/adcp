@@ -1,11 +1,17 @@
 import type {
+  ModelMessage,
+  ModelProvider,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
+  ModelRequest,
   ModelResponse,
+  ModelRespondOptions,
   ModelTextContent,
   ModelToolCallContent,
+  ModelToolResultContent,
   ModelUsage,
 } from './model-provider.js';
+import { collectModelResponse } from './events.js';
 
 export type ModelTurnAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
 
@@ -15,6 +21,16 @@ export interface InspectedModelTurn {
   toolCalls: ReadonlyArray<ModelToolCallContent>;
   providerToolCalls: ReadonlyArray<ModelProviderToolCallContent>;
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
+}
+
+/** Append one canonical assistant continuation and any custom-tool results. */
+export function appendModelTurnContinuation(
+  messages: ModelMessage[],
+  response: ModelResponse,
+  toolResults?: ModelToolResultContent[],
+): void {
+  messages.push({ role: 'assistant', content: response.content });
+  if (toolResults) messages.push({ role: 'user', content: toolResults });
 }
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
@@ -88,6 +104,114 @@ export class ModelLoopBudget {
     }
     this.startedIterations++;
     return this.startedIterations;
+  }
+}
+
+/**
+ * Canonical state boundary for a provider-neutral model loop. It owns the
+ * logical turn wall, normalized usage, one-response-per-turn discipline, and
+ * optional empty-terminal recovery state. Delivery adapters still own
+ * transport retries and user-facing events.
+ */
+export class ModelTurnLoopState {
+  readonly emptyResponseRecovery = new EmptyResponseRecoveryState();
+  private readonly budget: ModelLoopBudget;
+  private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
+  private awaitingResponse = false;
+
+  constructor(limit: number) {
+    this.budget = new ModelLoopBudget(limit);
+  }
+
+  get limit(): number {
+    return this.budget.limit;
+  }
+
+  get iteration(): number {
+    return this.budget.iteration;
+  }
+
+  get hasRemaining(): boolean {
+    return this.budget.hasRemaining;
+  }
+
+  get usage(): ModelUsage {
+    return { ...this.accumulatedUsage };
+  }
+
+  startNext(): number {
+    if (this.awaitingResponse) {
+      throw new Error('Previous model loop iteration has no response');
+    }
+    const iteration = this.budget.startNext();
+    this.awaitingResponse = true;
+    return iteration;
+  }
+
+  /** Begin one logical turn whose transport attempts share this state slot. */
+  beginNext(): ActiveModelTurn {
+    return new ActiveModelTurn(this, this.startNext());
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): InspectedModelTurn {
+    if (!this.awaitingResponse) {
+      throw new Error('Model loop response has no active iteration');
+    }
+    const turn = inspectModelTurn(response);
+    if (options.countUsage !== false) {
+      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, response.usage);
+    }
+    this.awaitingResponse = false;
+    return turn;
+  }
+}
+
+/**
+ * One active logical model turn. Sequential transport attempts are allowed so
+ * delivery adapters can retain their retry policy and event timing, but only
+ * one normalized response can be accepted into the common loop.
+ */
+export class ActiveModelTurn {
+  private invocationInFlight = false;
+  private accepted = false;
+
+  constructor(
+    private readonly loop: ModelTurnLoopState,
+    readonly iteration: number,
+  ) {}
+
+  async invoke(
+    provider: ModelProvider,
+    request: ModelRequest,
+    options?: ModelRespondOptions,
+  ): Promise<ModelResponse> {
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    if (this.invocationInFlight) throw new Error('Model turn provider invocation already in flight');
+    this.invocationInFlight = true;
+    try {
+      return await collectModelResponse(
+        provider.respond(request, options),
+        provider.id,
+      );
+    } finally {
+      this.invocationInFlight = false;
+    }
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): InspectedModelTurn {
+    if (this.invocationInFlight) {
+      throw new Error('Cannot accept a response while provider invocation is in flight');
+    }
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    const turn = this.loop.acceptResponse(response, options);
+    this.accepted = true;
+    return turn;
   }
 }
 
