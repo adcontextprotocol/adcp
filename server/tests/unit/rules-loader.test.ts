@@ -186,6 +186,85 @@ describe('Addie tool reference', () => {
     expect(meetings).not.toContain('### Member profile and company-listing operations');
   });
 
+  it('scopes protocol and agent-testing guidance to their routed domains', () => {
+    const protocol = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['adcp_operations'], false, false),
+      selectedToolSetNames: ['adcp_operations'],
+    });
+    const testing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_testing'], false, false),
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(protocol).toContain('### AdCP protocol operations');
+    expect(protocol).toContain('### Seller-agent monitoring');
+    expect(protocol).toContain('### Building with AdCP');
+    expect(protocol).not.toContain('### Publisher and agent testing');
+    expect(protocol).not.toContain('### Property-registry operations');
+    expect(testing).toContain('### Publisher and agent testing');
+    expect(testing).toContain('### Property-registry operations');
+    expect(testing).toContain('### Building with AdCP');
+    expect(testing).not.toContain('### AdCP protocol operations');
+    expect(testing).not.toContain('### Seller-agent monitoring');
+  });
+
+  it('scopes brand guidance to directory requests', () => {
+    const directory = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+    const testing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_testing'], false, false),
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(directory).toContain('### Brand-registry operations');
+    expect(directory).not.toContain('### Property-registry operations');
+    expect(testing).not.toContain('### Brand-registry operations');
+  });
+
+  it('requires conditional tools to be present before advertising their workflows', () => {
+    const routedTools = getToolsForSets(['agent_testing'], false, false);
+    const withoutConditionalTools = buildAddieToolReference({
+      availableToolNames: routedTools,
+      selectedToolSetNames: ['agent_testing'],
+    });
+    const withPartialStoryboardTools = buildAddieToolReference({
+      availableToolNames: [...routedTools, 'recommend_storyboards'],
+      selectedToolSetNames: ['agent_testing'],
+    });
+    const withConditionalTools = buildAddieToolReference({
+      availableToolNames: [
+        ...routedTools,
+        'recommend_storyboards',
+        'get_storyboard_detail',
+        'run_storyboard',
+        'run_storyboard_step',
+        'get_adcp_capabilities',
+        'check_property_list',
+        'enhance_property',
+      ],
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(withoutConditionalTools).not.toContain('### Storyboard testing');
+    expect(withoutConditionalTools).not.toContain('### Property-list enrichment');
+    expect(withPartialStoryboardTools).not.toContain('### Storyboard testing');
+    expect(withConditionalTools).toContain('### Storyboard testing');
+    expect(withConditionalTools).toContain('### Property-list enrichment');
+  });
+
+  it('keeps migrated protocol-domain prose out of the stable prompt', () => {
+    const stable = buildAddieStableToolReference();
+
+    expect(stable).not.toContain('### Publisher and agent testing');
+    expect(stable).not.toContain('### AdCP protocol operations');
+    expect(stable).not.toContain('### Seller-agent monitoring');
+    expect(stable).not.toContain('### Brand-registry operations');
+    expect(stable).not.toContain('### Property-registry operations');
+    expect(stable).not.toContain('### Building with AdCP');
+  });
+
   it('does not advertise neighboring domain mutations in scoped guidance', () => {
     const member = buildAddieToolReference({
       availableToolNames: getToolsForSets(['member'], false, false),
