@@ -2221,11 +2221,13 @@ function narrowViewability(
   requested: ReadonlySet<string>,
 ): Record<string, unknown> | undefined {
   const selected = new Set<string>();
-  if (requested.has('viewability')) {
+  // A numeric leaf selects the canonical viewability carrier, not a
+  // leaf-shaped projection. Optional distribution carriers remain explicit.
+  if (
+    requested.has('viewability')
+    || VIEWABILITY_NUMERIC_FIELDS.some(field => requested.has(field))
+  ) {
     for (const field of VIEWABILITY_NUMERIC_FIELDS) selected.add(field);
-  }
-  for (const field of VIEWABILITY_NUMERIC_FIELDS) {
-    if (requested.has(field)) selected.add(field);
   }
   for (const distribution of ['viewed_seconds_percentiles', 'viewed_seconds_histogram'] as const) {
     if (requested.has(distribution)) {
