@@ -1,5 +1,4 @@
 import Ajv, { type ValidateFunction } from 'ajv';
-import { collectModelResponse } from './events.js';
 import { appendModelTurnContinuation, ModelTurnLoopState } from './model-turn.js';
 import type {
   ModelProvider,
@@ -139,18 +138,19 @@ export async function executeReadOnlyToolLoop(
   const modelLoop = new ModelTurnLoopState(MAX_ITERATIONS);
 
   while (modelLoop.hasRemaining) {
-    const iteration = modelLoop.startNext();
+    const activeTurn = modelLoop.beginNext();
+    const iteration = activeTurn.iteration;
     const request: ModelRequest = {
       ...requestSnapshot,
       messages,
       tools: snapshotTools.map((tool) => tool.definition),
       providerTools: [],
     };
-    const response = await collectModelResponse(provider.respond(request, {
+    const response = await activeTurn.invoke(provider, request, {
       signal: options.signal,
       beforeDispatch: options.beforeDispatch,
-    }), provider.id);
-    const turn = modelLoop.acceptResponse(response);
+    });
+    const turn = activeTurn.acceptResponse(response);
 
     const calls = turn.toolCalls;
     const unsupportedContinuation = turn.providerToolCalls.length > 0
