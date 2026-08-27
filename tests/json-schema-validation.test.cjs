@@ -81,9 +81,9 @@ function uriToLocalPath(uri) {
   // Remove URL prefix if present
   schemaPath = schemaPath.replace(/^https?:\/\/[^/]+/, '');
 
-  // Remove /schemas/latest/, /schemas/v{n}/, or /schemas/ prefix
+  // Remove /schemas/latest/, a versioned release prefix, or /schemas/ prefix
   schemaPath = schemaPath.replace(/^\/schemas\/latest\//, '/');
-  schemaPath = schemaPath.replace(/^\/schemas\/v\d+(\.\d+)*\//, '/');
+  schemaPath = schemaPath.replace(/^\/schemas\/v?\d+(?:\.\d+)*(?:-[^/]+)?\//, '/');
   schemaPath = schemaPath.replace(/^\/schemas\//, '/');
 
   // Build local path
@@ -360,9 +360,9 @@ async function validateJsonBlock(ajv, block) {
   try {
     validate = ajv.getSchema(schemaUri);
     if (!validate) {
-      // Try without the version prefix (latest/ or v{n}/)
+      // Try without the latest or semantic-version release prefix.
       let simplifiedUri = schemaUri.replace(/\/latest\//, '/');
-      simplifiedUri = simplifiedUri.replace(/\/v\d+(\.\d+)*\//, '/');
+      simplifiedUri = simplifiedUri.replace(/\/v?\d+(?:\.\d+)*(?:-[^/]+)?\//, '/');
       validate = ajv.getSchema(simplifiedUri);
     }
   } catch (e) {

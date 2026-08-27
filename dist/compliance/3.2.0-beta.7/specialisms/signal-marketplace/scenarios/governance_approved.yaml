@@ -1,0 +1,241 @@
+id: signal_marketplace/governance_approved
+version: "1.0.0"
+title: "Signal agent accepts a signed activation authorization"
+category: signal_marketplace
+summary: "Verifies that a valid task- and payload-bound governance token permits paid signal activation and that the deployment persists."
+track: signals
+requires: [multi_agent]
+default_agent: signals
+required_tools:
+  - sync_accounts
+  - sync_governance
+  - get_signals
+  - sync_plans
+  - check_governance
+  - activate_signal
+
+requires_capability:
+  path: adcp.governance_enforcement.tasks
+  contains:
+    task: activate_signal
+    modes: [signed_context]
+
+narrative: |
+  The runner discovers a priced signal, creates a permissive plan in the
+  discovered currency, and obtains signed intent authorization for the exact
+  activate_signal payload. The signal agent must accept that token, deploy the
+  signal, and expose the persisted live deployment on a later read. This
+  positive path prevents an always-rejecting service from satisfying the
+  governance-enforcement claim.
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
+  signal_agent_url: "https://test-agent.adcontextprotocol.org/signals"
+
+agent:
+  interaction_model: marketplace_catalog
+  capabilities: [governance_aware]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "A multi-agent runner with signal and governance agents. Override signal_agent_url with the exact signal endpoint under test."
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discovery_and_service_setup
+    title: "Set up the signal service and discover a paid activation"
+    steps:
+      - id: sync_accounts
+        agent: signals
+        title: "Establish the buyer account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        sample_request:
+          accounts:
+            - brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#signal_governance_approved_sync_accounts"
+        validations:
+          - check: response_schema
+
+      - id: sync_governance
+        agent: signals
+        title: "Register the governance provider"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        sample_request:
+          accounts:
+            - account:
+                brand: { domain: "acmeoutdoor.example" }
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "$context.governance_agent_url"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#signal_governance_approved_sync_governance"
+        validations:
+          - check: response_schema
+
+      - id: discover_paid_signal
+        agent: signals
+        title: "Discover a priced signal"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        comply_scenario: signal_discovery
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          signal_spec: "a paid marketplace signal for outdoor enthusiasts with immediate activation"
+          fields: [pricing_options, deployments]
+        context_outputs:
+          - { name: signal_id, path: "signals[0].signal_id" }
+          - { name: signal_agent_segment_id, path: "signals[0].signal_agent_segment_id" }
+          - { name: pricing_option_id, path: "signals[0].pricing_options[0].pricing_option_id" }
+          - { name: pricing_currency, path: "signals[0].pricing_options[0].currency" }
+        validations:
+          - check: response_schema
+          - check: field_present
+            path: "signals[0].pricing_options[0].pricing_option_id"
+          - check: field_present
+            path: "signals[0].pricing_options[0].currency"
+
+  - id: authorization
+    title: "Authorize the exact activation"
+    steps:
+      - id: sync_plans
+        agent: governance
+        title: "Create a permissive signal plan"
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#signal_governance_approved_sync_plans"
+          plans:
+            - plan_id: "comply-signal-approved-plan"
+              brand: { domain: "acmeoutdoor.example" }
+              objectives: "Activate governed audience data"
+              budget:
+                total: 1000000000
+                currency: "$context.pricing_currency"
+                reallocation_threshold: 1000000000
+              flight:
+                start: "2020-01-01T00:00:00Z"
+                end: "2099-12-31T23:59:59Z"
+              countries: ["US"]
+        context_outputs:
+          - { name: plan_id, path: "plans[0].plan_id" }
+        validations:
+          - check: response_schema
+
+      - id: check_governance_intent
+        agent: governance
+        title: "Approve the exact activation payload"
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        stateful: true
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          target_agent: "$context.signal_agent_url"
+          tool: "activate_signal"
+          purchase_type: "signal_activation"
+          proposed_commitment: { amount: 1000000000, currency: "$context.pricing_currency" }
+          payload:
+            action: "activate"
+            account:
+              brand: { domain: "acmeoutdoor.example" }
+              operator: "pinnacle-agency.example"
+            signal_agent_segment_id: "$context.signal_agent_segment_id"
+            pricing_option_id: "$context.pricing_option_id"
+            destinations:
+              - type: "platform"
+                platform: "pinnacle-dsp"
+                account: "acmeoutdoor-governed-seat"
+            idempotency_key: "$generate:uuid_v4#signal_governance_approved_activate"
+        context_outputs:
+          - { name: governance_context, path: "governance_context" }
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "verdict"
+            value: "approved"
+          - check: field_present
+            path: "governance_context"
+
+  - id: authorized_activation
+    title: "Deploy and prove durable state"
+    steps:
+      - id: activate_signal_approved
+        agent: signals
+        title: "Activate with signed authorization"
+        task: activate_signal
+        schema_ref: "signals/activate-signal-request.json"
+        response_schema_ref: "signals/activate-signal-response.json"
+        doc_ref: "/signals/tasks/activate_signal"
+        comply_scenario: signal_activation
+        stateful: true
+        sample_request:
+          action: "activate"
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          signal_agent_segment_id: "$context.signal_agent_segment_id"
+          pricing_option_id: "$context.pricing_option_id"
+          destinations:
+            - type: "platform"
+              platform: "pinnacle-dsp"
+              account: "acmeoutdoor-governed-seat"
+          idempotency_key: "$generate:uuid_v4#signal_governance_approved_activate"
+          governance_context: "$context.governance_context"
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "deployments[0].is_live"
+            value: true
+          - check: field_present
+            path: "deployments[0].activation_key"
+          - check: upstream_traffic
+            description: "Authorized activation dispatches the selected signal to the destination platform"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            since: discover_paid_signal
+            identifier_paths: ["signal_agent_segment_id"]
+
+      - id: get_signal_deployment_readback
+        agent: signals
+        title: "Read back the persisted live deployment"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        stateful: false
+        sample_request:
+          account:
+            brand: { domain: "acmeoutdoor.example" }
+            operator: "pinnacle-agency.example"
+          signal_ids: ["$context.signal_id"]
+          fields: [deployments]
+        validations:
+          - check: response_schema
+          - check: field_value
+            path: "signals[0].deployments[0].is_live"
+            value: true
+          - check: field_present
+            path: "signals[0].deployments[0].activation_key"
