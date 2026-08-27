@@ -44,13 +44,14 @@ import type {
   ModelToolCallContent,
   ModelToolDefinition,
   ModelToolResultContent,
+  ModelUsage,
 } from './model-providers/model-provider.js';
 import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
 import { collectModelResponse } from './model-providers/events.js';
-import { inspectModelTurn } from './model-providers/model-turn.js';
+import { addModelUsage, inspectModelTurn } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
   type AddieExecutionMode,
@@ -786,6 +787,19 @@ export interface AddieResponse {
   };
 }
 
+function toAddieUsage(usage: ModelUsage): NonNullable<AddieResponse['usage']> {
+  return {
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    ...((usage.cacheWriteTokens ?? 0) > 0 && {
+      cache_creation_input_tokens: usage.cacheWriteTokens,
+    }),
+    ...((usage.cacheReadTokens ?? 0) > 0 && {
+      cache_read_input_tokens: usage.cacheReadTokens,
+    }),
+  };
+}
+
 function anthropicModelExecution(model: string, requestedModel: string): ModelExecution {
   return {
     source: 'provider',
@@ -1416,10 +1430,7 @@ export class AddieClaudeClient {
     let totalToolExecutionMs = 0;
 
     // Token usage tracking (aggregated across iterations)
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheCreationTokens = 0;
-    let totalCacheReadTokens = 0;
+    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
 
     const prepared = this.prepareFirstNonStreamingInvocation(
       userMessage,
@@ -1580,10 +1591,7 @@ export class AddieClaudeClient {
 
       // Track token usage from this iteration
       if (!reusedEmptyResponse) {
-        totalInputTokens += response.usage.inputTokens;
-        totalOutputTokens += response.usage.outputTokens;
-        totalCacheCreationTokens += response.usage.cacheWriteTokens ?? 0;
-        totalCacheReadTokens += response.usage.cacheReadTokens ?? 0;
+        totalUsage = addModelUsage(totalUsage, response.usage);
       }
 
       logger.debug({
@@ -1691,12 +1699,7 @@ export class AddieClaudeClient {
         }
         const text = finalized.text;
         totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
-        const finalUsage = {
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        };
+        const finalUsage = toAddieUsage(totalUsage);
         logger.error(
           {
             event: 'addie_response_truncated',
@@ -1811,12 +1814,7 @@ export class AddieClaudeClient {
           ? 'Output truncated due to length'
           : hallucinationReason ?? finalized.emptyReason;
 
-        const finalUsage = {
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        };
+        const finalUsage = toAddieUsage(totalUsage);
         // Record the call against the user's daily budget (#2790).
         // Runs after the response is built so a successful charge
         // counts even if a downstream flag/logging failure occurs.
@@ -1921,12 +1919,7 @@ export class AddieClaudeClient {
             reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
           }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const terminalUsage = {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-          };
+          const terminalUsage = toAddieUsage(totalUsage);
           if (finalized.lengthExceeded) {
             logger.error(
               { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
@@ -1982,12 +1975,7 @@ export class AddieClaudeClient {
 
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-    const maxIterationsUsage = {
-      input_tokens: totalInputTokens,
-      output_tokens: totalOutputTokens,
-      ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-      ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-    };
+    const maxIterationsUsage = toAddieUsage(totalUsage);
     // Still charge the user for tokens actually consumed on the way
     // to hitting max-iterations — those bytes DID go to Anthropic
     // and DID cost money, regardless of whether the session converged.
@@ -2127,10 +2115,7 @@ export class AddieClaudeClient {
     let totalToolExecutionMs = 0;
 
     // Token usage tracking (aggregated across iterations)
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheCreationTokens = 0;
-    let totalCacheReadTokens = 0;
+    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
 
     // Get system prompt from rule files (or fallback)
     const promptStart = Date.now();
@@ -2412,10 +2397,7 @@ export class AddieClaudeClient {
 
         // Track token usage
         if (!reusedEmptyResponse) {
-          totalInputTokens += currentResponse.usage.inputTokens;
-          totalOutputTokens += currentResponse.usage.outputTokens;
-          totalCacheCreationTokens += currentResponse.usage.cacheWriteTokens ?? 0;
-          totalCacheReadTokens += currentResponse.usage.cacheReadTokens ?? 0;
+          totalUsage = addModelUsage(totalUsage, currentResponse.usage);
         }
 
         logger.debug({
@@ -2440,15 +2422,8 @@ export class AddieClaudeClient {
 
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
-        // no-tool-blocks) share this; kept inline as a local const
-        // rather than hoisted to instance scope because it closes
-        // over the accumulators in this method.
-        const buildStreamUsage = () => ({
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        });
+        // no-tool-blocks) serialize the same normalized accumulator.
+        const buildStreamUsage = () => toAddieUsage(totalUsage);
         const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
           if (operationalExecution && options?.costScope) {
             await recordCost(
@@ -2709,12 +2684,7 @@ export class AddieClaudeClient {
       // Max iterations reached
       logger.warn('Addie Stream: Hit max tool iterations');
       totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-      const maxIterUsage = {
-        input_tokens: totalInputTokens,
-        output_tokens: totalOutputTokens,
-        ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-        ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-      };
+      const maxIterUsage = toAddieUsage(totalUsage);
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
       if (operationalExecution && options?.costScope) {

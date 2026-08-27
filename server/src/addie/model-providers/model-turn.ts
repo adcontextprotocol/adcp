@@ -4,6 +4,7 @@ import type {
   ModelResponse,
   ModelTextContent,
   ModelToolCallContent,
+  ModelUsage,
 } from './model-provider.js';
 
 export type ModelTurnAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
@@ -14,6 +15,20 @@ export interface InspectedModelTurn {
   toolCalls: ReadonlyArray<ModelToolCallContent>;
   providerToolCalls: ReadonlyArray<ModelProviderToolCallContent>;
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
+}
+
+/** Accumulate normalized usage without inventing absent provider cache metrics. */
+export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
+  return {
+    inputTokens: total.inputTokens + usage.inputTokens,
+    outputTokens: total.outputTokens + usage.outputTokens,
+    ...(total.cacheWriteTokens !== undefined || usage.cacheWriteTokens !== undefined
+      ? { cacheWriteTokens: (total.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0) }
+      : {}),
+    ...(total.cacheReadTokens !== undefined || usage.cacheReadTokens !== undefined
+      ? { cacheReadTokens: (total.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0) }
+      : {}),
+  };
 }
 
 /**
