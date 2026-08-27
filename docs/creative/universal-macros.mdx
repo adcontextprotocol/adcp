@@ -47,7 +47,7 @@ The first contract permits one translation hop followed by value resolution; `tr
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.7/core/assets/display-tag-asset.json",
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/assets/display-tag-asset.json",
   "asset_type": "display_tag",
   "delivery_type": "tag_url",
   "url": "https://ads.acme-example.com/render?cb=[CACHEBUSTING]&click=%%ACME_CLICK_ESC2%%&gdpr={GDPR}&consent={GDPR_CONSENT}&gpp={GPP_STRING}&player=[PLAYERSTATE]&unknown=%%VENDOR_TOKEN%%",
@@ -212,7 +212,7 @@ Compatibility matches dialect family, namespace, revision, exact dialect semanti
 - `unsupported` — no compatible resolver/capability exists; or
 - `ambiguous` — the declaration does not establish one safe meaning.
 
-A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Its `error.details` MUST conform to [`error-details/macro-resolution-failed.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.7/error-details/macro-resolution-failed.json). Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
+A required `unsupported` or `ambiguous` token fails with `MACRO_RESOLUTION_FAILED`. Its `error.details` MUST conform to [`error-details/macro-resolution-failed.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.8/error-details/macro-resolution-failed.json). Results include the asset pointer, declaration ID, requested encoding, structured reason, and advertised encoding candidates.
 
 ## Relationship to existing macro surfaces
 
