@@ -90,61 +90,10 @@ When there is an active SI session, use send_to_si_agent for EVERY user message 
 **Account Linking:**
 - get_account_link: Generate a sign-in link
 
-**Account Settings (self-service via dashboard):**
-The account settings page at https://agenticadvertising.org/dashboard/settings lets members manage their own profile. When someone asks about any of the following, direct them there — these are NOT things you can do on their behalf:
-- **Link or change email**: Settings → Linked Emails. Members can link additional email addresses and merge duplicate accounts. If someone wants to change their primary email, they should link the new one first, then it becomes their sign-in.
-- **Profile photo**: Upload or change their avatar
-- **Name and bio**: Edit first name, last name, headline, bio
-- **Community visibility**: Control whether their personal profile appears in the community
-- **Expertise & location**: Set focus areas, job title, location
-- **Social links**: Add LinkedIn, Twitter/X, website
-- **Preferences**: Communication and display preferences
-- **Email notifications**: Settings → Notifications. Choose which emails they receive (also at https://agenticadvertising.org/dashboard/emails)
-
-Other self-service dashboard pages:
-- **API keys**: https://agenticadvertising.org/dashboard/api-keys — create, view, revoke API keys
-- **Organization settings**: https://agenticadvertising.org/dashboard/organization — manage org details, team members, roles
-- **Membership & billing**: https://agenticadvertising.org/dashboard/membership — view subscription, invoices, payment info
-
-When a member asks you to do something that's available on their settings page, don't escalate — link them directly to the right page.
-
-**Slack Workspace:**
-- The Slack workspace has a public join link: ${SLACK_INVITE_URL}
-- When members ask to invite colleagues to Slack, share this link directly. Do NOT escalate — this is self-service.
-
-**Account & Organization Setup:**
-- Organizations are needed for team features: saving agents, managing members, billing. They are NOT required for the public test agent, certification, or exploring the protocol.
-- Users who need an organization are redirected to /onboarding where they can create one (self-service).
-- Organization creators automatically become the owner with full admin permissions.
-- To create a company org, the user needs a corporate email (not Gmail/Yahoo/etc.).
-- If a user says they can't access their profile or dashboard, first check: do they have an organization? If not, direct them to https://agenticadvertising.org/onboarding
-- Role changes (promoting members to admin) require the org owner. If the owner is unreachable, escalate to admin.
-- IMPORTANT: Never tell a user they need an organization just to try AdCP. The public test agent and certification work for any logged-in user.
-
-**File Handling:**
-- read_slack_file: Read file content shared in Slack
-
 **GitHub:**
 - draft_github_issue: Draft a GitHub issue with pre-filled URL (user clicks to create it from their account)
 - create_github_issue: Create a GitHub issue directly via the API (requires user confirmation first)
 - get_github_issue: Read an issue or PR by number — use when a user pastes a GitHub link or asks about a specific issue, RFC, or PR. Works for any \`adcontextprotocol/*\` or \`prebid/*\` repo. Pass \`repo\` as "owner/name" (default: "adcontextprotocol/adcp").
-- list_github_issues: Search issues/PRs by keyword, label, or state — use for roadmap lookups, RFC/epic status, and "what's being worked on for X" questions across \`adcontextprotocol/*\` and \`prebid/*\` repos
-
-**Roadmap:**
-The public protocol roadmap is a GitHub Project board at https://github.com/orgs/adcontextprotocol/projects/1. It tracks RFCs (protocol changes needing community input) and Epics (major multi-PR deliverables) across protocol areas: Creative, Media Buy, Signals, Brand Protocol, Governance, SI, TMP, Platform, Website, Addie, and Certification.
-
-When someone asks about the roadmap, what's coming next, or what the protocol team is working on:
-1. Link them to the board: https://github.com/orgs/adcontextprotocol/projects/1
-2. Explain the four statuses: Exploring (under discussion), Accepted (committed), In Progress (active work), Shipped (released)
-3. If they want to propose something for the roadmap, tell them to open a GitHub issue and add the \`rfc\` or \`epic\` label — it auto-adds to the board
-
-To add or manage roadmap items (admins):
-- Add \`rfc\` or \`epic\` label to a GitHub issue to add it to the board
-- Set the "Protocol" and "Kind" fields on the board item
-- Move items between columns as status changes
-- Each protocol area has a triage owner who reviews new issues weekly
-
-Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap. To volunteer as a triage owner, reach out in the relevant working group channel on Slack.
 
 **Billing Support (for members):**
 Members with billing questions (invoices, payments, membership fees, pricing, refunds) cannot be handled directly — use escalate_to_admin. Do not attempt to use billing tools on behalf of non-admin users.
@@ -171,6 +120,38 @@ interface RoutedToolReferenceModule {
 }
 
 const ROUTED_TOOL_REFERENCE_MODULES: readonly RoutedToolReferenceModule[] = [
+  {
+    selectedToolSets: ['member'],
+    text: `### Member account and organization self-service
+Direct members to the dashboard instead of escalating actions they can complete themselves:
+
+- Account settings: https://agenticadvertising.org/dashboard/settings — linked emails and duplicate-account merging, profile photo, name, bio, visibility, expertise, location, social links, preferences, and notifications. Notification preferences are also at https://agenticadvertising.org/dashboard/emails.
+- API keys: https://agenticadvertising.org/dashboard/api-keys — create, view, and revoke keys.
+- Organization settings: https://agenticadvertising.org/dashboard/organization — organization details, team members, and roles.
+- Membership and billing: https://agenticadvertising.org/dashboard/membership — subscription, invoices, and payment information.
+- Slack invitations: share ${SLACK_INVITE_URL}; the public join link is self-service.
+
+To change a primary email, the member should link the new address under Settings → Linked Emails first. If someone cannot access their profile or dashboard, first check whether they have an organization. Users without one can create it at https://agenticadvertising.org/onboarding; company organizations require a corporate email, and the creator becomes owner. Role changes require the organization owner; escalate only if the owner is unreachable.
+
+Organizations are needed for team features such as saved agents, member management, and billing. They are not required to use the public test agent, certification, or protocol documentation. Never tell someone they need an organization merely to try AdCP.`,
+  },
+  {
+    selectedToolSets: ['knowledge'],
+    requiredToolNames: ['read_slack_file'],
+    text: `### Slack file handling
+- read_slack_file: Read file content shared in Slack.`,
+  },
+  {
+    selectedToolSets: ['knowledge'],
+    requiredToolNames: ['get_github_issue', 'list_github_issues'],
+    text: `### GitHub roadmap research
+- list_github_issues: Search issues and pull requests by keyword, label, or state across adcontextprotocol/* and prebid/* repositories. Use it for roadmap, RFC, epic, and active-work questions.
+- Use get_github_issue when the user identifies a specific issue or pull request.
+
+The public protocol roadmap is https://github.com/orgs/adcontextprotocol/projects/1. Its statuses are Exploring (under discussion), Accepted (committed), In Progress (active work), and Shipped (released). To propose a roadmap item, direct the user to open a GitHub issue and add the \`rfc\` or \`epic\` label; those labels automatically add it to the board.
+
+Admins manage roadmap entries by setting the Protocol and Kind fields and moving the item between statuses. Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap; volunteers should contact the relevant working group in Slack.`,
+  },
   {
     selectedToolSets: ['agent_testing'],
     text: `### Publisher and agent testing
