@@ -13942,8 +13942,10 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
           const impressionRemainder = impressions % pkg.creativeAssignments.length;
           const spendBase = Math.floor((spend / pkg.creativeAssignments.length) * 100) / 100;
           const spendRemainderCents = Math.round((spend - (spendBase * pkg.creativeAssignments.length)) * 100);
+          const creativeName = session.creatives.get(creativeId)?.name;
           return {
             creative_id: creativeId,
+            ...(creativeName && { creative_name: creativeName }),
             impressions: impressionBase + (index < impressionRemainder ? 1 : 0),
             spend: Math.round((spendBase + (index < spendRemainderCents ? 0.01 : 0)) * 100) / 100,
             conversions: base + (index < remainder ? 1 : 0),

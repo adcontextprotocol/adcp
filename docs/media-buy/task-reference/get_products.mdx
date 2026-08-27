@@ -465,8 +465,9 @@ Each returned placement may carry:
 
 | Field | Meaning |
 |-------|---------|
-| `placement_id` | Placement identifier in the publisher namespace. Buyers reference this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts. |
-| `publisher_domain` | Domain whose `adagents.json` defines the publisher-referenced placement. New multi-publisher products SHOULD include it. When omitted on legacy products, buyers may interpret `placement_id` relative to the seller agent's own publisher domain. |
+| `placement_id` | Placement identifier. `publisher_ref` IDs are scoped by `publisher_domain`; `seller_inline` IDs are scoped by `seller_agent` or, for legacy rows, the enclosing seller and product. Creative-assignment refs remain product-context routing references. |
+| `publisher_domain` | For `publisher_ref`, the required domain whose `adagents.json` owns the placement ID. For `seller_inline`, optional inventory-publisher attribution only. |
+| `seller_agent` | Defining sales agent for self-contained `seller_inline` identity. New 3.2 products SHOULD include it; legacy inline rows remain product-scoped. |
 | `mode` | `targetable` means the buyer may purchase the publisher-scoped placement through `targeting_overlay.placement_selection`. `included` means fixed/default product inventory that cannot be independently selected. Creative routing is permitted only after the placement is purchased. |
 | `video_placement_types` | Declared video placement types for OLV and other video inventory, using the IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `audio_distribution_types` | Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio inventory, using the IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
@@ -696,7 +697,7 @@ Publishers may return proposals alongside products - structured media plans with
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
 | `expires_at` | string | ISO 8601 timestamp when this proposal expires. For committed proposals, this is the inventory-hold deadline for `create_media_buy`. |
 
-Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting verifies one-dimensional marginals, not exact cross-dimensional intersections.
+Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting mostly verifies one-dimensional marginals; `collection_property` and `placement_property` are explicit standardized intersections with property delivery.
 
 ### Pagination
 

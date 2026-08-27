@@ -33,7 +33,7 @@
     },
     "placement_refs": {
       "type": "array",
-      "description": "Optional structured refs routing this creative within already-purchased package inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection for that. Every ref MUST fall within the package's committed placement selection. When omitted, the creative runs across the purchased placements compatible with its format. New senders SHOULD include publisher_domain because placement IDs are publisher-scoped. If both placement_refs and legacy placement_ids are present, placement_refs wins.",
+      "description": "Optional structured product-context refs routing this creative within already-purchased package inventory. This field never narrows purchased inventory; use targeting_overlay.placement_selection for that. Every ref MUST fall within the package's committed placement selection. New senders SHOULD include publisher_domain for publisher-catalog placements. When omitted, the creative runs across the purchased placements compatible with its format. If both placement_refs and legacy placement_ids are present, placement_refs wins.",
       "items": {
         "$ref": "/schemas/core/placement-ref.json"
       },

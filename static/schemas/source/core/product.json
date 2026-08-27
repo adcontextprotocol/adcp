@@ -65,7 +65,7 @@
     },
     "placements": {
       "type": "array",
-      "description": "Optional array of specific public placements within this product. Placement IDs are scoped by publisher domain. Product placements declare `kind` to distinguish publisher-referenced placements (`publisher_ref`) from seller-defined inline placements (`seller_inline`). Publisher-referenced placements carry `publisher_domain` plus `placement_id` and may omit `name` because buyers resolve the name from the publisher's adagents.json placement declarations. Seller-inline placements carry buyer-facing `name` directly; when `publisher_domain` is omitted, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain only during the legacy single-publisher transition. Community-maintained fallback files are resolver/source metadata, not a distinct placement kind. Each placement MUST declare `mode: 'targetable'` (buyer may purchase it through targeting_overlay.placement_selection) or `mode: 'included'` (part of fixed/default product composition and not independently selectable). Creative assignments route creatives only after placement inventory is purchased. Placement-level format declarations narrow the product-level creative contract and MUST NOT broaden it. Seller-private delivery objects, source/origin details, and ad-server mappings MUST NOT be exposed here.",
+      "description": "Optional array of specific public placements within this product. Product placements declare `kind` to distinguish publisher-catalog placements (`publisher_ref`) from sales-agent-defined placements (`seller_inline`). Publisher references use canonical `{publisher_domain, placement_id}` identity and may omit name because adagents.json resolves it. New seller-inline placements SHOULD carry `seller_agent`; legacy rows without it remain scoped to the enclosing seller and product. A seller-inline publisher_domain is inventory attribution, not authority to mint an ID in that publisher's catalog namespace. Each placement MUST declare mode: targetable or included. Creative assignments route creatives only after placement inventory is purchased.",
       "items": {
         "$ref": "/schemas/core/placement.json"
       },
@@ -497,7 +497,7 @@
     },
     "installments": {
       "type": "array",
-      "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",
+      "description": "Specific installments included in this product. Each installment references its parent through canonical collection_ref when the product spans multiple collections or publisher namespaces; collection_id remains a deprecated single-namespace shorthand. When absent with collections present, the product covers the collections broadly (run-of-collection).",
       "items": {
         "$ref": "/schemas/core/installment.json"
       }

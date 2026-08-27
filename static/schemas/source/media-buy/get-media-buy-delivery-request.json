@@ -435,6 +435,26 @@
             }
           },
           "additionalProperties": true
+        },
+        "property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical publisher property. Check reporting_capabilities.supports_property_breakdown."
+        },
+        "collection": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical content collection. Check reporting_capabilities.supports_collection_breakdown."
+        },
+        "installment": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical installment within a collection. Check reporting_capabilities.supports_installment_breakdown."
+        },
+        "collection_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the collection × property intersection. This is the reporting grain that can prove a collection delivered on a particular host service; independent collection and property marginals cannot. Check reporting_capabilities.supports_collection_property_breakdown."
+        },
+        "placement_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the placement × property intersection. Use when a placement may span multiple web, app, social, or assistant properties. Check reporting_capabilities.supports_placement_property_breakdown."
         }
       },
       "additionalProperties": true

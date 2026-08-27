@@ -14,6 +14,11 @@ const SORTABLE_DIMENSIONS = [
   "audience",
   "demographic",
   "placement",
+  "property",
+  "collection",
+  "installment",
+  "collection_property",
+  "placement_property",
 ];
 
 function readSchema(uri) {
@@ -21,6 +26,10 @@ function readSchema(uri) {
   return JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, uri.slice("/schemas/".length)), "utf8")
   );
+}
+
+function dereference(schema) {
+  return schema?.$ref ? readSchema(schema.$ref) : schema;
 }
 
 async function compile(schema) {
@@ -88,8 +97,9 @@ describe("delivery reporting sort contract", () => {
 
   for (const dimension of SORTABLE_DIMENSIONS) {
     it(`request schema declares both sort_by and sort_direction for ${dimension}`, () => {
-      const dimensionSchema =
-        requestJson.properties.reporting_dimensions.properties[dimension];
+      const dimensionSchema = dereference(
+        requestJson.properties.reporting_dimensions.properties[dimension]
+      );
       assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
       assert.equal(
         dimensionSchema.properties.sort_by.$ref,
@@ -106,10 +116,12 @@ describe("delivery reporting sort contract", () => {
     it(`response echoes the applied sort for by_${dimension}`, () => {
       const sortedByField = `by_${dimension}_sorted_by`;
       const sortDirectionField = `by_${dimension}_sort_direction`;
+      const truncatedField = `by_${dimension}_truncated`;
       const properties = byPackageExtension.properties;
 
       assert.ok(properties[sortedByField], `missing ${sortedByField}`);
       assert.ok(properties[sortDirectionField], `missing ${sortDirectionField}`);
+      assert.ok(properties[truncatedField], `missing ${truncatedField}`);
 
       assert.equal(
         validateByPackage({
@@ -153,7 +165,8 @@ describe("delivery reporting sort contract", () => {
     const dimensions =
       requestJson.properties.reporting_dimensions.properties;
     const responseProperties = byPackageExtension.properties;
-    for (const [name, schema] of Object.entries(dimensions)) {
+    for (const [name, rawSchema] of Object.entries(dimensions)) {
+      const schema = dereference(rawSchema);
       if (!schema.properties || !schema.properties.sort_by) continue;
       assert.equal(
         schema.properties.sort_by.$ref,

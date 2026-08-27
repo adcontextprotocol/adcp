@@ -36,7 +36,7 @@ The `kind` field on each collection indicates how to interpret it and its instal
 
 ## The collection object
 
-A collection is a persistent content program that produces installments over time. Collections work like properties — publishers declare them in their `adagents.json`, and products reference them via `collections` selectors with `publisher_domain` and `collection_ids`.
+A collection is a persistent, publisher-controlled content program that produces installments over time. It is not a social “collection ad,” user conversation, session, prompt, turn, or inferred topic cluster. Collections work like properties — publishers declare them in their `adagents.json`, and products reference them via `collections` selectors with `publisher_domain` and `collection_ids`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -107,7 +107,8 @@ An installment is a specific installment of a collection. Not all installments w
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `installment_id` | string | Yes | Unique identifier within the collection |
-| `collection_id` | string | When needed | Parent collection. Required when the product spans multiple collections. |
+| `collection_ref` | object | Conditional | Canonical parent identity: `{publisher_domain, collection_id}`. Required when the product spans multiple collections or publisher namespaces. |
+| `collection_id` | string | Deprecated | Legacy parent shorthand, unambiguous only within one publisher namespace. |
 | `name` | string | No | Episode title |
 | `season` | string | No | Season identifier (e.g., `"1"`, `"2026"`) |
 | `installment_number` | string | No | Episode number within the season |
@@ -442,6 +443,10 @@ This tells buyer agents that The Ember is a finite opportunity — 8 installment
 
 Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Buyers resolve full collection objects from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
 
+### Reporting actual delivery
+
+Discovery and delivery answer different questions. A collection's `distribution` metadata or a product's property selectors say where content is carried or sellable. After purchase, `get_media_buy_delivery` can report `by_collection`, `by_property`, and `by_installment` marginals. Those independent arrays do not prove a relationship between their rows. Products that declare `supports_collection_property_breakdown` can return `by_collection_property`, whose rows are affirmative evidence that a collection actually delivered on a specific property. Collections use publisher-scoped references; property rows use a publisher-scoped operational identifier and add a catalog property reference when one exists. If the response is truncated or suppressed, an absent intersection row proves nothing.
+
 ### Run-of-collection (no specific installments)
 
 A product can reference a collection without listing installments. This means "inventory across this collection, whatever installments air during the flight dates":
@@ -452,7 +457,7 @@ A product can reference a collection without listing installments. This means "i
   "name": "Pinnacle Challenge Run of Show",
   "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
   "placements": [
-    { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" }
+    { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.acmestreaming.example.com/adcp" }, "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" }
   ],
   "delivery_type": "non_guaranteed",
   "pricing_options": [
@@ -520,8 +525,8 @@ Products reference collections via `collections` selectors — the same pattern 
         }
       ],
       "placements": [
-        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" },
-        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll", "mode": "targetable" }
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.acmestreaming.example.com/adcp" }, "placement_id": "pre_roll", "name": "Pre-roll", "mode": "targetable" },
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.acmestreaming.example.com/adcp" }, "placement_id": "mid_roll", "name": "Mid-roll", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -615,8 +620,8 @@ A streaming platform selling sponsorships against a known collection with upcomi
         }
       ],
       "placements": [
-        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" },
-        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll (30s)", "mode": "targetable" }
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.novastreaming.example.com/adcp" }, "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" },
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.novastreaming.example.com/adcp" }, "placement_id": "mid_roll", "name": "Mid-roll (30s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -657,7 +662,7 @@ A streaming platform offering a main collection and its companion after-collecti
         }
       ],
       "placements": [
-        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" }
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.novastreaming.example.com/adcp" }, "placement_id": "pre_roll", "name": "Pre-roll (15s)", "mode": "targetable" }
       ],
       "delivery_type": "non_guaranteed",
       "pricing_options": [
@@ -703,8 +708,8 @@ A podcast network selling across multiple distribution platforms. The collection
         }
       ],
       "placements": [
-        { "kind": "seller_inline", "placement_id": "pre_roll", "name": "Pre-roll (30s)", "mode": "targetable" },
-        { "kind": "seller_inline", "placement_id": "mid_roll", "name": "Mid-roll host read (60s)", "mode": "targetable" }
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.wonderstruck.example.com/adcp" }, "placement_id": "pre_roll", "name": "Pre-roll (30s)", "mode": "targetable" },
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.wonderstruck.example.com/adcp" }, "placement_id": "mid_roll", "name": "Mid-roll host read (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
@@ -761,8 +766,8 @@ A sports league selling sponsorships against a live event series. Live broadcast
         }
       ],
       "placements": [
-        { "kind": "seller_inline", "placement_id": "in_game_overlay", "name": "In-game overlay (10s)", "mode": "targetable" },
-        { "kind": "seller_inline", "placement_id": "halftime", "name": "Halftime feature (60s)", "mode": "targetable" }
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.apexleague.example.com/adcp" }, "placement_id": "in_game_overlay", "name": "In-game overlay (10s)", "mode": "targetable" },
+        { "kind": "seller_inline", "seller_agent": { "agent_url": "https://sales.apexleague.example.com/adcp" }, "placement_id": "halftime", "name": "Halftime feature (60s)", "mode": "targetable" }
       ],
       "delivery_type": "guaranteed",
       "exclusivity": "category",
@@ -919,7 +924,7 @@ Products with multiple collections default to bundles — the buyer gets all lis
 
 ## Multi-collection bundles
 
-A single product can span multiple collections by listing multiple collection IDs in `collections`. When a product has multiple collections, each installment MUST include `collection_id` so the buyer agent knows which collection each installment belongs to.
+A single product can span multiple collections by listing multiple collection IDs in `collections`. When a product has multiple collections, each installment MUST include canonical `collection_ref` so the buyer agent knows both the parent collection and its publisher namespace. The deprecated `collection_id` shorthand is only unambiguous for single-namespace products.
 
 ```json
 {
@@ -929,10 +934,10 @@ A single product can span multiple collections by listing multiple collection ID
       "name": "TechNet Podcast Bundle - April",
       "collections": [{ "publisher_domain": "technet.example.com", "collection_ids": ["tech_weekly", "startup_hour"] }],
       "installments": [
-        { "installment_id": "tw_ep12", "collection_id": "tech_weekly", "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
-        { "installment_id": "tw_ep13", "collection_id": "tech_weekly", "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },
-        { "installment_id": "sh_ep30", "collection_id": "startup_hour", "scheduled_at": "2026-04-09T14:00:00Z", "status": "scheduled" },
-        { "installment_id": "sh_ep31", "collection_id": "startup_hour", "scheduled_at": "2026-04-16T14:00:00Z", "status": "tentative" }
+        { "installment_id": "tw_ep12", "collection_ref": { "publisher_domain": "technet.example.com", "collection_id": "tech_weekly" }, "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
+        { "installment_id": "tw_ep13", "collection_ref": { "publisher_domain": "technet.example.com", "collection_id": "tech_weekly" }, "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },
+        { "installment_id": "sh_ep30", "collection_ref": { "publisher_domain": "technet.example.com", "collection_id": "startup_hour" }, "scheduled_at": "2026-04-09T14:00:00Z", "status": "scheduled" },
+        { "installment_id": "sh_ep31", "collection_ref": { "publisher_domain": "technet.example.com", "collection_id": "startup_hour" }, "scheduled_at": "2026-04-16T14:00:00Z", "status": "tentative" }
       ],
       "delivery_type": "guaranteed",
       "pricing_options": [
