@@ -288,6 +288,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
 
   for (const surface of surfaces) {
     for (const [setName, set] of Object.entries(toolSets.TOOL_SETS)) {
+      if (set.routerVisible === false) continue;
       if (!surface.isAdmin && set.adminOnly) continue;
       const selectedSets = selectSlackToolSets({
         routerSelectedSets: [setName],
@@ -323,6 +324,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       }));
     }
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
+      .filter(([, set]) => set.routerVisible !== false)
       .filter(([, set]) => surface.isAdmin || !set.adminOnly)
       .map(([name]) => name);
     const selectedAllValidSets = selectSlackToolSets({
@@ -408,8 +410,27 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     }
   }
 
+  const legacyAdminAllowed = new Set(toolSets.getToolsForSets(['admin'], true, false));
+  profiles.push(profile({
+    id: 'slack_bolt:admin_dm:legacy_admin_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'admin_dm',
+    route: 'legacy_admin_compatibility',
+    selectedToolSets: ['admin'],
+    globalTools,
+    requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_admin_domain_split',
+      'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
   for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
-    const allValidSets = Object.keys(toolSets.TOOL_SETS);
+    const allValidSets = Object.entries(toolSets.TOOL_SETS)
+      .filter(([, set]) => set.routerVisible !== false)
+      .map(([name]) => name);
     const selectedSets = selectSlackToolSets({
       routerSelectedSets: allValidSets,
       routerAvailable: true,
@@ -852,7 +873,9 @@ async function buildSnapshot() {
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,
-    ...Object.values(defs.toolSets.TOOL_SETS).flatMap((set) => set.tools),
+    ...Object.values(defs.toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false)
+      .flatMap((set) => set.tools),
   ]);
   const runtimeNames = new Set(profiles.flatMap((entry) => entry.ordered_tool_names));
   const routedSlackRuntimeNames = new Set(profiles
@@ -898,7 +921,10 @@ async function buildSnapshot() {
       sha256(fs.readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')),
     ])),
     routed: {
-      tool_set_count: Object.keys(defs.toolSets.TOOL_SETS).length,
+      tool_set_count: Object.values(defs.toolSets.TOOL_SETS)
+        .filter((set) => set.routerVisible !== false).length,
+      compatibility_tool_set_count: Object.values(defs.toolSets.TOOL_SETS)
+        .filter((set) => set.routerVisible === false).length,
       unique_tool_count: routedNames.size,
       always_available_tool_count: defs.toolSets.ALWAYS_AVAILABLE_TOOLS.length,
       always_available_admin_tool_count: defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS.length,
