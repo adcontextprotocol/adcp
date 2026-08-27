@@ -16,7 +16,12 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { canonicalize, PostgresTaskStore } from '@adcp/sdk';
+import {
+  canonicalize,
+  GovernanceAdapter,
+  normalizeGovernanceVerdict,
+  PostgresTaskStore,
+} from '@adcp/sdk';
 import { canonicalTargetUri } from '@adcp/sdk/signing';
 import {
   createProposalRefinementHandler,
@@ -71,6 +76,7 @@ import type {
   LegacyBuildCreativeResponse as BuildCreativeResponse,
   LegacyCreativeManifest as AdcpCreativeManifest,
   CanonicalProposal,
+  PlannedDelivery,
   ProposalPurchase,
   RefineProposalsRequest,
 } from '@adcp/sdk';
@@ -3747,6 +3753,55 @@ async function governedCommitmentError(
     code: 'PERMISSION_DENIED',
     message: result.message ?? 'The signed governance authorization is invalid.',
   };
+}
+
+/** Run the seller-owned online execution check for an account registration.
+ * The inbound intent token is verified locally first; this second check lets
+ * the governance authority validate the seller's prepared delivery before the
+ * media buy becomes durable. */
+async function sellerGovernanceExecutionError(
+  agent: import('./account-handlers.js').GovernanceAgentEntry,
+  governanceContext: string,
+  plannedDelivery: PlannedDelivery,
+): Promise<TaskError | undefined> {
+  if (!agent.authentication.schemes.some(scheme => scheme.toLowerCase() === 'bearer')) {
+    return {
+      code: 'PERMISSION_DENIED',
+      message: 'The registered governance agent does not provide Bearer credentials for the execution check.',
+    };
+  }
+
+  const adapter = new GovernanceAdapter({
+    agent: {
+      id: `governance-${createHash('sha256').update(agent.url).digest('hex').slice(0, 12)}`,
+      name: 'Registered governance agent',
+      agent_uri: agent.url,
+      protocol: 'mcp',
+      auth_token: agent.authentication.credentials,
+    },
+    callerUrl: `${getCanonicalBase()}/sales`,
+  });
+
+  try {
+    const response = await adapter.checkCommitted({
+      governanceContext,
+      plannedDelivery,
+      phase: 'purchase',
+    });
+    const verdict = normalizeGovernanceVerdict(response);
+    if (verdict?.checkType === 'execution' && verdict.verdict === 'approved') return undefined;
+    return {
+      code: 'PERMISSION_DENIED',
+      message: verdict?.explanation ?? 'The governance agent denied the seller execution check.',
+    };
+  } catch (error) {
+    return {
+      code: 'PERMISSION_DENIED',
+      message: error instanceof Error
+        ? `The governance agent could not approve the seller execution check: ${error.message}`
+        : 'The governance agent could not approve the seller execution check.',
+    };
+  }
 }
 
 function governedRequestPayload(
@@ -12085,6 +12140,23 @@ async function handleCreateMediaBuyUnlocked(
       options.governance?.commitment.currency ?? mediaBuyCurrency,
     );
     if (commitmentError) return { errors: [commitmentError] };
+    if (governanceAgents.length > 0) {
+      const executionError = await sellerGovernanceExecutionError(
+        governanceAgents[0]!,
+        govCtx,
+        {
+          ...(buyBudget !== undefined && { total_budget: buyBudget, currency: mediaBuyCurrency }),
+          ...(req.start_time !== 'asap' && { start_time: req.start_time }),
+          ...(req.end_time && { end_time: req.end_time }),
+          ...(req.daily_budget_cap !== undefined && { daily_budget_cap: req.daily_budget_cap }),
+          ...(req.budget_cap_timezone !== undefined && { budget_cap_timezone: req.budget_cap_timezone }),
+          ...(req.budget_allocation !== undefined && { budget_allocation: req.budget_allocation }),
+          ...(req.pacing !== undefined && { pacing: req.pacing }),
+          ...(req.bidding !== undefined && { bidding: req.bidding }),
+        },
+      );
+      if (executionError) return { errors: [executionError] };
+    }
   } else if (session.governancePlans.size > 0 || governanceAgents.length > 0) {
     return {
       errors: [{
@@ -15332,6 +15404,40 @@ async function handleUpdateMediaBuyUnlocked(
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'budget_updated', summary: `Package ${pkgId} budget cap removed from ${oldBudget}`, packageId: pkgId });
       }
 
+      if (update.bid_price !== undefined) {
+        if (!Number.isFinite(update.bid_price) || update.bid_price < 0) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Bid price for package ${pkgId} must be a finite, non-negative number.`,
+              field: `packages[${pkgId}].bid_price`,
+            }],
+          };
+        }
+        const pricing = productMap.get(pkg.productId)?.pricing_options
+          ?.find(option => option.pricing_option_id === pkg.pricingOptionId) as { floor_price?: number } | undefined;
+        if (pricing?.floor_price !== undefined && update.bid_price < pricing.floor_price) {
+          return {
+            errors: [{
+              code: 'VALIDATION_ERROR',
+              message: `Bid price $${update.bid_price} is below floor price $${pricing.floor_price} for package ${pkgId}.`,
+              field: `packages[${pkgId}].bid_price`,
+            }],
+          };
+        }
+        const oldBidPrice = pkg.bidPrice;
+        pkg.bidPrice = update.bid_price;
+        affectedPackageIds.add(pkgId);
+        mb.history.push({
+          revision: mb.revision,
+          timestamp: now,
+          actor: 'buyer',
+          action: 'bid_updated',
+          summary: `Package ${pkgId} bid changed from ${oldBidPrice ?? 'unset'} to ${update.bid_price}`,
+          packageId: pkgId,
+        });
+      }
+
       const compactControl = update as unknown as Record<string, unknown>;
       if (typeof compactControl.start_time === 'string') {
         if (isNaN(new Date(compactControl.start_time).getTime())) {
@@ -15812,6 +15918,7 @@ async function handleUpdateMediaBuyUnlocked(
     product_id: pkg.productId,
     ...(!pkg.budgetCapRemoved && { budget: pkg.budget }),
     pricing_option_id: pkg.pricingOptionId,
+    ...(pkg.bidPrice !== undefined && { bid_price: pkg.bidPrice }),
     paused: pkg.paused,
     start_time: pkg.startTime,
     end_time: pkg.endTime,
@@ -15947,8 +16054,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
           { task: 'buy_products', modes: ['signed_context'] },
           { task: 'accept_proposal', modes: ['signed_context'] },
           { task: 'control_media_buy', modes: ['signed_context'] },
+          { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
         ]
-      : [{ task: 'create_media_buy', modes: ['signed_context'] }]
+      : [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }]
     : ctx.tenantId === 'signals'
       ? [{ task: 'activate_signal', modes: ['signed_context'] }]
       : ctx.tenantId === 'brand'

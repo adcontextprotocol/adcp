@@ -16125,6 +16125,7 @@ describe('get_adcp_capabilities handler', () => {
         { task: 'buy_products', modes: ['signed_context'] },
         { task: 'accept_proposal', modes: ['signed_context'] },
         { task: 'control_media_buy', modes: ['signed_context'] },
+        { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
       ],
     });
     expect(result.experimental_features).toContain('governance.campaign');

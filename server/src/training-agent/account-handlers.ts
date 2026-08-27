@@ -72,6 +72,12 @@ interface AccountState {
 
 export interface GovernanceAgentEntry {
   url: string;
+  /** Outbound credentials are retained for seller-side execution checks but
+   * are never projected back through sync_governance or list_accounts. */
+  authentication: {
+    schemes: string[];
+    credentials: string;
+  };
 }
 
 interface NotificationConfigInput {
@@ -633,11 +639,11 @@ export function resolveGovernanceAgentsForAccount(
   if (!ref) return [];
   for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
     const account = findAccountByRef(accounts, ref);
-    if (account) return [...account.governanceAgents];
+    if (account) return account.governanceAgents.map(agent => structuredClone(agent));
   }
   if (ref.account_id) {
     const account = findAccountByIdAcrossSessions(ref.account_id, principal);
-    if (account) return [...account.governanceAgents];
+    if (account) return account.governanceAgents.map(agent => structuredClone(agent));
   }
   return [];
 }
@@ -1541,7 +1547,13 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       });
       continue;
     }
-    const validAgents: GovernanceAgentEntry[] = [{ url: agent.url }];
+    const validAgents: GovernanceAgentEntry[] = [{
+      url: agent.url,
+      authentication: {
+        schemes: [...agent.authentication.schemes],
+        credentials: agent.authentication.credentials,
+      },
+    }];
 
     // Replace semantics — overwrite previous governance agents
     acct.governanceAgents = validAgents;

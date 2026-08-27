@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
-import { clearAccountStore } from '../account-handlers.js';
+import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import {
   clearSessions,
   flushDirtySessions,
@@ -29,6 +29,7 @@ import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { TrainingCreativePlatform } from '../v6-creative-platform.js';
+import { GovernanceAgentStub } from '@adcp/sdk/testing';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -415,11 +416,120 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('delegates a governed media-buy commitment to the registered governance agent', async () => {
+    const { baseUrl, close } = await bootServer();
+    const stub = new GovernanceAgentStub();
+    try {
+      const { url: stubUrl } = await stub.start();
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      const governanceUrl = `${baseUrl}/governance/mcp`;
+      await initializeTenant(salesUrl);
+      await initializeTenant(governanceUrl);
+
+      const brand = { domain: 'tenant-seller-delegation.example' };
+      const account = { brand, operator: 'pinnacle-agency.example' };
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      await callTenantTool(salesUrl, 200, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-seller-delegation-account',
+      });
+      // The public request schema correctly requires HTTPS. Exercise the handler
+      // seam directly so the local HTTP stub can observe the outbound call.
+      const registration = handleSyncGovernance({
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: stubUrl,
+            authentication: { schemes: ['Bearer'], credentials: stub.authToken },
+          }],
+        }],
+        idempotency_key: 'tenant-seller-delegation-registration',
+      } as unknown as Parameters<typeof handleSyncGovernance>[0], { mode: 'open', principal: 'static:public' });
+      expect(registration).toMatchObject({ accounts: [{ status: 'synced' }] });
+
+      const productResponse = structured(await callTenantTool(salesUrl, 202, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'Display inventory for a governed reference buy',
+        brand,
+        account,
+      })) as {
+        products?: Array<{
+          product_id?: string;
+          pricing_options?: Array<{ pricing_option_id?: string; floor_price?: number; fixed_price?: number }>;
+        }>;
+      };
+      const product = productResponse.products?.find(candidate => candidate.pricing_options?.[0]?.pricing_option_id);
+      expect(product?.product_id).toEqual(expect.any(String));
+      const pricing = product!.pricing_options![0]!;
+      const createPayload = {
+        account,
+        brand,
+        total_budget: { amount: 500, currency: 'USD' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
+        packages: [{
+          product_id: product!.product_id,
+          pricing_option_id: pricing.pricing_option_id,
+          budget: 500,
+          bid_price: Math.max(pricing.floor_price ?? pricing.fixed_price ?? 1, 1),
+        }],
+        idempotency_key: 'tenant-seller-delegation-create',
+      };
+
+      const planId = 'tenant-seller-delegation-plan';
+      await callTenantTool(governanceUrl, 203, 'sync_plans', {
+        brand,
+        plans: [{
+          plan_id: planId,
+          brand,
+          objectives: 'Authorize the reference seller delegation test.',
+          budget: { total: 10_000, currency: 'USD', reallocation_threshold: 10_000 },
+          flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
+        }],
+        idempotency_key: 'tenant-seller-delegation-plan-sync',
+      });
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const approval = structured(await callTenantTool(governanceUrl, 204, 'check_governance', {
+        plan_id: planId,
+        caller,
+        target_agent: `${getCanonicalBase()}/sales`,
+        tool: 'create_media_buy',
+        purchase_type: 'media_buy',
+        proposed_commitment: { amount: 500, currency: 'USD' },
+        payload: createPayload,
+      }));
+      expect(approval?.governance_context).toEqual(expect.any(String));
+
+      const created = structured(await callTenantTool(salesUrl, 205, 'create_media_buy', {
+        ...createPayload,
+        governance_context: approval!.governance_context,
+      }));
+      expect(created?.adcp_error, JSON.stringify(created)).toBeUndefined();
+      const delegated = stub.getCallsForTool('check_governance');
+      expect(delegated).toHaveLength(1);
+      expect(delegated[0]?.params).toMatchObject({
+        caller: `${getCanonicalBase()}/sales`,
+        governance_context: approval!.governance_context,
+        phase: 'purchase',
+        planned_delivery: { total_budget: 500, currency: 'USD' },
+      });
+    } finally {
+      await stub.stop();
+      await close();
+    }
+  }, 30000);
+
   it('advertises exact governance-enforcement task claims on each enforcing tenant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const expected: Record<string, string[]> = {
-        sales: ['buy_products', 'accept_proposal', 'control_media_buy'],
+        sales: ['buy_products', 'accept_proposal', 'control_media_buy', 'create_media_buy'],
         signals: ['activate_signal'],
         brand: ['acquire_rights'],
         creative: ['build_creative'],
@@ -440,7 +550,12 @@ describe('tenant routing smoke', () => {
         };
         const capabilities = response.result?.structuredContent;
         expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
-          tasks.map(task => ({ task, modes: ['signed_context'] })),
+          tasks.map(task => ({
+            task,
+            modes: task === 'create_media_buy'
+              ? ['signed_context', 'online_execution_check']
+              : ['signed_context'],
+          })),
         );
         expect(capabilities?.experimental_features).toContain('governance.campaign');
         if (tenant === 'sales') {
@@ -570,7 +685,7 @@ describe('tenant routing smoke', () => {
         };
         expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe('3.0');
         expect(nonBetaCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
-          { task: 'create_media_buy', modes: ['signed_context'] },
+          { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
         ]);
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();

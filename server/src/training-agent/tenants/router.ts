@@ -794,14 +794,18 @@ function projectTenantCapabilities(
         ...account,
         supported_account_currency_modes: ['fixed', 'per_media_buy'],
       };
-      const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
+      const governanceTasks: Record<string, Array<{
+        task: string;
+        modes: Array<'signed_context' | 'online_execution_check'>;
+      }>> = {
         sales: supportsGetProductsRejected(servedVersion)
           ? [
               { task: 'buy_products', modes: ['signed_context'] },
               { task: 'accept_proposal', modes: ['signed_context'] },
               { task: 'control_media_buy', modes: ['signed_context'] },
+              { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
             ]
-          : [{ task: 'create_media_buy', modes: ['signed_context'] }],
+          : [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }],
         signals: [{ task: 'activate_signal', modes: ['signed_context'] }],
         brand: [{ task: 'acquire_rights', modes: ['signed_context'] }],
         creative: [{ task: 'build_creative', modes: ['signed_context'] }],
