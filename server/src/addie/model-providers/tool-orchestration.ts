@@ -1,5 +1,3 @@
-import Ajv, { type ValidateFunction } from 'ajv';
-import addFormats from 'ajv-formats';
 import { createLogger } from '../../logger.js';
 import { notifyToolError } from '../error-notifier.js';
 import {
@@ -24,8 +22,6 @@ import type {
 } from './model-provider.js';
 
 const logger = createLogger('addie-tool-orchestration');
-const toolSchemaAjv = new Ajv({ allErrors: false, strict: false });
-addFormats(toolSchemaAjv);
 const definitionSnapshots = new WeakMap<AddieTool, AddieTool>();
 
 export const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
@@ -81,7 +77,6 @@ export interface AddieToolCallResult {
 interface RegisteredTool {
   definition: AddieTool;
   handler?: ToolHandler;
-  validate?: ValidateFunction;
 }
 
 function isEvaluationExecution(mode: AddieExecutionMode): boolean {
@@ -243,8 +238,9 @@ function failureResult(
 }
 
 /**
- * Compile the request's JSON Schema tools once and return the common,
- * provider-neutral custom-tool execution boundary used by live model loops.
+ * Return the common, provider-neutral custom-tool execution boundary used by
+ * live model loops. Definitions remain canonical JSON Schema at the model
+ * boundary, while handlers retain their established tolerant input coercion.
  */
 export function createAddieToolExecutor(
   tools: readonly AddieTool[],
@@ -254,18 +250,9 @@ export function createAddieToolExecutor(
   const registry = new Map<string, RegisteredTool>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
-    let validate: ValidateFunction | undefined;
-    try {
-      // Ajv caches by schema object identity, so stable global tool definitions
-      // compile once across requests instead of adding per-message latency.
-      validate = toolSchemaAjv.compile(sourceDefinition.input_schema);
-    } catch (error) {
-      logger.error({ toolName: definition.name, error }, 'Addie: Invalid custom-tool JSON Schema');
-    }
     registry.set(definition.name, {
       definition,
       handler: handlers.get(definition.name),
-      validate,
     });
   }
 
@@ -297,7 +284,12 @@ export function createAddieToolExecutor(
       );
     }
 
-    if (!inputIsObject || !registered.validate || !registered.validate(call.input)) {
+    // Provider adapters guarantee a JSON object for canonical tool calls. Keep
+    // this runtime guard for malformed/synthetic callers, but do not enforce
+    // the advertised JSON Schema here: several long-lived handlers
+    // intentionally coerce recoverable model drift (for example a comma-
+    // separated string where an array of strings was requested).
+    if (!inputIsObject) {
       const normalized = observeNormalizedToolResult(call.name, normalizeToolResult(call.name, {
         status: 'invalid_input',
         model_context: 'Error: Tool input did not match the required JSON Schema',

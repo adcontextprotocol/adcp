@@ -60,7 +60,7 @@ describe('createAddieToolExecutor', () => {
     });
   });
 
-  it('rejects malformed provider input before policy or handler dispatch', async () => {
+  it('rejects structurally malformed provider input before policy or handler dispatch', async () => {
     const handler = vi.fn();
     const policy = vi.fn().mockReturnValue({ allowed: true });
     const execute = createAddieToolExecutor([tool], new Map([['lookup', handler]]), {
@@ -68,25 +68,46 @@ describe('createAddieToolExecutor', () => {
       policy,
     });
 
-    const result = await execute(call({ id: 42 }), 1);
+    const result = await execute({
+      type: 'tool_call', id: 'call_2', name: 'lookup', input: null,
+    } as unknown as ModelToolCallContent, 2);
 
     expect(policy).not.toHaveBeenCalled();
     expect(handler).not.toHaveBeenCalled();
     expect(result.result).toMatchObject({ isError: true });
     expect(result.execution).toMatchObject({
-      is_error: true,
-      result: 'Error: Tool input did not match the required JSON Schema',
-      normalized_result: { status: 'invalid_input' },
-    });
-
-    const nullResult = await execute({
-      type: 'tool_call', id: 'call_2', name: 'lookup', input: null,
-    } as unknown as ModelToolCallContent, 2);
-    expect(nullResult.execution).toMatchObject({
       parameters: {},
       is_error: true,
       normalized_result: { status: 'invalid_input' },
     });
+  });
+
+  it('preserves handler-level coercion for recoverable schema drift', async () => {
+    const tolerantTool: AddieTool = {
+      ...tool,
+      input_schema: {
+        type: 'object',
+        properties: { labels: { type: 'array', items: { type: 'string' } } },
+        required: ['labels'],
+      },
+    };
+    const handler = vi.fn(async (input: Record<string, unknown>) => {
+      const labels = typeof input.labels === 'string'
+        ? input.labels.split(',').map((label) => label.trim())
+        : [];
+      return `labels=${labels.join('|')}`;
+    });
+    const execute = createAddieToolExecutor(
+      [tolerantTool],
+      new Map([['lookup', handler]]),
+      { executionMode: 'production', policy: () => ({ allowed: true }) },
+    );
+
+    const result = await execute(call({ labels: 'pricing, targeting' }), 1);
+
+    expect(handler).toHaveBeenCalledWith({ labels: 'pricing, targeting' });
+    expect(result.result).toMatchObject({ content: 'labels=pricing|targeting' });
+    expect(result.execution).toMatchObject({ is_error: false });
   });
 
   it('takes immutable snapshots before the last-moment policy decision', async () => {
