@@ -152,6 +152,62 @@ describe('Addie tool reference', () => {
     expect(scoped).toContain('- **admin_workflows** *(admin only)*');
   });
 
+  it('loads knowledge guidance only for the routed knowledge domain', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const directory = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+
+    expect(knowledge).toContain('### Knowledge search operations');
+    expect(knowledge).not.toContain('### Member-directory operations');
+    expect(directory).toContain('### Member-directory operations');
+    expect(directory).not.toContain('### Knowledge search operations');
+  });
+
+  it('scopes community and content guidance to their selected sets', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const meetings = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meetings'], false, false),
+      selectedToolSetNames: ['meetings'],
+    });
+
+    expect(member).toContain('### Working-group operations');
+    expect(member).toContain('### Member profile and company-listing operations');
+    expect(member).toContain('### Member content operations');
+    expect(member).not.toContain('### Meeting operations');
+    expect(meetings).toContain('### Meeting operations');
+    expect(meetings).not.toContain('### Member profile and company-listing operations');
+  });
+
+  it('does not advertise neighboring domain mutations in scoped guidance', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const events = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['events'], false, false),
+      selectedToolSetNames: ['events'],
+    });
+    const content = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['content'], false, false),
+      selectedToolSetNames: ['content'],
+    });
+
+    expect(member).not.toContain('add_committee_document:');
+    expect(member).not.toContain('get_member_engagement:');
+    expect(events).not.toContain('create_event:');
+    expect(events).not.toContain('manage_event_registrations:');
+    expect(content).not.toContain('attach_content_asset:');
+    expect(content).toContain('### Editorial content operations');
+  });
+
   it('omits selected-domain guidance when no domain tool reached the wire', () => {
     const scoped = buildAddieScopedToolReference({
       availableToolNames: ['search_docs'],
