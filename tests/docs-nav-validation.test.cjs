@@ -164,6 +164,23 @@ test('OpenAPI navigation uses repository-local sources', () => {
   if (missingSources.length > 0) {
     throw new Error(`Missing local OpenAPI sources: ${missingSources.join(', ')}`);
   }
+
+  for (const entry of navigation.versions) {
+    const pages = collectPages(entry.groups);
+    const snapshot = pages
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .find(Boolean);
+    const entrySources = collectOpenApiSources(entry.groups);
+    const mutableSources = entrySources.filter(
+      source => !snapshot || source !== `static/openapi/releases/${snapshot}/registry.yaml`
+    );
+    if (mutableSources.length > 0) {
+      throw new Error(
+        `Docs version ${entry.version} must use its immutable snapshot OpenAPI source: ` +
+        mutableSources.join(', ')
+      );
+    }
+  }
 });
 
 test('default navigation matches the stable release branch surface', () => {
