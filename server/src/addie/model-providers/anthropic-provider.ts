@@ -34,6 +34,10 @@ interface AnthropicResponseLike {
   };
 }
 
+export interface AnthropicMessageStreamTransport extends AsyncIterable<unknown> {
+  finalMessage(): Promise<AnthropicResponseLike>;
+}
+
 export interface AnthropicMessagesTransport {
   beta: {
     messages: {
@@ -41,6 +45,10 @@ export interface AnthropicMessagesTransport {
         request: AnthropicRequest,
         options: { maxRetries: 0 | 2; signal?: AbortSignal },
       ): Promise<AnthropicResponseLike>;
+      stream?(
+        request: AnthropicRequest,
+        options: { maxRetries: 0 | 2; signal?: AbortSignal },
+      ): AnthropicMessageStreamTransport;
     };
   };
 }
@@ -51,7 +59,7 @@ export interface AnthropicModelProviderOptions {
 }
 
 export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
-  streaming: false,
+  streaming: true,
   structuredOutput: false,
   reasoning: true,
   reasoningEfforts: Object.freeze(['provider_default', 'medium'] as const),
@@ -60,6 +68,11 @@ export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object
   imageInput: true,
   documentInput: true,
 });
+
+interface AnthropicTextDelta {
+  index: number;
+  text: string;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -78,6 +91,7 @@ function deepFreeze<T>(value: T): T {
 
 const MAX_CONTINUATION_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BLOCKS = 1_000;
+const MAX_STREAM_EVENTS = 100_000;
 const ANTHROPIC_WEB_SEARCH_ERROR_CODES = new Set([
   'invalid_tool_input',
   'unavailable',
@@ -358,6 +372,78 @@ export function normalizeAnthropicResponse(response: AnthropicResponseLike): Mod
   return deepFreeze(normalized);
 }
 
+async function collectAnthropicStream(
+  stream: AnthropicMessageStreamTransport,
+): Promise<{ response: ModelResponse; textDeltas: AnthropicTextDelta[] }> {
+  const textDeltas: AnthropicTextDelta[] = [];
+  let eventCount = 0;
+  let textBytes = 0;
+  for await (const event of stream) {
+    eventCount++;
+    if (eventCount > MAX_STREAM_EVENTS) throw new Error('Anthropic stream event limit exceeded');
+    const record = requireRecord(event, 'stream event');
+    if (record.type !== 'content_block_delta') continue;
+    const delta = requireRecord(record.delta, 'stream delta');
+    if (delta.type !== 'text_delta') continue;
+    if (
+      !Number.isSafeInteger(record.index)
+      || (record.index as number) < 0
+      || typeof delta.text !== 'string'
+    ) throw new Error('Malformed Anthropic text stream delta');
+    textBytes += Buffer.byteLength(delta.text, 'utf8');
+    if (textBytes > MAX_CONTINUATION_BYTES) {
+      throw new Error('Anthropic stream text exceeds size limit');
+    }
+    textDeltas.push({ index: record.index as number, text: delta.text });
+  }
+  const response = normalizeAnthropicResponse(await stream.finalMessage());
+  return { response, textDeltas };
+}
+
+function* normalizedResponseEvents(
+  response: ModelResponse,
+  textDeltas: AnthropicTextDelta[] = [],
+): Generator<NormalizedModelEvent> {
+  const textDeltasByIndex = new Map<number, string[]>();
+  for (const delta of textDeltas) {
+    const chunks = textDeltasByIndex.get(delta.index) ?? [];
+    chunks.push(delta.text);
+    textDeltasByIndex.set(delta.index, chunks);
+  }
+  for (const [index, chunks] of textDeltasByIndex) {
+    const content = response.content[index];
+    if (content?.type !== 'text' || chunks.join('') !== content.text) {
+      throw new Error('Anthropic stream text does not match terminal response');
+    }
+  }
+  yield {
+    type: 'response_start',
+    provider: 'anthropic',
+    model: response.model,
+    id: response.id,
+  };
+  for (let index = 0; index < response.content.length; index++) {
+    const content = response.content[index];
+    if (content.type === 'text') {
+      const streamed = textDeltasByIndex.get(index);
+      if (!streamed || streamed.length === 0) {
+        yield { type: 'text_delta', index, text: content.text };
+      } else {
+        for (const text of streamed) yield { type: 'text_delta', index, text };
+      }
+    } else if (content.type === 'tool_call') {
+      yield { type: 'tool_call', index, call: content };
+    } else if (content.type === 'provider_tool_call') {
+      yield { type: 'provider_tool_call', index, call: content };
+    } else if (content.type === 'provider_tool_result') {
+      yield { type: 'provider_tool_result', index, result: content };
+    } else if (content.type === 'provider_state') {
+      yield { type: 'provider_state', index, state: content as ModelProviderStateContent };
+    }
+  }
+  yield { type: 'response_complete', response };
+}
+
 export function deriveAnthropicProviderToolReceipt(
   call: ModelProviderToolCallContent,
   result: ModelProviderToolResultContent,
@@ -470,33 +556,29 @@ export class AnthropicModelProvider implements ModelProvider {
     request: ModelRequest,
     options?: ModelRespondOptions,
   ): AsyncIterable<NormalizedModelEvent> {
+    validateModelCapabilities('anthropic', this.capabilities, request, {
+      streaming: options?.stream,
+    });
     const prepared = this.prepare(request);
     await options?.beforeDispatch?.(prepared);
+    const transportOptions = {
+      maxRetries: this.transportMaxRetries,
+      ...(options?.signal && { signal: options.signal }),
+    };
+    if (options?.stream) {
+      const messages = this.transport.beta.messages;
+      if (!messages.stream) throw new UnsupportedModelCapabilityError('anthropic', 'streaming');
+      const streamed = await collectAnthropicStream(messages.stream(
+        prepared.providerRequest as AnthropicRequest,
+        transportOptions,
+      ));
+      yield* normalizedResponseEvents(streamed.response, streamed.textDeltas);
+      return;
+    }
     const response = await this.transport.beta.messages.create(
       prepared.providerRequest as AnthropicRequest,
-      { maxRetries: this.transportMaxRetries, ...(options?.signal && { signal: options.signal }) },
+      transportOptions,
     );
-    const normalized = normalizeAnthropicResponse(response);
-    yield {
-      type: 'response_start',
-      provider: 'anthropic',
-      model: normalized.model,
-      id: normalized.id,
-    };
-    for (let index = 0; index < normalized.content.length; index++) {
-      const content = normalized.content[index];
-      if (content.type === 'text') {
-        yield { type: 'text_delta', index, text: content.text };
-      } else if (content.type === 'tool_call') {
-        yield { type: 'tool_call', index, call: content };
-      } else if (content.type === 'provider_tool_call') {
-        yield { type: 'provider_tool_call', index, call: content };
-      } else if (content.type === 'provider_tool_result') {
-        yield { type: 'provider_tool_result', index, result: content };
-      } else if (content.type === 'provider_state') {
-        yield { type: 'provider_state', index, state: content as ModelProviderStateContent };
-      }
-    }
-    yield { type: 'response_complete', response: normalized };
+    yield* normalizedResponseEvents(normalizeAnthropicResponse(response));
   }
 }
