@@ -13,6 +13,11 @@
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import {
+  formatZonedTimestamp,
+  isValidIanaTimeZone,
+  parseZonedTimestamp,
+} from '../tool-temporal.js';
 import { isSlackUserAAOAdmin } from './admin-tools.js';
 import { eventsDb } from '../../db/events-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
@@ -397,30 +402,6 @@ function generateSlug(title: string): string {
 }
 
 /**
- * Format date for display
- */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
-
-/**
- * Format time for display
- */
-function formatTime(date: Date, timezone = 'America/New_York'): string {
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: timezone,
-    timeZoneName: 'short',
-  });
-}
-
-/**
  * Read-only event tools available to all authenticated users.
  * These let any member check their registrations and browse upcoming events.
  */
@@ -514,7 +495,7 @@ export const EVENT_ADMIN_TOOLS: AddieTool[] = [
 The event will be created in both Luma (for registration) and the AAO website.
 Returns the Luma URL for sharing and the AAO event page URL.
 
-Required: title, start_time (ISO format), event_type
+Required: title, start_time (RFC 3339 with an explicit offset), event_type
 Optional: description, end_time, timezone, location details, virtual_url, max_attendees`,
     input_schema: {
       type: 'object' as const,
@@ -543,15 +524,17 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
         },
         start_time: {
           type: 'string',
-          description: 'Start time in ISO 8601 format (e.g., "2026-01-15T18:00:00")',
+          format: 'date-time',
+          description: 'RFC 3339 instant with explicit offset matching timezone, e.g. "2026-01-15T18:00:00-05:00".',
         },
         end_time: {
           type: 'string',
-          description: 'End time in ISO 8601 format (optional)',
+          format: 'date-time',
+          description: 'RFC 3339 instant with explicit offset matching timezone.',
         },
         timezone: {
           type: 'string',
-          description: 'Timezone (e.g., "America/New_York", "America/Los_Angeles")',
+          description: 'IANA timezone; defaults to member timezone, then America/New_York.',
         },
         venue_name: {
           type: 'string',
@@ -640,11 +623,13 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
         },
         start_time: {
           type: 'string',
-          description: 'New start time (ISO 8601)',
+          format: 'date-time',
+          description: 'RFC 3339 instant with explicit offset matching the event timezone.',
         },
         end_time: {
           type: 'string',
-          description: 'New end time (ISO 8601)',
+          format: 'date-time',
+          description: 'RFC 3339 instant with explicit offset matching the event timezone.',
         },
         max_attendees: {
           type: 'number',
@@ -828,18 +813,24 @@ export function createEventToolHandlers(
     const startTimeStr = input.start_time as string;
     const eventType = (input.event_type as EventType) || 'meetup';
     const eventFormat = (input.event_format as EventFormat) || 'in_person';
-    const timezone = (input.timezone as string) || 'America/New_York';
+    const timezone = (input.timezone as string) || memberContext?.timezone || 'America/New_York';
     const publishImmediately = input.publish_immediately !== false;
 
-    // Parse dates
-    const startTime = new Date(startTimeStr);
-    if (isNaN(startTime.getTime())) {
-      return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T18:00:00")`;
+    const parsedStartTime = parseZonedTimestamp(startTimeStr, timezone);
+    if (!parsedStartTime.ok) {
+      return `❌ Invalid start_time: ${parsedStartTime.error}.`;
     }
+    const startTime = parsedStartTime.date;
 
-    const endTime = input.end_time ? new Date(input.end_time as string) : undefined;
-    if (endTime && isNaN(endTime.getTime())) {
-      return `❌ Invalid end time format. Please use ISO 8601 format.`;
+    const parsedEndTime = input.end_time
+      ? parseZonedTimestamp(input.end_time, timezone)
+      : null;
+    if (parsedEndTime && !parsedEndTime.ok) {
+      return `❌ Invalid end_time: ${parsedEndTime.error}.`;
+    }
+    const endTime = parsedEndTime?.ok ? parsedEndTime.date : undefined;
+    if (endTime && endTime.getTime() <= startTime.getTime()) {
+      return '❌ end_time must be after start_time.';
     }
 
     // Generate slug
@@ -936,7 +927,7 @@ export function createEventToolHandlers(
     const aaoUrl = `${baseUrl}/events/${event.slug}`;
 
     let response = `✅ Created event: **${title}**\n\n`;
-    response += `**When:** ${formatDate(startTime)} at ${formatTime(startTime, timezone)}\n`;
+    response += `**When:** ${formatZonedTimestamp(startTime, timezone)}\n`;
 
     if (eventFormat !== 'virtual' && input.venue_city) {
       response += `**Where:** ${input.venue_name || input.venue_city}\n`;
@@ -1057,7 +1048,7 @@ export function createEventToolHandlers(
       const typeEmoji = eventTypeEmojis[event.event_type] || '📅';
 
       response += `${typeEmoji} **${event.title}**\n`;
-      response += `   ${formatDate(event.start_time)} at ${formatTime(event.start_time, event.timezone)}\n`;
+      response += `   ${formatZonedTimestamp(event.start_time, event.timezone)}\n`;
 
       if (event.venue_city) {
         response += `   📍 ${event.venue_city}`;
@@ -1105,7 +1096,7 @@ export function createEventToolHandlers(
     let response = `## ${event.title}\n\n`;
     response += `**Status:** ${event.status}\n`;
     response += `**Type:** ${event.event_type} (${event.event_format})\n`;
-    response += `**When:** ${formatDate(event.start_time)} at ${formatTime(event.start_time, event.timezone)}\n`;
+    response += `**When:** ${formatZonedTimestamp(event.start_time, event.timezone)}\n`;
 
     if (event.venue_city) {
       response += `**Where:** `;
@@ -1283,13 +1274,25 @@ export function createEventToolHandlers(
       updates.description = input.description;
       changes.push('Description updated');
     }
+    const timezone = event.timezone || 'America/New_York';
     if (input.start_time) {
-      updates.start_time = new Date(input.start_time as string);
-      changes.push(`Start time → ${formatDate(updates.start_time as Date)}`);
+      const parsed = parseZonedTimestamp(input.start_time, timezone);
+      if (!parsed.ok) return `❌ Invalid start_time: ${parsed.error}.`;
+      updates.start_time = parsed.date;
+      updates.timezone = timezone;
+      changes.push(`Start time → ${formatZonedTimestamp(parsed.date, timezone)}`);
     }
     if (input.end_time) {
-      updates.end_time = new Date(input.end_time as string);
-      changes.push('End time updated');
+      const parsed = parseZonedTimestamp(input.end_time, timezone);
+      if (!parsed.ok) return `❌ Invalid end_time: ${parsed.error}.`;
+      updates.end_time = parsed.date;
+      updates.timezone = timezone;
+      changes.push(`End time → ${formatZonedTimestamp(parsed.date, timezone)}`);
+    }
+    const effectiveStart = (updates.start_time as Date | undefined) ?? event.start_time;
+    const effectiveEnd = (updates.end_time as Date | undefined) ?? event.end_time;
+    if (effectiveEnd && effectiveEnd.getTime() <= effectiveStart.getTime()) {
+      return '❌ end_time must be after start_time.';
     }
     if (input.max_attendees !== undefined) {
       updates.max_attendees = input.max_attendees;
@@ -1328,6 +1331,7 @@ export function createEventToolHandlers(
       if (updates.description) lumaUpdates.description = updates.description as string;
       if (updates.start_time) lumaUpdates.start_at = (updates.start_time as Date).toISOString();
       if (updates.end_time) lumaUpdates.end_at = (updates.end_time as Date).toISOString();
+      if (updates.timezone) lumaUpdates.timezone = updates.timezone as string;
       if (updates.virtual_url) lumaUpdates.meeting_url = updates.virtual_url as string;
       if (updates.status) lumaUpdates.visibility = updates.status === 'published' ? 'public' : 'private';
       if (updates.require_rsvp_approval !== undefined) lumaUpdates.require_rsvp_approval = updates.require_rsvp_approval as boolean;
@@ -1597,7 +1601,13 @@ export function createEventToolHandlers(
     response += `• Registration status: ${existing ? existing.registration_status : 'interested'}\n\n`;
 
     if (draftMessage) {
-      const eventDate = formatDate(event.start_time);
+      const eventDate = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: event.timezone && isValidIanaTimeZone(event.timezone) ? event.timezone : 'UTC',
+      }).format(event.start_time);
       const location = event.venue_city
         ? `${event.venue_name ? event.venue_name + ', ' : ''}${event.venue_city}`
         : 'Virtual';

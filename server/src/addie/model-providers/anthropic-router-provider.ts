@@ -201,6 +201,7 @@ export class AnthropicRouterProvider implements ModelProvider {
     request: ModelRequest,
     options: ModelRespondOptions = {},
   ): AsyncIterable<NormalizedModelEvent> {
+    validateModelCapabilities(this.id, this.capabilities, request, { streaming: options.stream });
     const prepared = this.prepare(request);
     await options.beforeDispatch?.(prepared);
     const response = await this.transport.messages.create(

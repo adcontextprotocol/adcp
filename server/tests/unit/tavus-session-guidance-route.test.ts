@@ -272,6 +272,7 @@ describe("Tavus session guidance route boundary", () => {
     );
     expect(userMessage).toContain(`Current spoken message:\n${SPOKEN_MESSAGE}`);
     expect(options.requestContext).toContain("background framing at user priority");
+    expect(options.requestContext).toContain("## Authoritative time context");
     expect(options.requestContext).toContain("never a current-turn action request");
     expect(options.requestContext).not.toContain("publisher-demo-sentinel");
     expect(options.requestContext).not.toContain(FAKE_THREAD_ID);

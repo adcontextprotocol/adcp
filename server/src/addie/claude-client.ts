@@ -6,7 +6,6 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { BetaMessageStream } from '@anthropic-ai/sdk/lib/BetaMessageStream';
 import { createHash, createHmac } from 'node:crypto';
 import { createLogger } from '../logger.js';
 
@@ -17,11 +16,10 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/index.js';
-import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
+import { isAllowedImageType } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
-import { notifySystemError, notifyToolError } from './error-notifier.js';
-import { ToolError } from './tool-error.js';
+import { notifySystemError } from './error-notifier.js';
 import {
   checkCostCap,
   recordCost,
@@ -37,9 +35,49 @@ import {
   hasPersonaCollapse,
 } from './response-postprocess.js';
 import type { AddieInputAttachment } from './chat-attachments.js';
-import type { ModelExecution } from './model-providers/model-provider.js';
+import type {
+  ModelExecution,
+  ModelMessage,
+  ModelMessageContent,
+  ModelRequest,
+  ModelResponse,
+  ModelToolCallContent,
+  ModelToolDefinition,
+  ModelToolResultContent,
+  ModelUsage,
+} from './model-providers/model-provider.js';
 import {
-  buildAddieProviderTools,
+  AnthropicModelProvider,
+  type AnthropicMessagesTransport,
+} from './model-providers/anthropic-provider.js';
+import { collectModelResponse } from './model-providers/events.js';
+import {
+  addModelUsage,
+  EmptyResponseRecoveryState,
+  inspectModelTurn,
+  ModelLoopBudget,
+} from './model-providers/model-turn.js';
+import {
+  createAddieToolExecutor,
+  type AddieExecutionMode,
+  type ToolExecution,
+  type ToolExecutionPolicy,
+  type ToolHandler,
+} from './model-providers/tool-orchestration.js';
+export type {
+  AddieExecutionMode,
+  ToolExecution,
+  ToolExecutionPolicy,
+  ToolExecutionPolicyDecision,
+  ToolExecutionPolicyRequest,
+} from './model-providers/tool-orchestration.js';
+import {
+  formatProviderUnavailableMessage,
+  ProviderHealthController,
+  type ProviderAvailability,
+} from './model-providers/provider-health.js';
+import { getProviderRetryAfterSeconds } from './model-providers/provider-errors.js';
+import {
   buildAddieWireTools,
   mergeAddieToolDefinitions,
 } from './tool-wire-shape.js';
@@ -48,30 +86,13 @@ import {
   MAX_OUTPUT_LENGTH,
   formatTruncatedOutput,
 } from './security.js';
-
-type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
-
-export type AddieExecutionMode = 'production' | 'evaluation' | 'replay';
-
-export interface ToolExecutionPolicyRequest {
-  toolName: string;
-  input: Readonly<Record<string, unknown>>;
-  tool?: Readonly<AddieTool>;
-  executionMode: AddieExecutionMode;
-}
-
-export interface ToolExecutionPolicyDecision {
-  allowed: boolean;
-}
-
-/**
- * A policy is fail-closed: only an explicit `{ allowed: true }` dispatches the
- * handler. A rejection, exception, or malformed decision produces a stable
- * blocked receipt instead.
- */
-export type ToolExecutionPolicy = (
-  request: ToolExecutionPolicyRequest,
-) => ToolExecutionPolicyDecision | Promise<ToolExecutionPolicyDecision>;
+import {
+  isToolResultError,
+  normalizeToolResult,
+  renderToolExecutionsFallback,
+  type NormalizedToolResult,
+  type ToolResultPresentation,
+} from './tool-result-contract.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -96,7 +117,6 @@ interface PreparedProviderRequest {
   betas?: readonly string[];
 }
 
-const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
 const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
 // The Anthropic SDK rejects non-streaming requests whose calculated timeout
@@ -148,39 +168,6 @@ function hashPreparedPayload(
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-type StopAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
-
-/**
- * Keep every Anthropic stop reason explicit. In particular, truncation is a
- * terminal response (never a reason to sample the same prompt again), while
- * pause_turn/compaction continue with the provider response in history.
- * Do not infer truncation from an alphanumeric final character: headings,
- * URLs, code, and terse list items commonly end that way. The provider's
- * stop_reason is the reliable under-10k completion sentinel.
- */
-function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopAction {
-  switch (reason) {
-    case 'end_turn':
-    case 'stop_sequence':
-    case 'refusal':
-      return 'complete';
-    case 'max_tokens':
-    case 'model_context_window_exceeded':
-      return 'truncated';
-    case 'tool_use':
-      return 'tool_use';
-    case 'pause_turn':
-    case 'compaction':
-      return 'continue';
-    case null:
-      throw new Error('Anthropic response completed without a stop reason');
-    default: {
-      const exhaustiveReason: never = reason;
-      throw new Error(`Unhandled Anthropic stop reason: ${String(exhaustiveReason)}`);
-    }
-  }
-}
-
 /**
  * A successful first turn is safe to resample only when it has no visible
  * answer and every provider block is side-effect-free. Sonnet 5 may return
@@ -189,25 +176,23 @@ function classifyStopReason(reason: Anthropic.Beta.BetaStopReason | null): StopA
  * disclosures may contain semantic refusals, so they are not retryable.
  * Unknown, tool, server-tool, and result blocks remain fail-closed.
  */
-function isSideEffectFreeEmptyEndTurn(
-  response: Pick<Anthropic.Beta.BetaMessage, 'stop_reason' | 'content'>,
+function isSideEffectFreeEmptyModelResponse(
+  response: ModelResponse,
   visibleText: string,
 ): boolean {
   const deliverableText = stripBannedRituals(visibleText);
-  if (response.stop_reason !== 'end_turn' || deliverableText.trim().length > 0) {
+  if (response.providerFinishReason !== 'end_turn' || deliverableText.trim().length > 0) {
     return false;
   }
+  return response.content.every((content) => (
+    content.type === 'text'
+    || (content.type === 'provider_state'
+      && (content.kind === 'thinking' || content.kind === 'redacted_thinking'))
+  ));
+}
 
-  return response.content.every((block) => {
-    switch (block.type) {
-      case 'text':
-      case 'thinking':
-      case 'redacted_thinking':
-        return true;
-      default:
-        return false;
-    }
-  });
+function boundedModelContentTypes(content: ModelMessageContent[]): string[] {
+  return [...new Set(content.map((block) => block.type))].sort();
 }
 
 function boundedContentTypes(
@@ -305,62 +290,6 @@ function toAnthropicMessages(turns: MessageTurn[]): Anthropic.MessageParam[] {
   return merged;
 }
 
-/**
- * Build Claude content blocks from multimodal file content.
- * Returns null if the content cannot be converted to valid content blocks.
- */
-function buildMultimodalContentBlocks(
-  multimodal: FileReadResult
-): { content: Anthropic.ToolResultBlockParam['content']; summary: string } | null {
-  if (!multimodal.data) {
-    return null;
-  }
-
-  const contentBlocks: Anthropic.ToolResultBlockParam['content'] = [];
-
-  if (multimodal.type === 'image') {
-    // Validate media type before using
-    if (!isAllowedImageType(multimodal.media_type)) {
-      logger.warn(
-        { mediaType: multimodal.media_type },
-        'Addie: Invalid image media type in multimodal content'
-      );
-      return null;
-    }
-    contentBlocks.push({
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: multimodal.media_type,
-        data: multimodal.data,
-      },
-    });
-    contentBlocks.push({
-      type: 'text',
-      text: `[Image: ${multimodal.filename || 'uploaded image'}]`,
-    });
-  } else if (multimodal.type === 'document') {
-    contentBlocks.push({
-      type: 'document',
-      source: {
-        type: 'base64',
-        media_type: 'application/pdf',
-        data: multimodal.data,
-      },
-    });
-    contentBlocks.push({
-      type: 'text',
-      text: `[PDF Document: ${multimodal.filename || 'uploaded document'}]`,
-    });
-  } else {
-    // Unknown multimodal type
-    return null;
-  }
-
-  const summary = `Loaded ${multimodal.type}: ${multimodal.filename || 'file'}`;
-  return { content: contentBlocks, summary };
-}
-
 function buildInputAttachmentBlocks(
   attachments?: AddieInputAttachment[]
 ): Anthropic.ContentBlockParam[] {
@@ -424,6 +353,105 @@ function appendInputAttachments(
       : [];
   currentTurn.content = [...currentContent, ...attachmentBlocks];
   return nextMessages;
+}
+
+/** Build the provider-neutral form of historical turns for live orchestration. */
+function toModelMessages(turns: MessageTurn[]): ModelMessage[] {
+  const messages: ModelMessage[] = [];
+  let toolIdCounter = 0;
+
+  for (const turn of turns) {
+    if (turn.role === 'assistant' && turn.toolCalls && turn.toolCalls.length > 0) {
+      const content: ModelMessageContent[] = [];
+      if (turn.content.trim()) content.push({ type: 'text', text: turn.content });
+      const toolResults: ModelToolResultContent[] = [];
+      for (const toolCall of turn.toolCalls) {
+        const toolCallId = `hist_${toolIdCounter++}`;
+        content.push({
+          type: 'tool_call',
+          id: toolCallId,
+          name: toolCall.name,
+          input: (
+            toolCall.input
+            && typeof toolCall.input === 'object'
+            && !Array.isArray(toolCall.input)
+              ? toolCall.input
+              : {}
+          ) as ModelToolCallContent['input'],
+        });
+        toolResults.push({
+          type: 'tool_result',
+          toolCallId,
+          toolName: toolCall.name,
+          content: toolCall.result,
+          isError: toolCall.is_error ?? false,
+        });
+      }
+      if (content.length === 0) {
+        messages.push({ role: turn.role, content: [{ type: 'text', text: turn.content }] });
+      } else {
+        messages.push({ role: 'assistant', content });
+        messages.push({ role: 'user', content: toolResults });
+      }
+    } else {
+      messages.push({ role: turn.role, content: [{ type: 'text', text: turn.content }] });
+    }
+  }
+
+  return messages;
+}
+
+function appendModelInputAttachments(
+  messages: ModelMessage[],
+  attachments?: AddieInputAttachment[],
+): ModelMessage[] {
+  if (!attachments || attachments.length === 0) return messages;
+  const attachmentContent: ModelMessageContent[] = [];
+  for (const attachment of attachments) {
+    if (attachment.type === 'image') {
+      if (!isAllowedImageType(attachment.media_type)) {
+        logger.warn({ mediaType: attachment.media_type }, 'Addie: Invalid image media type in user attachment');
+        continue;
+      }
+      attachmentContent.push(
+        { type: 'image', mediaType: attachment.media_type, data: attachment.data },
+        { type: 'text', text: `[Uploaded image: ${attachment.filename || 'image'}]` },
+      );
+    } else if (attachment.type === 'document') {
+      attachmentContent.push(
+        { type: 'document', mediaType: 'application/pdf', data: attachment.data },
+        { type: 'text', text: `[Uploaded PDF: ${attachment.filename || 'document'}]` },
+      );
+    }
+  }
+  if (attachmentContent.length === 0) return messages;
+
+  const nextMessages = messages.map((message) => ({
+    ...message,
+    content: [...message.content],
+  }));
+  let currentTurn = nextMessages[nextMessages.length - 1];
+  if (!currentTurn || currentTurn.role !== 'user') {
+    currentTurn = { role: 'user', content: [] };
+    nextMessages.push(currentTurn);
+  }
+  currentTurn.content.push(...attachmentContent);
+  return nextMessages;
+}
+
+function buildModelToolDefinitions(tools: readonly AddieTool[]): ModelToolDefinition[] {
+  const definitions: ModelToolDefinition[] = tools.map((tool): ModelToolDefinition => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.input_schema as ModelToolDefinition['inputSchema'],
+  }));
+  if (definitions.length > 0) {
+    definitions[definitions.length - 1] = {
+      ...definitions[definitions.length - 1],
+      cacheHint: 'ephemeral',
+    };
+  }
+  return definitions;
 }
 
 /**
@@ -519,7 +547,15 @@ function applyResponsePipelineWithEmptyMonitoring(
 ): { text: string; reason: string | null } {
   const stripped = stripBannedRituals(rawText);
   const reason = detectEmptyResponse(stripped, toolExecutions);
-  if (reason) return { text: EMPTY_RESPONSE_FALLBACK, reason };
+  if (reason) {
+    const toolFallback = renderToolExecutionsFallback(toolExecutions, (toolName, renderReason) => {
+      logger.warn(
+        { event: 'addie_tool_result_display_degraded', toolName, reason: renderReason },
+        'Addie: Tool result renderer failed; safe text fallback used',
+      );
+    });
+    return { text: toolFallback || EMPTY_RESPONSE_FALLBACK, reason };
+  }
   // Fires only when Addie broke character and the deterministic backstop had
   // to scrub a model/provider disclosure — rare by design. A rising rate means
   // the prompt-level identity rule is slipping (e.g. after a model change).
@@ -724,20 +760,6 @@ export interface RulesOverride {
   systemPrompt: string;
 }
 
-/**
- * Detailed record of a single tool execution
- */
-export interface ToolExecution {
-  tool_name: string;
-  parameters: Record<string, unknown>;
-  result: string;
-  result_summary?: string;
-  is_error: boolean;
-  duration_ms: number;
-  sequence: number;
-  blocked_by_policy?: true;
-}
-
 export interface AddieResponse {
   text: string;
   tools_used: string[];
@@ -770,6 +792,19 @@ export interface AddieResponse {
   };
 }
 
+function toAddieUsage(usage: ModelUsage): NonNullable<AddieResponse['usage']> {
+  return {
+    input_tokens: usage.inputTokens,
+    output_tokens: usage.outputTokens,
+    ...((usage.cacheWriteTokens ?? 0) > 0 && {
+      cache_creation_input_tokens: usage.cacheWriteTokens,
+    }),
+    ...((usage.cacheReadTokens ?? 0) > 0 && {
+      cache_read_input_tokens: usage.cacheReadTokens,
+    }),
+  };
+}
+
 function anthropicModelExecution(model: string, requestedModel: string): ModelExecution {
   return {
     source: 'provider',
@@ -794,13 +829,41 @@ function localModelExecution(
   };
 }
 
+function providerUnavailableResponse(
+  availability: ProviderAvailability,
+  requestedModel: string,
+  toolsUsed: string[] = [],
+  toolExecutions: ToolExecution[] = [],
+  certificationReserveUsed = false,
+): AddieResponse {
+  const baseMessage = formatProviderUnavailableMessage(availability);
+  const text = toolExecutions.some(execution => !execution.is_error)
+    ? `${baseMessage} Some requested actions may already have completed, so review the results above before retrying.`
+    : baseMessage;
+  return {
+    text,
+    tools_used: [...toolsUsed],
+    tool_executions: [...toolExecutions],
+    flagged: true,
+    flag_reason: `provider_unavailable:${availability.category ?? 'unknown'}`,
+    model_execution: localModelExecution('provider_error', requestedModel),
+    capacity: { certification_reserve_used: certificationReserveUsed },
+  };
+}
+
 /**
  * Event types emitted during streaming
  */
 export type StreamEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
-  | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
+  | {
+      type: 'tool_end';
+      tool_name: string;
+      result: string;
+      is_error: boolean;
+      normalized_result?: ToolResultPresentation;
+    }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
   | {
       // Mid-stream upstream failure after deltas were already received. Anthropic
@@ -832,16 +895,35 @@ interface PayloadDebugStats {
 
 export class AddieClaudeClient {
   private client: Anthropic;
+  private readonly anthropicProvider: AnthropicModelProvider;
+  private readonly exactlyOnceAnthropicProvider: AnthropicModelProvider;
   private model: string;
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
   private addieDb: AddieDatabase;
+  private readonly providerHealth: ProviderHealthController;
   private webSearchEnabled: boolean = true; // Enable web search for external questions
 
-  constructor(apiKey: string, model: string = AddieModelConfig.chat) {
+  constructor(
+    apiKey: string,
+    model: string = AddieModelConfig.chat,
+    providerHealth: ProviderHealthController = new ProviderHealthController(),
+  ) {
     this.client = new Anthropic({ apiKey });
+    const transport = this.client as unknown as AnthropicMessagesTransport;
+    this.anthropicProvider = new AnthropicModelProvider(
+      apiKey,
+      transport,
+      { transportMaxRetries: 2 },
+    );
+    this.exactlyOnceAnthropicProvider = new AnthropicModelProvider(
+      apiKey,
+      transport,
+      { transportMaxRetries: 0 },
+    );
     this.model = model;
     this.addieDb = new AddieDatabase();
+    this.providerHealth = providerHealth;
   }
 
   /**
@@ -1029,31 +1111,6 @@ export class AddieClaudeClient {
     ));
   }
 
-  private async isToolExecutionAllowed(
-    options: ProcessMessageOptions | undefined,
-    toolName: string,
-    toolInput: Record<string, unknown>,
-    tool: AddieTool | undefined,
-  ): Promise<boolean> {
-    if (!options?.toolExecutionPolicy) return !isEvaluationExecution(options);
-
-    try {
-      const decision = await options.toolExecutionPolicy({
-        toolName,
-        input: toolInput,
-        tool,
-        executionMode: options.executionMode ?? 'production',
-      });
-      return decision?.allowed === true;
-    } catch {
-      logger.warn(
-        { toolName, executionMode: options.executionMode ?? 'production' },
-        'Addie: Tool execution policy failed closed',
-      );
-      return false;
-    }
-  }
-
   private recordedToolParameters(
     options: ProcessMessageOptions | undefined,
     toolInput: Record<string, unknown>,
@@ -1064,11 +1121,52 @@ export class AddieClaudeClient {
   private recordedToolResult(
     options: ProcessMessageOptions | undefined,
     result: string,
-    kind: 'success' | 'error' | 'blocked',
+    kind: 'success' | 'error',
   ): string {
     if (!isEvaluationExecution(options)) return result;
-    if (kind === 'blocked') return BLOCKED_TOOL_RESULT;
     return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
+  }
+
+  private observeNormalizedToolResult(
+    toolName: string,
+    normalized: NormalizedToolResult,
+  ): NormalizedToolResult {
+    if (normalized.display_degradation) {
+      logger.warn(
+        {
+          event: 'addie_tool_result_display_degraded',
+          toolName,
+          reason: normalized.display_degradation,
+        },
+        'Addie: Tool result display payload degraded; text result preserved',
+      );
+    }
+    if (normalized.model_context_truncated || normalized.user_summary_truncated) {
+      logger.warn(
+        {
+          event: 'addie_tool_result_content_bounded',
+          toolName,
+          modelContextTruncated: normalized.model_context_truncated,
+          userSummaryTruncated: normalized.user_summary_truncated,
+        },
+        'Addie: Oversized tool result content bounded',
+      );
+    }
+    return normalized;
+  }
+
+  private recordedToolPresentation(
+    options: ProcessMessageOptions | undefined,
+    normalized: NormalizedToolResult,
+  ): ToolResultPresentation {
+    if (!isEvaluationExecution(options)) return normalized.presentation;
+    return {
+      status: normalized.status,
+      user_summary: isToolResultError(normalized.status)
+        ? 'Tool execution failed'
+        : 'Tool execution completed',
+      source: normalized.presentation.source,
+    };
   }
 
   /**
@@ -1152,12 +1250,12 @@ export class AddieClaudeClient {
       toAnthropicMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
+    const modelMessages = appendModelInputAttachments(
+      toModelMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
     const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
-
-    const firstInvocationTools = [
-      ...customTools,
-      ...buildAddieProviderTools(requestWebSearchEnabled),
-    ];
+    const modelTools = buildModelToolDefinitions(allTools);
 
     return {
       effectiveModel,
@@ -1167,36 +1265,45 @@ export class AddieClaudeClient {
       toolCount,
       messageTurnsResult,
       messages,
+      modelMessages,
       customTools,
-      firstInvocationTools,
+      modelTools,
       requestWebSearchEnabled,
       systemPromptMs,
     };
   }
 
-  private buildProviderRequest(
+  private buildModelRequest(
     effectiveModel: string,
     systemBlocks: Anthropic.TextBlockParam[],
-    tools: Array<Record<string, unknown>>,
-    messages: Anthropic.MessageParam[],
+    tools: ModelToolDefinition[],
+    messages: ModelMessage[],
+    providerWebSearchEnabled: boolean,
     maxOutputTokens?: number,
-  ) {
-    const safeMaxOutputTokens = /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
+    streaming = false,
+  ): ModelRequest {
+    const safeMaxOutputTokens = !streaming && /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
       ? Math.min(
         SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
         maxOutputTokens ?? SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS,
       )
       : maxOutputTokens;
+    const controls = addieModelOutputControls(effectiveModel, safeMaxOutputTokens);
     return {
       model: effectiveModel,
-      // Sonnet 5 defaults to high-effort adaptive thinking, and max_tokens
-      // covers both reasoning and visible output. Non-streaming requests must
-      // also remain below the SDK's ten-minute safety threshold.
-      ...addieModelOutputControls(effectiveModel, safeMaxOutputTokens),
-      system: systemBlocks,
-      tools,
+      system: systemBlocks.map((block) => ({
+        text: block.text,
+        ...('cache_control' in block && block.cache_control?.type === 'ephemeral'
+          ? { cacheHint: 'ephemeral' as const }
+          : {}),
+      })),
       messages,
-      betas: ['web-search-2025-03-05'] as const,
+      tools,
+      ...(providerWebSearchEnabled && { providerTools: [{ type: 'web_search' as const }] }),
+      ...(controls.output_config?.effort === 'medium' && {
+        reasoning: { effort: 'medium' as const },
+      }),
+      maxOutputTokens: controls.max_tokens,
     };
   }
 
@@ -1219,12 +1326,15 @@ export class AddieClaudeClient {
       rulesOverride,
       options,
     );
-    const providerRequest = this.buildProviderRequest(
+    const modelRequest = this.buildModelRequest(
       prepared.effectiveModel,
       prepared.systemBlocks,
-      prepared.firstInvocationTools as unknown as Array<Record<string, unknown>>,
-      prepared.messages,
+      prepared.modelTools,
+      prepared.modelMessages,
+      prepared.requestWebSearchEnabled,
     );
+    const providerRequest = this.anthropicProvider.prepare(modelRequest)
+      .providerRequest as unknown as PreparedProviderRequest;
     return this.buildInvocationPreparedSnapshot(
       options,
       providerRequest,
@@ -1305,6 +1415,15 @@ export class AddieClaudeClient {
       }
     }
 
+    // Reserve a half-open probe only after local gates have passed so a
+    // request that never reaches the provider cannot hold the probe lease.
+    if (operationalExecution) {
+      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      if (!availability.allowed) {
+        return providerUnavailableResponse(availability, requestedModel);
+      }
+    }
+
     const toolsUsed: string[] = [];
     const toolExecutions: ToolExecution[] = [];
     let executionSequence = 0;
@@ -1316,10 +1435,7 @@ export class AddieClaudeClient {
     let totalToolExecutionMs = 0;
 
     // Token usage tracking (aggregated across iterations)
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheCreationTokens = 0;
-    let totalCacheReadTokens = 0;
+    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
 
     const prepared = this.prepareFirstNonStreamingInvocation(
       userMessage,
@@ -1335,11 +1451,25 @@ export class AddieClaudeClient {
       toolsByName,
       toolCount,
       messageTurnsResult,
-      messages,
+      messages: anthropicMessages,
+      modelMessages,
       customTools,
-      firstInvocationTools,
+      modelTools,
       requestWebSearchEnabled,
     } = prepared;
+    const executeToolCall = createAddieToolExecutor(
+      [...toolsByName.values()],
+      allHandlers,
+      {
+        executionMode: options?.executionMode ?? 'production',
+        policy: options?.toolExecutionPolicy,
+        notificationContext: {
+          slackUserId: options?.slackUserId,
+          userDisplayName: options?.userDisplayName,
+          threadId: options?.threadId,
+        },
+      },
+    );
     systemPromptMs = prepared.systemPromptMs;
 
     if (rulesOverride) {
@@ -1351,7 +1481,7 @@ export class AddieClaudeClient {
       ? undefined
       : await getCurrentConfigVersionId();
 
-    const maxIterations = options?.maxIterations ?? 10;
+    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
@@ -1370,64 +1500,73 @@ export class AddieClaudeClient {
       );
     }
     let iteration = 0;
-    let retriedEmptyPostToolResponse = false;
-    let retriedEmptyInitialResponse = false;
-    let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
+    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let hasExecutedCustomTool = false;
 
-    while (iteration < maxIterations) {
-      iteration++;
+    while (loopBudget.hasRemaining) {
+      iteration = loopBudget.startNext();
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      let response: Anthropic.Beta.BetaMessage;
+      let response: ModelResponse;
       let reusedEmptyResponse = false;
-      const invocationTools = retriedEmptyPostToolResponse ? [] : firstInvocationTools;
+      const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      const isEmptyResponseRecovery = emptyResponseBeforeRecovery !== null;
+      const isEmptyResponseRecovery = emptyResponseRecovery.pending;
       try {
-        const invokeProvider = async (sdkMaxRetries?: number) => {
+        const invokeProvider = async (exactlyOnce: boolean) => {
           invocationAttempt++;
-          const providerRequest = this.buildProviderRequest(
+          const modelRequest = this.buildModelRequest(
             effectiveModel,
             systemBlocks,
-            invocationTools as unknown as Array<Record<string, unknown>>,
-            messages,
+            invocationTools,
+            modelMessages,
+            emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
-          await this.notifyInvocationPrepared(
-            options,
-            providerRequest,
-            iteration,
-            invocationAttempt,
-          );
-          return this.client.beta.messages.create(
-            providerRequest as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming,
-            sdkMaxRetries === undefined ? undefined : { maxRetries: sdkMaxRetries },
+          const provider = exactlyOnce
+            ? this.exactlyOnceAnthropicProvider
+            : this.anthropicProvider;
+          return collectModelResponse(
+            provider.respond(modelRequest, {
+              beforeDispatch: async (preparedInvocation) => {
+                await this.notifyInvocationPrepared(
+                  options,
+                  preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                  iteration,
+                  invocationAttempt,
+                );
+              },
+            }),
+            'anthropic',
           );
         };
         // A replay is an exactly-once paid experiment. A timeout can occur
         // after provider acceptance, so neither our outer retry helper nor the
         // Anthropic SDK may submit the request again.
         response = options?.executionMode === 'replay' || isEmptyResponseRecovery
-          ? await invokeProvider(0)
+          ? await invokeProvider(true)
           : await withRetry(
-            () => invokeProvider(),
+            () => invokeProvider(false),
             { maxRetries: 3, initialDelayMs: 1000 },
             'processMessage',
           );
-        if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
+        if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
+        if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
       } catch (error) {
-        if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+        const fallbackResponse = isEmptyResponseRecovery
+          ? emptyResponseRecovery.takeFallback()
+          : null;
+        if (fallbackResponse) {
           // The empty end_turn was a valid terminal response. Recovery is
           // best-effort: if its one extra call fails, retain that terminal and
           // its already-accounted usage rather than turning fallback into an
           // exception. Do not log a provider error that may echo input text.
           logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
-          response = emptyResponseBeforeRecovery;
+          response = fallbackResponse;
           reusedEmptyResponse = true;
         } else {
-          const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration, requestWebSearchEnabled ? 1 : 0);
+          const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, anthropicMessages, iteration, requestWebSearchEnabled ? 1 : 0);
           if (options?.executionMode === 'replay') {
             // Provider errors may echo request text. Replay logs only categorical
             // metadata; the signed ledger records the terminal outcome.
@@ -1438,6 +1577,17 @@ export class AddieClaudeClient {
           } else {
             this.logPromptOverflow(error, stats, 'processMessage');
           }
+          if (operationalExecution) {
+            const availability = this.providerHealth.recordFailure('anthropic', 'chat', error);
+            if (!availability.allowed) {
+              return providerUnavailableResponse(
+                availability,
+                requestedModel,
+                toolsUsed,
+                toolExecutions,
+              );
+            }
+          }
           throw error;
         }
       }
@@ -1446,112 +1596,107 @@ export class AddieClaudeClient {
       totalLlmMs += llmDuration;
 
       // Track token usage from this iteration
-      if (response.usage && !reusedEmptyResponse) {
-        totalInputTokens += response.usage.input_tokens;
-        totalOutputTokens += response.usage.output_tokens;
-        // Cache tokens are optional and may not be present
-        if ('cache_creation_input_tokens' in response.usage) {
-          totalCacheCreationTokens += (response.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens || 0;
-        }
-        if ('cache_read_input_tokens' in response.usage) {
-          totalCacheReadTokens += (response.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens || 0;
-        }
+      if (!reusedEmptyResponse) {
+        totalUsage = addModelUsage(totalUsage, response.usage);
       }
 
       logger.debug({
-        stopReason: response.stop_reason,
+        stopReason: response.providerFinishReason,
         contentTypes: response.content.map(c => c.type),
         iteration,
         llmDurationMs: llmDuration,
-        inputTokens: response.usage?.input_tokens,
-        outputTokens: response.usage?.output_tokens,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
       }, 'Addie: Claude response received');
 
-      // The empty-response recovery call is intentionally text-only. Defend
+      // Post-tool empty-response recovery is intentionally text-only. Defend
       // against a malformed provider response that nevertheless contains a
       // tool request: discard it instead of risking a duplicate mutation.
-      if (retriedEmptyPostToolResponse && response.stop_reason === 'tool_use') {
+      if (emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
         response = {
           ...response,
-          stop_reason: 'end_turn',
+          finishReason: 'stop',
+          providerFinishReason: 'end_turn',
           content: [],
         };
       }
+      const turn = inspectModelTurn(response);
 
-      // Check for web search results in the response (can appear even with end_turn)
-      const earlyWebSearchResults = response.content.filter((c) => c.type === 'web_search_tool_result');
-      // Also check for server_tool_use blocks to get the search query
-      const earlyServerToolBlocks = response.content.filter((c) => c.type === 'server_tool_use');
+      // Provider-managed web results may accompany either a terminal answer or
+      // another tool-call turn. Derive their receipts through the selected
+      // adapter so private provider payloads never enter common orchestration.
+      const earlyWebSearchResults = turn.providerToolResults;
+      const earlyServerToolBlocks = turn.providerToolCalls;
 
       if (earlyWebSearchResults.length > 0) {
         for (const result of earlyWebSearchResults) {
           executionSequence++;
           toolsUsed.push('web_search');
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const searchResult = result as any;
-          const resultItems = searchResult.content?.filter((c: { type: string }) => c.type === 'web_search_result') || [];
-          const resultCount = resultItems.length;
-          const resultSummary = `Web search completed (${resultCount} results)`;
-
-          // Try to find the corresponding server_tool_use to get the query
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const correspondingToolUse = earlyServerToolBlocks.find((b: any) => b.id === searchResult.tool_use_id) as any;
-          const params: Record<string, unknown> = {};
-          if (correspondingToolUse?.input?.query) {
-            params.query = correspondingToolUse.input.query;
-          } else if (correspondingToolUse?.input) {
-            Object.assign(params, correspondingToolUse.input);
-          }
-
-          // Build detailed result with top URLs
-          let detailedResult = resultSummary;
-          if (resultItems.length > 0) {
-            const topResults = resultItems.slice(0, 5);
-            const urls = topResults.map((r: { url?: string; title?: string }) =>
-              r.title ? `${r.title}: ${r.url}` : r.url
-            ).join('\n');
-            detailedResult = `${resultSummary}\n\nTop results:\n${urls}`;
-          }
+          const correspondingToolUse = earlyServerToolBlocks.find((call) => call.id === result.toolCallId);
+          const receipt = correspondingToolUse
+            ? this.anthropicProvider.deriveProviderToolReceipt(
+              correspondingToolUse,
+              result,
+              operationalExecution ? 'production' : 'redacted',
+            )
+            : {
+              parameters: {},
+              resultSummary: result.isError
+                ? 'Web search failed'
+                : `Web search completed (${result.resultCount} results)`,
+              resultDetails: result.isError
+                ? 'Web search failed'
+                : `Web search completed (${result.resultCount} results)`,
+              isError: result.isError,
+            };
+          const normalized = this.observeNormalizedToolResult('web_search', normalizeToolResult('web_search', {
+            status: receipt.isError ? 'error' : result.resultCount === 0 ? 'empty' : 'ok',
+            model_context: receipt.resultDetails,
+            user_summary: receipt.resultSummary,
+          }));
+          const presentation = this.recordedToolPresentation(options, normalized);
 
           toolExecutions.push({
             tool_name: 'web_search',
-            parameters: this.recordedToolParameters(options, params),
-            result: this.recordedToolResult(options, detailedResult, 'success'),
-            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
-            is_error: false,
+            parameters: this.recordedToolParameters(options, receipt.parameters),
+            result: this.recordedToolResult(options, normalized.model_context, receipt.isError ? 'error' : 'success'),
+            result_summary: this.recordedToolResult(options, presentation.user_summary, receipt.isError ? 'error' : 'success'),
+            is_error: receipt.isError,
             duration_ms: 0,
             sequence: executionSequence,
+            normalized_result: presentation,
           });
 
           logger.debug(
-            { resultCount, ...(operationalExecution && { query: params.query }) },
+            {
+              resultCount: result.resultCount,
+              ...(operationalExecution && {
+                query: (receipt.parameters as Record<string, unknown>).query,
+              }),
+            },
             'Addie: Web search completed',
           );
         }
       }
 
-      const stopAction = classifyStopReason(
-        response.stop_reason as Anthropic.Beta.BetaStopReason | null,
-      );
+      const stopAction = turn.action;
 
       if (stopAction === 'continue') {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages.push({ role: 'assistant', content: response.content as any });
+        modelMessages.push({ role: 'assistant', content: response.content });
         logger.info(
-          { stopReason: response.stop_reason, iteration },
+          { stopReason: response.providerFinishReason, iteration },
           'Addie: Continuing resumable Anthropic turn',
         );
         continue;
       }
 
       if (stopAction === 'truncated') {
-        const rawText = response.content
-          .map((block) => block.type === 'text' ? block.text : '')
-          .filter(Boolean)
+        const rawText = turn.textBlocks
+          .map((block) => block.text)
           .join('\n\n')
           .trim();
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
@@ -1560,23 +1705,17 @@ export class AddieClaudeClient {
         }
         const text = finalized.text;
         totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
-        const finalUsage = {
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        };
+        const finalUsage = toAddieUsage(totalUsage);
         logger.error(
           {
             event: 'addie_response_truncated',
             source: 'processMessage',
-            stopReason: response.stop_reason,
+            stopReason: response.providerFinishReason,
             iteration,
             originalLength: rawText.length,
             deliveredLength: text.length,
-            contentTypes: boundedContentTypes(response.content),
-            outputTokens: response.usage?.output_tokens,
-            thinkingTokens: response.usage?.output_tokens_details?.thinking_tokens,
+            contentTypes: boundedModelContentTypes(response.content),
+            outputTokens: response.usage.outputTokens,
           },
           'Addie: Anthropic stopped before response completion',
         );
@@ -1592,7 +1731,7 @@ export class AddieClaudeClient {
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
           flagged: true,
-          flag_reason: `Response truncated: ${response.stop_reason}`,
+          flag_reason: `Response truncated: ${response.providerFinishReason}`,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
@@ -1611,9 +1750,8 @@ export class AddieClaudeClient {
       // Done - no tool use, just text
       if (stopAction === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
-        const textBlocks = response.content.filter((c) => c.type === 'text');
-        const rawText = textBlocks
-          .map(block => block.type === 'text' ? block.text : '')
+        const rawText = turn.textBlocks
+          .map((block) => block.text)
           .join('\n\n')
           .trim();
         // A provider-successful but wholly empty first sample has no visible
@@ -1621,16 +1759,15 @@ export class AddieClaudeClient {
         // and replay preserve the original terminal outcome for integrity.
         if (
           operationalExecution
-          && response.stop_reason === 'end_turn'
+          && response.providerFinishReason === 'end_turn'
           && iteration === 1
-          && !retriedEmptyInitialResponse
+          && !emptyResponseRecovery.hasAttempted('initial')
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
-          && isSideEffectFreeEmptyEndTurn(response, rawText)
-          && iteration < maxIterations
+          && isSideEffectFreeEmptyModelResponse(response, rawText)
+          && loopBudget.hasRemaining
         ) {
-          retriedEmptyInitialResponse = true;
-          emptyResponseBeforeRecovery = response;
+          emptyResponseRecovery.schedule('initial', response);
           logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
           continue;
         }
@@ -1638,14 +1775,13 @@ export class AddieClaudeClient {
         // after a tool result. Resampling the unchanged post-tool turn once is
         // safe because no assistant response has reached the caller yet.
         if (
-          response.stop_reason === 'end_turn'
-          && isSideEffectFreeEmptyEndTurn(response, rawText)
+          response.providerFinishReason === 'end_turn'
+          && isSideEffectFreeEmptyModelResponse(response, rawText)
           && hasExecutedCustomTool
-          && !retriedEmptyPostToolResponse
-          && iteration < maxIterations
+          && !emptyResponseRecovery.hasAttempted('post_tool')
+          && loopBudget.hasRemaining
         ) {
-          retriedEmptyPostToolResponse = true;
-          emptyResponseBeforeRecovery = response;
+          emptyResponseRecovery.schedule('post_tool', response);
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
@@ -1669,7 +1805,7 @@ export class AddieClaudeClient {
             {
               event: 'addie_response_truncated',
               source: 'processMessage',
-              stopReason: response.stop_reason,
+              stopReason: response.providerFinishReason,
               iteration,
               originalLength: rawText.length,
               deliveredLength: text.length,
@@ -1682,12 +1818,7 @@ export class AddieClaudeClient {
           ? 'Output truncated due to length'
           : hallucinationReason ?? finalized.emptyReason;
 
-        const finalUsage = {
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        };
+        const finalUsage = toAddieUsage(totalUsage);
         // Record the call against the user's daily budget (#2790).
         // Runs after the response is built so a successful charge
         // counts even if a downstream flag/logging failure occurs.
@@ -1724,99 +1855,75 @@ export class AddieClaudeClient {
       // Handle tool use (both custom tools and server-managed tools like web_search)
       if (stopAction === 'tool_use') {
         // Get custom tool use blocks (these need our handlers)
-        const toolUseBlocks = response.content.filter((c) => c.type === 'tool_use');
+        const toolUseBlocks = turn.toolCalls;
 
         // Get server tool use blocks (web_search - handled by Anthropic)
-        const serverToolBlocks = response.content.filter((c) => c.type === 'server_tool_use');
+        const serverToolBlocks = turn.providerToolCalls;
 
         // Get web search results (already executed by Anthropic)
-        const webSearchResults = response.content.filter((c) => c.type === 'web_search_tool_result');
+        const webSearchResults = turn.providerToolResults;
 
         // Track server-managed tool uses (web search)
         for (const block of serverToolBlocks) {
-          if (block.type !== 'server_tool_use') continue;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const serverBlock = block as any;
-
           executionSequence++;
-          toolsUsed.push(serverBlock.name);
+          toolsUsed.push(block.name);
 
           // Find corresponding result by matching tool_use_id
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const resultBlock = webSearchResults.find((r: any) => r.tool_use_id === serverBlock.id) as any;
-
-          // Extract search results count and build summary
-          let resultCount = 0;
-          let resultSummary = 'Web search completed';
-          if (resultBlock?.content && Array.isArray(resultBlock.content)) {
-            // web_search_tool_result has content array with search results
-            resultCount = resultBlock.content.filter((c: { type: string }) => c.type === 'web_search_result').length;
-            resultSummary = `Web search completed (${resultCount} results)`;
-          }
-
-          // Build detailed parameters including the search query if available
-          const params: Record<string, unknown> = {};
-          if (serverBlock.input?.query) {
-            params.query = serverBlock.input.query;
-          } else if (serverBlock.input) {
-            Object.assign(params, serverBlock.input);
-          }
-
-          // Build detailed result with URLs found
-          let detailedResult = resultSummary;
-          if (resultBlock?.content && Array.isArray(resultBlock.content)) {
-            const searchResults = resultBlock.content
-              .filter((c: { type: string }) => c.type === 'web_search_result')
-              .slice(0, 5); // First 5 results
-            if (searchResults.length > 0) {
-              const urls = searchResults.map((r: { url?: string; title?: string }) =>
-                r.title ? `${r.title}: ${r.url}` : r.url
-              ).join('\n');
-              detailedResult = `${resultSummary}\n\nTop results:\n${urls}`;
-            }
-          }
+          const resultBlock = webSearchResults.find((result) => result.toolCallId === block.id);
+          const receipt = resultBlock
+            ? this.anthropicProvider.deriveProviderToolReceipt(
+              block,
+              resultBlock,
+              operationalExecution ? 'production' : 'redacted',
+            )
+            : {
+              parameters: {},
+              resultSummary: 'Web search completed',
+              resultDetails: 'Web search completed',
+              isError: false,
+            };
+          const normalized = this.observeNormalizedToolResult(block.name, normalizeToolResult(block.name, {
+            status: receipt.isError ? 'error' : (resultBlock?.resultCount ?? 0) === 0 ? 'empty' : 'ok',
+            model_context: receipt.resultDetails,
+            user_summary: receipt.resultSummary,
+          }));
+          const presentation = this.recordedToolPresentation(options, normalized);
 
           toolExecutions.push({
-            tool_name: serverBlock.name,
-            parameters: this.recordedToolParameters(options, params),
-            result: this.recordedToolResult(options, detailedResult, 'success'),
-            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
-            is_error: false,
+            tool_name: block.name,
+            parameters: this.recordedToolParameters(options, receipt.parameters),
+            result: this.recordedToolResult(options, normalized.model_context, receipt.isError ? 'error' : 'success'),
+            result_summary: this.recordedToolResult(options, presentation.user_summary, receipt.isError ? 'error' : 'success'),
+            is_error: receipt.isError,
             duration_ms: 0, // Server-managed, we don't have timing
             sequence: executionSequence,
+            normalized_result: presentation,
           });
 
           logger.debug({
-            toolName: serverBlock.name,
-            ...(operationalExecution && { input: serverBlock.input }),
-            resultCount
+            toolName: block.name,
+            ...(operationalExecution && { inputKeys: block.inputKeys }),
+            resultCount: resultBlock?.resultCount ?? 0,
           }, 'Addie: Server tool executed (web_search)');
         }
 
         // If only server tools were used (no custom tools), continue the loop
         // The web search results are already in the response, we just need to continue
         if (toolUseBlocks.length === 0 && serverToolBlocks.length > 0) {
-          // Add the response content (including web search results) to messages
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages.push({ role: 'assistant', content: response.content as any });
+          // Add the response content (including provider continuation state).
+          modelMessages.push({ role: 'assistant', content: response.content });
           continue;
         }
 
         if (toolUseBlocks.length === 0 && serverToolBlocks.length === 0) {
-          const textContent = response.content.find((c) => c.type === 'text');
-          const rawText = textContent && textContent.type === 'text' ? textContent.text : '';
+          const rawText = turn.textBlocks[0]?.text ?? '';
           const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
           const text = finalized.text;
           if (finalized.emptyReason) {
             reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
           }
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const terminalUsage = {
-            input_tokens: totalInputTokens,
-            output_tokens: totalOutputTokens,
-            ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-            ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-          };
+          const terminalUsage = toAddieUsage(totalUsage);
           if (finalized.lengthExceeded) {
             logger.error(
               { event: 'addie_response_truncated', source: 'processMessage', originalLength: rawText.length, deliveredLength: text.length, localCapExceeded: true },
@@ -1847,24 +1954,12 @@ export class AddieClaudeClient {
           };
         }
 
-        // Tool results can contain multimodal content (images, PDFs)
-        type ToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
-        interface ToolResult {
-          tool_use_id: string;
-          content: ToolResultContent;
-          is_error?: boolean;
-        }
-
-        const toolResults: ToolResult[] = [];
+        const toolResults: ModelToolResultContent[] = [];
 
         for (const block of toolUseBlocks) {
-          if (block.type !== 'tool_use') continue;
-
           const toolName = block.name;
           hasExecutedCustomTool = true;
-          const toolInput = block.input as Record<string, unknown>;
-          const toolUseId = block.id;
-          const startTime = Date.now();
+          const toolInput = block.input;
 
           logger.debug(
             { toolName, ...(operationalExecution && { toolInput }) },
@@ -1872,152 +1967,19 @@ export class AddieClaudeClient {
           );
           toolsUsed.push(toolName);
           executionSequence++;
-
-          const handler = allHandlers.get(toolName);
-          if (!handler) {
-            const durationMs = Date.now() - startTime;
-            toolResults.push({
-              tool_use_id: toolUseId,
-              content: `Error: Unknown tool "${toolName}"`,
-              is_error: true,
-            });
-            toolExecutions.push({
-              tool_name: toolName,
-              parameters: this.recordedToolParameters(options, toolInput),
-              result: this.recordedToolResult(options, `Error: Unknown tool "${toolName}"`, 'error'),
-              is_error: true,
-              duration_ms: durationMs,
-              sequence: executionSequence,
-            });
-            continue;
-          }
-
-          const allowed = await this.isToolExecutionAllowed(
-            options,
-            toolName,
-            toolInput,
-            toolsByName.get(toolName),
-          );
-          if (!allowed) {
-            toolResults.push({
-              tool_use_id: toolUseId,
-              content: BLOCKED_TOOL_RESULT,
-              is_error: true,
-            });
-            toolExecutions.push({
-              tool_name: toolName,
-              parameters: this.recordedToolParameters(options, toolInput),
-              result: BLOCKED_TOOL_RESULT,
-              result_summary: 'Blocked by tool execution policy',
-              is_error: true,
-              duration_ms: 0,
-              sequence: executionSequence,
-              blocked_by_policy: true,
-            });
-            continue;
-          }
-
-          try {
-            const result = await handler(toolInput);
-            const durationMs = Date.now() - startTime;
-
-            // Check if result contains multimodal content (images, PDFs)
-            if (isMultimodalContent(result)) {
-              const multimodal = extractMultimodalContent(result);
-              const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
-
-              if (multimodalBlocks) {
-                toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
-                toolExecutions.push({
-                  tool_name: toolName,
-                  parameters: this.recordedToolParameters(options, toolInput),
-                  result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
-                  result_summary: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
-                  is_error: false,
-                  duration_ms: durationMs,
-                  sequence: executionSequence,
-                });
-                logger.info({
-                  toolName,
-                  multimodalType: multimodal?.type,
-                  ...(operationalExecution && { filename: multimodal?.filename }),
-                }, 'Addie: Processed multimodal tool result');
-              } else {
-                // Failed to parse or validate multimodal content
-                toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
-                toolExecutions.push({
-                  tool_name: toolName,
-                  parameters: this.recordedToolParameters(options, toolInput),
-                  result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
-                  is_error: true,
-                  duration_ms: durationMs,
-                  sequence: executionSequence,
-                });
-              }
-            } else {
-              // Regular text result — always a success since tools throw on failure
-              toolResults.push({ tool_use_id: toolUseId, content: result });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, result, 'success'),
-                result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
-                is_error: false,
-                duration_ms: durationMs,
-                sequence: executionSequence,
-              });
-            }
-          } catch (error) {
-            const durationMs = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            const isExpected = error instanceof ToolError;
-            const errorResult = `Error: ${errorMessage}`;
-            if (isExpected) {
-              logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie: Tool returned expected error');
-            } else {
-              logger.error({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie: Tool threw unexpected exception');
-              if (operationalExecution) {
-                notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
-              }
-            }
-            toolResults.push({
-              tool_use_id: toolUseId,
-              content: errorResult,
-              is_error: true,
-            });
-            toolExecutions.push({
-              tool_name: toolName,
-              parameters: this.recordedToolParameters(options, toolInput),
-              result: this.recordedToolResult(options, errorResult, 'error'),
-              is_error: true,
-              duration_ms: durationMs,
-              sequence: executionSequence,
-            });
-          }
+          const executed = await executeToolCall(block, executionSequence);
+          toolResults.push(executed.result);
+          toolExecutions.push(executed.execution);
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        messages.push({ role: 'assistant', content: response.content as any });
-        messages.push({
-          role: 'user',
-          content: toolResults.map((r) => ({
-            type: 'tool_result' as const,
-            tool_use_id: r.tool_use_id,
-            content: r.content,
-            is_error: r.is_error,
-          })),
-        });
+        modelMessages.push({ role: 'assistant', content: response.content });
+        modelMessages.push({ role: 'user', content: toolResults });
       }
     }
 
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-    const maxIterationsUsage = {
-      input_tokens: totalInputTokens,
-      output_tokens: totalOutputTokens,
-      ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-      ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-    };
+    const maxIterationsUsage = toAddieUsage(totalUsage);
     // Still charge the user for tokens actually consumed on the way
     // to hitting max-iterations — those bytes DID go to Anthropic
     // and DID cost money, regardless of whether the session converged.
@@ -2041,7 +2003,7 @@ export class AddieClaudeClient {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
         total_tool_execution_ms: totalToolExecutionMs,
-        iterations: maxIterations,
+        iterations: loopBudget.limit,
       },
       usage: maxIterationsUsage,
     };
@@ -2120,11 +2082,25 @@ export class AddieClaudeClient {
         };
         return;
       }
-      if (certificationLeaseId) {
-        certificationLeaseHeartbeat = setInterval(() => {
-          void renewCertificationReserve(options.costScope?.userId, certificationLeaseId);
-        }, 30_000);
+    }
+
+    // As above, cost-capped requests must not consume the one half-open probe.
+    if (operationalExecution) {
+      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      if (!availability.allowed) {
+        await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+        certificationLeaseId = undefined;
+        yield {
+          type: 'done',
+          response: providerUnavailableResponse(availability, requestedModel),
+        };
+        return;
       }
+    }
+    if (certificationLeaseId) {
+      certificationLeaseHeartbeat = setInterval(() => {
+        void renewCertificationReserve(options?.costScope?.userId, certificationLeaseId);
+      }, 30_000);
     }
 
     const toolsUsed: string[] = [];
@@ -2143,10 +2119,7 @@ export class AddieClaudeClient {
     let totalToolExecutionMs = 0;
 
     // Token usage tracking (aggregated across iterations)
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCacheCreationTokens = 0;
-    let totalCacheReadTokens = 0;
+    let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
 
     // Get system prompt from rule files (or fallback)
     const promptStart = Date.now();
@@ -2186,7 +2159,15 @@ export class AddieClaudeClient {
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
     );
-    const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
+    const executeToolCall = createAddieToolExecutor(allTools, allHandlers, {
+      executionMode: options?.executionMode ?? 'production',
+      policy: options?.toolExecutionPolicy,
+      notificationContext: {
+        slackUserId: options?.slackUserId,
+        userDisplayName: options?.userDisplayName,
+        threadId: options?.threadId,
+      },
+    });
     const toolCount = allTools.length; // Note: streaming doesn't use web search
 
     // Build proper message turns from thread context
@@ -2226,25 +2207,27 @@ export class AddieClaudeClient {
       toAnthropicMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
+    const modelMessages = appendModelInputAttachments(
+      toModelMessages(messageTurnsResult.messages),
+      options?.inputAttachments,
+    );
 
     // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
     const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
-    const maxIterations = options?.maxIterations ?? 10;
+    const modelTools = buildModelToolDefinitions(allTools);
+    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
-    let retriedEmptyPostToolResponse = false;
-    let retriedEmptyInitialResponse = false;
-    let emptyResponseBeforeRecovery: Anthropic.Beta.BetaMessage | null = null;
+    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let lastProviderModel: string | undefined;
 
-      while (iteration < maxIterations) {
-        iteration++;
+      while (loopBudget.hasRemaining) {
+        iteration = loopBudget.startNext();
 
         const llmStart = Date.now();
 
         // Collect full response for tool handling
-        let currentResponse: Anthropic.Beta.BetaMessage | null = null;
-        const textChunks: string[] = [];
+        let currentResponse: ModelResponse | null = null;
         let reusedEmptyResponse = false;
 
         // Retry loop for streaming API calls (handles overloaded_error).
@@ -2257,60 +2240,54 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
-          const isEmptyResponseRecovery: boolean = emptyResponseBeforeRecovery !== null;
+          const isEmptyResponseRecovery = emptyResponseRecovery.pending;
           try {
-            const invocationTools = retriedEmptyPostToolResponse ? [] : customTools;
-            const providerRequest: PreparedProviderRequest = {
-              model: effectiveModel,
-              ...addieModelOutputControls(
-                effectiveModel,
-                isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
-              ),
-              system: systemBlocks,
-              tools: invocationTools as unknown as Array<Record<string, unknown>>,
-              messages,
-            };
-            await this.notifyInvocationPrepared(
-              options,
-              providerRequest,
-              iteration,
-              streamRetryCount + 1,
+            const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
+            const modelRequest = this.buildModelRequest(
+              effectiveModel,
+              systemBlocks,
+              invocationTools,
+              modelMessages,
+              false,
+              isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              true,
             );
-            const anthropicStream: BetaMessageStream = this.client.beta.messages.stream(
-              providerRequest as unknown as Anthropic.Beta.MessageCreateParamsStreaming,
-              isEmptyResponseRecovery ? { maxRetries: 0 } : undefined,
+            const provider = isEmptyResponseRecovery
+              ? this.exactlyOnceAnthropicProvider
+              : this.anthropicProvider;
+            currentResponse = await collectModelResponse(
+              provider.respond(modelRequest, {
+                stream: true,
+                onStreamProgress: () => {
+                  totalReceivedDeltas++;
+                  receivedDeltaCount++;
+                },
+                beforeDispatch: async (preparedInvocation) => {
+                  await this.notifyInvocationPrepared(
+                    options,
+                    preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                    iteration,
+                    streamRetryCount + 1,
+                  );
+                },
+              }),
+              'anthropic',
             );
 
-            // Process stream events
-            for await (const event of anthropicStream) {
-              if (event.type === 'content_block_delta') {
-                totalReceivedDeltas++;
-                receivedDeltaCount++;
-                const delta = event.delta;
-                if ('text' in delta && delta.text) {
-                  textChunks.push(delta.text);
-                }
-              } else if (event.type === 'message_stop') {
-                // Get the final message
-                currentResponse = await anthropicStream.finalMessage();
-              }
-            }
-
-            if (!currentResponse) {
-              currentResponse = await anthropicStream.finalMessage();
-            }
-
+            if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
-            if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
+            if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
           } catch (streamError) {
-            if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+            const fallbackResponse = isEmptyResponseRecovery
+              ? emptyResponseRecovery.takeFallback()
+              : null;
+            if (fallbackResponse) {
               // See the non-streaming path: recovery is an optional UX
               // improvement, not a reason to discard the valid first terminal.
               logger.warn({ iteration }, 'Addie Stream: Empty-response recovery failed');
-              currentResponse = emptyResponseBeforeRecovery;
+              currentResponse = fallbackResponse;
               reusedEmptyResponse = true;
-              textChunks.length = 0;
               receivedDeltaCount = 0;
               break;
             }
@@ -2319,11 +2296,40 @@ export class AddieClaudeClient {
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
             const retryable = isRetryableError(streamError);
+            const retryAfterSeconds = getProviderRetryAfterSeconds(streamError);
+            const retryAfterWithinRequestBudget = retryAfterSeconds === undefined
+              || retryAfterSeconds <= 30;
             const canRetry = retryable &&
-                             streamRetryCount <= maxStreamRetries;
+                             streamRetryCount <= maxStreamRetries &&
+                             retryAfterWithinRequestBudget;
 
             if (!canRetry) {
-              const isExhausted = retryable && streamRetryCount > maxStreamRetries;
+              const isExhausted = retryable && (
+                streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
+              );
+              if (operationalExecution) {
+                const availability = this.providerHealth.recordFailure('anthropic', 'chat', streamError);
+                if (!availability.allowed) {
+                  const terminalResponse = providerUnavailableResponse(
+                    availability,
+                    requestedModel,
+                    toolsUsed,
+                    toolExecutions,
+                    certificationReserveUsed,
+                  );
+                  // A terminal provider response is separate from any partial
+                  // prose already emitted. Surface it as a final chunk so every
+                  // consumer retains the recovery and mutation-safety warning.
+                  if (receivedDeltaCount > 0) {
+                    yield { type: 'text', text: `\n\n${terminalResponse.text}` };
+                  }
+                  yield {
+                    type: 'done',
+                    response: terminalResponse,
+                  };
+                  return;
+                }
+              }
               if (isExhausted) {
                 if (receivedDeltaCount > 0) {
                   const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
@@ -2349,7 +2355,8 @@ export class AddieClaudeClient {
             // Calculate delay with exponential backoff
             const delayMs = Math.min(1000 * Math.pow(2, streamRetryCount - 1), 30000);
             const jitter = delayMs * 0.25 * (Math.random() * 2 - 1);
-            const totalDelay = Math.round(delayMs + jitter);
+            const retryAfterMs = retryAfterSeconds === undefined ? 0 : retryAfterSeconds * 1000;
+            const totalDelay = Math.max(Math.round(delayMs + jitter), retryAfterMs);
 
             // Determine user-friendly reason
             const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
@@ -2363,6 +2370,7 @@ export class AddieClaudeClient {
                 attempt: streamRetryCount,
                 maxRetries: maxStreamRetries,
                 delayMs: totalDelay,
+                retryAfterSeconds,
                 error: errorMsg,
               },
               'Addie Stream: Retryable error, waiting before retry'
@@ -2380,7 +2388,6 @@ export class AddieClaudeClient {
             await new Promise(resolve => setTimeout(resolve, totalDelay));
 
             // Discard the failed, never-exposed sample before retrying.
-            textChunks.length = 0;
             receivedDeltaCount = 0;
             currentResponse = null;
           }
@@ -2394,48 +2401,34 @@ export class AddieClaudeClient {
         }
 
         // Track token usage
-        if (currentResponse.usage && !reusedEmptyResponse) {
-          totalInputTokens += currentResponse.usage.input_tokens;
-          totalOutputTokens += currentResponse.usage.output_tokens;
-          if ('cache_creation_input_tokens' in currentResponse.usage) {
-            totalCacheCreationTokens += (currentResponse.usage as { cache_creation_input_tokens?: number }).cache_creation_input_tokens || 0;
-          }
-          if ('cache_read_input_tokens' in currentResponse.usage) {
-            totalCacheReadTokens += (currentResponse.usage as { cache_read_input_tokens?: number }).cache_read_input_tokens || 0;
-          }
+        if (!reusedEmptyResponse) {
+          totalUsage = addModelUsage(totalUsage, currentResponse.usage);
         }
 
         logger.debug({
-          stopReason: currentResponse.stop_reason,
+          stopReason: currentResponse.providerFinishReason,
           iteration,
           llmDurationMs: llmDuration,
-          inputTokens: currentResponse.usage?.input_tokens,
-          outputTokens: currentResponse.usage?.output_tokens,
+          inputTokens: currentResponse.usage.inputTokens,
+          outputTokens: currentResponse.usage.outputTokens,
         }, 'Addie Stream: Claude response received');
 
-        // The recovery iteration has no tools. If the provider still returns
+        // The post-tool recovery iteration has no tools. If the provider still returns
         // a tool_use block, ignore it rather than executing a mutation twice.
-        if (retriedEmptyPostToolResponse && currentResponse.stop_reason === 'tool_use') {
+        if (emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
           currentResponse = {
             ...currentResponse,
-            stop_reason: 'end_turn',
+            finishReason: 'stop',
+            providerFinishReason: 'end_turn',
             content: [],
           };
-          textChunks.length = 0;
         }
 
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
-        // no-tool-blocks) share this; kept inline as a local const
-        // rather than hoisted to instance scope because it closes
-        // over the accumulators in this method.
-        const buildStreamUsage = () => ({
-          input_tokens: totalInputTokens,
-          output_tokens: totalOutputTokens,
-          ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-          ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-        });
+        // no-tool-blocks) serialize the same normalized accumulator.
+        const buildStreamUsage = () => toAddieUsage(totalUsage);
         const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
           if (operationalExecution && options?.costScope) {
             await recordCost(
@@ -2446,17 +2439,16 @@ export class AddieClaudeClient {
           }
         };
 
-        const stopAction = classifyStopReason(currentResponse.stop_reason);
-        const iterationText = textChunks.join('') || currentResponse.content
-          .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+        const turn = inspectModelTurn(currentResponse);
+        const stopAction = turn.action;
+        const iterationText = turn.textBlocks
           .map((block) => block.text)
           .join('\n\n');
         if (stopAction === 'continue') {
           // Resume from the provider response without exposing interim text.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages.push({ role: 'assistant', content: currentResponse.content as any });
+          modelMessages.push({ role: 'assistant', content: currentResponse.content });
           logger.info(
-            { stopReason: currentResponse.stop_reason, iteration },
+            { stopReason: currentResponse.providerFinishReason, iteration },
             'Addie Stream: Continuing resumable Anthropic turn',
           );
           continue;
@@ -2474,14 +2466,13 @@ export class AddieClaudeClient {
             {
               event: 'addie_response_truncated',
               source: 'processMessageStream',
-              stopReason: currentResponse.stop_reason,
+              stopReason: currentResponse.providerFinishReason,
               iteration,
               originalLength: logicalText.length,
               deliveredLength: finalized.text.length,
               localCapExceeded: finalized.lengthExceeded,
-              contentTypes: boundedContentTypes(currentResponse.content),
-              outputTokens: currentResponse.usage?.output_tokens,
-              thinkingTokens: currentResponse.usage?.output_tokens_details?.thinking_tokens,
+              contentTypes: boundedModelContentTypes(currentResponse.content),
+              outputTokens: currentResponse.usage.outputTokens,
             },
             'Addie Stream: Response stopped before completion',
           );
@@ -2494,7 +2485,7 @@ export class AddieClaudeClient {
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
               flagged: true,
-              flag_reason: `Response truncated: ${currentResponse.stop_reason}`,
+              flag_reason: `Response truncated: ${currentResponse.providerFinishReason}`,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
@@ -2517,16 +2508,15 @@ export class AddieClaudeClient {
         if (stopAction === 'complete') {
           if (
             operationalExecution
-            && currentResponse.stop_reason === 'end_turn'
+            && currentResponse.providerFinishReason === 'end_turn'
             && iteration === 1
-            && !retriedEmptyInitialResponse
+            && !emptyResponseRecovery.hasAttempted('initial')
             && toolExecutions.length === 0
             && logicalText.length === 0
-            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
-            && iteration < maxIterations
+            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
+            && loopBudget.hasRemaining
           ) {
-            retriedEmptyInitialResponse = true;
-            emptyResponseBeforeRecovery = currentResponse;
+            emptyResponseRecovery.schedule('initial', currentResponse);
             logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
             continue;
           }
@@ -2534,14 +2524,13 @@ export class AddieClaudeClient {
           // Logical-turn buffering means no text from this iteration has been
           // emitted, so retrying ritual-only output cannot duplicate text.
           if (
-            currentResponse.stop_reason === 'end_turn'
-            && isSideEffectFreeEmptyEndTurn(currentResponse, iterationText)
+            currentResponse.providerFinishReason === 'end_turn'
+            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && toolExecutions.length > 0
-            && !retriedEmptyPostToolResponse
-            && iteration < maxIterations
+            && !emptyResponseRecovery.hasAttempted('post_tool')
+            && loopBudget.hasRemaining
           ) {
-            retriedEmptyPostToolResponse = true;
-            emptyResponseBeforeRecovery = currentResponse;
+            emptyResponseRecovery.schedule('post_tool', currentResponse);
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
@@ -2563,7 +2552,7 @@ export class AddieClaudeClient {
               {
                 event: 'addie_response_truncated',
                 source: 'processMessageStream',
-                stopReason: currentResponse.stop_reason,
+                stopReason: currentResponse.providerFinishReason,
                 iteration,
                 originalLength: logicalText.length,
                 deliveredLength: finalText.length,
@@ -2608,7 +2597,7 @@ export class AddieClaudeClient {
         // Handle tool use
         if (stopAction === 'tool_use') {
           logicalText += iterationText;
-          const toolUseBlocks = currentResponse.content.filter((c: Anthropic.Beta.BetaContentBlock) => c.type === 'tool_use');
+          const toolUseBlocks = turn.toolCalls;
 
           if (toolUseBlocks.length === 0) {
             // No tools to execute, return current text
@@ -2652,23 +2641,11 @@ export class AddieClaudeClient {
             return;
           }
 
-          // Tool results can contain multimodal content (images, PDFs)
-          type StreamToolResultContent = string | Anthropic.ToolResultBlockParam['content'];
-          interface ToolResult {
-            tool_use_id: string;
-            content: StreamToolResultContent;
-            is_error?: boolean;
-          }
-
-          const toolResults: ToolResult[] = [];
+          const toolResults: ModelToolResultContent[] = [];
 
           for (const block of toolUseBlocks) {
-            if (block.type !== 'tool_use') continue;
-
             const toolName = block.name;
-            const toolInput = block.input as Record<string, unknown>;
-            const toolUseId = block.id;
-            const startTime = Date.now();
+            const toolInput = block.input;
 
             logger.debug(
               { toolName, ...(operationalExecution && { toolInput }) },
@@ -2684,157 +2661,21 @@ export class AddieClaudeClient {
               parameters: this.recordedToolParameters(options, toolInput),
             };
 
-            const handler = allHandlers.get(toolName);
-            if (!handler) {
-              const durationMs = Date.now() - startTime;
-              const errorResult = `Error: Unknown tool "${toolName}"`;
-              toolResults.push({
-                tool_use_id: toolUseId,
-                content: errorResult,
-                is_error: true,
-              });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, errorResult, 'error'),
-                is_error: true,
-                duration_ms: durationMs,
-                sequence: executionSequence,
-              });
-              yield {
-                type: 'tool_end',
-                tool_name: toolName,
-                result: this.recordedToolResult(options, errorResult, 'error'),
-                is_error: true,
-              };
-              continue;
-            }
-
-            const allowed = await this.isToolExecutionAllowed(
-              options,
-              toolName,
-              toolInput,
-              toolsByName.get(toolName),
-            );
-            if (!allowed) {
-              toolResults.push({
-                tool_use_id: toolUseId,
-                content: BLOCKED_TOOL_RESULT,
-                is_error: true,
-              });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: this.recordedToolParameters(options, toolInput),
-                result: BLOCKED_TOOL_RESULT,
-                result_summary: 'Blocked by tool execution policy',
-                is_error: true,
-                duration_ms: 0,
-                sequence: executionSequence,
-                blocked_by_policy: true,
-              });
-              yield {
-                type: 'tool_end',
-                tool_name: toolName,
-                result: BLOCKED_TOOL_RESULT,
-                is_error: true,
-              };
-              continue;
-            }
-
-            try {
-              const result = await handler(toolInput);
-              const durationMs = Date.now() - startTime;
-
-              // Check if result contains multimodal content (images, PDFs)
-              if (isMultimodalContent(result)) {
-                const multimodal = extractMultimodalContent(result);
-                const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
-
-                if (multimodalBlocks) {
-                  toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
-                  toolExecutions.push({
-                    tool_name: toolName,
-                    parameters: this.recordedToolParameters(options, toolInput),
-                    result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
-                    result_summary: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
-                    is_error: false,
-                    duration_ms: durationMs,
-                    sequence: executionSequence,
-                  });
-                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'), is_error: false };
-                  logger.info({
-                    toolName,
-                    multimodalType: multimodal?.type,
-                    ...(operationalExecution && { filename: multimodal?.filename }),
-                  }, 'Addie Stream: Processed multimodal tool result');
-                } else {
-                  toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
-                  toolExecutions.push({
-                    tool_name: toolName,
-                    parameters: this.recordedToolParameters(options, toolInput),
-                    result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
-                    is_error: true,
-                    duration_ms: durationMs,
-                    sequence: executionSequence,
-                  });
-                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'), is_error: true };
-                }
-              } else {
-                // Regular text result — always a success since tools throw on failure
-                toolResults.push({ tool_use_id: toolUseId, content: result });
-                toolExecutions.push({
-                  tool_name: toolName,
-                  parameters: this.recordedToolParameters(options, toolInput),
-                  result: this.recordedToolResult(options, result, 'success'),
-                  result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
-                  is_error: false,
-                  duration_ms: durationMs,
-                  sequence: executionSequence,
-                });
-                yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, result, 'success'), is_error: false };
-              }
-            } catch (error) {
-              const durationMs = Date.now() - startTime;
-              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-              const isExpected = error instanceof ToolError;
-              const errorResult = `Error: ${errorMessage}`;
-              if (isExpected) {
-                logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie Stream: Tool returned expected error');
-              } else {
-                logger.error({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie Stream: Tool threw unexpected exception');
-                if (operationalExecution) {
-                  notifyToolError({ toolName, errorMessage, toolInput, slackUserId: options?.slackUserId, userDisplayName: options?.userDisplayName, threadId: options?.threadId, threw: true });
-                }
-              }
-              toolResults.push({
-                tool_use_id: toolUseId,
-                content: errorResult,
-                is_error: true,
-              });
-              toolExecutions.push({
-                tool_name: toolName,
-                parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, errorResult, 'error'),
-                is_error: true,
-                duration_ms: durationMs,
-                sequence: executionSequence,
-              });
-              yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, errorResult, 'error'), is_error: true };
-            }
+            const executed = await executeToolCall(block, executionSequence);
+            toolResults.push(executed.result);
+            toolExecutions.push(executed.execution);
+            yield {
+              type: 'tool_end',
+              tool_name: toolName,
+              result: executed.execution.result,
+              is_error: executed.execution.is_error,
+              normalized_result: executed.execution.normalized_result,
+            };
           }
 
           // Continue the conversation with tool results
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          messages.push({ role: 'assistant', content: currentResponse.content as any });
-          messages.push({
-            role: 'user',
-            content: toolResults.map((r) => ({
-              type: 'tool_result' as const,
-              tool_use_id: r.tool_use_id,
-              content: r.content,
-              is_error: r.is_error,
-            })),
-          });
+          modelMessages.push({ role: 'assistant', content: currentResponse.content });
+          modelMessages.push({ role: 'user', content: toolResults });
 
           // Add spacing between tool use and subsequent text to prevent run-on text
           if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
@@ -2846,12 +2687,7 @@ export class AddieClaudeClient {
       // Max iterations reached
       logger.warn('Addie Stream: Hit max tool iterations');
       totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-      const maxIterUsage = {
-        input_tokens: totalInputTokens,
-        output_tokens: totalOutputTokens,
-        ...(totalCacheCreationTokens > 0 && { cache_creation_input_tokens: totalCacheCreationTokens }),
-        ...(totalCacheReadTokens > 0 && { cache_read_input_tokens: totalCacheReadTokens }),
-      };
+      const maxIterUsage = toAddieUsage(totalUsage);
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
       if (operationalExecution && options?.costScope) {
@@ -2890,7 +2726,7 @@ export class AddieClaudeClient {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
             total_tool_execution_ms: totalToolExecutionMs,
-            iterations: maxIterations,
+            iterations: loopBudget.limit,
           },
           usage: maxIterUsage,
           capacity: { certification_reserve_used: certificationReserveUsed },
@@ -2913,44 +2749,6 @@ export class AddieClaudeClient {
         await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
       }
     }
-  }
-
-  /**
-   * Create a human-readable summary of tool results
-   */
-  private summarizeToolResult(toolName: string, result: string): string {
-    if (toolName === 'search_docs') {
-      // Parse "Found N documentation pages" from result
-      const match = result.match(/Found (\d+) documentation pages/);
-      if (match) {
-        return `Found ${match[1]} doc page(s)`;
-      }
-      if (result.includes('No documentation found')) {
-        return 'No docs found';
-      }
-    }
-
-    if (toolName === 'search_slack') {
-      // Parse "Found N Slack messages" from result
-      const match = result.match(/Found (\d+) Slack messages/);
-      if (match) {
-        return `Found ${match[1]} Slack message(s)`;
-      }
-      if (result.includes('No Slack discussions found')) {
-        return 'No Slack results';
-      }
-    }
-
-    if (toolName === 'web_search') {
-      // Web search results are already summarized in the tracking code
-      return result;
-    }
-
-    // Default: truncate long results
-    if (result.length > 100) {
-      return result.substring(0, 97) + '...';
-    }
-    return result;
   }
 
   /**

@@ -38,6 +38,10 @@ export { normalizeBasicAuthForStorage } from '../../utils/basic-auth-credentials
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
+  createAccountLinkCorrelation,
+  type AccountLinkOriginInput,
+} from '../../db/addie-account-link-correlation-db.js';
+import {
   setAgentTesterLogger,
   comply,
   getBriefsByVertical,
@@ -2504,6 +2508,7 @@ export function createMemberToolHandlers(
   memberContext: MemberContext | null,
   slackUserId?: string,
   certificationModuleContext?: { moduleId?: string },
+  accountLinkOrigin?: AccountLinkOriginInput,
 ): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
 
@@ -4351,8 +4356,43 @@ export function createMemberToolHandlers(
 
     // For Slack users, generate a link with their Slack ID for auto-linking
     if (memberContext?.slack_user?.slack_user_id) {
-      const slackUserId = memberContext.slack_user.slack_user_id;
-      const loginUrl = `https://agenticadvertising.org/auth/login?slack_user_id=${encodeURIComponent(slackUserId)}`;
+      const memberSlackUserId = memberContext.slack_user.slack_user_id;
+      const loginParams = new URLSearchParams({ slack_user_id: memberSlackUserId });
+      let correlation: string | undefined;
+
+      if (
+        accountLinkOrigin?.surface === 'slack'
+        && accountLinkOrigin.initiatingUserId === memberSlackUserId
+        && slackUserId === memberSlackUserId
+      ) {
+        try {
+          correlation = await createAccountLinkCorrelation(accountLinkOrigin);
+          if (correlation) {
+            loginParams.set('account_link_correlation', correlation);
+          } else {
+            logger.warn({
+              surface: accountLinkOrigin.surface,
+              threadId: accountLinkOrigin.threadId,
+              initiatingUserId: accountLinkOrigin.initiatingUserId,
+              reasonCode: 'origin_validation_failed',
+            }, 'Addie: Account-link origin was not persisted');
+          }
+        } catch (error) {
+          logger.warn({
+            error,
+            surface: accountLinkOrigin.surface,
+            threadId: accountLinkOrigin.threadId,
+            initiatingUserId: accountLinkOrigin.initiatingUserId,
+            reasonCode: 'origin_persistence_failed',
+          }, 'Addie: Account-link origin persistence failed');
+        }
+      }
+
+      if (!correlation) {
+        return 'I couldn\'t create a secure account-link URL right now. Please try again in a moment.';
+      }
+
+      const loginUrl = `https://agenticadvertising.org/auth/login?${loginParams.toString()}`;
 
       let response = `## Link Your Account\n\n`;
       response += `Click the link below to sign in to AgenticAdvertising.org and automatically link your Slack account:\n\n`;

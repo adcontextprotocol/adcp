@@ -40,6 +40,11 @@ import {
 } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import {
+  recordProactiveEvent,
+  type AccountLinkCorrelation,
+  type ProactiveDeliveryStatus,
+} from '../db/addie-account-link-correlation-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
@@ -101,6 +106,7 @@ import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-tele
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import { buildAuthoritativeTemporalContext } from './temporal-context.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -168,6 +174,7 @@ import {
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
+import { ProviderHealthController } from './model-providers/provider-health.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -777,11 +784,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   logger.info('Addie Bolt: Initializing...');
 
+  // Share provider health across routing and response generation so an
+  // account-wide failure gates both paths until a bounded recovery probe.
+  const providerHealth = new ProviderHealthController();
+
   // Initialize Claude client
-  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat);
+  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
   // Initialize router (uses Haiku for fast classification)
-  addieRouter = new AddieRouter(anthropicKey);
+  addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -1068,6 +1079,7 @@ async function buildRequestContext(
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
+    const temporalContextText = buildAuthoritativeTemporalContext(memberContext);
 
     // Build channel context if available
     let channelContextText = '';
@@ -1133,7 +1145,7 @@ async function buildRequestContext(
       }
     }
 
-    const sections = [memberContextText, channelContextText, certContextText].filter(Boolean);
+    const sections = [temporalContextText, memberContextText, channelContextText, certContextText].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -1141,7 +1153,11 @@ async function buildRequestContext(
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, hasActiveCertification: false };
+    return {
+      requestContext: buildAuthoritativeTemporalContext(),
+      memberContext: null,
+      hasActiveCertification: false,
+    };
   }
 }
 
@@ -1158,7 +1174,14 @@ async function createUserScopedTools(
   threadContext?: ThreadContext | null,
   directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
-  const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
+  const memberHandlers = createMemberToolHandlers(
+    memberContext,
+    slackUserId,
+    undefined,
+    threadId
+      ? { surface: 'slack', threadId, initiatingUserId: slackUserId }
+      : undefined,
+  );
   const trainingModuleContext: { moduleId?: string } = {
     moduleId: memberContext?.certification?.status === 'in_progress'
       ? memberContext.certification.module_id ?? undefined
@@ -1452,7 +1475,7 @@ function filterToolsBySet(
   const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
 
   // Filter handlers to match
-  const filteredHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  const filteredHandlers: RequestTools['handlers'] = new Map();
   for (const [name, handler] of userTools.handlers) {
     if (allowedToolNames.has(name)) {
       filteredHandlers.set(name, handler);
@@ -2038,14 +2061,27 @@ async function handleUserMessage({
       } else if (terminalDeliveryPlan === 'normal-stop') {
         // Stop the stream with feedback buttons and any inline images.
         try {
-          // Cap-exceeded responses have no streamed text — deliver the cap
-          // message as the terminal text so the user isn't left with silence.
-          if (response?.flag_reason === 'cost_cap_exceeded') {
-            const capGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-cap-exceeded' });
-            const capValidation = validateOutput(capGuarded.text);
-            const capText = wrapUrlsForSlack(capValidation.sanitized);
-            await streamer.stop({ markdown_text: capText, blocks: [buildFeedbackBlock()] });
+          const providerTerminalText = response?.flag_reason?.startsWith('provider_unavailable:')
+            && response.text.trim()
+            && !fullText.includes(response.text)
+            ? response.text
+            : '';
+          // Local terminal responses normally have no streamed text. If a
+          // provider fails after partial delivery, append the independent
+          // recovery warning before closing the stream as a safety backstop.
+          if (!fullText.trim() && response?.text.trim()) {
+            const terminalGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-local-terminal' });
+            const terminalValidation = validateOutput(terminalGuarded.text);
+            const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+            await streamer.stop({ markdown_text: terminalText, blocks: [buildFeedbackBlock()] });
           } else {
+            if (providerTerminalText) {
+              const terminalGuarded = guardBareJsonEnvelope(providerTerminalText, { pathTag: 'dm-streaming-provider-terminal' });
+              const terminalValidation = validateOutput(terminalGuarded.text);
+              const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+              fullText = `${fullText}\n\n${terminalValidation.sanitized}`;
+              await streamer.append({ markdown_text: `\n\n${terminalText}` });
+            }
             // Extract image URLs from streamed text for Slack Block Kit image blocks
             const { images: streamImages } = extractMarkdownImages(fullText);
             const MAX_SLACK_IMAGES = 3;
@@ -2082,9 +2118,10 @@ async function handleUserMessage({
               // Slack rejects section blocks with empty mrkdwn text. If streaming
               // produced nothing (e.g. upstream overload before any deltas), fall
               // back to a plain apology so the user isn't left silent. For
-              // cost_cap_exceeded, deliver the cap message directly.
+              // A local terminal response may have no streamed text; deliver
+              // its recovery message directly.
               if (!slackText.trim()) {
-                const apology = response?.flag_reason === 'cost_cap_exceeded'
+                const apology = response?.text.trim()
                   ? response.text
                   : isRetriesExhaustedError(stopError)
                     ? `${stopError.reason}. Please try again in a moment.`
@@ -5049,27 +5086,99 @@ async function handleChannelMessage({
  * Send a proactive message when a user links their account
  */
 export async function sendAccountLinkedMessage(
-  slackUserId: string,
+  origin: AccountLinkCorrelation,
   userName?: string
 ): Promise<boolean> {
+  const recordOutcome = async (
+    deliveryStatus: ProactiveDeliveryStatus,
+    reasonCode: string,
+  ): Promise<void> => {
+    try {
+      await recordProactiveEvent({
+        eventType: 'account_linked',
+        correlationId: origin.correlationId,
+        surface: origin.surface,
+        threadId: origin.threadId,
+        initiatingUserId: origin.initiatingUserId,
+        deliveryStatus,
+        reasonCode,
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        correlationId: origin.correlationId,
+        threadId: origin.threadId,
+        reasonCode: 'proactive_event_persistence_failed',
+      }, 'Addie Bolt: Failed to persist proactive account-link event');
+    }
+  };
+
   if (!initialized || !boltApp) {
-    logger.warn('Addie Bolt: Not initialized, cannot send account linked message');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_not_initialized',
+    }, 'Addie Bolt: Cannot deliver account linked message');
+    await recordOutcome('failed', 'slack_not_initialized');
     return false;
   }
 
   const threadService = getThreadService();
 
-  // Find the user's most recent Addie thread (within 30 minutes)
-  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', 30);
-  if (!recentThread) {
-    logger.debug({ slackUserId }, 'Addie Bolt: No recent thread found for account linked message');
+  if (origin.surface !== 'slack') {
+    logger.warn({
+      correlationId: origin.correlationId,
+      surface: origin.surface,
+      reasonCode: 'surface_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'surface_mismatch');
     return false;
   }
 
-  // Parse external_id back to channel_id:thread_ts
-  const [channelId, threadTs] = recentThread.external_id.split(':');
+  // Revalidate the exact thread immediately before delivery. Correlation
+  // consumption already performs the same checks atomically; this protects
+  // against state changes between OAuth completion and the Slack API call.
+  let thread;
+  try {
+    thread = await threadService.getThread(origin.threadId);
+  } catch (error) {
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'thread_validation_failed',
+    }, 'Addie Bolt: Failed to validate account-link delivery thread');
+    await recordOutcome('failed', 'thread_validation_failed');
+    return false;
+  }
+  if (
+    !thread
+    || thread.channel !== 'slack'
+    || thread.user_type !== 'slack'
+    || thread.user_id !== origin.initiatingUserId
+    || thread.external_id !== origin.externalId
+  ) {
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      initiatingUserId: origin.initiatingUserId,
+      reasonCode: 'thread_identity_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'thread_identity_mismatch');
+    return false;
+  }
+
+  // Parse the validated external_id back to channel_id:thread_ts.
+  const separator = origin.externalId.indexOf(':');
+  const channelId = separator > 0 ? origin.externalId.slice(0, separator) : '';
+  const threadTs = separator > 0 ? origin.externalId.slice(separator + 1) : '';
   if (!channelId || !threadTs) {
-    logger.warn({ slackUserId, externalId: recentThread.external_id }, 'Addie Bolt: Invalid external_id format');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'invalid_slack_thread_identity',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'invalid_slack_thread_identity');
     return false;
   }
 
@@ -5085,22 +5194,42 @@ export async function sendAccountLinkedMessage(
       thread_ts: threadTs,
     });
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Addie Bolt: Failed to send account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_delivery_failed',
+    }, 'Addie Bolt: Failed to send account linked message');
+    await recordOutcome('failed', 'slack_delivery_failed');
     return false;
   }
 
   // Log as a system message in the unified thread (separate from Slack send)
   try {
     await threadService.addMessage({
-      thread_id: recentThread.thread_id,
+      thread_id: origin.threadId,
       role: 'system',
       content: messageText,
     });
   } catch (error) {
-    logger.error({ error, threadId: recentThread.thread_id }, 'Addie Bolt: Failed to save account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'system_event_persistence_failed',
+    }, 'Addie Bolt: Failed to save account linked system event');
+    await recordOutcome('delivered', 'slack_delivered_system_persistence_failed');
+    return true;
   }
 
-  logger.info({ slackUserId, channelId }, 'Addie Bolt: Sent account linked message');
+  await recordOutcome('delivered', 'slack_correlated_thread_delivered');
+  logger.info({
+    correlationId: origin.correlationId,
+    threadId: origin.threadId,
+    initiatingUserId: origin.initiatingUserId,
+    channelId,
+    reasonCode: 'slack_correlated_thread_delivered',
+  }, 'Addie Bolt: Sent account linked message');
   return true;
 }
 

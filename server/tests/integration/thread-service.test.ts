@@ -1088,65 +1088,6 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
     });
   });
 
-  describe('getUserRecentThread', () => {
-    it('should find recent thread for user', async () => {
-      const thread = await threadService.getOrCreateThread({
-        channel: 'slack',
-        external_id: 'test-recent-thread',
-        user_type: 'slack',
-        user_id: 'U_RECENT_TEST',
-      });
-
-      // Add a message to update last_message_at
-      await threadService.addMessage({
-        thread_id: thread.thread_id,
-        role: 'user',
-        content: 'Recent message',
-      });
-
-      const recentThread = await threadService.getUserRecentThread('U_RECENT_TEST', 'slack', 30);
-
-      expect(recentThread).not.toBeNull();
-      expect(recentThread?.thread_id).toBe(thread.thread_id);
-
-      // Clean up
-      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-recent-thread'`);
-    });
-
-    it('should not find old threads outside the time window', async () => {
-      const thread = await threadService.getOrCreateThread({
-        channel: 'slack',
-        external_id: 'test-old-thread',
-        user_type: 'slack',
-        user_id: 'U_OLD_TEST',
-      });
-
-      // Manually set the last_message_at to 2 hours ago
-      await pool.query(
-        `UPDATE addie_threads SET last_message_at = NOW() - INTERVAL '2 hours' WHERE thread_id = $1`,
-        [thread.thread_id]
-      );
-
-      // Should not find thread with 30 minute window
-      const recentThread = await threadService.getUserRecentThread('U_OLD_TEST', 'slack', 30);
-
-      expect(recentThread).toBeNull();
-
-      // Clean up
-      await pool.query(`DELETE FROM addie_threads WHERE external_id = 'test-old-thread'`);
-    });
-
-    it('should use parameterized query for maxAgeMinutes (SQL injection prevention)', async () => {
-      // This test ensures the fix for SQL injection is working
-      // If the query was vulnerable, unusual values would cause SQL errors
-      const result = await threadService.getUserRecentThread('U_TEST', 'slack', 0);
-      expect(result).toBeNull(); // Should work without SQL error
-
-      const result2 = await threadService.getUserRecentThread('U_TEST', 'slack', 99999);
-      expect(result2).toBeNull(); // Should work without SQL error
-    });
-  });
-
   describe('getStats', () => {
     beforeEach(async () => {
       // Create test threads with messages

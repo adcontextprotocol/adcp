@@ -1,5 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
+import { addModelUsage, inspectModelTurn, ModelLoopBudget } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -79,26 +80,6 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function addUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
-  return {
-    inputTokens: total.inputTokens + usage.inputTokens,
-    outputTokens: total.outputTokens + usage.outputTokens,
-    ...(total.cacheWriteTokens !== undefined || usage.cacheWriteTokens !== undefined
-      ? { cacheWriteTokens: (total.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0) }
-      : {}),
-    ...(total.cacheReadTokens !== undefined || usage.cacheReadTokens !== undefined
-      ? { cacheReadTokens: (total.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0) }
-      : {}),
-  };
-}
-
-function responseText(response: ModelResponse): string {
-  return response.content
-    .filter((content) => content.type === 'text')
-    .map((content) => content.text)
-    .join('');
-}
-
 /**
  * Execute a provider-neutral, retry-free tool loop for explicitly classified
  * local reads. This is intentionally narrower than Addie's production loop:
@@ -156,8 +137,10 @@ export async function executeReadOnlyToolLoop(
   let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   const receipts: ReadOnlyToolExecutionReceipt[] = [];
   const seenCallIds = new Set<string>();
+  const loopBudget = new ModelLoopBudget(MAX_ITERATIONS);
 
-  for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+  while (loopBudget.hasRemaining) {
+    const iteration = loopBudget.startNext();
     const request: ModelRequest = {
       ...requestSnapshot,
       messages,
@@ -168,22 +151,23 @@ export async function executeReadOnlyToolLoop(
       signal: options.signal,
       beforeDispatch: options.beforeDispatch,
     }), provider.id);
-    totalUsage = addUsage(totalUsage, response.usage);
+    totalUsage = addModelUsage(totalUsage, response.usage);
+    const turn = inspectModelTurn(response);
 
-    const calls = response.content.filter((content) => content.type === 'tool_call');
-    const unsupportedContinuation = response.content.some((content) =>
-      content.type === 'provider_tool_call' || content.type === 'provider_tool_result');
+    const calls = turn.toolCalls;
+    const unsupportedContinuation = turn.providerToolCalls.length > 0
+      || turn.providerToolResults.length > 0;
     if (unsupportedContinuation) {
       throw new ReadOnlyToolLoopBoundaryError('provider_continuation_not_allowed');
     }
     if (calls.length === 0) {
-      if (response.finishReason === 'continue') {
+      if (turn.action === 'continue') {
         messages = [...messages, { role: 'assistant', content: response.content }];
         continue;
       }
       return {
         response,
-        text: responseText(response),
+        text: turn.textBlocks.map((content) => content.text).join(''),
         iterations: iteration,
         usage: totalUsage,
         toolExecutions: Object.freeze([...receipts]),

@@ -8,11 +8,27 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
+  APIError: class APIError extends Error {},
+  APIConnectionError: class APIConnectionError extends Error {},
   default: class {
     beta = {
       messages: {
-        create: mocks.createMessage,
-        stream: mocks.streamMessage,
+        create: async (payload: Record<string, unknown>, options?: unknown) => ({
+          id: 'msg_test_nonstreaming',
+          model: String(payload.model),
+          ...await mocks.createMessage(payload, options),
+        }),
+        stream: (payload: Record<string, unknown>, options?: unknown) => {
+          const stream = mocks.streamMessage(payload, options);
+          return {
+            [Symbol.asyncIterator]: () => stream[Symbol.asyncIterator](),
+            finalMessage: async () => ({
+              id: 'msg_test_streaming',
+              model: String(payload.model),
+              ...await stream.finalMessage(),
+            }),
+          };
+        },
       },
     };
   },
@@ -82,6 +98,7 @@ function streamFor(finalResponse: MockMessage, chunks: string[]) {
       for (const text of chunks) {
         yield {
           type: 'content_block_delta',
+          index: 0,
           delta: { type: 'text_delta', text },
         };
       }

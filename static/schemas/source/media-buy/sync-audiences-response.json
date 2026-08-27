@@ -113,7 +113,44 @@
               "last_synced_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "ISO 8601 timestamp of when the most recent sync operation was accepted by the platform. Useful for agents reasoning about audience freshness. Omitted if the seller does not track this."
+                "description": "ISO 8601 timestamp of when the most recent sync operation was accepted by the platform. Useful for agents reasoning about audience freshness. Omitted if the seller does not track this. For externally sourced audiences, REQUIRED once counts populate (status ready or too_small): every count field is as-of this timestamp — it is the buyer's only anchor for what a count means, since two reads can differ because membership changed, match rate changed, or the seller re-read the source."
+              },
+              "source": {
+                "type": "object",
+                "x-status": "experimental",
+                "description": "Echo of the external source feeding this audience (never credentials), present on externally sourced audiences in every response including discovery-only calls — the single pane invariant: externally sourced audiences appear in discovery identically to pushed ones, with the same status enum, match reporting, and targetability. Loss of source access (revocation, access_expires_at passing, or read failure of any cause) MUST NOT change the audience status: last matched state persists and remains targetable, last_synced_at freezes, and failed re-reads MUST NOT emit suspended — that value stays reserved for consent/policy causes, which remain orthogonal. Source health is reported here via access_status instead.",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": ["dataset", "platform_segment"],
+                    "description": "Source kind, echoed from the request."
+                  },
+                  "vendor": {
+                    "$ref": "/schemas/core/brand-ref.json",
+                    "description": "Vendor, echoed from the request."
+                  },
+                  "locator": {
+                    "type": "string",
+                    "description": "Dataset locator, echoed from the request (kind: dataset)."
+                  },
+                  "segment_ref": {
+                    "type": "string",
+                    "description": "Segment reference, echoed from the request (kind: platform_segment)."
+                  },
+                  "columns_read": {
+                    "type": "array",
+                    "description": "Canonical identifier columns the seller actually read from the shared object on the most recent ingest (kind: dataset). Lets a buyer distinguish bad identifier data from a column the seller never read — match_breakdown reveals what resolved, not what was offered.",
+                    "items": { "type": "string" },
+                    "minItems": 1
+                  },
+                  "access_status": {
+                    "type": "string",
+                    "enum": ["active", "unavailable"],
+                    "description": "Source pipe health. Set to unavailable after a failed read (the seller cannot reliably distinguish revocation from expiry from a transient vendor outage — all three observables are a failed read); cleared to active on the next successful one. With last_synced_at this tells the buyer both that the pipe is down and how stale the membership is. Never a status input: membership stays frozen at the last successful read and remains targetable."
+                  }
+                },
+                "required": ["kind", "vendor"],
+                "additionalProperties": false
               },
               "minimum_size": {
                 "type": "integer",
@@ -132,6 +169,15 @@
               "audience_id",
               "action"
             ],
+            "if": {
+              "properties": {
+                "status": { "enum": ["ready", "too_small"] }
+              },
+              "required": ["source", "status"]
+            },
+            "then": {
+              "required": ["audience_id", "action", "last_synced_at"]
+            },
             "additionalProperties": true
           }
         },
