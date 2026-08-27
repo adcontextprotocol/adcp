@@ -15,7 +15,7 @@ describe('schema version selection', () => {
   it('accepts every public docs release and defaults its guidance to stable', () => {
     expect(DOCS_SCHEMA_RELEASES).toEqual({
       '3.1': '3.1.19',
-      '3.2-beta': '3.2.0-beta.5',
+      '3.2-beta': '3.2.0-beta.6',
       '3.0': '3.0.26',
       '2.5': '2.5.3',
     });
@@ -29,7 +29,7 @@ describe('schema version selection', () => {
       '3.2-beta',
       '3.2 beta',
       '3.2',
-      '3.2.0-beta.5',
+      '3.2.0-beta.6',
       '3.0',
       '3.0.26',
       '2.5',
@@ -97,10 +97,10 @@ describe('schema handler version resolution', () => {
     { selector: 'latest', canonical: '3.1', artifact: '3.1.19' },
     { selector: 'v3', canonical: '3.1', artifact: '3.1.19' },
     { selector: '3.1.19', canonical: '3.1', artifact: '3.1.19' },
-    { selector: '3.2-beta', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
-    { selector: '3.2 beta', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
-    { selector: '3.2', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
-    { selector: '3.2.0-beta.5', canonical: '3.2-beta', artifact: '3.2.0-beta.5' },
+    { selector: '3.2-beta', canonical: '3.2-beta', artifact: '3.2.0-beta.6' },
+    { selector: '3.2 beta', canonical: '3.2-beta', artifact: '3.2.0-beta.6' },
+    { selector: '3.2', canonical: '3.2-beta', artifact: '3.2.0-beta.6' },
+    { selector: '3.2.0-beta.6', canonical: '3.2-beta', artifact: '3.2.0-beta.6' },
     { selector: '3.0', canonical: '3.0', artifact: '3.0.26' },
     { selector: '3.0.26', canonical: '3.0', artifact: '3.0.26' },
     { selector: '2.5', canonical: '2.5', artifact: '2.5.3' },
@@ -199,7 +199,7 @@ describe('schema handler version resolution', () => {
     const cases = [
       ['3.1.4', '3.1.19'],
       ['3.1.0-rc.15', '3.1.19'],
-      ['3.2.0-beta.1', '3.2.0-beta.5'],
+      ['3.2.0-beta.1', '3.2.0-beta.6'],
       ['3.0.18', '3.0.26'],
       ['3.0.0-rc.2', '3.0.26'],
       ['2.5.1', '2.5.3'],
@@ -227,7 +227,7 @@ describe('schema handler version resolution', () => {
     for (const version of [
       '4.0.1',
       '3.1.20',
-      '3.2.0-beta.6',
+      '3.2.0-beta.7',
       '3.2.1-beta.1',
     ]) {
       await expect(validateJson!({
