@@ -8081,14 +8081,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
               if (accountNewlyLinked) {
                 const firstName = user.firstName || undefined;
-                sendAccountLinkedMessage(validatedOrigin, firstName).catch((err) => {
-                  logger.warn({
-                    error: err,
-                    correlationId: validatedOrigin.correlationId,
-                    threadId: validatedOrigin.threadId,
-                    reasonCode: 'proactive_delivery_unhandled_error',
-                  }, 'Failed to send correlated Addie account linked message');
-                });
+                await sendAccountLinkedMessage(validatedOrigin, firstName);
               } else {
                 const reasonCode = accountLinked
                   ? 'account_already_linked'
