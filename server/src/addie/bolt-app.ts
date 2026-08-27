@@ -1513,6 +1513,7 @@ async function selectRoutedToolsForSlackResponse(
   tools: RequestTools;
   isAAOAdmin: boolean;
   unavailableHint: string;
+  selectedToolSets: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1545,6 +1546,7 @@ async function selectRoutedToolsForSlackResponse(
       tools: filteredTools,
       isAAOAdmin: userIsAdmin,
       unavailableHint,
+      selectedToolSets: fallbackSets,
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1609,6 +1611,7 @@ async function selectRoutedToolsForSlackResponse(
     tools: filteredTools,
     isAAOAdmin: userIsAdmin,
     unavailableHint,
+    selectedToolSets: selectedSets,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1914,6 +1917,7 @@ async function handleUserMessage({
   // user's Addie spend.
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
+    selectedToolSetNames: routedTools.selectedToolSets,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2671,6 +2675,7 @@ async function handleAppMention({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3557,6 +3562,7 @@ export async function buildChannelResponseInvocation(input: {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
+      selectedToolSetNames: selectedToolSets,
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -3967,6 +3973,7 @@ async function handleDirectMessage(
         ? { modelOverride: ModelConfig.depth }
         : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4361,6 +4368,7 @@ async function handleActiveThreadReply({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
