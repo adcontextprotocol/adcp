@@ -18,13 +18,13 @@ describe('Slack tool-set selection policy', () => {
 
   it.each([
     ['member DM', { source: 'dm', isAdmin: false }, ['knowledge']],
-    ['admin DM', { source: 'dm', isAdmin: true }, ['knowledge', 'admin']],
+    ['admin DM', { source: 'dm', isAdmin: true }, ['knowledge']],
     ['private admin channel', { source: 'channel', isAdmin: true }, ['knowledge']],
     ['public admin channel', { source: 'channel', isAdmin: true }, ['knowledge']],
     [
       'admin working group',
       { source: 'channel', isAdmin: true, workingGroupSlug: ADMIN_CHANNEL_WG_SLUG },
-      ['knowledge', 'admin'],
+      ['knowledge'],
     ],
   ] as const)('applies the normal %s policy', (_label, input, expected) => {
     expect(selectSlackToolSets({
@@ -61,7 +61,7 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: true,
       workingGroupSlug: ADMIN_CHANNEL_WG_SLUG,
       hasActiveCertification: true,
-    })).toEqual(['knowledge', 'admin']);
+    })).toEqual(['knowledge']);
   });
 
   it.each(Object.entries(SYSTEM_CHANNEL_TOOL_SETS) as Array<[SystemChannelRole, readonly string[]]>) (
@@ -90,12 +90,21 @@ describe('Slack tool-set selection policy', () => {
 
   it('deduplicates router and server-owned sets without reordering them', () => {
     expect(selectSlackToolSets({
-      routerSelectedSets: ['billing', 'admin'],
+      routerSelectedSets: ['billing'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: true,
       systemRole: 'billing',
-    })).toEqual(['billing', 'admin']);
+    })).toEqual(['billing']);
+  });
+
+  it('preserves an already-created legacy admin plan for continuity', () => {
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['admin'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+    })).toEqual(['admin']);
   });
 
   it('returns verified channel context from the required resolver', async () => {
