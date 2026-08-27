@@ -88,6 +88,10 @@ import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
 import {
+  ACCOUNT_LINK_DELIVERY_WAIT_MS,
+  waitForAccountLinkDelivery,
+} from './addie/account-link-delivery.js';
+import {
   consumeAccountLinkCorrelation,
   isAccountLinkCorrelationToken,
   recordProactiveEvent,
@@ -8081,7 +8085,45 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
               if (accountNewlyLinked) {
                 const firstName = user.firstName || undefined;
-                await sendAccountLinkedMessage(validatedOrigin, firstName);
+                const deliveryWait = await waitForAccountLinkDelivery(
+                  () => sendAccountLinkedMessage(validatedOrigin, firstName),
+                  {
+                    onLateSettlement: (settlement) => {
+                      logger[settlement.status === 'rejected' ? 'warn' : 'info']({
+                        correlationId: validatedOrigin.correlationId,
+                        threadId: validatedOrigin.threadId,
+                        initiatingUserId: validatedOrigin.initiatingUserId,
+                        reasonCode: settlement.status === 'rejected'
+                          ? 'slack_delivery_late_rejection_observed'
+                          : settlement.delivered
+                            ? 'slack_delivery_late_success_observed'
+                            : 'slack_delivery_late_failure_observed',
+                      }, 'Observed account-link delivery after OAuth wait expired');
+                    },
+                  },
+                );
+                if (deliveryWait.status === 'timed_out') {
+                  logger.warn({
+                    correlationId: validatedOrigin.correlationId,
+                    threadId: validatedOrigin.threadId,
+                    initiatingUserId: validatedOrigin.initiatingUserId,
+                    timeoutMs: ACCOUNT_LINK_DELIVERY_WAIT_MS,
+                    reasonCode: 'slack_delivery_wait_timed_out',
+                  }, 'Continuing OAuth redirect while account-link delivery finishes');
+                } else if (deliveryWait.status === 'rejected') {
+                  // sendAccountLinkedMessage is designed to contain delivery
+                  // failures. Keep auth successful if a future implementation
+                  // unexpectedly rejects instead.
+                  logger.warn({
+                    correlationId: validatedOrigin.correlationId,
+                    threadId: validatedOrigin.threadId,
+                    initiatingUserId: validatedOrigin.initiatingUserId,
+                    errorType: deliveryWait.error instanceof Error
+                      ? deliveryWait.error.name
+                      : typeof deliveryWait.error,
+                    reasonCode: 'slack_delivery_rejection_observed',
+                  }, 'Account-link delivery rejected without failing OAuth');
+                }
               } else {
                 const reasonCode = accountLinked
                   ? 'account_already_linked'

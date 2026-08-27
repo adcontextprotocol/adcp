@@ -362,4 +362,46 @@ describe('native OAuth HTTPServer wiring', () => {
       deliveryStatus: 'skipped',
     }));
   });
+
+  it('completes OAuth when account-link delivery unexpectedly rejects', async () => {
+    mocks.authenticateWithCode.mockResolvedValueOnce({
+      sealedSession: 'SEALED_SESSION_SECRET',
+      user: {
+        id: 'user_1',
+        email: 'person@example.com',
+        firstName: 'Person',
+        lastName: 'Example',
+        emailVerified: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    mocks.listOrganizationMemberships.mockResolvedValueOnce({ data: [] });
+    const origin = {
+      correlationId: 'correlation-origin',
+      surface: 'slack' as const,
+      threadId: 'origin-thread',
+      initiatingUserId: 'U123',
+      externalId: 'D123:111.222',
+    };
+    mocks.consumeAccountLinkCorrelation.mockResolvedValueOnce(origin);
+    vi.spyOn(SlackDatabase.prototype, 'getBySlackUserId').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: null,
+    } as never);
+    vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    mocks.sendAccountLinkedMessage.mockRejectedValueOnce(new Error('synthetic Slack rejection'));
+    server = new HTTPServer();
+
+    const response = await request(appFor(server)).get('/auth/callback').query({
+      code: 'workos-authorization-code',
+      state: JSON.stringify({
+        slack_user_id: 'U123',
+        account_link_correlation: 'a'.repeat(43),
+      }),
+    });
+
+    expect(response.status).toBe(302);
+    expect(mocks.sendAccountLinkedMessage).toHaveBeenCalledWith(origin, 'Person');
+  });
 });
