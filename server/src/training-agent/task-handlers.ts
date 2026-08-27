@@ -8866,24 +8866,6 @@ async function handleGetProductsUnlocked(
         );
       });
     }
-    const requiredMetrics = (req.filters as { required_metrics?: string[] }).required_metrics;
-    if (requiredMetrics?.length) {
-      products = products.filter(product => {
-        const declared = new Set(
-          (product.reporting_capabilities as ReportingCapabilitiesView | undefined)?.available_metrics ?? [],
-        );
-        return requiredMetrics.every(metric => {
-          if (declared.has(metric)) return true;
-          if (['viewable_rate', 'viewable_impressions', 'measurable_impressions', 'viewed_seconds'].includes(metric)) {
-            return declared.has('viewability');
-          }
-          if (['quartile_25', 'quartile_50', 'quartile_75', 'quartile_100'].includes(metric)) {
-            return declared.has('quartile_data');
-          }
-          return false;
-        });
-      });
-    }
     const audienceActivationMethods = (req.filters as { audience_activation_methods?: unknown[] }).audience_activation_methods;
     const implementsAudienceActivation = (ctx.tenantId === 'sales' || ctx.tenantId == null)
       && supportsGetProductsRejected(ctx.servedAdcpVersion);
