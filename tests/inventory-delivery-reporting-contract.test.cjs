@@ -109,11 +109,17 @@ describe("canonical inventory delivery reporting", () => {
     }), true, JSON.stringify(validateCanonicalPlacement.errors));
     assert.equal(validateCanonicalPlacement({
       kind: "seller_inline",
+      placement_id: "pre_roll",
+      name: "Pre-roll",
+      mode: "targetable",
+    }), true, JSON.stringify(validateCanonicalPlacement.errors));
+    assert.equal(validateCanonicalPlacement({
+      kind: "seller_inline",
       publisher_domain: "publisher.example",
       placement_id: "pre_roll",
       name: "Pre-roll",
       mode: "targetable",
-    }), false);
+    }), true, JSON.stringify(validateCanonicalPlacement.errors));
     assert.equal(validateCanonicalPlacement({
       kind: "publisher_ref",
       publisher_domain: "publisher.example",

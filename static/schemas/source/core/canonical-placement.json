@@ -2,13 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/canonical-placement.json",
   "title": "Canonical Product Placement",
-  "description": "Compact product placement with canonical format narrowing and self-contained placement authority.",
+  "description": "Compact product placement with canonical format narrowing. Publisher references carry their publisher authority. New seller-inline placements SHOULD carry seller_agent as their defining authority; legacy seller-inline placements without it remain valid in product context.",
   "type": "object",
   "properties": {
     "kind": { "type": "string", "enum": ["publisher_ref", "seller_inline"] },
     "placement_id": { "type": "string", "minLength": 1, "x-entity": "placement" },
     "publisher_domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$", "description": "For publisher_ref, the adagents.json publisher namespace. For seller_inline, optional inventory-publisher attribution only." },
-    "seller_agent": { "$ref": "/schemas/core/seller-agent-ref.json", "description": "Defining sales agent for seller_inline identity." },
+    "seller_agent": { "$ref": "/schemas/core/seller-agent-ref.json", "description": "Defining sales agent for seller_inline identity. Recommended for new declarations; optional only to preserve legacy product-context placements." },
     "name": { "type": "string", "minLength": 1 },
     "description": { "type": "string" },
     "mode": { "type": "string", "enum": ["targetable", "included"] },
@@ -32,7 +32,7 @@
     },
     {
       "properties": { "kind": { "const": "seller_inline" } },
-      "required": ["kind", "seller_agent", "name"]
+      "required": ["kind", "name"]
     }
   ],
   "additionalProperties": false

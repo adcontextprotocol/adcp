@@ -5,7 +5,7 @@
   "description": "Delivery metrics at the intersection of one placement and one publisher property. This distinguishes the actual serving property when a placement declaration spans multiple properties.",
   "x-adcp-validation": {
     "verifier_constraints": {
-      "placement_id_consistency": "placement_id MUST equal placement_identity.placement_id when placement_identity is present",
+      "placement_id_consistency": "placement_id MUST equal placement_identity.placement_id",
       "property_domain_consistency": "property_ref.publisher_domain MUST equal publisher_domain when property_ref is present"
     }
   },
@@ -21,7 +21,7 @@
         },
         "placement_identity": {
           "$ref": "/schemas/core/placement-identity.json",
-          "description": "Self-contained placement identity. New 3.2 sellers MUST emit it; legacy product-scoped rows may omit it."
+          "description": "Required self-contained placement identity. Unlike the legacy-compatible by_placement dimension, the new by_placement_property dimension has no pre-3.2 row shape and always names the placement authority."
         },
         "placement_name": {
           "type": "string",
