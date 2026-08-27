@@ -206,7 +206,12 @@ function indentDescription(description: string): string {
   // less-than operator; both crash MDX 3 parsers. Replace ALL `<` with `&lt;`
   // — tool descriptions don't legitimately use HTML/JSX tags, and any quoted
   // machine-protocol fragments render the same way after escaping.
-  const escaped = trimmed.replace(/</g, '&lt;');
+  // Template expressions are represented as the literal placeholder
+  // `${...}` by literalText(). Encode its delimiters so MDX does not try to
+  // parse the placeholder as a JavaScript expression.
+  const escaped = trimmed
+    .replace(/</g, '&lt;')
+    .replaceAll('${...}', '&#36;&#123;...&#125;');
   return escaped.split('\n').map(line => line.trimEnd()).join('\n');
 }
 

@@ -118,6 +118,17 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
 // --- Run tests ---
 
 log('\n🧪 Docs Navigation Validation Tests');
+
+test('current documentation pages have valid MDX syntax', () => {
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, '../scripts/check-docs-mdx-syntax.mjs')], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    throw new Error((error.stderr || error.stdout || error.message).trim());
+  }
+});
 log('====================================\n');
 
 const docsConfig = JSON.parse(fs.readFileSync(DOCS_JSON, 'utf8'));
