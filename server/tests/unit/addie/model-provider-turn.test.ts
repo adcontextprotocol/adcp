@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type {
   ModelFinishReason,
+  ModelMessage,
   ModelMessageContent,
   ModelResponse,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
   addModelUsage,
+  appendModelTurnContinuation,
   EmptyResponseRecoveryState,
   inspectModelTurn,
   ModelLoopBudget,
@@ -68,6 +70,40 @@ describe('inspectModelTurn', () => {
     expect(turn.providerToolResults.map((result) => result.toolCallId)).toEqual(['provider-1']);
     expect(Object.isFrozen(turn)).toBe(true);
     expect(Object.isFrozen(turn.toolCalls)).toBe(true);
+  });
+});
+
+describe('appendModelTurnContinuation', () => {
+  it('appends the assistant response and optional tool-result turn', () => {
+    const messages: ModelMessage[] = [];
+    const assistant = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'call-1',
+      name: 'lookup',
+      input: {},
+    }]);
+    const results = [{
+      type: 'tool_result' as const,
+      toolCallId: 'call-1',
+      toolName: 'lookup',
+      content: 'found',
+    }];
+
+    appendModelTurnContinuation(messages, assistant, results);
+
+    expect(messages).toEqual([
+      { role: 'assistant', content: assistant.content },
+      { role: 'user', content: results },
+    ]);
+  });
+
+  it('appends only the assistant turn for provider continuation', () => {
+    const messages: ModelMessage[] = [];
+    const assistant = response('continue', []);
+
+    appendModelTurnContinuation(messages, assistant);
+
+    expect(messages).toEqual([{ role: 'assistant', content: [] }]);
   });
 });
 
