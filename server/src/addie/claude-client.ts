@@ -55,6 +55,7 @@ import {
   addModelUsage,
   EmptyResponseRecoveryState,
   inspectModelTurn,
+  ModelLoopBudget,
 } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
@@ -1480,7 +1481,7 @@ export class AddieClaudeClient {
       ? undefined
       : await getCurrentConfigVersionId();
 
-    const maxIterations = options?.maxIterations ?? 10;
+    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
@@ -1502,8 +1503,8 @@ export class AddieClaudeClient {
     const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let hasExecutedCustomTool = false;
 
-    while (iteration < maxIterations) {
-      iteration++;
+    while (loopBudget.hasRemaining) {
+      iteration = loopBudget.startNext();
 
       // Use beta API to access web search
       const llmStart = Date.now();
@@ -1764,7 +1765,7 @@ export class AddieClaudeClient {
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
           && isSideEffectFreeEmptyModelResponse(response, rawText)
-          && iteration < maxIterations
+          && loopBudget.hasRemaining
         ) {
           emptyResponseRecovery.schedule('initial', response);
           logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
@@ -1778,7 +1779,7 @@ export class AddieClaudeClient {
           && isSideEffectFreeEmptyModelResponse(response, rawText)
           && hasExecutedCustomTool
           && !emptyResponseRecovery.hasAttempted('post_tool')
-          && iteration < maxIterations
+          && loopBudget.hasRemaining
         ) {
           emptyResponseRecovery.schedule('post_tool', response);
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
@@ -2002,7 +2003,7 @@ export class AddieClaudeClient {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
         total_tool_execution_ms: totalToolExecutionMs,
-        iterations: maxIterations,
+        iterations: loopBudget.limit,
       },
       usage: maxIterationsUsage,
     };
@@ -2215,13 +2216,13 @@ export class AddieClaudeClient {
     // Mark the last tool with cache_control so Anthropic caches all tool definitions.
     const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
     const modelTools = buildModelToolDefinitions(allTools);
-    const maxIterations = options?.maxIterations ?? 10;
+    const loopBudget = new ModelLoopBudget(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
     const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let lastProviderModel: string | undefined;
 
-      while (iteration < maxIterations) {
-        iteration++;
+      while (loopBudget.hasRemaining) {
+        iteration = loopBudget.startNext();
 
         const llmStart = Date.now();
 
@@ -2513,7 +2514,7 @@ export class AddieClaudeClient {
             && toolExecutions.length === 0
             && logicalText.length === 0
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
-            && iteration < maxIterations
+            && loopBudget.hasRemaining
           ) {
             emptyResponseRecovery.schedule('initial', currentResponse);
             logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
@@ -2527,7 +2528,7 @@ export class AddieClaudeClient {
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && toolExecutions.length > 0
             && !emptyResponseRecovery.hasAttempted('post_tool')
-            && iteration < maxIterations
+            && loopBudget.hasRemaining
           ) {
             emptyResponseRecovery.schedule('post_tool', currentResponse);
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
@@ -2725,7 +2726,7 @@ export class AddieClaudeClient {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
             total_tool_execution_ms: totalToolExecutionMs,
-            iterations: maxIterations,
+            iterations: loopBudget.limit,
           },
           usage: maxIterUsage,
           capacity: { certification_reserve_used: certificationReserveUsed },
