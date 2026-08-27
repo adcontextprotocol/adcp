@@ -1,0 +1,229 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/creative-operation-format-declaration.json",
+  "title": "Creative Operation Format Declaration",
+  "description": "Authority-free canonical format declaration used by creative.supported_formats[]. It describes what a creative agent can build, validate, or preview. It preserves canonical parameter validation and creative-route macro processing capabilities, but MUST NOT carry seller production authority such as tracker_execution_contract or tracker_execution_contract_digest.",
+  "type": "object",
+  "required": [
+    "format_kind",
+    "params"
+  ],
+  "properties": {
+    "format_option_id": {
+      "type": "string",
+      "description": "Stable publisher- or product-declaration identity that this creative operation can satisfy. When publisher_domain is present, this field is required."
+    },
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "description": "Publisher namespace for format_option_id when this operation claims compatibility with a publisher declaration."
+    },
+    "macro_resolution_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/macro-resolution-capability.json"
+      },
+      "description": "Creative-route processing capabilities for exact macro dialect identities, semantics, operations, actors, contexts, and encodings. These capabilities describe build, validation, or preview processing and do not grant seller production authority.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+        }
+      }
+    },
+    "technical_requirements_complete": {
+      "type": "boolean"
+    },
+    "display_name": {
+      "type": "string"
+    },
+    "sample_render_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "applies_to_channels": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/enums/channels.json"
+      },
+      "uniqueItems": true
+    },
+    "seller_preference": {
+      "type": "string",
+      "enum": [
+        "preferred",
+        "accepted",
+        "discouraged"
+      ]
+    },
+    "locale_policy": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/creative-locale-policy.json"
+    },
+    "canonical_formats_only": {
+      "type": "boolean",
+      "default": false
+    },
+    "experimental": {
+      "type": "boolean",
+      "default": false
+    },
+    "format_shape": {
+      "type": "string"
+    },
+    "v1_format_ref": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/format-id.json"
+      }
+    },
+    "format_schema": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/platform-extension-ref.json"
+    },
+    "format_kind": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/canonical-format-kind.json"
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Canonical creative-shape parameters. Validate against the schema selected by format_kind; custom params validate against the fetched format_schema."
+    }
+  },
+  "allOf": [
+    {
+      "$comment": "Creative operation declarations never carry seller production authority. The explicit prohibition remains effective even though the object is open for forward-compatible creative metadata.",
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "tracker_execution_contract"
+            ]
+          },
+          {
+            "required": [
+              "tracker_execution_contract_digest"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "publisher_domain"
+        ]
+      },
+      "then": {
+        "required": [
+          "format_option_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "format_kind": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "format_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "format_shape",
+          "format_schema"
+        ],
+        "anyOf": [
+          {
+            "properties": {
+              "canonical_formats_only": {
+                "const": true
+              }
+            },
+            "required": [
+              "canonical_formats_only"
+            ]
+          },
+          {
+            "required": [
+              "v1_format_ref"
+            ]
+          }
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "format_shape"
+              ]
+            },
+            {
+              "required": [
+                "format_schema"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "not": {
+        "allOf": [
+          {
+            "properties": {
+              "canonical_formats_only": {
+                "const": true
+              }
+            },
+            "required": [
+              "canonical_formats_only"
+            ]
+          },
+          {
+            "required": [
+              "v1_format_ref"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "not": {
+        "required": [
+          "capability_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "locale_policy"
+        ]
+      },
+      "then": {
+        "properties": {
+          "canonical_formats_only": {
+            "const": true
+          }
+        },
+        "required": [
+          "canonical_formats_only"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "canonical_params": {
+        "non_custom": "validate params against /schemas/formats/canonical/{format_kind}.json",
+        "custom": "validate params against fetched format_schema uri and digest",
+        "on_violation": "reject_capability_declaration"
+      }
+    }
+  }
+}

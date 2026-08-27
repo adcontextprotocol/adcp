@@ -5,11 +5,13 @@ export const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
 
 /** Tool sets required by server-owned channel configuration. */
 export const SYSTEM_CHANNEL_TOOL_SETS: Readonly<Record<SystemChannelRole, readonly string[]>> = {
-  prospect: ['admin', 'outreach'],
-  escalation: ['admin'],
-  billing: ['admin', 'billing'],
-  error: ['admin'],
-  admin: ['admin'],
+  prospect: ['admin_prospects', 'outreach'],
+  // Escalation tools are already in ALWAYS_AVAILABLE_ADMIN_TOOLS.
+  escalation: [],
+  billing: ['billing'],
+  error: ['admin_workflows'],
+  // Generic admin channels rely on the router's bounded domain selection.
+  admin: [],
 };
 
 export interface SlackToolSetSelectionInput {
@@ -44,13 +46,6 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
   const selected = input.routerAvailable
     ? [...(input.routerSelectedSets ?? [])]
     : ['knowledge'];
-
-  if (
-    input.isAdmin
-    && (input.source === 'dm' || input.workingGroupSlug === ADMIN_CHANNEL_WG_SLUG)
-  ) {
-    appendUnique(selected, ['admin']);
-  }
 
   if (input.isAdmin && input.systemRole) {
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);

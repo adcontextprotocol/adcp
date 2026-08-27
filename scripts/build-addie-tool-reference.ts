@@ -32,6 +32,7 @@ type ExtractedToolSet = {
   description: string;
   tools: string[];
   adminOnly: boolean;
+  routerVisible: boolean;
 };
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -128,15 +129,56 @@ function extractToolsFromFile(filePath: string): ExtractedTool[] {
 function extractToolSets(filePath: string): ExtractedToolSet[] {
   const sf = parseFile(filePath);
   const sets: ExtractedToolSet[] = [];
+  const objectArrayConstants = new Map<string, Map<string, string[]>>();
+
+  function unwrap(node: ts.Node): ts.Node {
+    if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
+      return unwrap(node.expression);
+    }
+    return node;
+  }
 
   function readArrayOfStrings(node: ts.Node): string[] {
-    if (!ts.isArrayLiteralExpression(node)) return [];
+    const unwrapped = unwrap(node);
+    if (!ts.isArrayLiteralExpression(unwrapped)) return [];
     const out: string[] = [];
-    for (const el of node.elements) {
+    for (const el of unwrapped.elements) {
       const t = literalText(el);
       if (t) out.push(t);
+      if (
+        ts.isSpreadElement(el)
+        && ts.isPropertyAccessExpression(el.expression)
+        && ts.isIdentifier(el.expression.expression)
+      ) {
+        const values = objectArrayConstants
+          .get(el.expression.expression.text)
+          ?.get(el.expression.name.text);
+        if (values) out.push(...values);
+      }
     }
     return out;
+  }
+
+  // Resolve the bounded domain arrays referenced by TOOL_SETS without
+  // executing application code during generation.
+  for (const statement of sf.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const initializer = unwrap(declaration.initializer);
+      if (!ts.isObjectLiteralExpression(initializer)) continue;
+      const entries = new Map<string, string[]>();
+      for (const property of initializer.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key = ts.isIdentifier(property.name) ? property.name.text
+          : ts.isStringLiteralLike(property.name) ? property.name.text
+          : null;
+        if (!key) continue;
+        const values = readArrayOfStrings(property.initializer);
+        if (values.length > 0) entries.set(key, values);
+      }
+      if (entries.size > 0) objectArrayConstants.set(declaration.name.text, entries);
+    }
   }
 
   function visit(node: ts.Node) {
@@ -154,6 +196,7 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
         let description: string | null = null;
         let toolList: string[] = [];
         let adminOnly = false;
+        let routerVisible = true;
         for (const inner of prop.initializer.properties) {
           if (!ts.isPropertyAssignment(inner)) continue;
           const key = ts.isIdentifier(inner.name) ? inner.name.text
@@ -163,9 +206,10 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
           else if (key === 'description') description = literalText(inner.initializer);
           else if (key === 'tools') toolList = readArrayOfStrings(inner.initializer);
           else if (key === 'adminOnly' && inner.initializer.kind === ts.SyntaxKind.TrueKeyword) adminOnly = true;
+          else if (key === 'routerVisible' && inner.initializer.kind === ts.SyntaxKind.FalseKeyword) routerVisible = false;
         }
         if (setName && description) {
-          sets.push({ name: setName, description, tools: toolList, adminOnly });
+          sets.push({ name: setName, description, tools: toolList, adminOnly, routerVisible });
         }
       }
     }
@@ -406,7 +450,7 @@ function main() {
     allTools.push(...extractToolsFromFile(file));
   }
 
-  const toolSets = extractToolSets(TOOL_SETS_FILE);
+  const toolSets = extractToolSets(TOOL_SETS_FILE).filter((set) => set.routerVisible);
   const alwaysAvailable = extractAlwaysAvailable(TOOL_SETS_FILE, 'ALWAYS_AVAILABLE_TOOLS');
   const alwaysAvailableAdmin = extractAlwaysAvailable(TOOL_SETS_FILE, 'ALWAYS_AVAILABLE_ADMIN_TOOLS');
 

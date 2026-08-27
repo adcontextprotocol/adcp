@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
+import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
+import {
+  ADMIN_DOMAIN_TOOL_SETS,
+  ALWAYS_AVAILABLE_ADMIN_TOOLS,
+  ALWAYS_AVAILABLE_TOOLS,
+  LEGACY_ADMIN_TOOLS,
+  TOOL_SETS,
+  buildUnavailableSetsHint,
+  getToolsForSets,
+  getValidToolSetNames,
+} from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
@@ -19,6 +29,46 @@ describe('getToolsForSets', () => {
       for (const tool of ALWAYS_AVAILABLE_ADMIN_TOOLS) {
         expect(tools).toContain(tool);
       }
+    });
+  });
+
+  describe('bounded admin domains', () => {
+    it('keeps every router-visible admin domain at twelve tools or fewer', () => {
+      for (const [name, tools] of Object.entries(ADMIN_DOMAIN_TOOL_SETS)) {
+        expect(tools.length, name).toBeLessThanOrEqual(12);
+        expect(TOOL_SETS[name].tools).toEqual(tools);
+      }
+    });
+
+    it('preserves the exact 66-tool legacy surface without exposing it to new router plans', () => {
+      expect(LEGACY_ADMIN_TOOLS).toHaveLength(66);
+      expect(new Set(LEGACY_ADMIN_TOOLS).size).toBe(66);
+      expect(TOOL_SETS.admin.tools).toEqual(LEGACY_ADMIN_TOOLS);
+      expect(TOOL_SETS.admin.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin')).toBe(false);
+    });
+
+    it('loads only the selected admin domain and rejects it for non-admins', () => {
+      const adminTools = getToolsForSets(['admin_prospects'], true, false);
+      expect(adminTools).toContain('query_prospects');
+      expect(adminTools).not.toContain('merge_organizations');
+      expect(adminTools).not.toContain('create_event');
+
+      const memberTools = getToolsForSets(['admin_prospects'], false, false);
+      expect(memberTools).not.toContain('query_prospects');
+    });
+
+    it('keeps the legacy set callable only as a continuity shim', () => {
+      const tools = getToolsForSets(['admin'], true, false);
+      expect(tools).toContain('query_prospects');
+      expect(tools).toContain('merge_organizations');
+      expect(buildUnavailableSetsHint([], true)).not.toContain('**admin**');
+    });
+
+    it('generates the compact catalog from router-visible domains only', () => {
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organizations**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin** *(admin only)*');
     });
   });
 
