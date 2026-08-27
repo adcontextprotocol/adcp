@@ -37,6 +37,10 @@ primary_region = 'iad'
   ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY_VERSION = "governance-pilot-v1"
   # AdCP 3.2 beta is public; expose the deterministic proposal-negotiation labs.
   ENABLE_ADCP_3_2_PROPOSAL_PROFILES = "true"
+  # Deployment-time ceiling for the issue #6827 read-only authorization canary.
+  # The database runtime gate remains independently disabled until explicitly armed.
+  ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true"
+  ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = "organization_roles_read"
   # Use pre-cloned repos from Docker build, skip runtime git fetch.
   # Production image has no git binary — unsetting this degrades gracefully
   # (repos skip indexing) but does not crash.
