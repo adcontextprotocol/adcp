@@ -245,6 +245,31 @@ describe('ModelTurnLoopState', () => {
     expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
   });
 
+  it('discards tool calls returned by a post-tool text-only recovery', () => {
+    const loop = new ModelTurnLoopState(1);
+    const original = response('stop');
+    const repeatedMutation = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'repeat-1',
+      name: 'mutate_again',
+      input: {},
+    }]);
+
+    loop.emptyResponseRecovery.schedule('post_tool', original);
+    const activeTurn = loop.beginNext();
+    const accepted = activeTurn.acceptResponse(repeatedMutation);
+
+    expect(accepted.action).toBe('complete');
+    expect(accepted.toolCalls).toEqual([]);
+    expect(accepted.discardedRecoveryToolCalls).toBe(true);
+    expect(accepted.response).toMatchObject({
+      finishReason: 'stop',
+      providerFinishReason: 'end_turn',
+      content: [],
+    });
+    expect(loop.usage).toEqual({ inputTokens: 1, outputTokens: 1 });
+  });
+
   it('enforces one response per started iteration', () => {
     const loop = new ModelTurnLoopState(2);
     const terminal = response('stop', []);

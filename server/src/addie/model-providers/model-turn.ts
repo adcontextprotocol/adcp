@@ -23,6 +23,11 @@ export interface InspectedModelTurn {
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
 }
 
+export interface AcceptedModelTurn extends InspectedModelTurn {
+  response: ModelResponse;
+  discardedRecoveryToolCalls: boolean;
+}
+
 /** Append one canonical assistant continuation and any custom-tool results. */
 export function appendModelTurnContinuation(
   messages: ModelMessage[],
@@ -156,16 +161,32 @@ export class ModelTurnLoopState {
   acceptResponse(
     response: ModelResponse,
     options: { countUsage?: boolean } = {},
-  ): InspectedModelTurn {
+  ): AcceptedModelTurn {
     if (!this.awaitingResponse) {
       throw new Error('Model loop response has no active iteration');
     }
-    const turn = inspectModelTurn(response);
+    // Post-tool recovery is permanently text-only. A malformed provider
+    // response must not be able to request the same mutation a second time.
+    const discardedRecoveryToolCalls = this.emptyResponseRecovery.postToolAttempted
+      && response.finishReason === 'tool_calls';
+    const acceptedResponse: ModelResponse = discardedRecoveryToolCalls
+      ? {
+          ...response,
+          finishReason: 'stop',
+          providerFinishReason: 'end_turn',
+          content: [],
+        }
+      : response;
+    const turn = inspectModelTurn(acceptedResponse);
     if (options.countUsage !== false) {
-      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, response.usage);
+      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
     }
     this.awaitingResponse = false;
-    return turn;
+    return Object.freeze({
+      ...turn,
+      response: acceptedResponse,
+      discardedRecoveryToolCalls,
+    });
   }
 }
 
@@ -204,7 +225,7 @@ export class ActiveModelTurn {
   acceptResponse(
     response: ModelResponse,
     options: { countUsage?: boolean } = {},
-  ): InspectedModelTurn {
+  ): AcceptedModelTurn {
     if (this.invocationInFlight) {
       throw new Error('Cannot accept a response while provider invocation is in flight');
     }

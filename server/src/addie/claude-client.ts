@@ -1599,19 +1599,11 @@ export class AddieClaudeClient {
         outputTokens: response.usage.outputTokens,
       }, 'Addie: Claude response received');
 
-      // Post-tool empty-response recovery is intentionally text-only. Defend
-      // against a malformed provider response that nevertheless contains a
-      // tool request: discard it instead of risking a duplicate mutation.
-      if (modelLoop.emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
-        logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
-        response = {
-          ...response,
-          finishReason: 'stop',
-          providerFinishReason: 'end_turn',
-          content: [],
-        };
-      }
       const turn = activeTurn.acceptResponse(response, { countUsage: !reusedEmptyResponse });
+      response = turn.response;
+      if (turn.discardedRecoveryToolCalls) {
+        logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
+      }
 
       // Provider-managed web results may accompany either a terminal answer or
       // another tool-call turn. Derive their receipts through the selected
@@ -2395,16 +2387,10 @@ export class AddieClaudeClient {
           outputTokens: currentResponse.usage.outputTokens,
         }, 'Addie Stream: Claude response received');
 
-        // The post-tool recovery iteration has no tools. If the provider still returns
-        // a tool_use block, ignore it rather than executing a mutation twice.
-        if (modelLoop.emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
+        const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
+        currentResponse = turn.response;
+        if (turn.discardedRecoveryToolCalls) {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
-          currentResponse = {
-            ...currentResponse,
-            finishReason: 'stop',
-            providerFinishReason: 'end_turn',
-            content: [],
-          };
         }
 
         // Build the final usage block + charge the user's cost
@@ -2421,7 +2407,6 @@ export class AddieClaudeClient {
           }
         };
 
-        const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         const stopAction = turn.action;
         const iterationText = turn.textBlocks
           .map((block) => block.text)
