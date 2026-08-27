@@ -1,6 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
-import { ModelTurnLoopState } from './model-turn.js';
+import { appendModelTurnContinuation, ModelTurnLoopState } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -160,7 +160,7 @@ export async function executeReadOnlyToolLoop(
     }
     if (calls.length === 0) {
       if (turn.action === 'continue') {
-        messages = [...messages, { role: 'assistant', content: response.content }];
+        appendModelTurnContinuation(messages, response);
         continue;
       }
       return {
@@ -241,11 +241,7 @@ export async function executeReadOnlyToolLoop(
         ...(isError && { isError: true }),
       });
     }
-    messages = [
-      ...messages,
-      { role: 'assistant', content: response.content },
-      { role: 'user', content: results },
-    ];
+    appendModelTurnContinuation(messages, response, results);
   }
 
   throw new ReadOnlyToolLoopBoundaryError('iteration_limit_exceeded');

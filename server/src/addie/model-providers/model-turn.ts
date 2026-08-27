@@ -1,9 +1,11 @@
 import type {
+  ModelMessage,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
   ModelResponse,
   ModelTextContent,
   ModelToolCallContent,
+  ModelToolResultContent,
   ModelUsage,
 } from './model-provider.js';
 
@@ -15,6 +17,16 @@ export interface InspectedModelTurn {
   toolCalls: ReadonlyArray<ModelToolCallContent>;
   providerToolCalls: ReadonlyArray<ModelProviderToolCallContent>;
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
+}
+
+/** Append one canonical assistant continuation and any custom-tool results. */
+export function appendModelTurnContinuation(
+  messages: ModelMessage[],
+  response: ModelResponse,
+  toolResults?: ModelToolResultContent[],
+): void {
+  messages.push({ role: 'assistant', content: response.content });
+  if (toolResults) messages.push({ role: 'user', content: toolResults });
 }
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';

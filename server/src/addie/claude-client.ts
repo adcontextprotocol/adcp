@@ -52,6 +52,7 @@ import {
 } from './model-providers/anthropic-provider.js';
 import { collectModelResponse } from './model-providers/events.js';
 import {
+  appendModelTurnContinuation,
   ModelTurnLoopState,
 } from './model-providers/model-turn.js';
 import {
@@ -1674,7 +1675,7 @@ export class AddieClaudeClient {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
-        modelMessages.push({ role: 'assistant', content: response.content });
+        appendModelTurnContinuation(modelMessages, response);
         logger.info(
           { stopReason: response.providerFinishReason, iteration },
           'Addie: Continuing resumable Anthropic turn',
@@ -1899,7 +1900,7 @@ export class AddieClaudeClient {
         // The web search results are already in the response, we just need to continue
         if (toolUseBlocks.length === 0 && serverToolBlocks.length > 0) {
           // Add the response content (including provider continuation state).
-          modelMessages.push({ role: 'assistant', content: response.content });
+          appendModelTurnContinuation(modelMessages, response);
           continue;
         }
 
@@ -1960,8 +1961,7 @@ export class AddieClaudeClient {
           toolExecutions.push(executed.execution);
         }
 
-        modelMessages.push({ role: 'assistant', content: response.content });
-        modelMessages.push({ role: 'user', content: toolResults });
+        appendModelTurnContinuation(modelMessages, response, toolResults);
       }
     }
 
@@ -2425,7 +2425,7 @@ export class AddieClaudeClient {
           .join('\n\n');
         if (stopAction === 'continue') {
           // Resume from the provider response without exposing interim text.
-          modelMessages.push({ role: 'assistant', content: currentResponse.content });
+          appendModelTurnContinuation(modelMessages, currentResponse);
           logger.info(
             { stopReason: currentResponse.providerFinishReason, iteration },
             'Addie Stream: Continuing resumable Anthropic turn',
@@ -2653,8 +2653,7 @@ export class AddieClaudeClient {
           }
 
           // Continue the conversation with tool results
-          modelMessages.push({ role: 'assistant', content: currentResponse.content });
-          modelMessages.push({ role: 'user', content: toolResults });
+          appendModelTurnContinuation(modelMessages, currentResponse, toolResults);
 
           // Add spacing between tool use and subsequent text to prevent run-on text
           if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
