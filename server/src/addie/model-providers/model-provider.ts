@@ -105,6 +105,8 @@ export interface ModelToolCallContent {
 export interface ModelToolResultContent {
   type: 'tool_result';
   toolCallId: string;
+  /** Required by providers that correlate results by both call ID and name. */
+  toolName?: string;
   content: string | Array<ModelTextContent | ModelImageContent | ModelDocumentContent>;
   isError?: boolean;
 }

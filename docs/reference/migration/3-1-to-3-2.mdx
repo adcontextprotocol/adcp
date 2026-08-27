@@ -9,7 +9,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 
 <Warning>
 **3.2 is in beta.** Beta.6 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.11` embeds beta.6; Python `adcp==8.0.0b7` remains on
+`@adcp/sdk@14.0.0-beta.12` embeds beta.6; Python `adcp==8.0.0b7` remains on
 beta.5, so use the signed beta.6 artifact directly unless your SDK explicitly names beta.6.
 Python higher-level helpers remain partial, and Go exact support remains
 pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
@@ -35,7 +35,7 @@ For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/refere
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test beta.6 from its signed assets or pair `@adcp/sdk@14.0.0-beta.11` with exact beta.6; pair Python `adcp==8.0.0b7` with exact beta.5; require an explicit beta.6 support statement before using any other SDK with the new checkpoint. |
+| 8 | Compliance operators | Test beta.6 from its signed assets or pair `@adcp/sdk@14.0.0-beta.12` with exact beta.6; pair Python `adcp==8.0.0b7` with exact beta.5; require an explicit beta.6 support statement before using any other SDK with the new checkpoint. |
 
 ## Required to claim 3.2 behavior
 

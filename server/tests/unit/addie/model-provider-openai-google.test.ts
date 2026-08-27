@@ -15,6 +15,11 @@ import {
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import type { ModelRequest } from '../../../src/addie/model-providers/model-provider.js';
+import {
+  executeReadOnlyToolLoop,
+  ReadOnlyToolLoopBoundaryError,
+} from '../../../src/addie/model-providers/read-only-tool-loop.js';
+import { createOfficialDocsReadOnlyToolBoundary } from '../../../src/addie/jobs/official-docs-read-only-tools.js';
 
 const { googleGenAIConstructor } = vi.hoisted(() => ({
   googleGenAIConstructor: vi.fn(function FakeGoogleGenAI() {
@@ -37,6 +42,8 @@ function request(model: string, overrides: Partial<ModelRequest> = {}): ModelReq
     ...overrides,
   };
 }
+
+const allowPureLocalTool = () => ({ allowed: true as const });
 
 function openAIResponse(overrides: Record<string, unknown> = {}): Response {
   return {
@@ -241,11 +248,18 @@ describe('GoogleGenerateContentProvider', () => {
     expect(() => provider.prepare(request(GOOGLE_ROUTER_MODEL, { reasoning: { effort: 'none' } }))).toThrow();
     expect(() => normalizeGoogleResponse(googleResponse({ candidates: [] }))).toThrow('exactly one');
     expect(() => normalizeGoogleResponse(googleResponse({ usageMetadata: { promptTokenCount: -1, candidatesTokenCount: 1 } }))).toThrow('usage');
-    expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { name: 'x' } }] } }] }))).toThrow('Unexpected');
+    expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { name: 'x' } }] } }] }))).toThrow('Malformed Google function call');
+    expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: 'hidden', functionCall: { id: 'x', name: 'search_docs', args: {} } }] } }] }))).toThrow('exactly one payload');
+    expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'STOP', content: { parts: [{ functionCall: { id: 'x', name: 'search_docs', args: [] } }] } }] }))).toThrow('Malformed Google function call');
+    expect(() => normalizeGoogleResponse(googleResponse({ candidates: [{ finishReason: 'MAX_TOKENS', content: { role: 'model', parts: [{ functionCall: { id: 'x', name: 'search_docs', args: {} }, thoughtSignature: 'sig' }] } }] }))).toThrow('incompatible finish reason');
     expect(normalizeGoogleResponse(googleResponse({
       candidates: [],
       promptFeedback: { blockReason: 'SAFETY' },
       usageMetadata: { promptTokenCount: 4, totalTokenCount: 4 },
+    })).finishReason).toBe('refusal');
+    expect(normalizeGoogleResponse(googleResponse({
+      candidates: [{ finishReason: 'SAFETY' }],
+      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 0, totalTokenCount: 4 },
     })).finishReason).toBe('refusal');
     expect(() => normalizeGoogleResponse(googleResponse({
       usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1, thoughtsTokenCount: -1 },
@@ -265,5 +279,274 @@ describe('GoogleGenerateContentProvider', () => {
     expect(generateContent.mock.calls[0][0]).toBe(seenRequest);
     expect(generateContent.mock.calls[0][0].config.abortSignal).toBeUndefined();
     expect(generateContent.mock.calls[0][1]).toEqual({ signal: controller.signal });
+  });
+
+  it('completes a provider-neutral read-only tool loop with exact Gemini continuation state', async () => {
+    const generateContent = vi.fn()
+      .mockResolvedValueOnce(googleResponse({
+        responseId: 'google_tool_1',
+        candidates: [{
+          finishReason: 'STOP',
+          content: {
+            role: 'model',
+            parts: [{
+              functionCall: {
+                id: 'call_1',
+                name: 'search_docs',
+                args: { query: 'protocol versions' },
+              },
+              thoughtSignature: 'opaque-signature',
+            }],
+          },
+        }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 4, thoughtsTokenCount: 2 },
+      }))
+      .mockResolvedValueOnce(googleResponse({
+        responseId: 'google_tool_2',
+        candidates: [{
+          finishReason: 'STOP',
+          content: { role: 'model', parts: [{ text: 'AdCP has versioned documentation.' }] },
+        }],
+        usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5 },
+      }));
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+    const handler = vi.fn().mockResolvedValue('Found the versioning guide.');
+    const handlerFactory = vi.fn().mockReturnValue(new Map([
+      ['search_docs', handler],
+      ['get_doc', vi.fn().mockResolvedValue('Full document.')],
+    ]));
+    const beforeDispatch = vi.fn();
+    const boundary = createOfficialDocsReadOnlyToolBoundary(handlerFactory);
+
+    const result = await executeReadOnlyToolLoop(
+      provider,
+      request(GOOGLE_ROUTER_MODEL),
+      boundary.tools,
+      { beforeDispatch, authorizeToolExecution: boundary.authorizeToolExecution },
+    );
+
+    expect(handlerFactory).toHaveBeenCalledWith({ disableSearchTelemetry: true });
+    expect(handler).toHaveBeenCalledWith({ query: 'protocol versions' });
+    expect(generateContent).toHaveBeenCalledTimes(2);
+    expect(beforeDispatch).toHaveBeenCalledTimes(2);
+    expect(generateContent.mock.calls[0][0].config).toMatchObject({
+      tools: [{ functionDeclarations: [{ name: 'search_docs' }, { name: 'get_doc' }] }],
+      toolConfig: {
+        functionCallingConfig: {
+          mode: 'VALIDATED',
+          allowedFunctionNames: ['search_docs', 'get_doc'],
+        },
+      },
+    });
+    expect(generateContent.mock.calls[1][0].contents).toEqual([
+      { role: 'user', parts: [{ text: 'hello' }] },
+      {
+        role: 'model',
+        parts: [{
+          functionCall: {
+            id: 'call_1',
+            name: 'search_docs',
+            args: { query: 'protocol versions' },
+          },
+          thoughtSignature: 'opaque-signature',
+        }],
+      },
+      {
+        role: 'user',
+        parts: [{
+          functionResponse: {
+            id: 'call_1',
+            name: 'search_docs',
+            response: { output: 'Found the versioning guide.' },
+          },
+        }],
+      },
+    ]);
+    expect(result.text).toBe('AdCP has versioned documentation.');
+    expect(result.iterations).toBe(2);
+    expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 11 });
+    expect(result.toolExecutions).toEqual([{
+      sequence: 1,
+      toolName: 'search_docs',
+      disposition: 'succeeded',
+    }]);
+  });
+
+  it('blocks unsafe and unknown tools before their handlers execute', async () => {
+    const unsafeDispatch = vi.fn();
+    const unsafeProvider = new GoogleGenerateContentProvider('unused', {
+      models: { generateContent: unsafeDispatch },
+    });
+    await expect(executeReadOnlyToolLoop(unsafeProvider, request(GOOGLE_ROUTER_MODEL), [{
+      definition: { name: 'mutate', description: 'mutate', inputSchema: { type: 'object' } },
+      replaySafety: 'mutation',
+      handler: vi.fn(),
+    }], { authorizeToolExecution: allowPureLocalTool })).rejects.toMatchObject({ reason: 'unsafe_tool_classification' });
+    expect(unsafeDispatch).not.toHaveBeenCalled();
+
+    const generateContent = vi.fn().mockResolvedValue(googleResponse({
+      candidates: [{
+        finishReason: 'STOP',
+        content: { role: 'model', parts: [{ functionCall: { id: 'x', name: 'unknown', args: {} }, thoughtSignature: 'sig' }] },
+      }],
+    }));
+    const handler = vi.fn();
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+    await expect(executeReadOnlyToolLoop(provider, request(GOOGLE_ROUTER_MODEL), [{
+      definition: { name: 'search_docs', description: 'search', inputSchema: { type: 'object' } },
+      replaySafety: 'pure_local',
+      handler,
+    }], { authorizeToolExecution: allowPureLocalTool })).rejects.toEqual(new ReadOnlyToolLoopBoundaryError('unknown_tool_call'));
+    expect(handler).not.toHaveBeenCalled();
+
+    const invalidHandler = vi.fn();
+    const invalidProvider = new GoogleGenerateContentProvider('unused', {
+      models: {
+        generateContent: vi.fn().mockResolvedValue(googleResponse({
+          candidates: [{
+            finishReason: 'STOP',
+            content: { role: 'model', parts: [{ functionCall: { id: 'x', name: 'search_docs', args: {} }, thoughtSignature: 'sig' }] },
+          }],
+        })),
+      },
+    });
+    await expect(executeReadOnlyToolLoop(invalidProvider, request(GOOGLE_ROUTER_MODEL), [{
+      definition: {
+        name: 'search_docs',
+        description: 'search',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+      replaySafety: 'pure_local',
+      handler: invalidHandler,
+    }], { authorizeToolExecution: allowPureLocalTool })).rejects.toEqual(new ReadOnlyToolLoopBoundaryError('tool_input_invalid'));
+    expect(invalidHandler).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing Gemini thought signature before tool execution', async () => {
+    const generateContent = vi.fn().mockResolvedValue(googleResponse({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'x', name: 'search_docs', args: { query: 'stable' } } }],
+        },
+      }],
+    }));
+    const handler = vi.fn();
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+
+    await expect(executeReadOnlyToolLoop(provider, request(GOOGLE_ROUTER_MODEL), [{
+      definition: {
+        name: 'search_docs',
+        description: 'search',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+      replaySafety: 'pure_local',
+      handler,
+    }], { authorizeToolExecution: allowPureLocalTool })).rejects.toThrow('missing its thought signature');
+    expect(generateContent).toHaveBeenCalledOnce();
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-model Gemini candidates before tool execution', async () => {
+    for (const role of ['user', undefined]) {
+      const generateContent = vi.fn().mockResolvedValue(googleResponse({
+        candidates: [{
+          finishReason: 'STOP',
+          content: {
+            ...(role !== undefined && { role }),
+            parts: [{
+              functionCall: { id: 'x', name: 'search_docs', args: { query: 'stable' } },
+              thoughtSignature: 'sig',
+            }],
+          },
+        }],
+      }));
+      const handler = vi.fn();
+      const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+
+      await expect(executeReadOnlyToolLoop(provider, request(GOOGLE_ROUTER_MODEL), [{
+        definition: {
+          name: 'search_docs',
+          description: 'search',
+          inputSchema: {
+            type: 'object',
+            properties: { query: { type: 'string' } },
+            required: ['query'],
+          },
+        },
+        replaySafety: 'pure_local',
+        handler,
+      }], { authorizeToolExecution: allowPureLocalTool })).rejects.toThrow('Malformed Google response role');
+      expect(generateContent).toHaveBeenCalledOnce();
+      expect(handler).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects forged or mismatched Gemini continuation state', () => {
+    const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
+    const definition = {
+      name: 'search_docs',
+      description: 'Search docs.',
+      inputSchema: { type: 'object' },
+    };
+    expect(() => provider.prepare(request(GOOGLE_ROUTER_MODEL, {
+      tools: [definition],
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+        {
+          role: 'assistant',
+          content: [{ type: 'tool_call', id: 'call_1', name: 'search_docs', input: {} }],
+        },
+      ],
+    }))).toThrow('was not issued by this adapter');
+
+    const issuedCall = normalizeGoogleResponse(googleResponse({
+      candidates: [{
+        finishReason: 'STOP',
+        content: {
+          role: 'model',
+          parts: [{ functionCall: { id: 'call_1', name: 'search_docs', args: {} }, thoughtSignature: 'sig' }],
+        },
+      }],
+    })).content[0];
+    expect(() => provider.prepare(request(GOOGLE_ROUTER_MODEL, {
+      tools: [definition],
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'hello' }] },
+        { role: 'assistant', content: [issuedCall] },
+        {
+          role: 'user',
+          content: [{
+            type: 'tool_result',
+            toolCallId: 'call_1',
+            toolName: 'get_doc',
+            content: 'wrong result',
+          }],
+        },
+      ],
+    }))).toThrow('does not match its call');
+  });
+
+  it('does not dispatch when the invocation policy rejects the request', async () => {
+    const generateContent = vi.fn();
+    const provider = new GoogleGenerateContentProvider('unused', { models: { generateContent } });
+    await expect(executeReadOnlyToolLoop(provider, request(GOOGLE_ROUTER_MODEL), [{
+      definition: { name: 'search_docs', description: 'search', inputSchema: { type: 'object' } },
+      replaySafety: 'pure_local',
+      handler: vi.fn(),
+    }], {
+      authorizeToolExecution: allowPureLocalTool,
+      beforeDispatch: () => { throw new Error('policy_rejected'); },
+    })).rejects.toThrow('policy_rejected');
+    expect(generateContent).not.toHaveBeenCalled();
   });
 });

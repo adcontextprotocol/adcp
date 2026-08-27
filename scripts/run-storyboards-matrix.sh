@@ -244,6 +244,8 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     # Capability-resolved 3.0.26 replay. N/A storyboards are selection rows,
     # not synthetic clean results, so these floors grade only executed rows.
     "signals:24:98"
+    # SDK 14 beta.12 marks unsigned signing-required functional steps N/A for
+    # immutable bundles that predate the functional_dispatch contract.
     "sales:39:219"
     "governance:27:147"
     "creative:22:109"
