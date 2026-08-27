@@ -125,6 +125,7 @@ import {
   formatMemberContextForPrompt,
   type MemberContext,
 } from "../addie/member-context.js";
+import { buildAuthoritativeTemporalContext } from "../addie/temporal-context.js";
 import {
   getThreadService,
   type Thread,
@@ -677,7 +678,7 @@ export async function prepareRequestWithMemberTools(
   siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
 
   // Build per-request context for system prompt (member info, SI agents)
-  const contextSections: string[] = [];
+  const contextSections: string[] = [buildAuthoritativeTemporalContext(memberContext)];
 
   if (memberContext) {
     const memberContextText = formatMemberContextForPrompt(memberContext, 'web');

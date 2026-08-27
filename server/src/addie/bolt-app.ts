@@ -101,6 +101,7 @@ import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-tele
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import { buildAuthoritativeTemporalContext } from './temporal-context.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -1068,6 +1069,7 @@ async function buildRequestContext(
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
+    const temporalContextText = buildAuthoritativeTemporalContext(memberContext);
 
     // Build channel context if available
     let channelContextText = '';
@@ -1133,7 +1135,7 @@ async function buildRequestContext(
       }
     }
 
-    const sections = [memberContextText, channelContextText, certContextText].filter(Boolean);
+    const sections = [temporalContextText, memberContextText, channelContextText, certContextText].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -1141,7 +1143,11 @@ async function buildRequestContext(
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, hasActiveCertification: false };
+    return {
+      requestContext: buildAuthoritativeTemporalContext(),
+      memberContext: null,
+      hasActiveCertification: false,
+    };
   }
 }
 

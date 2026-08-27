@@ -125,6 +125,7 @@ import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
 import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import { buildAuthoritativeTemporalContext } from './temporal-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import { loadRelationshipContext, formatContextForPrompt } from './services/relationship-context.js';
@@ -306,6 +307,7 @@ async function buildRequestContext(
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
+    const temporalContextText = buildAuthoritativeTemporalContext(memberContext);
 
     // Load cross-surface relationship context
     let relationshipPrompt = '';
@@ -321,7 +323,7 @@ async function buildRequestContext(
       logger.warn({ error, userId }, 'Addie: Failed to load relationship context, continuing without it');
     }
 
-    const sections = [memberContextText, relationshipPrompt].filter(Boolean);
+    const sections = [temporalContextText, memberContextText, relationshipPrompt].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -329,7 +331,11 @@ async function buildRequestContext(
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, personId: null };
+    return {
+      requestContext: buildAuthoritativeTemporalContext(),
+      memberContext: null,
+      personId: null,
+    };
   }
 }
 

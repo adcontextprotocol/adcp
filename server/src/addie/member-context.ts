@@ -16,6 +16,7 @@ import { OrgKnowledgeDatabase } from '../db/org-knowledge-db.js';
 import { getTelemetryForUser } from '../db/addie-prompt-telemetry-db.js';
 import { getLatestAttempt } from '../db/certification-db.js';
 import { AgentContextDatabase } from '../db/agent-context-db.js';
+import { UsersDatabase } from '../db/users-db.js';
 import { getThreadService } from './thread-service.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { isDevModeEnabled, DEV_USERS } from '../middleware/auth.js';
@@ -55,6 +56,7 @@ const addieDb = new AddieDatabase();
 const joinRequestDb = new JoinRequestDatabase();
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const agentContextDb = new AgentContextDatabase();
+const usersDb = new UsersDatabase();
 
 type ActiveWorkosMembership = {
   userId: string;
@@ -415,6 +417,12 @@ export interface MemberContext {
   /** Whether the user's organization is an AgenticAdvertising.org member (has active subscription or inherited) */
   is_member: boolean;
 
+  /** User-selected IANA timezone, when available. */
+  timezone?: string;
+
+  /** Current Slack-provided UTC offset, used only when no IANA timezone is available. */
+  timezone_offset_seconds?: number;
+
   /** Whether membership is inherited through the brand registry hierarchy */
   is_inherited_member?: boolean;
 
@@ -666,6 +674,7 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
 
     // Step 2: Check if user is mapped to WorkOS (need full record for workos_user_id)
     const slackMapping = await slackDb.getBySlackUserId(slackUserId);
+    context.timezone_offset_seconds = slackMapping?.slack_tz_offset ?? undefined;
     if (!slackMapping || !slackMapping.workos_user_id) {
       logger.debug({ slackUserId }, 'Addie: Slack user not mapped to WorkOS');
       return context;
@@ -673,6 +682,11 @@ export async function getMemberContext(slackUserId: string, selectedOrganization
 
     context.is_mapped = true;
     context.slack_linked = true;
+    try {
+      context.timezone = await usersDb.getUserTimezone(slackMapping.workos_user_id) ?? undefined;
+    } catch (error) {
+      logger.warn({ error, slackUserId }, 'Addie: Failed to get user timezone');
+    }
 
     // Step 3: Get WorkOS user info
     let workosUser;
@@ -1271,6 +1285,12 @@ export async function getWebMemberContext(
     slack_linked: false,
   };
 
+  try {
+    context.timezone = await usersDb.getUserTimezone(workosUserId) ?? undefined;
+  } catch (error) {
+    logger.warn({ error, workosUserId }, 'Addie Web: Failed to get user timezone');
+  }
+
   // Dev mode: build context from dev user config, then fall through to local DB lookups
   if (isDevModeEnabled() && workosUserId.startsWith('user_dev_')) {
     const devUser = Object.values(DEV_USERS).find(u => u.id === workosUserId);
@@ -1321,6 +1341,7 @@ export async function getWebMemberContext(
       const slackMapping = await slackDb.getByWorkosUserId(workosUserId);
       if (slackMapping) {
         context.slack_linked = true;
+        context.timezone_offset_seconds = slackMapping.slack_tz_offset ?? undefined;
         context.slack_user = {
           slack_user_id: slackMapping.slack_user_id,
           display_name: slackMapping.slack_display_name || slackMapping.slack_real_name,
