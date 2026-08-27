@@ -250,6 +250,8 @@ export interface PreparedModelInvocation {
 
 export interface ModelRespondOptions {
   signal?: AbortSignal;
+  /** Request the provider's streaming transport while retaining normalized events. */
+  stream?: boolean;
   /** Runs immediately before the one SDK dispatch made by this iterator. */
   beforeDispatch?: (prepared: PreparedModelInvocation) => void | Promise<void>;
 }

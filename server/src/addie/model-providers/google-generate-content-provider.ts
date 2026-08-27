@@ -392,6 +392,7 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     request: ModelRequest,
     options: ModelRespondOptions = {},
   ): AsyncIterable<NormalizedModelEvent> {
+    validateModelCapabilities(this.id, this.capabilities, request, { streaming: options.stream });
     const prepared = this.prepare(request);
     if (options.signal?.aborted) throw options.signal.reason;
     await options.beforeDispatch?.(prepared);

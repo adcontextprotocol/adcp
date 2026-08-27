@@ -14,7 +14,10 @@ import {
   normalizeGoogleResponse,
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
-import type { ModelRequest } from '../../../src/addie/model-providers/model-provider.js';
+import {
+  UnsupportedModelCapabilityError,
+  type ModelRequest,
+} from '../../../src/addie/model-providers/model-provider.js';
 import {
   executeReadOnlyToolLoop,
   ReadOnlyToolLoopBoundaryError,
@@ -132,6 +135,13 @@ describe('OpenAIResponsesProvider', () => {
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 });
   });
 
+  it('fails closed when streaming transport is requested', async () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    await expect(collectModelResponse(
+      provider.respond(request(OPENAI_ROUTER_MODEL), { stream: true }),
+    )).rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
+  });
+
   it('omits unavailable optional cache usage fields', () => {
     const withoutEither = normalizeOpenAIResponse(openAIResponse({
       usage: {
@@ -198,6 +208,16 @@ describe('GoogleGenerateContentProvider', () => {
       apiKey: 'test-key',
       httpOptions: { retryOptions: { attempts: 1 } },
     });
+  });
+
+  it('fails closed when streaming transport is requested', async () => {
+    const provider = new GoogleGenerateContentProvider(
+      'unused',
+      {} as GoogleGenerateContentTransport,
+    );
+    await expect(collectModelResponse(
+      provider.respond(request(GOOGLE_ROUTER_MODEL), { stream: true }),
+    )).rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
   });
 
   it('builds the exact frozen generateContent request', () => {

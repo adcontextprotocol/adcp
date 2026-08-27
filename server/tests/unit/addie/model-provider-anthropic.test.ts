@@ -466,6 +466,77 @@ describe('AnthropicModelProvider response normalization', () => {
     expect(create.mock.calls[0]?.[1]).toEqual({ maxRetries: 2 });
   });
 
+  it('uses the streaming transport while preserving normalized chunk boundaries', async () => {
+    const create = vi.fn();
+    const stream = vi.fn(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'do' },
+        };
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'ne' },
+        };
+      },
+      finalMessage: vi.fn(async () => response()),
+    }));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      { beta: { messages: { create, stream } } },
+      { transportMaxRetries: 2 },
+    );
+
+    const events: NormalizedModelEvent[] = [];
+    for await (const event of provider.respond(request(), { stream: true })) events.push(event);
+    const normalized = await collectModelResponse((async function* () { yield* events; })());
+
+    expect(normalized.content).toEqual([{ type: 'text', text: 'done' }]);
+    expect(events.filter((event) => event.type === 'text_delta')).toEqual([
+      { type: 'text_delta', index: 0, text: 'do' },
+      { type: 'text_delta', index: 0, text: 'ne' },
+    ]);
+    expect(create).not.toHaveBeenCalled();
+    expect(stream).toHaveBeenCalledWith(
+      provider.prepare(request()).providerRequest,
+      { maxRetries: 2 },
+    );
+  });
+
+  it('rejects streamed text that disagrees with the terminal response', async () => {
+    const provider = new AnthropicModelProvider('unused', {
+      beta: {
+        messages: {
+          create: vi.fn(),
+          stream: vi.fn(() => ({
+            async *[Symbol.asyncIterator]() {
+              yield {
+                type: 'content_block_delta',
+                index: 0,
+                delta: { type: 'text_delta', text: 'different' },
+              };
+            },
+            finalMessage: vi.fn(async () => response()),
+          })),
+        },
+      },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toThrow('Anthropic stream text does not match terminal response');
+  });
+
+  it('fails closed when a transport cannot provide streaming', async () => {
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create: vi.fn() } },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
+  });
+
   it('freezes the exact nested envelope before provenance and dispatch', async () => {
     let dispatched: Record<string, unknown> | undefined;
     const provider = new AnthropicModelProvider('unused', {
