@@ -20,7 +20,7 @@
           "type": "array",
           "description": "Complete required placement set. A reference normally identifies a mode targetable placement. It MAY identify a mode included placement only when the set exactly equals the product's complete fixed included set, which is an inherent match rather than independent selection. Legacy publisher refs use {publisher_domain, placement_id}; authority-discriminated 3.2 identities use placement-identity.json so seller-inline inventory is selected by {seller_agent, placement_id}.",
           "items": {
-            "oneOf": [
+            "anyOf": [
               {
                 "allOf": [
                   { "$ref": "/schemas/core/placement-ref.json" },
