@@ -17,6 +17,57 @@ export interface InspectedModelTurn {
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
 }
 
+export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
+
+/**
+ * State shared by delivery modes while resampling a side-effect-free empty
+ * terminal. The original response remains authoritative if the optional
+ * recovery call fails. Post-tool recovery is permanently text-only so a
+ * malformed retry cannot repeat a mutation.
+ */
+export class EmptyResponseRecoveryState {
+  private attemptedInitial = false;
+  private attemptedPostTool = false;
+  private fallbackResponse: ModelResponse | null = null;
+
+  get pending(): boolean {
+    return this.fallbackResponse !== null;
+  }
+
+  get toolsAllowed(): boolean {
+    return !this.attemptedPostTool;
+  }
+
+  get postToolAttempted(): boolean {
+    return this.attemptedPostTool;
+  }
+
+  hasAttempted(kind: EmptyResponseRecoveryKind): boolean {
+    return kind === 'initial' ? this.attemptedInitial : this.attemptedPostTool;
+  }
+
+  schedule(kind: EmptyResponseRecoveryKind, response: ModelResponse): boolean {
+    if (this.pending || this.hasAttempted(kind)) return false;
+    if (kind === 'initial') {
+      this.attemptedInitial = true;
+    } else {
+      this.attemptedPostTool = true;
+    }
+    this.fallbackResponse = response;
+    return true;
+  }
+
+  resolve(): void {
+    this.fallbackResponse = null;
+  }
+
+  takeFallback(): ModelResponse | null {
+    const response = this.fallbackResponse;
+    this.fallbackResponse = null;
+    return response;
+  }
+}
+
 /** Accumulate normalized usage without inventing absent provider cache metrics. */
 export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
   return {

@@ -6,6 +6,7 @@ import type {
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
   addModelUsage,
+  EmptyResponseRecoveryState,
   inspectModelTurn,
 } from '../../../src/addie/model-providers/model-turn.js';
 
@@ -86,5 +87,44 @@ describe('addModelUsage', () => {
       { inputTokens: 1, outputTokens: 2 },
       { inputTokens: 3, outputTokens: 4 },
     )).toEqual({ inputTokens: 4, outputTokens: 6 });
+  });
+});
+
+describe('EmptyResponseRecoveryState', () => {
+  it('retains the authoritative response until recovery succeeds', () => {
+    const state = new EmptyResponseRecoveryState();
+    const original = response('stop', []);
+
+    expect(state.schedule('initial', original)).toBe(true);
+    expect(state.pending).toBe(true);
+    expect(state.toolsAllowed).toBe(true);
+    expect(state.schedule('post_tool', original)).toBe(false);
+
+    state.resolve();
+    expect(state.pending).toBe(false);
+    expect(state.hasAttempted('initial')).toBe(true);
+    expect(state.schedule('initial', original)).toBe(false);
+  });
+
+  it('returns the original response when recovery fails', () => {
+    const state = new EmptyResponseRecoveryState();
+    const original = response('stop', []);
+
+    state.schedule('initial', original);
+    expect(state.takeFallback()).toBe(original);
+    expect(state.pending).toBe(false);
+  });
+
+  it('makes post-tool recovery permanently text-only', () => {
+    const state = new EmptyResponseRecoveryState();
+    const original = response('stop', []);
+
+    expect(state.schedule('post_tool', original)).toBe(true);
+    expect(state.toolsAllowed).toBe(false);
+    expect(state.postToolAttempted).toBe(true);
+
+    state.resolve();
+    expect(state.toolsAllowed).toBe(false);
+    expect(state.schedule('post_tool', original)).toBe(false);
   });
 });

@@ -51,7 +51,11 @@ import {
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
 import { collectModelResponse } from './model-providers/events.js';
-import { addModelUsage, inspectModelTurn } from './model-providers/model-turn.js';
+import {
+  addModelUsage,
+  EmptyResponseRecoveryState,
+  inspectModelTurn,
+} from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
   type AddieExecutionMode,
@@ -1495,9 +1499,7 @@ export class AddieClaudeClient {
       );
     }
     let iteration = 0;
-    let retriedEmptyPostToolResponse = false;
-    let retriedEmptyInitialResponse = false;
-    let emptyResponseBeforeRecovery: ModelResponse | null = null;
+    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let hasExecutedCustomTool = false;
 
     while (iteration < maxIterations) {
@@ -1507,9 +1509,9 @@ export class AddieClaudeClient {
       const llmStart = Date.now();
       let response: ModelResponse;
       let reusedEmptyResponse = false;
-      const invocationTools = retriedEmptyPostToolResponse ? [] : modelTools;
+      const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      const isEmptyResponseRecovery = emptyResponseBeforeRecovery !== null;
+      const isEmptyResponseRecovery = emptyResponseRecovery.pending;
       try {
         const invokeProvider = async (exactlyOnce: boolean) => {
           invocationAttempt++;
@@ -1518,7 +1520,7 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools,
             modelMessages,
-            !retriedEmptyPostToolResponse && requestWebSearchEnabled,
+            emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
           );
           const provider = exactlyOnce
@@ -1549,15 +1551,18 @@ export class AddieClaudeClient {
             'processMessage',
           );
         if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
-        if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
+        if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
       } catch (error) {
-        if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+        const fallbackResponse = isEmptyResponseRecovery
+          ? emptyResponseRecovery.takeFallback()
+          : null;
+        if (fallbackResponse) {
           // The empty end_turn was a valid terminal response. Recovery is
           // best-effort: if its one extra call fails, retain that terminal and
           // its already-accounted usage rather than turning fallback into an
           // exception. Do not log a provider error that may echo input text.
           logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
-          response = emptyResponseBeforeRecovery;
+          response = fallbackResponse;
           reusedEmptyResponse = true;
         } else {
           const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, anthropicMessages, iteration, requestWebSearchEnabled ? 1 : 0);
@@ -1603,10 +1608,10 @@ export class AddieClaudeClient {
         outputTokens: response.usage.outputTokens,
       }, 'Addie: Claude response received');
 
-      // The empty-response recovery call is intentionally text-only. Defend
+      // Post-tool empty-response recovery is intentionally text-only. Defend
       // against a malformed provider response that nevertheless contains a
       // tool request: discard it instead of risking a duplicate mutation.
-      if (retriedEmptyPostToolResponse && response.finishReason === 'tool_calls') {
+      if (emptyResponseRecovery.postToolAttempted && response.finishReason === 'tool_calls') {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
         response = {
           ...response,
@@ -1755,14 +1760,13 @@ export class AddieClaudeClient {
           operationalExecution
           && response.providerFinishReason === 'end_turn'
           && iteration === 1
-          && !retriedEmptyInitialResponse
+          && !emptyResponseRecovery.hasAttempted('initial')
           && !hasExecutedCustomTool
           && toolExecutions.length === 0
           && isSideEffectFreeEmptyModelResponse(response, rawText)
           && iteration < maxIterations
         ) {
-          retriedEmptyInitialResponse = true;
-          emptyResponseBeforeRecovery = response;
+          emptyResponseRecovery.schedule('initial', response);
           logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
           continue;
         }
@@ -1773,11 +1777,10 @@ export class AddieClaudeClient {
           response.providerFinishReason === 'end_turn'
           && isSideEffectFreeEmptyModelResponse(response, rawText)
           && hasExecutedCustomTool
-          && !retriedEmptyPostToolResponse
+          && !emptyResponseRecovery.hasAttempted('post_tool')
           && iteration < maxIterations
         ) {
-          retriedEmptyPostToolResponse = true;
-          emptyResponseBeforeRecovery = response;
+          emptyResponseRecovery.schedule('post_tool', response);
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
@@ -2214,9 +2217,7 @@ export class AddieClaudeClient {
     const modelTools = buildModelToolDefinitions(allTools);
     const maxIterations = options?.maxIterations ?? 10;
     let iteration = 0;
-    let retriedEmptyPostToolResponse = false;
-    let retriedEmptyInitialResponse = false;
-    let emptyResponseBeforeRecovery: ModelResponse | null = null;
+    const emptyResponseRecovery = new EmptyResponseRecoveryState();
     let lastProviderModel: string | undefined;
 
       while (iteration < maxIterations) {
@@ -2238,9 +2239,9 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
-          const isEmptyResponseRecovery: boolean = emptyResponseBeforeRecovery !== null;
+          const isEmptyResponseRecovery = emptyResponseRecovery.pending;
           try {
-            const invocationTools = retriedEmptyPostToolResponse ? [] : modelTools;
+            const invocationTools = emptyResponseRecovery.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
               effectiveModel,
               systemBlocks,
@@ -2275,13 +2276,16 @@ export class AddieClaudeClient {
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
-            if (isEmptyResponseRecovery) emptyResponseBeforeRecovery = null;
+            if (isEmptyResponseRecovery) emptyResponseRecovery.resolve();
           } catch (streamError) {
-            if (isEmptyResponseRecovery && emptyResponseBeforeRecovery) {
+            const fallbackResponse = isEmptyResponseRecovery
+              ? emptyResponseRecovery.takeFallback()
+              : null;
+            if (fallbackResponse) {
               // See the non-streaming path: recovery is an optional UX
               // improvement, not a reason to discard the valid first terminal.
               logger.warn({ iteration }, 'Addie Stream: Empty-response recovery failed');
-              currentResponse = emptyResponseBeforeRecovery;
+              currentResponse = fallbackResponse;
               reusedEmptyResponse = true;
               receivedDeltaCount = 0;
               break;
@@ -2408,9 +2412,9 @@ export class AddieClaudeClient {
           outputTokens: currentResponse.usage.outputTokens,
         }, 'Addie Stream: Claude response received');
 
-        // The recovery iteration has no tools. If the provider still returns
+        // The post-tool recovery iteration has no tools. If the provider still returns
         // a tool_use block, ignore it rather than executing a mutation twice.
-        if (retriedEmptyPostToolResponse && currentResponse.finishReason === 'tool_calls') {
+        if (emptyResponseRecovery.postToolAttempted && currentResponse.finishReason === 'tool_calls') {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
           currentResponse = {
             ...currentResponse,
@@ -2505,14 +2509,13 @@ export class AddieClaudeClient {
             operationalExecution
             && currentResponse.providerFinishReason === 'end_turn'
             && iteration === 1
-            && !retriedEmptyInitialResponse
+            && !emptyResponseRecovery.hasAttempted('initial')
             && toolExecutions.length === 0
             && logicalText.length === 0
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && iteration < maxIterations
           ) {
-            retriedEmptyInitialResponse = true;
-            emptyResponseBeforeRecovery = currentResponse;
+            emptyResponseRecovery.schedule('initial', currentResponse);
             logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
             continue;
           }
@@ -2523,11 +2526,10 @@ export class AddieClaudeClient {
             currentResponse.providerFinishReason === 'end_turn'
             && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
             && toolExecutions.length > 0
-            && !retriedEmptyPostToolResponse
+            && !emptyResponseRecovery.hasAttempted('post_tool')
             && iteration < maxIterations
           ) {
-            retriedEmptyPostToolResponse = true;
-            emptyResponseBeforeRecovery = currentResponse;
+            emptyResponseRecovery.schedule('post_tool', currentResponse);
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
