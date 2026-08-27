@@ -113,6 +113,33 @@ function providerToolTurn(): MockMessage {
   };
 }
 
+function mixedProviderAndCustomToolTurn(): MockMessage {
+  return {
+    model: 'claude-sonnet-4-6-20260801',
+    stop_reason: 'tool_use',
+    content: [
+      {
+        type: 'server_tool_use',
+        id: 'server_web_4431',
+        name: 'web_search',
+        input: { query: 'AdCP' },
+      },
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'server_web_4431',
+        content: [{ type: 'web_search_result', title: 'AdCP', url: 'https://adcontextprotocol.org' }],
+      },
+      {
+        type: 'tool_use',
+        id: 'custom_lookup_4431',
+        name: 'lookup',
+        input: {},
+      },
+    ],
+    usage: { input_tokens: 4, output_tokens: 5 },
+  };
+}
+
 function streamFor(finalResponse: MockMessage, chunks: string[]) {
   return {
     async *[Symbol.asyncIterator]() {
@@ -513,9 +540,16 @@ describe('Addie response truncation (#4431)', () => {
     )) events.push(event);
 
     const textEvents = events.filter((event): event is Extract<StreamEvent, { type: 'text' }> => event.type === 'text');
+    const toolEvents = events.filter((event) => event.type === 'tool_start' || event.type === 'tool_end');
     const done = events.find((event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done');
     expect(textEvents).toEqual([{ type: 'text', text: 'Search complete.' }]);
+    expect(toolEvents).toEqual([
+      { type: 'tool_start', tool_name: 'web_search', parameters: { query: 'AdCP' } },
+      expect.objectContaining({ type: 'tool_end', tool_name: 'web_search', is_error: false }),
+    ]);
     expect(done?.response.text).toBe('Search complete.');
+    expect(done?.response.tools_used).toEqual(['web_search']);
+    expect(done?.response.tool_executions).toHaveLength(1);
     expect(mocks.streamMessage).toHaveBeenCalledTimes(2);
     expect(mocks.streamMessage.mock.calls[1][0].messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -523,6 +557,36 @@ describe('Addie response truncation (#4431)', () => {
         content: expect.arrayContaining([expect.objectContaining({ type: 'server_tool_use' })]),
       }),
     ]));
+  });
+
+  it('records a provider result exactly once on a mixed custom-tool turn', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(mixedProviderAndCustomToolTurn())
+      .mockResolvedValueOnce(message('end_turn', 'Both lookups completed.'));
+    const lookup = vi.fn().mockResolvedValue('Custom lookup completed.');
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+
+    const response = await client.processMessage(
+      'Run both lookups',
+      undefined,
+      {
+        tools: [{ name: 'lookup', description: 'Lookup', input_schema: { type: 'object', properties: {} } }],
+        handlers: new Map([['lookup', lookup]]),
+      },
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(response.tools_used).toEqual(['web_search', 'lookup']);
+    expect(response.tool_executions).toHaveLength(2);
+    expect(response.tool_executions.map((execution) => ({
+      tool: execution.tool_name,
+      sequence: execution.sequence,
+    }))).toEqual([
+      { tool: 'web_search', sequence: 1 },
+      { tool: 'lookup', sequence: 2 },
+    ]);
   });
 
   it('charges accumulated truncation usage exactly once', async () => {

@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModelToolCallContent } from '../../../src/addie/model-providers/model-provider.js';
+import type {
+  ModelProvider,
+  ModelProviderToolCallContent,
+  ModelProviderToolResultContent,
+  ModelToolCallContent,
+} from '../../../src/addie/model-providers/model-provider.js';
 import {
   BLOCKED_TOOL_RESULT,
   createAddieToolExecutor,
+  recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
 import type { AddieTool } from '../../../src/addie/types.js';
 
@@ -184,5 +190,110 @@ describe('createAddieToolExecutor', () => {
       { type: 'text', text: '[Image: chart.png]' },
     ]);
     expect(result.execution.result).toBe('Loaded image: chart.png');
+  });
+});
+
+describe('recordProviderToolResults', () => {
+  const providerCall: ModelProviderToolCallContent = {
+    type: 'provider_tool_call',
+    provider: 'anthropic',
+    id: 'server_1',
+    name: 'web_search',
+    inputKeys: ['query'],
+  };
+  const providerResult: ModelProviderToolResultContent = {
+    type: 'provider_tool_result',
+    provider: 'anthropic',
+    toolCallId: 'server_1',
+    name: 'web_search',
+    resultCount: 2,
+    isError: false,
+  };
+
+  it('records one adapter-derived execution per completed provider result', () => {
+    const deriveProviderToolReceipt = vi.fn(() => ({
+      toolCallId: 'server_1',
+      toolName: 'web_search',
+      parameters: { query: 'AdCP' },
+      resultSummary: 'Web search completed (2 results)',
+      resultDetails: 'Web search completed (2 results)\n\nTop results:\nAdCP: https://example.com',
+      isError: false,
+    }));
+    const provider: Pick<ModelProvider, 'id' | 'deriveProviderToolReceipt'> = {
+      id: 'anthropic',
+      deriveProviderToolReceipt,
+    };
+
+    const recorded = recordProviderToolResults(
+      provider,
+      [providerCall, { ...providerCall, id: 'unfinished' }],
+      [providerResult],
+      { executionMode: 'production', startingSequence: 4 },
+    );
+
+    expect(deriveProviderToolReceipt).toHaveBeenCalledOnce();
+    expect(deriveProviderToolReceipt).toHaveBeenCalledWith(
+      providerCall,
+      providerResult,
+      'production',
+    );
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.execution).toMatchObject({
+      tool_name: 'web_search',
+      parameters: { query: 'AdCP' },
+      is_error: false,
+      sequence: 5,
+      normalized_result: { status: 'ok' },
+    });
+  });
+
+  it('redacts evaluation receipts and safely records unmatched results', () => {
+    const deriveProviderToolReceipt = vi.fn(() => ({
+      toolCallId: 'server_1',
+      toolName: 'web_search',
+      parameters: { query: 'private query' },
+      resultSummary: 'private summary',
+      resultDetails: 'private details',
+      isError: false,
+    }));
+
+    const redacted = recordProviderToolResults(
+      { id: 'anthropic', deriveProviderToolReceipt },
+      [providerCall],
+      [providerResult],
+      { executionMode: 'replay', startingSequence: 0 },
+    );
+    const unmatched = recordProviderToolResults(
+      { id: 'anthropic' },
+      [],
+      [{ ...providerResult, toolCallId: 'missing', resultCount: 0 }],
+      { executionMode: 'production', startingSequence: 7 },
+    );
+
+    expect(deriveProviderToolReceipt).toHaveBeenCalledWith(
+      providerCall,
+      providerResult,
+      'redacted',
+    );
+    expect(redacted[0]?.execution).toMatchObject({
+      parameters: {},
+      result: 'Tool execution completed',
+      result_summary: 'Tool execution completed',
+    });
+    expect(unmatched[0]?.execution).toMatchObject({
+      parameters: {},
+      result: 'Web search completed (0 results)',
+      sequence: 8,
+      normalized_result: { status: 'empty' },
+    });
+  });
+
+  it('rejects results from a provider other than the selected adapter', () => {
+    expect(() => recordProviderToolResults(
+      { id: 'openai' },
+      [],
+      [providerResult],
+      { executionMode: 'production', startingSequence: 0 },
+    )).toThrow('Provider tool result does not match selected provider');
   });
 });
