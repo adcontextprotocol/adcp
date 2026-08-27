@@ -1,6 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
-import { inspectModelTurn } from './model-turn.js';
+import { addModelUsage, inspectModelTurn } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -80,19 +80,6 @@ function deepFreeze<T>(value: T): T {
   return Object.freeze(value);
 }
 
-function addUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
-  return {
-    inputTokens: total.inputTokens + usage.inputTokens,
-    outputTokens: total.outputTokens + usage.outputTokens,
-    ...(total.cacheWriteTokens !== undefined || usage.cacheWriteTokens !== undefined
-      ? { cacheWriteTokens: (total.cacheWriteTokens ?? 0) + (usage.cacheWriteTokens ?? 0) }
-      : {}),
-    ...(total.cacheReadTokens !== undefined || usage.cacheReadTokens !== undefined
-      ? { cacheReadTokens: (total.cacheReadTokens ?? 0) + (usage.cacheReadTokens ?? 0) }
-      : {}),
-  };
-}
-
 /**
  * Execute a provider-neutral, retry-free tool loop for explicitly classified
  * local reads. This is intentionally narrower than Addie's production loop:
@@ -162,7 +149,7 @@ export async function executeReadOnlyToolLoop(
       signal: options.signal,
       beforeDispatch: options.beforeDispatch,
     }), provider.id);
-    totalUsage = addUsage(totalUsage, response.usage);
+    totalUsage = addModelUsage(totalUsage, response.usage);
     const turn = inspectModelTurn(response);
 
     const calls = turn.toolCalls;

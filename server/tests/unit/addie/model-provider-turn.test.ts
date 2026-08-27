@@ -4,7 +4,10 @@ import type {
   ModelMessageContent,
   ModelResponse,
 } from '../../../src/addie/model-providers/model-provider.js';
-import { inspectModelTurn } from '../../../src/addie/model-providers/model-turn.js';
+import {
+  addModelUsage,
+  inspectModelTurn,
+} from '../../../src/addie/model-providers/model-turn.js';
 
 function response(
   finishReason: ModelFinishReason,
@@ -62,5 +65,26 @@ describe('inspectModelTurn', () => {
     expect(turn.providerToolResults.map((result) => result.toolCallId)).toEqual(['provider-1']);
     expect(Object.isFrozen(turn)).toBe(true);
     expect(Object.isFrozen(turn.toolCalls)).toBe(true);
+  });
+});
+
+describe('addModelUsage', () => {
+  it('accumulates token and cache metrics', () => {
+    expect(addModelUsage(
+      { inputTokens: 10, outputTokens: 4, cacheWriteTokens: 3 },
+      { inputTokens: 6, outputTokens: 2, cacheReadTokens: 5 },
+    )).toEqual({
+      inputTokens: 16,
+      outputTokens: 6,
+      cacheWriteTokens: 3,
+      cacheReadTokens: 5,
+    });
+  });
+
+  it('does not invent cache metrics when providers omit them', () => {
+    expect(addModelUsage(
+      { inputTokens: 1, outputTokens: 2 },
+      { inputTokens: 3, outputTokens: 4 },
+    )).toEqual({ inputTokens: 4, outputTokens: 6 });
   });
 });
