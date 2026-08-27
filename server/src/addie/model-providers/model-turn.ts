@@ -68,6 +68,29 @@ export class EmptyResponseRecoveryState {
   }
 }
 
+/** One monotonic iteration wall shared by provider-neutral model loops. */
+export class ModelLoopBudget {
+  private startedIterations = 0;
+
+  constructor(readonly limit: number) {}
+
+  get iteration(): number {
+    return this.startedIterations;
+  }
+
+  get hasRemaining(): boolean {
+    return this.startedIterations < this.limit;
+  }
+
+  startNext(): number {
+    if (!this.hasRemaining) {
+      throw new Error('Model loop iteration budget exhausted');
+    }
+    this.startedIterations++;
+    return this.startedIterations;
+  }
+}
+
 /** Accumulate normalized usage without inventing absent provider cache metrics. */
 export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
   return {

@@ -8,6 +8,7 @@ import {
   addModelUsage,
   EmptyResponseRecoveryState,
   inspectModelTurn,
+  ModelLoopBudget,
 } from '../../../src/addie/model-providers/model-turn.js';
 
 function response(
@@ -126,5 +127,26 @@ describe('EmptyResponseRecoveryState', () => {
     state.resolve();
     expect(state.toolsAllowed).toBe(false);
     expect(state.schedule('post_tool', original)).toBe(false);
+  });
+});
+
+describe('ModelLoopBudget', () => {
+  it('issues monotonic iterations up to the configured wall', () => {
+    const budget = new ModelLoopBudget(2);
+
+    expect(budget.iteration).toBe(0);
+    expect(budget.hasRemaining).toBe(true);
+    expect(budget.startNext()).toBe(1);
+    expect(budget.startNext()).toBe(2);
+    expect(budget.iteration).toBe(2);
+    expect(budget.hasRemaining).toBe(false);
+    expect(() => budget.startNext()).toThrow('Model loop iteration budget exhausted');
+  });
+
+  it('starts exhausted when the configured wall is zero', () => {
+    const budget = new ModelLoopBudget(0);
+
+    expect(budget.hasRemaining).toBe(false);
+    expect(budget.iteration).toBe(0);
   });
 });

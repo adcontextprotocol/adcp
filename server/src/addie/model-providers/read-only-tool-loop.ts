@@ -1,6 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
-import { addModelUsage, inspectModelTurn } from './model-turn.js';
+import { addModelUsage, inspectModelTurn, ModelLoopBudget } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -137,8 +137,10 @@ export async function executeReadOnlyToolLoop(
   let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   const receipts: ReadOnlyToolExecutionReceipt[] = [];
   const seenCallIds = new Set<string>();
+  const loopBudget = new ModelLoopBudget(MAX_ITERATIONS);
 
-  for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+  while (loopBudget.hasRemaining) {
+    const iteration = loopBudget.startNext();
     const request: ModelRequest = {
       ...requestSnapshot,
       messages,
