@@ -105,8 +105,13 @@ jobs:
             min_passing_steps: 98
           - surface: 3.0-compat
             tenant: sales
-            min_clean_storyboards: 40
-            min_passing_steps: 224
+            # SDK 14 beta.12 makes unsigned signing-required functional steps
+            # explicitly out of scope for immutable bundles that predate the
+            # functional_dispatch signing contract. The remaining 39 rows are
+            # still required to be clean, including the released identity
+            # lifecycle assertion below.
+            min_clean_storyboards: 39
+            min_passing_steps: 219
           - surface: 3.0-compat
             tenant: governance
             min_clean_storyboards: 27
