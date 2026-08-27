@@ -20,6 +20,7 @@ import {
 const SECRET_PROMPT = 'private-production-question-sentinel';
 const SECRET_OUTPUT = 'private-provider-reason-sentinel';
 const CHANNEL_ID = 'C0123456789';
+const SECOND_CHANNEL_ID = 'C9876543210';
 
 function environment(overrides: Record<string, string | undefined> = {}) {
   return {
@@ -193,7 +194,8 @@ describe('Luna router shadow', () => {
     [{ ADDIE_ROUTER_LUNA_SHADOW_ENABLED: 'false' }, 'disabled'],
     [{ ADDIE_ROUTER_LUNA_SHADOW_PRODUCTION_DATA_APPROVED: 'false' }, 'production_data_not_approved'],
     [{ ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS: 'COTHER00000' }, 'channel_not_allowlisted'],
-    [{ ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS: `${CHANNEL_ID},COTHER00000` }, 'invalid_configuration'],
+    [{ ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS: `${CHANNEL_ID},${CHANNEL_ID}` }, 'invalid_configuration'],
+    [{ ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS: `${CHANNEL_ID},COTHER00000,COTHER00001,COTHER00002,COTHER00003` }, 'invalid_configuration'],
     [{ ADDIE_ROUTER_LUNA_SHADOW_HMAC_KEY: 'short' }, 'invalid_configuration'],
     [{ ADDIE_ROUTER_LUNA_SHADOW_DAILY_BUDGET_MICROS: String(ROUTER_SHADOW_RESERVED_COST_MICROS - 1) }, 'invalid_configuration'],
     [{ OPENAI_API_KEY: undefined }, 'invalid_configuration'],
@@ -202,6 +204,20 @@ describe('Luna router shadow', () => {
       selected: false,
       reason,
     });
+  });
+
+  it('selects any channel in the bounded allowlist', () => {
+    const env = environment({
+      ADDIE_ROUTER_LUNA_SHADOW_CHANNEL_IDS: `${CHANNEL_ID},${SECOND_CHANNEL_ID}`,
+    });
+    expect(selectRouterShadowCohort({
+      ...cohortInput,
+      channelId: SECOND_CHANNEL_ID,
+    }, env)).toEqual({ selected: true, reason: 'selected' });
+    expect(selectRouterShadowCohort({
+      ...cohortInput,
+      channelId: 'COTHER00000',
+    }, env)).toEqual({ selected: false, reason: 'channel_not_allowlisted' });
   });
 
   it('rejects private and shared channels before sampling', () => {
@@ -394,7 +410,7 @@ describe('Luna router shadow', () => {
     expect(summary).not.toHaveProperty('attempts');
     expect(runQuery).toHaveBeenCalledOnce();
     expect(runQuery.mock.calls[0][1]).toEqual(expect.arrayContaining([
-      'addie-router-luna-shadow:v1',
+      'addie-router-luna-shadow:v2',
       'openai-gpt-5.6-luna-2026-08-26',
       'gpt-5.6-luna',
     ]));
