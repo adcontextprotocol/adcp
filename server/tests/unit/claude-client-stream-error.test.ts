@@ -85,6 +85,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 import { AddieClaudeClient, type StreamEvent } from '../../src/addie/claude-client.js';
+import { ProviderHealthController } from '../../src/addie/model-providers/provider-health.js';
 import {
   __setCostTrackerStore,
   __createInMemoryCostStore,
@@ -184,6 +185,29 @@ describe('processMessageStream — mid-stream upstream failure (#4797)', () => {
     expect(streamErrorEvents).toHaveLength(1);
     const evt = streamErrorEvents[0] as Extract<StreamEvent, { type: 'stream_error' }>;
     expect(evt.deltasBeforeError).toBe(1);
+  });
+
+  it('surfaces provider recovery copy when the local circuit opens after buffered deltas', async () => {
+    const health = new ProviderHealthController({ failureThreshold: 1 });
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6', health);
+    const events: StreamEvent[] = [];
+
+    for await (const event of client.processMessageStream(
+      'tell me about Z',
+      undefined,
+      undefined,
+      { costScope: { userId: 'test-user-circuit', tier: 'member_paid' }, maxIterations: 1 },
+    )) {
+      events.push(event);
+    }
+
+    expect(events.filter(event => event.type === 'text')).toEqual([
+      expect.objectContaining({ text: expect.stringContaining('temporarily unavailable') }),
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: 'done',
+      response: { flag_reason: 'provider_unavailable:overloaded' },
+    });
   });
 
   it('safely retries after a buffered tool-input delta', async () => {

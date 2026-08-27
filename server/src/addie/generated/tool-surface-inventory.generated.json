@@ -11,13 +11,13 @@
     "note": "Directional consolidation target; current exact baselines remain the enforced no-growth ceilings."
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "a27d617b3917bd4bf3c7a9be1116d50e5f588b1a5338d05952d50ec65b7ba93d",
+    "server/src/addie/claude-client.ts": "cf0c0042ff4918b8d04539398ca4eaa12d5c48d8481e5324f6553e8030f93d5a",
     "server/src/addie/tool-wire-shape.ts": "103f31ca6d8e15b34a67e88a9ba69f08827571b293f4cb9ab9c1ad3d03b7e6cc",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "54a62e0d89023ff9c67321639da80e67559f181eccdecf80dbdc57cc42af5b05",
-    "server/src/addie/bolt-app.ts": "1a5cbfad3c49d7439beab4dec628005a2347df18e2d34185e1ef5d383e6674b0",
+    "server/src/addie/bolt-app.ts": "0253ad57463cf6f6001504dbe0fd73bf367ccde8ad48bab3321ac5a19125a2e6",
     "server/src/addie/handler.ts": "eb5eac26ae0949c26ba2ffc4c6fe28045324447b6eeb383ddf7133486097b15e",
-    "server/src/routes/addie-chat.ts": "27427c8ea9180b9bc0e262457ce516e7d66a694639b9cca272943859862c572a",
+    "server/src/routes/addie-chat.ts": "da80a42faf005441f4afbf1d003ccb7067dbd4e87b90dae96c0023511806fc08",
     "server/src/routes/tavus.ts": "640e818f0ecd4da6c72f310b7582f7bc1f2c00fd77dbe0dc521f53459e31003f",
     "server/src/addie/email-conversation-handler.ts": "c094474b506fe9d695122bf451c79930d5e5f3f0dc56d3e77c5c2b3f3b66e9e5",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",

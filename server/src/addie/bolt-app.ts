@@ -169,6 +169,7 @@ import {
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
 import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
+import { ProviderHealthController } from './model-providers/provider-health.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -778,11 +779,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   logger.info('Addie Bolt: Initializing...');
 
+  // Share provider health across routing and response generation so an
+  // account-wide failure gates both paths until a bounded recovery probe.
+  const providerHealth = new ProviderHealthController();
+
   // Initialize Claude client
-  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat);
+  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
   // Initialize router (uses Haiku for fast classification)
-  addieRouter = new AddieRouter(anthropicKey);
+  addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -2044,14 +2049,27 @@ async function handleUserMessage({
       } else if (terminalDeliveryPlan === 'normal-stop') {
         // Stop the stream with feedback buttons and any inline images.
         try {
-          // Cap-exceeded responses have no streamed text — deliver the cap
-          // message as the terminal text so the user isn't left with silence.
-          if (response?.flag_reason === 'cost_cap_exceeded') {
-            const capGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-cap-exceeded' });
-            const capValidation = validateOutput(capGuarded.text);
-            const capText = wrapUrlsForSlack(capValidation.sanitized);
-            await streamer.stop({ markdown_text: capText, blocks: [buildFeedbackBlock()] });
+          const providerTerminalText = response?.flag_reason?.startsWith('provider_unavailable:')
+            && response.text.trim()
+            && !fullText.includes(response.text)
+            ? response.text
+            : '';
+          // Local terminal responses normally have no streamed text. If a
+          // provider fails after partial delivery, append the independent
+          // recovery warning before closing the stream as a safety backstop.
+          if (!fullText.trim() && response?.text.trim()) {
+            const terminalGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-local-terminal' });
+            const terminalValidation = validateOutput(terminalGuarded.text);
+            const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+            await streamer.stop({ markdown_text: terminalText, blocks: [buildFeedbackBlock()] });
           } else {
+            if (providerTerminalText) {
+              const terminalGuarded = guardBareJsonEnvelope(providerTerminalText, { pathTag: 'dm-streaming-provider-terminal' });
+              const terminalValidation = validateOutput(terminalGuarded.text);
+              const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+              fullText = `${fullText}\n\n${terminalValidation.sanitized}`;
+              await streamer.append({ markdown_text: `\n\n${terminalText}` });
+            }
             // Extract image URLs from streamed text for Slack Block Kit image blocks
             const { images: streamImages } = extractMarkdownImages(fullText);
             const MAX_SLACK_IMAGES = 3;
@@ -2088,9 +2106,10 @@ async function handleUserMessage({
               // Slack rejects section blocks with empty mrkdwn text. If streaming
               // produced nothing (e.g. upstream overload before any deltas), fall
               // back to a plain apology so the user isn't left silent. For
-              // cost_cap_exceeded, deliver the cap message directly.
+              // A local terminal response may have no streamed text; deliver
+              // its recovery message directly.
               if (!slackText.trim()) {
-                const apology = response?.flag_reason === 'cost_cap_exceeded'
+                const apology = response?.text.trim()
                   ? response.text
                   : isRetriesExhaustedError(stopError)
                     ? `${stopError.reason}. Please try again in a moment.`

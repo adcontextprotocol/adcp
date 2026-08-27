@@ -1799,7 +1799,18 @@ export function createAddieChatRouter(options?: {
         return;
       }
 
-      const finalStreamText = fullText.trim() ? fullText : response?.text;
+      const terminalText = response.text.trim();
+      const shouldAppendProviderTerminal = response.flag_reason?.startsWith('provider_unavailable:')
+        && !!fullText.trim()
+        && !!terminalText
+        && !fullText.includes(response.text);
+      const usedTerminalText = !fullText.trim() && !!terminalText;
+      if (usedTerminalText || shouldAppendProviderTerminal) {
+        sendEvent("text", { text: shouldAppendProviderTerminal ? `\n\n${response.text}` : response.text });
+      }
+      const finalStreamText = shouldAppendProviderTerminal
+        ? `${fullText}\n\n${response.text}`
+        : fullText.trim() ? fullText : response.text;
       const normalizedStream = ensureNonEmptyAssistantResponse(finalStreamText);
       if (normalizedStream.usedFallback) {
         logger.warn(
