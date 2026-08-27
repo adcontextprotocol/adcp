@@ -54,8 +54,17 @@ import {
   MAX_OUTPUT_LENGTH,
   formatTruncatedOutput,
 } from './security.js';
+import {
+  isToolResultError,
+  normalizeToolError,
+  normalizeToolResult,
+  renderToolExecutionsFallback,
+  type NormalizedToolResult,
+  type ToolHandlerResult,
+  type ToolResultPresentation,
+} from './tool-result-contract.js';
 
-type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+type ToolHandler = (input: Record<string, unknown>) => Promise<ToolHandlerResult>;
 
 export type AddieExecutionMode = 'production' | 'evaluation' | 'replay';
 
@@ -525,7 +534,15 @@ function applyResponsePipelineWithEmptyMonitoring(
 ): { text: string; reason: string | null } {
   const stripped = stripBannedRituals(rawText);
   const reason = detectEmptyResponse(stripped, toolExecutions);
-  if (reason) return { text: EMPTY_RESPONSE_FALLBACK, reason };
+  if (reason) {
+    const toolFallback = renderToolExecutionsFallback(toolExecutions, (toolName, renderReason) => {
+      logger.warn(
+        { event: 'addie_tool_result_display_degraded', toolName, reason: renderReason },
+        'Addie: Tool result renderer failed; safe text fallback used',
+      );
+    });
+    return { text: toolFallback || EMPTY_RESPONSE_FALLBACK, reason };
+  }
   // Fires only when Addie broke character and the deterministic backstop had
   // to scrub a model/provider disclosure — rare by design. A rising rate means
   // the prompt-level identity rule is slipping (e.g. after a model change).
@@ -742,6 +759,8 @@ export interface ToolExecution {
   duration_ms: number;
   sequence: number;
   blocked_by_policy?: true;
+  /** Shared, user-safe presentation consumed by Slack and web fallbacks. */
+  normalized_result?: ToolResultPresentation;
 }
 
 export interface AddieResponse {
@@ -828,7 +847,13 @@ function providerUnavailableResponse(
 export type StreamEvent =
   | { type: 'text'; text: string }
   | { type: 'tool_start'; tool_name: string; parameters: Record<string, unknown> }
-  | { type: 'tool_end'; tool_name: string; result: string; is_error: boolean }
+  | {
+      type: 'tool_end';
+      tool_name: string;
+      result: string;
+      is_error: boolean;
+      normalized_result?: ToolResultPresentation;
+    }
   | { type: 'retry'; attempt: number; maxRetries: number; delayMs: number; reason: string }
   | {
       // Mid-stream upstream failure after deltas were already received. Anthropic
@@ -1103,6 +1128,48 @@ export class AddieClaudeClient {
     if (!isEvaluationExecution(options)) return result;
     if (kind === 'blocked') return BLOCKED_TOOL_RESULT;
     return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
+  }
+
+  private observeNormalizedToolResult(
+    toolName: string,
+    normalized: NormalizedToolResult,
+  ): NormalizedToolResult {
+    if (normalized.display_degradation) {
+      logger.warn(
+        {
+          event: 'addie_tool_result_display_degraded',
+          toolName,
+          reason: normalized.display_degradation,
+        },
+        'Addie: Tool result display payload degraded; text result preserved',
+      );
+    }
+    if (normalized.model_context_truncated || normalized.user_summary_truncated) {
+      logger.warn(
+        {
+          event: 'addie_tool_result_content_bounded',
+          toolName,
+          modelContextTruncated: normalized.model_context_truncated,
+          userSummaryTruncated: normalized.user_summary_truncated,
+        },
+        'Addie: Oversized tool result content bounded',
+      );
+    }
+    return normalized;
+  }
+
+  private recordedToolPresentation(
+    options: ProcessMessageOptions | undefined,
+    normalized: NormalizedToolResult,
+  ): ToolResultPresentation {
+    if (!isEvaluationExecution(options)) return normalized.presentation;
+    return {
+      status: normalized.status,
+      user_summary: isToolResultError(normalized.status)
+        ? 'Tool execution failed'
+        : 'Tool execution completed',
+      source: normalized.presentation.source,
+    };
   }
 
   /**
@@ -1568,15 +1635,22 @@ export class AddieClaudeClient {
             ).join('\n');
             detailedResult = `${resultSummary}\n\nTop results:\n${urls}`;
           }
+          const normalized = this.observeNormalizedToolResult('web_search', normalizeToolResult('web_search', {
+            status: resultCount === 0 ? 'empty' : 'ok',
+            model_context: detailedResult,
+            user_summary: resultSummary,
+          }));
+          const presentation = this.recordedToolPresentation(options, normalized);
 
           toolExecutions.push({
             tool_name: 'web_search',
             parameters: this.recordedToolParameters(options, params),
-            result: this.recordedToolResult(options, detailedResult, 'success'),
-            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
+            result: this.recordedToolResult(options, normalized.model_context, 'success'),
+            result_summary: this.recordedToolResult(options, presentation.user_summary, 'success'),
             is_error: false,
             duration_ms: 0,
             sequence: executionSequence,
+            normalized_result: presentation,
           });
 
           logger.debug(
@@ -1830,15 +1904,22 @@ export class AddieClaudeClient {
               detailedResult = `${resultSummary}\n\nTop results:\n${urls}`;
             }
           }
+          const normalized = this.observeNormalizedToolResult(serverBlock.name, normalizeToolResult(serverBlock.name, {
+            status: resultCount === 0 ? 'empty' : 'ok',
+            model_context: detailedResult,
+            user_summary: resultSummary,
+          }));
+          const presentation = this.recordedToolPresentation(options, normalized);
 
           toolExecutions.push({
             tool_name: serverBlock.name,
             parameters: this.recordedToolParameters(options, params),
-            result: this.recordedToolResult(options, detailedResult, 'success'),
-            result_summary: this.recordedToolResult(options, resultSummary, 'success'),
+            result: this.recordedToolResult(options, normalized.model_context, 'success'),
+            result_summary: this.recordedToolResult(options, presentation.user_summary, 'success'),
             is_error: false,
             duration_ms: 0, // Server-managed, we don't have timing
             sequence: executionSequence,
+            normalized_result: presentation,
           });
 
           logger.debug({
@@ -1931,18 +2012,25 @@ export class AddieClaudeClient {
           const handler = allHandlers.get(toolName);
           if (!handler) {
             const durationMs = Date.now() - startTime;
+            const normalized = this.observeNormalizedToolResult(
+              toolName,
+              normalizeToolError(toolName, new Error(`Unknown tool "${toolName}"`), { expected: false }),
+            );
+            const presentation = this.recordedToolPresentation(options, normalized);
             toolResults.push({
               tool_use_id: toolUseId,
-              content: `Error: Unknown tool "${toolName}"`,
+              content: normalized.model_context,
               is_error: true,
             });
             toolExecutions.push({
               tool_name: toolName,
               parameters: this.recordedToolParameters(options, toolInput),
-              result: this.recordedToolResult(options, `Error: Unknown tool "${toolName}"`, 'error'),
+              result: this.recordedToolResult(options, normalized.model_context, 'error'),
+              result_summary: presentation.user_summary,
               is_error: true,
               duration_ms: durationMs,
               sequence: executionSequence,
+              normalized_result: presentation,
             });
             continue;
           }
@@ -1954,9 +2042,15 @@ export class AddieClaudeClient {
             toolsByName.get(toolName),
           );
           if (!allowed) {
+            const normalized = this.observeNormalizedToolResult(toolName, normalizeToolResult(toolName, {
+              status: 'access_denied',
+              model_context: BLOCKED_TOOL_RESULT,
+              user_summary: 'This tool action was blocked by execution policy.',
+            }));
+            const presentation = this.recordedToolPresentation(options, normalized);
             toolResults.push({
               tool_use_id: toolUseId,
-              content: BLOCKED_TOOL_RESULT,
+              content: normalized.model_context,
               is_error: true,
             });
             toolExecutions.push({
@@ -1968,6 +2062,7 @@ export class AddieClaudeClient {
               duration_ms: 0,
               sequence: executionSequence,
               blocked_by_policy: true,
+              normalized_result: presentation,
             });
             continue;
           }
@@ -1977,11 +2072,17 @@ export class AddieClaudeClient {
             const durationMs = Date.now() - startTime;
 
             // Check if result contains multimodal content (images, PDFs)
-            if (isMultimodalContent(result)) {
+            if (typeof result === 'string' && isMultimodalContent(result)) {
               const multimodal = extractMultimodalContent(result);
               const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
 
               if (multimodalBlocks) {
+                const normalized = this.observeNormalizedToolResult(toolName, normalizeToolResult(toolName, {
+                  status: 'ok',
+                  model_context: multimodalBlocks.summary,
+                  user_summary: multimodalBlocks.summary,
+                }));
+                const presentation = this.recordedToolPresentation(options, normalized);
                 toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                 toolExecutions.push({
                   tool_name: toolName,
@@ -1991,6 +2092,7 @@ export class AddieClaudeClient {
                   is_error: false,
                   duration_ms: durationMs,
                   sequence: executionSequence,
+                  normalized_result: presentation,
                 });
                 logger.info({
                   toolName,
@@ -1999,34 +2101,58 @@ export class AddieClaudeClient {
                 }, 'Addie: Processed multimodal tool result');
               } else {
                 // Failed to parse or validate multimodal content
-                toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                const normalized = this.observeNormalizedToolResult(
+                  toolName,
+                  normalizeToolError(toolName, new Error('Failed to process file content'), { expected: false }),
+                );
+                const presentation = this.recordedToolPresentation(options, normalized);
+                toolResults.push({ tool_use_id: toolUseId, content: normalized.model_context, is_error: true });
                 toolExecutions.push({
                   tool_name: toolName,
                   parameters: this.recordedToolParameters(options, toolInput),
-                  result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
+                  result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                  result_summary: presentation.user_summary,
                   is_error: true,
                   duration_ms: durationMs,
                   sequence: executionSequence,
+                  normalized_result: presentation,
                 });
               }
             } else {
-              // Regular text result — always a success since tools throw on failure
-              toolResults.push({ tool_use_id: toolUseId, content: result });
+              const normalized = this.observeNormalizedToolResult(
+                toolName,
+                normalizeToolResult(toolName, result),
+              );
+              const presentation = this.recordedToolPresentation(options, normalized);
+              const isError = isToolResultError(normalized.status);
+              const summary = normalized.presentation.source === 'legacy' && typeof result === 'string'
+                ? this.summarizeToolResult(toolName, result)
+                : presentation.user_summary;
+              toolResults.push({
+                tool_use_id: toolUseId,
+                content: normalized.model_context,
+                ...(isError && { is_error: true }),
+              });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, result, 'success'),
-                result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
-                is_error: false,
+                result: this.recordedToolResult(options, normalized.model_context, isError ? 'error' : 'success'),
+                result_summary: this.recordedToolResult(options, summary, isError ? 'error' : 'success'),
+                is_error: isError,
                 duration_ms: durationMs,
                 sequence: executionSequence,
+                normalized_result: presentation,
               });
             }
           } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             const isExpected = error instanceof ToolError;
-            const errorResult = `Error: ${errorMessage}`;
+            const normalized = this.observeNormalizedToolResult(
+              toolName,
+              normalizeToolError(toolName, error, { expected: isExpected }),
+            );
+            const presentation = this.recordedToolPresentation(options, normalized);
             if (isExpected) {
               logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie: Tool returned expected error');
             } else {
@@ -2037,16 +2163,18 @@ export class AddieClaudeClient {
             }
             toolResults.push({
               tool_use_id: toolUseId,
-              content: errorResult,
+              content: normalized.model_context,
               is_error: true,
             });
             toolExecutions.push({
               tool_name: toolName,
               parameters: this.recordedToolParameters(options, toolInput),
-              result: this.recordedToolResult(options, errorResult, 'error'),
+              result: this.recordedToolResult(options, normalized.model_context, 'error'),
+              result_summary: presentation.user_summary,
               is_error: true,
               duration_ms: durationMs,
               sequence: executionSequence,
+              normalized_result: presentation,
             });
           }
         }
@@ -2788,25 +2916,32 @@ export class AddieClaudeClient {
             const handler = allHandlers.get(toolName);
             if (!handler) {
               const durationMs = Date.now() - startTime;
-              const errorResult = `Error: Unknown tool "${toolName}"`;
+              const normalized = this.observeNormalizedToolResult(
+                toolName,
+                normalizeToolError(toolName, new Error(`Unknown tool "${toolName}"`), { expected: false }),
+              );
+              const presentation = this.recordedToolPresentation(options, normalized);
               toolResults.push({
                 tool_use_id: toolUseId,
-                content: errorResult,
+                content: normalized.model_context,
                 is_error: true,
               });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, errorResult, 'error'),
+                result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                result_summary: presentation.user_summary,
                 is_error: true,
                 duration_ms: durationMs,
                 sequence: executionSequence,
+                normalized_result: presentation,
               });
               yield {
                 type: 'tool_end',
                 tool_name: toolName,
-                result: this.recordedToolResult(options, errorResult, 'error'),
+                result: this.recordedToolResult(options, normalized.model_context, 'error'),
                 is_error: true,
+                normalized_result: presentation,
               };
               continue;
             }
@@ -2818,9 +2953,15 @@ export class AddieClaudeClient {
               toolsByName.get(toolName),
             );
             if (!allowed) {
+              const normalized = this.observeNormalizedToolResult(toolName, normalizeToolResult(toolName, {
+                status: 'access_denied',
+                model_context: BLOCKED_TOOL_RESULT,
+                user_summary: 'This tool action was blocked by execution policy.',
+              }));
+              const presentation = this.recordedToolPresentation(options, normalized);
               toolResults.push({
                 tool_use_id: toolUseId,
-                content: BLOCKED_TOOL_RESULT,
+                content: normalized.model_context,
                 is_error: true,
               });
               toolExecutions.push({
@@ -2832,12 +2973,14 @@ export class AddieClaudeClient {
                 duration_ms: 0,
                 sequence: executionSequence,
                 blocked_by_policy: true,
+                normalized_result: presentation,
               });
               yield {
                 type: 'tool_end',
                 tool_name: toolName,
                 result: BLOCKED_TOOL_RESULT,
                 is_error: true,
+                normalized_result: presentation,
               };
               continue;
             }
@@ -2847,11 +2990,17 @@ export class AddieClaudeClient {
               const durationMs = Date.now() - startTime;
 
               // Check if result contains multimodal content (images, PDFs)
-              if (isMultimodalContent(result)) {
+              if (typeof result === 'string' && isMultimodalContent(result)) {
                 const multimodal = extractMultimodalContent(result);
                 const multimodalBlocks = multimodal ? buildMultimodalContentBlocks(multimodal) : null;
 
                 if (multimodalBlocks) {
+                  const normalized = this.observeNormalizedToolResult(toolName, normalizeToolResult(toolName, {
+                    status: 'ok',
+                    model_context: multimodalBlocks.summary,
+                    user_summary: multimodalBlocks.summary,
+                  }));
+                  const presentation = this.recordedToolPresentation(options, normalized);
                   toolResults.push({ tool_use_id: toolUseId, content: multimodalBlocks.content });
                   toolExecutions.push({
                     tool_name: toolName,
@@ -2861,44 +3010,87 @@ export class AddieClaudeClient {
                     is_error: false,
                     duration_ms: durationMs,
                     sequence: executionSequence,
+                    normalized_result: presentation,
                   });
-                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'), is_error: false };
+                  yield {
+                    type: 'tool_end',
+                    tool_name: toolName,
+                    result: this.recordedToolResult(options, multimodalBlocks.summary, 'success'),
+                    is_error: false,
+                    normalized_result: presentation,
+                  };
                   logger.info({
                     toolName,
                     multimodalType: multimodal?.type,
                     ...(operationalExecution && { filename: multimodal?.filename }),
                   }, 'Addie Stream: Processed multimodal tool result');
                 } else {
-                  toolResults.push({ tool_use_id: toolUseId, content: 'Error: Failed to process file content' });
+                  const normalized = this.observeNormalizedToolResult(
+                    toolName,
+                    normalizeToolError(toolName, new Error('Failed to process file content'), { expected: false }),
+                  );
+                  const presentation = this.recordedToolPresentation(options, normalized);
+                  toolResults.push({ tool_use_id: toolUseId, content: normalized.model_context, is_error: true });
                   toolExecutions.push({
                     tool_name: toolName,
                     parameters: this.recordedToolParameters(options, toolInput),
-                    result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'),
+                    result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                    result_summary: presentation.user_summary,
                     is_error: true,
                     duration_ms: durationMs,
                     sequence: executionSequence,
+                    normalized_result: presentation,
                   });
-                  yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, 'Error: Failed to process file content', 'error'), is_error: true };
+                  yield {
+                    type: 'tool_end',
+                    tool_name: toolName,
+                    result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                    is_error: true,
+                    normalized_result: presentation,
+                  };
                 }
               } else {
-                // Regular text result — always a success since tools throw on failure
-                toolResults.push({ tool_use_id: toolUseId, content: result });
+                const normalized = this.observeNormalizedToolResult(
+                  toolName,
+                  normalizeToolResult(toolName, result),
+                );
+                const presentation = this.recordedToolPresentation(options, normalized);
+                const isError = isToolResultError(normalized.status);
+                const summary = normalized.presentation.source === 'legacy' && typeof result === 'string'
+                  ? this.summarizeToolResult(toolName, result)
+                  : presentation.user_summary;
+                toolResults.push({
+                  tool_use_id: toolUseId,
+                  content: normalized.model_context,
+                  ...(isError && { is_error: true }),
+                });
                 toolExecutions.push({
                   tool_name: toolName,
                   parameters: this.recordedToolParameters(options, toolInput),
-                  result: this.recordedToolResult(options, result, 'success'),
-                  result_summary: this.recordedToolResult(options, this.summarizeToolResult(toolName, result), 'success'),
-                  is_error: false,
+                  result: this.recordedToolResult(options, normalized.model_context, isError ? 'error' : 'success'),
+                  result_summary: this.recordedToolResult(options, summary, isError ? 'error' : 'success'),
+                  is_error: isError,
                   duration_ms: durationMs,
                   sequence: executionSequence,
+                  normalized_result: presentation,
                 });
-                yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, result, 'success'), is_error: false };
+                yield {
+                  type: 'tool_end',
+                  tool_name: toolName,
+                  result: this.recordedToolResult(options, normalized.model_context, isError ? 'error' : 'success'),
+                  is_error: isError,
+                  normalized_result: presentation,
+                };
               }
             } catch (error) {
               const durationMs = Date.now() - startTime;
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
               const isExpected = error instanceof ToolError;
-              const errorResult = `Error: ${errorMessage}`;
+              const normalized = this.observeNormalizedToolResult(
+                toolName,
+                normalizeToolError(toolName, error, { expected: isExpected }),
+              );
+              const presentation = this.recordedToolPresentation(options, normalized);
               if (isExpected) {
                 logger.warn({ toolName, ...(operationalExecution && { toolInput, error: errorMessage }), durationMs }, 'Addie Stream: Tool returned expected error');
               } else {
@@ -2909,18 +3101,26 @@ export class AddieClaudeClient {
               }
               toolResults.push({
                 tool_use_id: toolUseId,
-                content: errorResult,
+                content: normalized.model_context,
                 is_error: true,
               });
               toolExecutions.push({
                 tool_name: toolName,
                 parameters: this.recordedToolParameters(options, toolInput),
-                result: this.recordedToolResult(options, errorResult, 'error'),
+                result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                result_summary: presentation.user_summary,
                 is_error: true,
                 duration_ms: durationMs,
                 sequence: executionSequence,
+                normalized_result: presentation,
               });
-              yield { type: 'tool_end', tool_name: toolName, result: this.recordedToolResult(options, errorResult, 'error'), is_error: true };
+              yield {
+                type: 'tool_end',
+                tool_name: toolName,
+                result: this.recordedToolResult(options, normalized.model_context, 'error'),
+                is_error: true,
+                normalized_result: presentation,
+              };
             }
           }
 
