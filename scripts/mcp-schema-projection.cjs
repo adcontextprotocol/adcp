@@ -793,6 +793,10 @@ function stripModelContextAnnotations(schema) {
   walkSchema(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
+    // An exact const already communicates both the value and its JSON type.
+    // Keep the validation profile authoritative and avoid repeating that type
+    // information across every prompt-view copy of discriminated unions.
+    if (Object.hasOwn(node, 'const')) delete node.type;
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves
