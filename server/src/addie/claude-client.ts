@@ -11,7 +11,12 @@ import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-claude-client');
 import type { AddieTool } from './types.js';
-import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
+import {
+  ADDIE_FALLBACK_PROMPT,
+  buildAddieScopedToolReference,
+  buildAddieStableToolReference,
+  buildMessageTurnsWithMetadata,
+} from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
@@ -79,7 +84,7 @@ import {
   buildAddieWireTools,
   mergeAddieToolDefinitions,
 } from './tool-wire-shape.js';
-import { assembleAddieFallbackPrompt, assembleAddieSystemPrompt } from './prompt-assembly.js';
+import { assembleAddieFallbackPrompt } from './prompt-assembly.js';
 import {
   MAX_OUTPUT_LENGTH,
   formatTruncatedOutput,
@@ -686,6 +691,8 @@ export interface ProcessMessageOptions {
    * schema construction, and handler dispatch.
    */
   allowedToolNames?: readonly string[];
+  /** Router-selected capability sets used to scope prompt guidance/catalog. */
+  selectedToolSetNames?: readonly string[];
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -943,19 +950,52 @@ export class AddieClaudeClient {
    * zero default-template or banned-ritual regressions.
    *
    * Rules are loaded from ./rules/*.md files (cached in memory after first
-   * read). Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied
-   * to code). Fallback prompt used only when rule files can't be read.
+   * read). The request-scoped tool reference is tied to the exact tool wire
+   * surface and selected domains. Fallback prompt is used only when rule
+   * files cannot be read.
    */
-  private getSystemPrompt(): { prompt: string } {
+  private buildSystemBlocks(
+    availableToolNames: readonly string[],
+    selectedToolSetNames?: readonly string[],
+    requestContext?: string,
+    rulesOverride?: RulesOverride,
+  ): Anthropic.TextBlockParam[] {
+    if (rulesOverride) {
+      return [
+        { type: 'text', text: rulesOverride.systemPrompt, cache_control: { type: 'ephemeral' } },
+        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
+      ];
+    }
+
+    const stableToolReference = buildAddieStableToolReference();
+    const scopedToolReference = buildAddieScopedToolReference({
+      availableToolNames,
+      selectedToolSetNames,
+    });
     try {
       const basePrompt = loadRules();
       const responseStyle = loadResponseStyle();
-      const prompt = assembleAddieSystemPrompt(basePrompt, ADDIE_TOOL_REFERENCE, responseStyle);
-      return { prompt };
+      return [
+        {
+          type: 'text',
+          text: `${basePrompt}\n\n---\n\n${stableToolReference}`,
+          cache_control: { type: 'ephemeral' },
+        },
+        { type: 'text', text: scopedToolReference },
+        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
+        { type: 'text', text: responseStyle },
+      ];
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
-      const fallbackPrompt = assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE);
-      return { prompt: fallbackPrompt };
+      return [
+        {
+          type: 'text',
+          text: assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, stableToolReference),
+          cache_control: { type: 'ephemeral' },
+        },
+        { type: 'text', text: scopedToolReference },
+        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
+      ];
     }
   }
 
@@ -997,9 +1037,9 @@ export class AddieClaudeClient {
     messages: Anthropic.MessageParam[],
     iteration: number = 0,
     extraToolCount: number = 0,
+    requestContextChars: number = 0,
   ): PayloadDebugStats {
     const systemChars = systemBlocks.reduce((sum, block) => sum + block.text.length, 0);
-    const requestContextChars = systemBlocks.slice(1).reduce((sum, block) => sum + block.text.length, 0);
 
     let largestMessage: PayloadDebugStats['largest_message'];
     let messageChars = 0;
@@ -1145,20 +1185,6 @@ export class AddieClaudeClient {
       && !isEvaluationExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
-
-    const promptStart = Date.now();
-    const systemPrompt = rulesOverride
-      ? rulesOverride.systemPrompt
-      : this.getSystemPrompt().prompt;
-    const systemPromptMs = Date.now() - promptStart;
-
-    const systemBlocks: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-    ];
-    if (options?.requestContext?.trim()) {
-      systemBlocks.push({ type: 'text', text: options.requestContext });
-    }
-
     const allowedToolNames = options?.allowedToolNames
       ? new Set(options.allowedToolNames)
       : null;
@@ -1171,6 +1197,16 @@ export class AddieClaudeClient {
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
     );
+
+    const promptStart = Date.now();
+    const systemBlocks = this.buildSystemBlocks(
+      allTools.map(tool => tool.name),
+      options?.selectedToolSetNames,
+      options?.requestContext,
+      rulesOverride,
+    );
+    const systemPromptMs = Date.now() - promptStart;
+
     const toolCount = allTools.length + (requestWebSearchEnabled ? 1 : 0);
     const toolsByName = new Map(allTools.map((tool) => [tool.name, tool]));
     const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
@@ -1508,7 +1544,15 @@ export class AddieClaudeClient {
           response = fallbackResponse;
           reusedEmptyResponse = true;
         } else {
-          const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, anthropicMessages, iteration, requestWebSearchEnabled ? 1 : 0);
+          const stats = this.buildPayloadDebugStats(
+            effectiveModel,
+            systemBlocks,
+            customTools,
+            anthropicMessages,
+            iteration,
+            requestWebSearchEnabled ? 1 : 0,
+            options?.requestContext?.trim() ? options.requestContext.length : 0,
+          );
           if (options?.executionMode === 'replay') {
             // Provider errors may echo request text. Replay logs only categorical
             // metadata; the signed ledger records the terminal outcome.
@@ -1917,19 +1961,6 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
-    // Get system prompt from rule files (or fallback)
-    const promptStart = Date.now();
-    const { prompt: systemPrompt } = this.getSystemPrompt();
-    systemPromptMs = Date.now() - promptStart;
-
-    // Build system content as array: base prompt is cached, requestContext is not.
-    const systemBlocks: Anthropic.TextBlockParam[] = [
-      { type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } },
-    ];
-    if (options?.requestContext?.trim()) {
-      systemBlocks.push({ type: 'text', text: options.requestContext });
-    }
-
     // Get config version ID for this interaction (for tracking/analysis)
     const configVersionId = operationalExecution
       ? await getCurrentConfigVersionId()
@@ -1955,6 +1986,17 @@ export class AddieClaudeClient {
       [...this.toolHandlers, ...(requestTools?.handlers || [])]
         .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
     );
+
+    // Build the prompt after resolving the exact tool wire surface so domain
+    // guidance and the authoritative catalog cannot advertise omitted tools.
+    const promptStart = Date.now();
+    const systemBlocks = this.buildSystemBlocks(
+      allTools.map(tool => tool.name),
+      options?.selectedToolSetNames,
+      options?.requestContext,
+    );
+    systemPromptMs = Date.now() - promptStart;
+
     const executeToolCall = createAddieToolExecutor(allTools, allHandlers, {
       executionMode: options?.executionMode ?? 'production',
       policy: options?.toolExecutionPolicy,
@@ -2089,7 +2131,15 @@ export class AddieClaudeClient {
               break;
             }
             streamRetryCount++;
-            const stats = this.buildPayloadDebugStats(effectiveModel, systemBlocks, customTools, messages, iteration);
+            const stats = this.buildPayloadDebugStats(
+              effectiveModel,
+              systemBlocks,
+              customTools,
+              messages,
+              iteration,
+              0,
+              options?.requestContext?.trim() ? options.requestContext.length : 0,
+            );
             this.logPromptOverflow(streamError, stats, 'processMessageStream');
 
             const retryable = isRetryableError(streamError);
