@@ -99,7 +99,7 @@ describe('prepareRequestWithMemberTools organization selection', () => {
   });
 
   it('passes the selected organization id into web member context resolution', async () => {
-    await prepareRequestWithMemberTools(
+    const prepared = await prepareRequestWithMemberTools(
       'Save this agent',
       'user_123',
       'thread_external_123',
@@ -109,6 +109,8 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     );
 
     expect(memberContextMocks.getWebMemberContext).toHaveBeenCalledWith('user_123', 'org_selected_123');
+    expect(prepared.requestContext).toContain('## Authoritative time context');
+    expect(prepared.requestContext).toMatch(/- utc_instant: \d{4}-\d{2}-\d{2}T/);
   });
 
   it('overrides the anonymous directory handler with the authenticated member context', async () => {
