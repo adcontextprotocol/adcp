@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/audience-source.json",
+  "title": "Audience Source",
+  "x-status": "experimental",
+  "description": "External source reference for an audience: a pointer to buyer data that the seller ingests over a declared activation rail, instead of inline member deltas. The data never transits AdCP — the protocol carries the reference; ingestion happens on the vendor's rails. kind discriminates the entry. A buyer MUST only send a source kind whose corresponding activation pattern (dataset_query for dataset, platform_distribution for platform_segment) the seller has declared via audience_activation; sellers reject undeclared kinds with UNSUPPORTED_FEATURE. References are never credentials: grant-based paths are in-protocol only when the vendor flow is grantee-identified (the grant names a principal; no secret is conveyed), and requests carrying credential material are rejected with CREDENTIAL_IN_ARGS. Experimental (x-status: experimental): part of the media_buy.audience_activation surface — sellers implementing external sources MUST list media_buy.audience_activation in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+  "type": "object",
+  "oneOf": [
+    {
+      "title": "Dataset",
+      "description": "The seller reads a table or share the buyer has granted access to through the vendor's grantee-identified sharing mechanism (Snowflake Secure Data Sharing, Databricks Delta Sharing using D2D or OIDC token federation, BigQuery authorized views). The grant MUST name a principal without conveying a secret through AdCP; classic bearer-token recipient profiles are excluded. The buyer grants the seller's declared consumer identity in the vendor's system before calling; a missing or revoked grant at read time is a retryable per-audience failure (SOURCE_ACCESS_FAILED), not a lifecycle state. The shared object MUST expose the canonical AdCP identifier columns mirroring core/audience-member.json.",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "dataset"
+        },
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/brand-ref.json",
+          "description": "Data-sharing platform hosting the shared object."
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "description": "Vendor-native reference to the shared object (share/database/table path). Opaque to AdCP; meaningful to the vendor. Never a credential. For the Databricks path, the locator convention is share://<provider-sharing-identifier>/<share-name>/<schema>.<object>; this identifies what to read and is distinct from the seller's recipient identity in consumer_identities[]."
+        },
+        "access_expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 time after which the buyer will revoke the grant. Declarative — tells the seller when the pipe closes so re-read behavior is predictable. Expiry bounds the access window, not retention: revocation does not claw back matched membership, and retention remains governed by the buyer-seller data processing agreement."
+        }
+      },
+      "required": [
+        "kind",
+        "vendor",
+        "locator"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Platform segment",
+      "description": "The vendor's rails deliver the segment to the seller's declared platform_distribution destination; the buyer initiates distribution in the vendor's system and this reference binds the arriving segment to an audience_id. Order-independent: if the bind arrives before the segment, the audience sits in processing. Sellers MAY expire an unfulfilled bind after their declared bind_expiry_days (per-audience action: failed).",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "platform_segment"
+        },
+        "vendor": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/brand-ref.json",
+          "description": "Distribution platform delivering the segment."
+        },
+        "segment_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "description": "The vendor's segment identifier as issued to the buyer (the ID observable in the vendor's console/API). The seller owns the mapping to whatever identifier its ingest minted — it configured the destination and is the only party that can see both sides."
+        }
+      },
+      "required": [
+        "kind",
+        "vendor",
+        "segment_ref"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "examples": [
+    {
+      "kind": "dataset",
+      "vendor": {
+        "domain": "data-cloud.example"
+      },
+      "locator": "PINNACLE.AUDIENCES.HIGH_VALUE_V3",
+      "access_expires_at": "2026-12-01T00:00:00Z"
+    },
+    {
+      "kind": "platform_segment",
+      "vendor": {
+        "domain": "activation-hub.example"
+      },
+      "segment_ref": "seg_88213"
+    }
+  ]
+}
