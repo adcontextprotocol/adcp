@@ -255,17 +255,14 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
   )
 else
   TENANTS=(
-    # Re-measured on main@32842430342 (post-#6815 coverage rebaseline): every
-    # gap below the prior floors was authored known-failing skips, zero step
-    # failures — see #6876.
     # Ratcheted from the first capability-resolved replay. The runner reports
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
-    "sales:126:553"
+    "sales:126:556"
     "governance:47:157"
-    "creative:48:200"
-    "creative-builder:48:172"
+    "creative:49:209"
+    "creative-builder:50:184"
     "brand:45:116"
     "si:42:50"
   )
