@@ -1,5 +1,6 @@
 import Ajv, { type ValidateFunction } from 'ajv';
 import { collectModelResponse } from './events.js';
+import { inspectModelTurn } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -92,13 +93,6 @@ function addUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
   };
 }
 
-function responseText(response: ModelResponse): string {
-  return response.content
-    .filter((content) => content.type === 'text')
-    .map((content) => content.text)
-    .join('');
-}
-
 /**
  * Execute a provider-neutral, retry-free tool loop for explicitly classified
  * local reads. This is intentionally narrower than Addie's production loop:
@@ -169,21 +163,22 @@ export async function executeReadOnlyToolLoop(
       beforeDispatch: options.beforeDispatch,
     }), provider.id);
     totalUsage = addUsage(totalUsage, response.usage);
+    const turn = inspectModelTurn(response);
 
-    const calls = response.content.filter((content) => content.type === 'tool_call');
-    const unsupportedContinuation = response.content.some((content) =>
-      content.type === 'provider_tool_call' || content.type === 'provider_tool_result');
+    const calls = turn.toolCalls;
+    const unsupportedContinuation = turn.providerToolCalls.length > 0
+      || turn.providerToolResults.length > 0;
     if (unsupportedContinuation) {
       throw new ReadOnlyToolLoopBoundaryError('provider_continuation_not_allowed');
     }
     if (calls.length === 0) {
-      if (response.finishReason === 'continue') {
+      if (turn.action === 'continue') {
         messages = [...messages, { role: 'assistant', content: response.content }];
         continue;
       }
       return {
         response,
-        text: responseText(response),
+        text: turn.textBlocks.map((content) => content.text).join(''),
         iterations: iteration,
         usage: totalUsage,
         toolExecutions: Object.freeze([...receipts]),
