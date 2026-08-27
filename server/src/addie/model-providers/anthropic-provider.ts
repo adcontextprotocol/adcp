@@ -39,17 +39,22 @@ export interface AnthropicMessagesTransport {
     messages: {
       create(
         request: AnthropicRequest,
-        options: { maxRetries: 0; signal?: AbortSignal },
+        options: { maxRetries: 0 | 2; signal?: AbortSignal },
       ): Promise<AnthropicResponseLike>;
     };
   };
+}
+
+export interface AnthropicModelProviderOptions {
+  /** Preserve a caller's established SDK transport retry posture. */
+  transportMaxRetries?: 0 | 2;
 }
 
 export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
   streaming: false,
   structuredOutput: false,
   reasoning: true,
-  reasoningEfforts: Object.freeze(['provider_default'] as const),
+  reasoningEfforts: Object.freeze(['provider_default', 'medium'] as const),
   customTools: true,
   providerWebSearch: true,
   imageInput: true,
@@ -147,7 +152,10 @@ function toAnthropicContent(content: ModelMessageContent): Record<string, unknow
 function toAnthropicMessages(messages: ModelRequest['messages']): Array<Record<string, unknown>> {
   const translated = messages.map((message) => {
     const blocks = message.content.map(toAnthropicContent);
-    const content = blocks.length === 1 && blocks[0].type === 'text'
+    const containsIssuedContinuation = message.content.some((content) => (
+      anthropicContinuationPayloads.has(content)
+    ));
+    const content = blocks.length === 1 && blocks[0].type === 'text' && !containsIssuedContinuation
       ? blocks[0].text
       : blocks;
     return { role: message.role, content };
@@ -403,9 +411,15 @@ export class AnthropicModelProvider implements ModelProvider {
   readonly id = 'anthropic' as const;
   readonly capabilities = ANTHROPIC_PROVIDER_CAPABILITIES;
   private readonly transport: AnthropicMessagesTransport;
+  private readonly transportMaxRetries: 0 | 2;
 
-  constructor(apiKey: string, transport?: AnthropicMessagesTransport) {
+  constructor(
+    apiKey: string,
+    transport?: AnthropicMessagesTransport,
+    options: AnthropicModelProviderOptions = {},
+  ) {
     this.transport = transport ?? new Anthropic({ apiKey }) as unknown as AnthropicMessagesTransport;
+    this.transportMaxRetries = options.transportMaxRetries ?? 0;
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -424,6 +438,7 @@ export class AnthropicModelProvider implements ModelProvider {
     const providerRequest = deepFreeze(structuredClone({
       model: request.model,
       max_tokens: request.maxOutputTokens,
+      ...(request.reasoning?.effort === 'medium' && { output_config: { effort: 'medium' } }),
       system: request.system.map((block) => ({
         type: 'text',
         text: block.text,
@@ -459,7 +474,7 @@ export class AnthropicModelProvider implements ModelProvider {
     await options?.beforeDispatch?.(prepared);
     const response = await this.transport.beta.messages.create(
       prepared.providerRequest as AnthropicRequest,
-      { maxRetries: 0, ...(options?.signal && { signal: options.signal }) },
+      { maxRetries: this.transportMaxRetries, ...(options?.signal && { signal: options.signal }) },
     );
     const normalized = normalizeAnthropicResponse(response);
     yield {

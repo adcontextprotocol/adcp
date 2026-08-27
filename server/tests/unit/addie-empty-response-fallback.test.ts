@@ -10,10 +10,16 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
+  APIError: class APIError extends Error {},
+  APIConnectionError: class APIConnectionError extends Error {},
   default: class {
     beta = {
       messages: {
-        create: mocks.createMessage,
+        create: async (payload: Record<string, unknown>, options?: unknown) => ({
+          id: 'msg_test_nonstreaming',
+          model: String(payload.model),
+          ...await mocks.createMessage(payload, options),
+        }),
         stream: mocks.streamMessage,
       },
     };
@@ -405,14 +411,14 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
 
-  it('classifies malformed empty tool-use responses as local in both paths', async () => {
+  it('rejects a malformed non-streaming tool turn while streaming retains its local fallback', async () => {
     mocks.createMessage.mockResolvedValueOnce(emptyToolUseTurn);
     mocks.streamMessage.mockReturnValueOnce(makeStream(emptyToolUseTurn));
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
 
-    const response = await client.processMessage(
+    await expect(client.processMessage(
       'hello', undefined, undefined, undefined, { uncapped: true },
-    );
+    )).rejects.toThrow('Tool-call finish has no tool call');
     const streamEvents: StreamEvent[] = [];
     for await (const event of client.processMessageStream(
       'hello', undefined, undefined, { uncapped: true },
@@ -421,9 +427,6 @@ describe('Addie empty-response fallback (#4430)', () => {
       (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
     );
 
-    expect(response.model_execution).toEqual({
-      source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'no_provider_response',
-    });
     expect(done?.response.model_execution).toEqual({
       source: 'local', requested_provider: 'anthropic', requested_model: 'claude-sonnet-4-6', reason: 'no_provider_response',
     });
@@ -709,19 +712,18 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
-  it('does not resample an end_turn containing a tool block', async () => {
+  it('rejects an end_turn containing a tool block without dispatching it', async () => {
     mocks.createMessage.mockResolvedValueOnce(toolBlockEndTurn);
     const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-5');
 
-    const response = await client.processMessage(
+    await expect(client.processMessage(
       'hello',
       undefined,
       githubIssueTools,
       undefined,
       { uncapped: true },
-    );
+    )).rejects.toThrow('incompatible finish reason');
 
-    expect(response.text).toBe(ADDIE_EMPTY_RESPONSE_FALLBACK);
     expect(mocks.createMessage).toHaveBeenCalledOnce();
     expect(getGithubIssue).not.toHaveBeenCalled();
   });
@@ -900,7 +902,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.createMessage).toHaveBeenCalledTimes(3);
     expect(mocks.createMessage.mock.calls[1][0].tools).not.toEqual([]);
     expect(mocks.createMessage.mock.calls[1][1]).toEqual({ maxRetries: 0 });
-    expect(mocks.createMessage.mock.calls[2][1]).toBeUndefined();
+    expect(mocks.createMessage.mock.calls[2][1]).toEqual({ maxRetries: 2 });
   });
 
   it('restores normal streaming dispatch after initial recovery emits a tool call', async () => {
