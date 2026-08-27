@@ -1,13 +1,17 @@
 import type {
   ModelMessage,
+  ModelProvider,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
+  ModelRequest,
   ModelResponse,
+  ModelRespondOptions,
   ModelTextContent,
   ModelToolCallContent,
   ModelToolResultContent,
   ModelUsage,
 } from './model-provider.js';
+import { collectModelResponse } from './events.js';
 
 export type ModelTurnAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
 
@@ -144,6 +148,11 @@ export class ModelTurnLoopState {
     return iteration;
   }
 
+  /** Begin one logical turn whose transport attempts share this state slot. */
+  beginNext(): ActiveModelTurn {
+    return new ActiveModelTurn(this, this.startNext());
+  }
+
   acceptResponse(
     response: ModelResponse,
     options: { countUsage?: boolean } = {},
@@ -156,6 +165,52 @@ export class ModelTurnLoopState {
       this.accumulatedUsage = addModelUsage(this.accumulatedUsage, response.usage);
     }
     this.awaitingResponse = false;
+    return turn;
+  }
+}
+
+/**
+ * One active logical model turn. Sequential transport attempts are allowed so
+ * delivery adapters can retain their retry policy and event timing, but only
+ * one normalized response can be accepted into the common loop.
+ */
+export class ActiveModelTurn {
+  private invocationInFlight = false;
+  private accepted = false;
+
+  constructor(
+    private readonly loop: ModelTurnLoopState,
+    readonly iteration: number,
+  ) {}
+
+  async invoke(
+    provider: ModelProvider,
+    request: ModelRequest,
+    options?: ModelRespondOptions,
+  ): Promise<ModelResponse> {
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    if (this.invocationInFlight) throw new Error('Model turn provider invocation already in flight');
+    this.invocationInFlight = true;
+    try {
+      return await collectModelResponse(
+        provider.respond(request, options),
+        provider.id,
+      );
+    } finally {
+      this.invocationInFlight = false;
+    }
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): InspectedModelTurn {
+    if (this.invocationInFlight) {
+      throw new Error('Cannot accept a response while provider invocation is in flight');
+    }
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    const turn = this.loop.acceptResponse(response, options);
+    this.accepted = true;
     return turn;
   }
 }

@@ -50,7 +50,6 @@ import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
-import { collectModelResponse } from './model-providers/events.js';
 import {
   appendModelTurnContinuation,
   ModelTurnLoopState,
@@ -1498,7 +1497,8 @@ export class AddieClaudeClient {
     let hasExecutedCustomTool = false;
 
     while (modelLoop.hasRemaining) {
-      iteration = modelLoop.startNext();
+      const activeTurn = modelLoop.beginNext();
+      iteration = activeTurn.iteration;
 
       // Use beta API to access web search
       const llmStart = Date.now();
@@ -1521,8 +1521,10 @@ export class AddieClaudeClient {
           const provider = exactlyOnce
             ? this.exactlyOnceAnthropicProvider
             : this.anthropicProvider;
-          return collectModelResponse(
-            provider.respond(modelRequest, {
+          return activeTurn.invoke(
+            provider,
+            modelRequest,
+            {
               beforeDispatch: async (preparedInvocation) => {
                 await this.notifyInvocationPrepared(
                   options,
@@ -1531,8 +1533,7 @@ export class AddieClaudeClient {
                   invocationAttempt,
                 );
               },
-            }),
-            'anthropic',
+            },
           );
         };
         // A replay is an exactly-once paid experiment. A timeout can occur
@@ -1610,7 +1611,7 @@ export class AddieClaudeClient {
           content: [],
         };
       }
-      const turn = modelLoop.acceptResponse(response, { countUsage: !reusedEmptyResponse });
+      const turn = activeTurn.acceptResponse(response, { countUsage: !reusedEmptyResponse });
 
       // Provider-managed web results may accompany either a terminal answer or
       // another tool-call turn. Derive their receipts through the selected
@@ -2206,7 +2207,8 @@ export class AddieClaudeClient {
     let lastProviderModel: string | undefined;
 
       while (modelLoop.hasRemaining) {
-        iteration = modelLoop.startNext();
+        const activeTurn = modelLoop.beginNext();
+        iteration = activeTurn.iteration;
 
         const llmStart = Date.now();
 
@@ -2239,8 +2241,10 @@ export class AddieClaudeClient {
             const provider = isEmptyResponseRecovery
               ? this.exactlyOnceAnthropicProvider
               : this.anthropicProvider;
-            currentResponse = await collectModelResponse(
-              provider.respond(modelRequest, {
+            currentResponse = await activeTurn.invoke(
+              provider,
+              modelRequest,
+              {
                 stream: true,
                 onStreamProgress: () => {
                   totalReceivedDeltas++;
@@ -2254,8 +2258,7 @@ export class AddieClaudeClient {
                     streamRetryCount + 1,
                   );
                 },
-              }),
-              'anthropic',
+              },
             );
 
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
@@ -2418,7 +2421,7 @@ export class AddieClaudeClient {
           }
         };
 
-        const turn = modelLoop.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
+        const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         const stopAction = turn.action;
         const iterationText = turn.textBlocks
           .map((block) => block.text)
