@@ -316,7 +316,7 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
     ['signals', 24, 98],
-    ['sales', 40, 224],
+    ['sales', 39, 219],
     ['governance', 27, 147],
     ['creative', 22, 109],
     ['creative-builder', 24, 112],

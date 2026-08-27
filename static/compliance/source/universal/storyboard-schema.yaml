@@ -707,10 +707,50 @@
 # brand kits and to no-credential for runner contracts, but the two never
 # collide because the `test_kit=` component separates them.
 #
-# Future: if a storyboard ever needs to compose TWO runner contracts
-# simultaneously (e.g., signed-requests + substitution-observer), the step-
-# level `requires_contract:` field will need to accept a list. Not reachable
-# today.
+# Functional request signing composes differently from assertion contracts.
+# A runner that implements `test-kits/signed-requests-runner.yaml >
+# functional_dispatch` loads that shared signing identity at run level and
+# applies it to ordinary functional task dispatch after capability discovery.
+# Storyboards KEEP their brand test kit and do not add `requires_contract` to
+# each signed step. This avoids duplicating the public conformance key across
+# every fictional-brand kit and lets signing compose with an assertion step's
+# existing webhook/substitution contract.
+#
+# Dispatch rules:
+#   1. This path is sandbox-only. The public conformance private scalar MUST
+#      NOT be used when the run targets production or disables sandbox routing.
+#   2. Bootstrap `get_adcp_capabilities` discovery remains unsigned so the
+#      runner can learn the seller's profile. For subsequent ordinary task
+#      calls, sign operations in `request_signing.required_for` and, when the
+#      contract declares `sign_supported_for: true`, operations in
+#      `supported_for` as well.
+#      Signing the supported set covers request-body-dependent MUSTs such as a
+#      webhook registration carrying `authentication` without hard-coding
+#      those predicates in the runner.
+#   3. Build the complete transport request first (context substitutions,
+#      generated idempotency key, protocol/version envelope, and exact JSON
+#      bytes), then add RFC 9421 headers. Resolve `content-digest` coverage from
+#      the advertised `request_signing.covers_content_digest` policy.
+#   4. Preserve independently configured transport authentication. A signed
+#      request may also carry bearer/API-key credentials; signing is not a
+#      replacement for the storyboard's principal selection.
+#   5. Mint a fresh nonce and signature for every dispatch or retry. Never
+#      replay previously generated signature headers onto changed bytes.
+#   6. Never fall back to unsigned dispatch after signer setup or invocation
+#      fails. Report a runner failure. Older runners that cannot implement the
+#      functional-dispatch contract use the declared `unavailable_behavior`
+#      compatibility disposition (`not_applicable`) rather than blaming the
+#      seller for `request_signature_required`.
+#
+# This is NOT a sandbox-mode verifier bypass. The seller processes the signed
+# request through its normal RFC 9421 authentication path. `endpoint_scope:
+# sandbox` scopes the deliberately public test key; it does not weaken seller
+# enforcement.
+#
+# Future: if a storyboard ever needs to compose TWO assertion runner contracts
+# simultaneously (e.g., substitution-observer + webhook-receiver), the step-
+# level `requires_contract:` field will need to accept a list. Functional
+# signing does not consume that slot and therefore does not trigger this case.
 #
 # See `docs/contributing/storyboard-authoring.md` for the author-workflow
 # side of kit selection.

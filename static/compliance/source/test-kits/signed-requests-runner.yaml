@@ -1,7 +1,8 @@
 # Signed-Requests Runner — Harness Contract Test Kit
 #
-# Applies to: universal/signed-requests.yaml (gated on
-# `request_signing.supported: true` in get_adcp_capabilities).
+# Applies to: universal/signed-requests.yaml and capability-selected functional
+# storyboards. The universal grader is gated on `request_signing.supported:
+# true`; functional dispatch signs operations selected from that capability.
 #
 # The signed-requests storyboard's current black-box contract grades the legacy
 # 3.1 RFC 9421 profile against all conformance vectors in the `positive/` and
@@ -27,6 +28,7 @@
 id: signed_requests_runner
 applies_to:
   universal_storyboard: signed-requests
+  functional_storyboards: capability_driven
 
 description: |
   Coordination contract between a black-box runner and a request-signing agent
@@ -66,6 +68,35 @@ runner_signing_keys:
   - keyid: test-es256-2026
     alg: ecdsa-p256-sha256
     jwks_source: /compliance/{version}/test-vectors/request-signing/keys.json
+
+functional_dispatch:
+  # Functional storyboards retain their brand-specific test kits. This block
+  # composes the shared signing identity at runner level, so authors do not
+  # duplicate signing material or add `requires_contract` to every mutating
+  # step. The runner applies it only after capability discovery and only to
+  # ordinary functional task dispatch; request-signing conformance vectors keep
+  # their dedicated positive/negative construction path.
+  signing_keyid: test-ed25519-2026
+  signer_agent_url: https://compliance-runner.example
+  operation_selection:
+    capability_path: request_signing
+    sign_required_for: true
+    # Functional requests can trigger a body-dependent signing MUST even when
+    # the operation is not unconditionally required (for example webhook
+    # registration carrying an authentication block). Signing every advertised
+    # supported operation exercises that path without teaching the runner the
+    # seller's private policy predicates.
+    sign_supported_for: true
+  content_digest_policy_source: request_signing.covers_content_digest
+  preserve_transport_auth: true
+  fresh_signature_per_dispatch: true
+  bootstrap_operations_unsigned:
+    - get_adcp_capabilities
+  unavailable_behavior: not_applicable
+  # `not_applicable` is a compatibility disposition for a runner that cannot
+  # load this contract or its key material. Once the contract is active, signer
+  # setup/invocation failures are runner failures and MUST NOT be reclassified
+  # as seller failures or silently retried unsigned.
 
 stateful_vector_contract:
   replay_window:
@@ -137,6 +168,9 @@ scope:
     - Minimum replay-cache TTL so the replay-window contract is reliable.
     - Black-box vs. white-box harness mode selection.
     - Endpoint scope (sandbox only — see endpoint_scope).
+    - Capability-driven signing of ordinary functional storyboard requests.
+    - Preservation of independently configured bearer/API-key authentication
+      alongside RFC 9421 signature headers.
   out_of_scope: |
     - Specific error-code strings — those live in each vector's
       expected_outcome.error_code and are graded byte-for-byte.
@@ -149,9 +183,13 @@ scope:
       specifies observable behavior, not implementation.
     - Production verifier configuration — this contract configures a test
       counterparty only.
+    - Any sandbox authentication bypass. Sellers verify these requests through
+      their normal RFC 9421 path; the runner never weakens verifier policy.
 
 references:
   universal_storyboard: static/compliance/source/universal/signed-requests.yaml
   test_vectors: /compliance/{version}/test-vectors/request-signing/
   verifier_checklist: /docs/building/by-layer/L1/security.mdx#verifier-checklist-requests
   runner_implementation: https://github.com/adcontextprotocol/adcp-client/issues/585
+  functional_dispatch_implementation: https://github.com/adcontextprotocol/adcp-client/pull/2692
+  functional_dispatch_issue: https://github.com/adcontextprotocol/adcp/issues/5701
