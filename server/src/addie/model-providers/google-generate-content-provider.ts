@@ -1,9 +1,11 @@
 import {
   BlockedReason,
+  FunctionCallingConfigMode,
   GoogleGenAI,
   ThinkingLevel,
   type GenerateContentParameters,
   type GenerateContentResponse,
+  type Part,
 } from '@google/genai';
 import type {
   ModelFinishReason,
@@ -17,7 +19,7 @@ import type {
   PreparedModelInvocation,
 } from './model-provider.js';
 import { UnexpectedModelIdentityError } from './model-provider.js';
-import { validateModelCapabilities } from './capabilities.js';
+import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
@@ -36,11 +38,15 @@ export const GOOGLE_GENERATE_CONTENT_CAPABILITIES: ModelProviderCapabilities = O
   structuredOutput: true,
   reasoning: true,
   reasoningEfforts: Object.freeze(['provider_default', 'low', 'medium', 'high'] as const),
-  customTools: false,
+  customTools: true,
   providerWebSearch: false,
   imageInput: false,
   documentInput: false,
 });
+
+const MAX_GOOGLE_RESPONSE_PARTS = 1_000;
+const MAX_GOOGLE_CONTINUATION_BYTES = 2 * 1024 * 1024;
+const googleContinuationParts = new WeakMap<object, Readonly<Part>>();
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -61,6 +67,91 @@ function textOnly(content: ModelMessageContent[], label: string): string {
   return content.map((block) => block.type === 'text' ? block.text : '').join('');
 }
 
+function rememberGoogleContinuation<T extends object>(content: T, part: Part): T {
+  const serialized = JSON.stringify(part);
+  if (Buffer.byteLength(serialized, 'utf8') > MAX_GOOGLE_CONTINUATION_BYTES) {
+    throw new Error('Google continuation state exceeds size limit');
+  }
+  const frozen = deepFreeze(content);
+  googleContinuationParts.set(frozen, deepFreeze(structuredClone(part)));
+  return frozen;
+}
+
+function toGooglePart(content: ModelMessageContent): Part {
+  const continuation = googleContinuationParts.get(content);
+  if (continuation) return { ...continuation };
+  switch (content.type) {
+    case 'text':
+      return { text: content.text };
+    case 'tool_call':
+      throw new Error('Google tool-call continuation was not issued by this adapter');
+    case 'tool_result': {
+      if (typeof content.content !== 'string') {
+        throw new Error('Google tool results must be text-only');
+      }
+      if (!content.toolName?.trim()) {
+        throw new Error('Google tool results require the tool name');
+      }
+      return {
+        functionResponse: {
+          id: content.toolCallId,
+          name: content.toolName,
+          response: content.isError
+            ? { error: content.content }
+            : { output: content.content },
+        },
+      };
+    }
+    case 'provider_state':
+    case 'provider_tool_call':
+    case 'provider_tool_result':
+      throw new Error(`Cannot send ${content.provider} continuation state to Google`);
+    case 'image':
+    case 'document':
+      throw new Error('Google adapter does not support media input');
+    default: {
+      const exhaustive: never = content;
+      throw new Error(`Unsupported canonical content: ${String(exhaustive)}`);
+    }
+  }
+}
+
+function toGoogleContents(messages: ModelRequest['messages']): GenerateContentParameters['contents'] {
+  const pendingCalls = new Map<string, string>();
+  const translated = messages.map((message) => {
+    for (const content of message.content) {
+      if (content.type === 'tool_call') {
+        if (message.role !== 'assistant' || pendingCalls.has(content.id)) {
+          throw new Error('Malformed Google tool-call continuation');
+        }
+        pendingCalls.set(content.id, content.name);
+      } else if (content.type === 'tool_result') {
+        const expectedName = pendingCalls.get(content.toolCallId);
+        if (
+          message.role !== 'user'
+          || expectedName === undefined
+          || content.toolName !== expectedName
+        ) throw new Error('Google tool result does not match its call');
+        pendingCalls.delete(content.toolCallId);
+      }
+    }
+    return {
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: message.content.map(toGooglePart),
+    };
+  });
+  if (pendingCalls.size > 0) {
+    throw new Error('Google tool-call continuation is missing a result');
+  }
+  const merged: typeof translated = [];
+  for (const message of translated) {
+    const previous = merged.at(-1);
+    if (previous?.role === message.role) previous.parts.push(...message.parts);
+    else merged.push({ role: message.role, parts: [...message.parts] });
+  }
+  return merged;
+}
+
 function toGoogleRequest(request: ModelRequest): GenerateContentParameters {
   validateModelCapabilities('google', GOOGLE_GENERATE_CONTENT_CAPABILITIES, request);
   if (request.model !== GOOGLE_ROUTER_MODEL) {
@@ -69,15 +160,20 @@ function toGoogleRequest(request: ModelRequest): GenerateContentParameters {
   if (request.system.some((block) => block.cacheHint !== undefined)) {
     throw new Error('Google router adapter does not support cache hints');
   }
-  if (request.tools.length > 0 || (request.providerTools?.length ?? 0) > 0) {
-    throw new Error('Google router adapter is tool-free');
+  if ((request.providerTools?.length ?? 0) > 0) {
+    throw new Error('Google adapter does not support provider tools');
+  }
+  if (request.tools.length > 0 && request.outputSchema) {
+    throw new Error('Google adapter does not combine custom tools with structured output');
   }
   return {
     model: request.model,
-    contents: request.messages.map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: textOnly(message.content, 'messages') }],
-    })),
+    contents: request.tools.length > 0
+      ? toGoogleContents(request.messages)
+      : request.messages.map((message) => ({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: textOnly(message.content, 'messages') }],
+      })),
     config: {
       systemInstruction: request.system.map((block) => block.text).join('\n\n'),
       maxOutputTokens: request.maxOutputTokens,
@@ -94,6 +190,21 @@ function toGoogleRequest(request: ModelRequest): GenerateContentParameters {
       ...(request.outputSchema && {
         responseMimeType: 'application/json',
         responseJsonSchema: request.outputSchema.schema,
+      }),
+      ...(request.tools.length > 0 && {
+        tools: [{
+          functionDeclarations: request.tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            parametersJsonSchema: tool.inputSchema,
+          })),
+        }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: FunctionCallingConfigMode.VALIDATED,
+            allowedFunctionNames: request.tools.map((tool) => tool.name),
+          },
+        },
       }),
     },
   };
@@ -152,25 +263,76 @@ export function normalizeGoogleResponse(response: GenerateContentResponse): Mode
   if (!Array.isArray(parts)) {
     if (finishReason !== 'refusal') throw new Error('Malformed Google response content');
   }
+  if ((parts?.length ?? 0) > MAX_GOOGLE_RESPONSE_PARTS) {
+    throw new Error('Google response content part limit exceeded');
+  }
   const content: ModelMessageContent[] = [];
   for (const part of parts ?? []) {
     const keys = Object.keys(part).filter((key) => part[key as keyof typeof part] !== undefined);
-    if (keys.some((key) => key !== 'text' && key !== 'thoughtSignature' && key !== 'thought')) throw new Error('Unexpected Google response content');
+    if (keys.some((key) => !['text', 'functionCall', 'thoughtSignature', 'thought'].includes(key))) {
+      throw new Error('Unexpected Google response content');
+    }
     if (part.thought !== undefined && part.thought !== false) throw new Error('Unexpected Google thought content');
     if (part.thoughtSignature !== undefined && (typeof part.thoughtSignature !== 'string' || part.thoughtSignature.length > 16_384)) {
       throw new Error('Malformed Google thought signature');
     }
-    if (typeof part.text !== 'string') throw new Error('Malformed Google text content');
-    content.push({ type: 'text', text: part.text });
+    const hasText = part.text !== undefined;
+    const hasFunctionCall = part.functionCall !== undefined;
+    if (hasText === hasFunctionCall) throw new Error('Google response part requires exactly one payload');
+    if (part.functionCall !== undefined) {
+      const call = part.functionCall;
+      const callKeys = Object.keys(call).filter((key) => call[key as keyof typeof call] !== undefined);
+      // Gemini 3 supplies IDs for function calls. Missing IDs cannot be
+      // correlated safely, so this adapter fails closed instead of inventing one.
+      if (
+        callKeys.some((key) => !['id', 'name', 'args'].includes(key))
+        || typeof call.id !== 'string'
+        || !call.id.trim()
+        || call.id.length > 256
+        || typeof call.name !== 'string'
+        || !call.name.trim()
+        || call.name.length > 128
+        || typeof call.args !== 'object'
+        || call.args === null
+        || Array.isArray(call.args)
+        || call.partialArgs !== undefined
+        || call.willContinue !== undefined
+      ) throw new Error('Malformed Google function call');
+      assertPlainJson(call.args, 'Google function-call input');
+      content.push(rememberGoogleContinuation({
+        type: 'tool_call',
+        id: call.id,
+        name: call.name,
+        input: call.args,
+      } as const, part));
+    } else {
+      if (typeof part.text !== 'string') throw new Error('Malformed Google text content');
+      content.push(rememberGoogleContinuation({ type: 'text', text: part.text } as const, part));
+    }
+  }
+  if (candidate.content !== undefined && candidate.content.role !== 'model') {
+    throw new Error('Malformed Google response role');
   }
   if (finishReason !== 'refusal' && content.length < 1) throw new Error('Empty Google response output');
+
+  const hasToolCalls = content.some((item) => item.type === 'tool_call');
+  if (hasToolCalls) {
+    const firstFunctionPart = parts?.find((part) => part.functionCall !== undefined);
+    if (
+      typeof firstFunctionPart?.thoughtSignature !== 'string'
+      || !firstFunctionPart.thoughtSignature.trim()
+    ) throw new Error('Google function call is missing its thought signature');
+  }
+  if (hasToolCalls && finishReason !== 'stop') {
+    throw new Error('Google function call has incompatible finish reason');
+  }
 
   const normalized = deepFreeze({
     provider: 'google',
     model: response.modelVersion,
     id: response.responseId,
     content,
-    finishReason,
+    finishReason: hasToolCalls ? 'tool_calls' : finishReason,
     providerFinishReason: candidate.finishReason,
     usage: {
       inputTokens: response.usageMetadata.promptTokenCount,
@@ -243,8 +405,9 @@ export class GoogleGenerateContentProvider implements ModelProvider {
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };
     for (const [index, item] of normalized.content.entries()) {
-      if (item.type !== 'text') throw new Error('Google router adapter emitted non-text content');
-      yield { type: 'text_delta', index, text: item.text };
+      if (item.type === 'text') yield { type: 'text_delta', index, text: item.text };
+      else if (item.type === 'tool_call') yield { type: 'tool_call', index, call: item };
+      else throw new Error('Google adapter emitted unsupported content');
     }
     yield { type: 'response_complete', response: normalized };
   }
