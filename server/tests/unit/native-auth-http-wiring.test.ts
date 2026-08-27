@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   consumePendingAuth: vi.fn(),
   setGrant: vi.fn(),
   consumeGrant: vi.fn(),
+  consumeAccountLinkCorrelation: vi.fn(),
+  recordProactiveEvent: vi.fn(),
+  sendAccountLinkedMessage: vi.fn().mockResolvedValue(true),
 }));
 
 vi.hoisted(() => {
@@ -68,7 +71,33 @@ vi.mock('../../src/db/native-auth-state-db.js', () => ({
   cleanupExpired: vi.fn().mockResolvedValue(0),
 }));
 
+vi.mock('../../src/db/addie-account-link-correlation-db.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/db/addie-account-link-correlation-db.js')>();
+  return {
+    ...actual,
+    consumeAccountLinkCorrelation: mocks.consumeAccountLinkCorrelation,
+    recordProactiveEvent: mocks.recordProactiveEvent,
+  };
+});
+
+vi.mock('../../src/db/relationship-db.js', () => ({
+  resolvePersonId: vi.fn().mockResolvedValue('person-1'),
+}));
+
+vi.mock('../../src/db/person-events-db.js', () => ({
+  recordEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/addie/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/addie/index.js')>();
+  return {
+    ...actual,
+    sendAccountLinkedMessage: mocks.sendAccountLinkedMessage,
+  };
+});
+
 const { HTTPServer } = await import('../../src/http.js');
+const { SlackDatabase } = await import('../../src/db/slack-db.js');
 const {
   NATIVE_CLIENT_ID,
   NATIVE_PROTOCOL_VERSION,
@@ -225,5 +254,112 @@ describe('native OAuth HTTPServer wiring', () => {
       native_protocol: 2,
     });
     expect(response.headers.location).toBeUndefined();
+  });
+
+  it('carries a fixed-length account-link correlation through WorkOS state', async () => {
+    mocks.getAuthorizationUrl.mockReturnValueOnce('https://workos.test/authorize');
+    server = new HTTPServer();
+    const correlation = 'a'.repeat(43);
+
+    const response = await request(appFor(server)).get('/auth/login').query({
+      slack_user_id: 'U123',
+      account_link_correlation: correlation,
+    });
+
+    expect(response.status).toBe(302);
+    const authorizationOptions = mocks.getAuthorizationUrl.mock.calls[0][0];
+    expect(JSON.parse(authorizationOptions.state)).toEqual({
+      slack_user_id: 'U123',
+      account_link_correlation: correlation,
+    });
+  });
+
+  it('does not auto-link a Slack identity when correlation validation fails', async () => {
+    mocks.authenticateWithCode.mockResolvedValueOnce({
+      sealedSession: 'SEALED_SESSION_SECRET',
+      user: {
+        id: 'user_1',
+        email: 'person@example.com',
+        firstName: 'Person',
+        lastName: 'Example',
+        emailVerified: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    mocks.listOrganizationMemberships.mockResolvedValueOnce({ data: [] });
+    mocks.consumeAccountLinkCorrelation.mockResolvedValueOnce(undefined);
+    const getSlackMapping = vi.spyOn(SlackDatabase.prototype, 'getBySlackUserId');
+    server = new HTTPServer();
+
+    const response = await request(appFor(server)).get('/auth/callback').query({
+      code: 'workos-authorization-code',
+      state: JSON.stringify({
+        slack_user_id: 'U123',
+        account_link_correlation: 'a'.repeat(43),
+      }),
+    });
+
+    expect(response.status).toBe(302);
+    expect(mocks.consumeAccountLinkCorrelation).toHaveBeenCalledWith('a'.repeat(43), {
+      surface: 'slack',
+      initiatingUserId: 'U123',
+    });
+    expect(getSlackMapping).not.toHaveBeenCalled();
+    expect(mocks.recordProactiveEvent).toHaveBeenCalledWith(expect.objectContaining({
+      surface: 'slack',
+      initiatingUserId: 'U123',
+      deliveryStatus: 'skipped',
+      reasonCode: 'correlation_invalid_expired_reused_or_mismatched',
+    }));
+  });
+
+  it('links and notifies only the exact correlated Slack thread', async () => {
+    mocks.authenticateWithCode.mockResolvedValueOnce({
+      sealedSession: 'SEALED_SESSION_SECRET',
+      user: {
+        id: 'user_1',
+        email: 'person@example.com',
+        firstName: 'Person',
+        lastName: 'Example',
+        emailVerified: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+    mocks.listOrganizationMemberships.mockResolvedValueOnce({ data: [] });
+    const origin = {
+      correlationId: 'correlation-origin',
+      surface: 'slack' as const,
+      threadId: 'origin-thread',
+      initiatingUserId: 'U123',
+      externalId: 'D123:111.222',
+    };
+    mocks.consumeAccountLinkCorrelation.mockResolvedValueOnce(origin);
+    vi.spyOn(SlackDatabase.prototype, 'getBySlackUserId').mockResolvedValueOnce({
+      slack_user_id: 'U123',
+      workos_user_id: null,
+    } as never);
+    const mapUser = vi.spyOn(SlackDatabase.prototype, 'mapUser').mockResolvedValueOnce(undefined);
+    server = new HTTPServer();
+
+    const response = await request(appFor(server)).get('/auth/callback').query({
+      code: 'workos-authorization-code',
+      state: JSON.stringify({
+        slack_user_id: 'U123',
+        account_link_correlation: 'a'.repeat(43),
+      }),
+    });
+
+    expect(response.status).toBe(302);
+    expect(mapUser).toHaveBeenCalledWith({
+      slack_user_id: 'U123',
+      workos_user_id: 'user_1',
+      mapping_source: 'user_claimed',
+    });
+    expect(mocks.sendAccountLinkedMessage).toHaveBeenCalledWith(origin, 'Person');
+    expect(mocks.recordProactiveEvent).not.toHaveBeenCalledWith(expect.objectContaining({
+      deliveryStatus: 'skipped',
+    }));
   });
 });

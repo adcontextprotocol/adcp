@@ -22,6 +22,7 @@ import {
   generateInteractionId,
 } from './security.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import { recordProactiveEvent } from '../db/addie-account-link-correlation-db.js';
 import {
   initializeKnowledgeSearch,
   isKnowledgeReady,
@@ -1017,34 +1018,26 @@ async function setAssistantStatus(channelId: string, status: string): Promise<vo
  */
 export async function sendAccountLinkedMessage(
   slackUserId: string,
-  userName?: string
+  _userName?: string
 ): Promise<boolean> {
-  if (!initialized || !addieDb) {
-    logger.warn('Addie: Not initialized, cannot send account linked message');
-    return false;
-  }
-
-  // Find the user's most recent Addie thread (within 30 minutes)
-  const recentThread = await addieDb.getUserRecentThread(slackUserId, 30);
-  if (!recentThread) {
-    logger.debug({ slackUserId }, 'Addie: No recent thread found for account linked message');
-    return false;
-  }
-
-  // Build a personalized message
-  const greeting = userName ? `Thanks for linking your account, ${userName}!` : 'Thanks for linking your account!';
-  const message = `${greeting} 🎉\n\nI can now see your profile and help you get more involved with AgenticAdvertising.org. What would you like to do next?`;
-
-  // Send the message
   try {
-    await sendChannelMessage(recentThread.channel_id, {
-      text: message,
-      thread_ts: recentThread.thread_ts,
+    await recordProactiveEvent({
+      eventType: 'account_linked',
+      surface: 'slack',
+      initiatingUserId: slackUserId,
+      deliveryStatus: 'skipped',
+      reasonCode: 'legacy_origin_unavailable',
     });
-    logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
-    return true;
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Addie: Failed to send account linked message');
-    return false;
+    logger.error({
+      error,
+      slackUserId,
+      reasonCode: 'proactive_event_persistence_failed',
+    }, 'Addie: Failed to persist skipped legacy account-link event');
   }
+  logger.warn({
+    slackUserId,
+    reasonCode: 'legacy_origin_unavailable',
+  }, 'Addie: Skipped legacy account-link delivery without a safe origin');
+  return false;
 }

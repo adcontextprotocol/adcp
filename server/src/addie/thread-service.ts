@@ -1100,25 +1100,6 @@ export class ThreadService {
   }
 
   /**
-   * Get a user's most recent thread (for proactive messages)
-   */
-  async getUserRecentThread(
-    userId: string,
-    userType: UserType,
-    maxAgeMinutes = 30
-  ): Promise<Thread | null> {
-    const result = await query<Thread>(
-      `SELECT * FROM addie_threads
-       WHERE user_type = $1 AND user_id = $2
-         AND last_message_at > NOW() - make_interval(mins => $3)
-       ORDER BY last_message_at DESC
-       LIMIT 1`,
-      [userType, userId, maxAgeMinutes]
-    );
-    return result.rows[0] || null;
-  }
-
-  /**
    * Get activity stats for a specific user (messages and active days in last 30 days)
    * Combines activity across all channels (Slack and web chat)
    */
