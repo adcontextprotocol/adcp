@@ -75,6 +75,18 @@ function collectOpenApiDirectories(node) {
   return directories;
 }
 
+/**
+ * Collect OpenAPI sources so deployments cannot depend on a remote fetch.
+ */
+function collectOpenApiSources(node) {
+  if (Array.isArray(node)) return node.flatMap(collectOpenApiSources);
+  if (!node || typeof node !== 'object') return [];
+
+  const sources = node.openapi?.source ? [node.openapi.source] : [];
+  if (node.pages) sources.push(...collectOpenApiSources(node.pages));
+  return sources;
+}
+
 function isDirectSlackInvite(value) {
   try {
     const url = new URL(value);
@@ -133,6 +145,24 @@ test('default version carries the Latest tag', () => {
     || navigation.versions[0];
   if (defaultEntry.tag !== 'Latest') {
     throw new Error('The default docs version must carry the "Latest" tag');
+  }
+});
+
+test('OpenAPI navigation uses repository-local sources', () => {
+  const sources = collectOpenApiSources(navigation.versions);
+  const remoteSources = sources.filter(source => /^https?:\/\//i.test(source));
+  if (remoteSources.length > 0) {
+    throw new Error(
+      `Remote OpenAPI sources make Mintlify deployment depend on an external fetch: ` +
+      remoteSources.join(', ')
+    );
+  }
+
+  const missingSources = sources.filter(source => !fs.existsSync(
+    path.join(rootDir, source.replace(/^\//, ''))
+  ));
+  if (missingSources.length > 0) {
+    throw new Error(`Missing local OpenAPI sources: ${missingSources.join(', ')}`);
   }
 });
 
