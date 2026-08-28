@@ -171,7 +171,7 @@ describe('OpenAIResponsesProvider', () => {
       input: [
         { type: 'message', role: 'user', content: 'Find the task model.' },
         { type: 'function_call', call_id: 'call_1', name: 'search_docs', arguments: '{"query":"task model"}' },
-        { type: 'function_call_output', call_id: 'call_1', name: 'search_docs', output: 'The protocol is task based.' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'The protocol is task based.' },
       ],
       tools: [{
         type: 'function',
@@ -281,7 +281,6 @@ describe('OpenAIResponsesProvider', () => {
         {
           type: 'function_call_output',
           call_id: 'call_1',
-          name: 'search_docs',
           output: expect.stringContaining('Official docs: AdCP uses task-based interactions'),
         },
       ]),

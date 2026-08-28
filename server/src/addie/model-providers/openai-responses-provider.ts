@@ -120,7 +120,6 @@ function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
           output: typeof content.content === 'string'
             ? content.content
             : textOnly(content.content, `tool result ${content.toolCallId}`),
-          ...(content.toolName && { name: content.toolName }),
         });
       } else {
         throw new Error(`OpenAI adapter does not support ${content.type} in a ${message.role} message`);
