@@ -50,7 +50,12 @@ import {
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
-import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
+import {
+  canonicalizeAccountRef,
+  normalizeControllerAccountRef,
+  syntheticAccountIdFromRef,
+  type CanonicalAccountRef,
+} from './account-scope.js';
 import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { buildCatalog } from './product-factory.js';
@@ -62,6 +67,11 @@ import {
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
 import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import {
+  taskRegistryNamespaceForTenant,
+  type TaskRegistryTenant,
+  type TrainingTaskRegistryScope,
+} from './task-registry-scope.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1805,7 +1815,8 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return handleForceGetProductsRejection(session, ctx.principal ?? 'anonymous', params);
   }
   if (scenario === 'force_task_completion') {
-    return handleForceTaskCompletion(sessionKey, rawArgs);
+    const completionScope = ctx.taskRegistryScope ?? controllerTaskRegistryScope(sessionArgs, ctx);
+    return handleForceTaskCompletion(completionScope, rawArgs);
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};
@@ -2710,7 +2721,7 @@ function handleForceGetProductsRejection(
  * `comply-test-controller-request.json` and the matching mdx section.
  *
  * The training-agent records completions in a process-global Map keyed by
- * (caller-supplied task_id) → ({ result, ownerKey }). Cross-account calls return
+ * (account + task-registry owner scope + caller-supplied task_id). Cross-account calls return
  * NOT_FOUND (per the spec MUST). Tasks already at `completed` with the same
  * result are idempotent no-ops; tasks at any other terminal state return
  * INVALID_TRANSITION.
@@ -2721,16 +2732,48 @@ function handleForceGetProductsRejection(
  * tenant controller adapter also completes the shared registry before it
  * returns so the next polling step cannot race the background handoff.
  */
-const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
+interface ForcedTaskCompletionRecord {
+  result: Record<string, unknown>;
+  scope: TrainingTaskRegistryScope;
+  completedAt: string;
+}
+
+const FORCED_TASK_COMPLETIONS = new Map<string, ForcedTaskCompletionRecord>();
 const MAX_FORCED_TASK_COMPLETIONS = 1000;
 const FORCED_TASK_COMPLETION_TIMEOUT_MS = 15 * 60 * 1000;
 interface PendingForcedTaskCompletion {
-  ownerKey: string;
+  scope: TrainingTaskRegistryScope;
   resolve: (result: Record<string, unknown>) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskCompletion>();
+
+function forcedTaskCompletionKey(taskId: string, scope: TrainingTaskRegistryScope): string {
+  return JSON.stringify([scope.registryNamespace, scope.accountId, scope.ownerScope, taskId]);
+}
+
+function controllerTaskRegistryScope(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): TrainingTaskRegistryScope {
+  const accountRef = normalizeControllerAccountRef(args.account);
+  const canonical = canonicalizeAccountRef(accountRef);
+  const accountId = canonical.kind === 'account_id'
+    ? canonical.account_id
+    : syntheticAccountIdFromRef(accountRef);
+  const ownerScope = ctx.authenticatedAgentUrl
+    ? `agent:${ctx.authenticatedAgentUrl}`
+    : ctx.principal && ctx.principal !== 'anonymous'
+      ? `client:${ctx.principal}`
+      : `account:${accountId}`;
+  const tenantId: TaskRegistryTenant = ctx.tenantId === 'signals' ? 'signals' : 'sales';
+  return {
+    registryNamespace: taskRegistryNamespaceForTenant(tenantId),
+    accountId,
+    ownerScope,
+  };
+}
 
 /**
  * Register the background half of a forceable async task. The v6 task
@@ -2739,21 +2782,16 @@ const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskComplet
  */
 export function waitForForcedTaskCompletion(
   taskId: string,
-  ownerKey: string,
+  scope: TrainingTaskRegistryScope,
 ): Promise<Record<string, unknown>> {
-  const completed = FORCED_TASK_COMPLETIONS.get(taskId);
+  const completionKey = forcedTaskCompletionKey(taskId, scope);
+  const completed = FORCED_TASK_COMPLETIONS.get(completionKey);
   if (completed) {
-    if (completed.ownerKey !== ownerKey) {
-      return Promise.reject(new Error(`Task "${taskId}" belongs to another sandbox account`));
-    }
     return Promise.resolve(completed.result);
   }
 
-  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(completionKey);
   if (pending) {
-    if (pending.ownerKey !== ownerKey) {
-      return Promise.reject(new Error(`Task "${taskId}" is already registered for another sandbox account`));
-    }
     return Promise.reject(new Error(`Task "${taskId}" already has a pending completion waiter`));
   }
 
@@ -2763,11 +2801,11 @@ export function waitForForcedTaskCompletion(
 
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+      PENDING_FORCED_TASK_COMPLETIONS.delete(completionKey);
       reject(new Error(`Task "${taskId}" was not completed within the 15-minute compliance window`));
     }, FORCED_TASK_COMPLETION_TIMEOUT_MS);
     timeout.unref();
-    PENDING_FORCED_TASK_COMPLETIONS.set(taskId, { ownerKey, resolve, reject, timeout });
+    PENDING_FORCED_TASK_COMPLETIONS.set(completionKey, { scope, resolve, reject, timeout });
   });
 }
 
@@ -2782,11 +2820,11 @@ export function clearForcedTaskCompletions(): void {
 }
 
 /** Test-only: read the forced-completion pool. */
-export function getForcedTaskCompletions(): ReadonlyMap<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }> {
+export function getForcedTaskCompletions(): ReadonlyMap<string, ForcedTaskCompletionRecord> {
   return FORCED_TASK_COMPLETIONS;
 }
 
-function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, unknown>): object {
+function handleForceTaskCompletion(scope: TrainingTaskRegistryScope, rawArgs: Record<string, unknown>): object {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   if (!params || typeof params !== 'object') {
     return {
@@ -2832,17 +2870,9 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  const existing = FORCED_TASK_COMPLETIONS.get(taskId);
+  const completionKey = forcedTaskCompletionKey(taskId, scope);
+  const existing = FORCED_TASK_COMPLETIONS.get(completionKey);
   if (existing) {
-    // Cross-account check (spec MUST): NOT_FOUND for task_ids belonging to other
-    // accounts, conventional "not yours" → "doesn't exist" treatment.
-    if (existing.ownerKey !== sessionKey) {
-      return {
-        success: false,
-        error: 'NOT_FOUND',
-        error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-      };
-    }
     // Idempotent replay: same params → no-op success.
     if (JSON.stringify(existing.result) === JSON.stringify(result)) {
       return {
@@ -2861,14 +2891,7 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
-  if (pending && pending.ownerKey !== sessionKey) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-    };
-  }
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(completionKey);
   if (!pending) {
     return {
       success: false,
@@ -2885,14 +2908,14 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  FORCED_TASK_COMPLETIONS.set(taskId, {
+  FORCED_TASK_COMPLETIONS.set(completionKey, {
     result: result as Record<string, unknown>,
-    ownerKey: sessionKey,
+    scope,
     completedAt: new Date().toISOString(),
   });
   if (pending) {
     clearTimeout(pending.timeout);
-    PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+    PENDING_FORCED_TASK_COMPLETIONS.delete(completionKey);
     pending.resolve(result as Record<string, unknown>);
   }
 

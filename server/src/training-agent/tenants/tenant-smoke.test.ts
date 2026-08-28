@@ -2083,6 +2083,138 @@ describe('tenant routing smoke', () => {
     }
   }, 60000);
 
+  it('isolates forced get_signals tasks across natural account operators', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'signals-task-scope.example' },
+        operator: 'signals-task-scope.example',
+        sandbox: true,
+      };
+      const otherAccount = {
+        ...account,
+        operator: 'operator-b.example',
+      };
+      const taskId = 'task_training_signals_account_scope';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 10, 'comply_test_controller', {
+        account,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 11, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 12, 'list_tasks', {
+        account,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 1, returned: 1 },
+        tasks: [expect.objectContaining({ task_id: taskId })],
+      });
+
+      expect(payload(await callTenantTool(url, 13, 'list_tasks', {
+        account: otherAccount,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 0, returned: 0 },
+        tasks: [],
+      });
+
+      expect(payload(await callTenantTool(url, 14, 'comply_test_controller', {
+        account: otherAccount,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 15, 'get_signals', {
+        account: otherAccount,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 16, 'list_tasks', {
+        account: otherAccount,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 1, returned: 1 },
+        tasks: [expect.objectContaining({ task_id: taskId })],
+      });
+
+      expect(payload(await callTenantTool(url, 17, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+
+      expect(payload(await callTenantTool(url, 18, 'comply_test_controller', {
+        account: otherAccount,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('completes a forced get_signals task for an opaque sandbox account', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const account = { account_id: 'signals_opaque_task_account' };
+      const controllerAccount = { ...account, sandbox: true };
+      const taskId = 'task_training_signals_opaque_scope';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 20, 'comply_test_controller', {
+        account: controllerAccount,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 21, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 22, 'comply_test_controller', {
+        account: controllerAccount,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+    } finally {
+      await close();
+    }
+  }, 30000);
+
   it('isolates forced task completion by authenticated owner and account', async () => {
     const { baseUrl, close } = await bootServer();
     try {

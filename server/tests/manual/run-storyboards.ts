@@ -316,10 +316,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
   ],
   [
-    'signals_baseline/get_signals_async/list_signals_task_wrong_account',
-    'The packaged framework task registry does not apply the request account when list_tasks filters by task_id, exposing the same authenticated caller task across sandbox accounts. The submitted, same-account listing, and completion phases remain active. Remove when task registry reads enforce account scope.',
-  ],
-  [
     'governance_delivery_monitor/check_governance_drift',
     'The packaged runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],

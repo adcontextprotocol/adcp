@@ -15,7 +15,6 @@
  * v5 response into the v6 typed result.
  */
 
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   TestControllerError,
@@ -24,8 +23,17 @@ import {
 } from '@adcp/sdk/testing';
 import { TOOL_INPUT_SHAPE, type TaskRegistry, type TaskRegistryScope } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
-import { accountScopeFromRef, canonicalizeAccountRef } from '../account-scope.js';
+import {
+  canonicalizeAccountRef,
+  normalizeControllerAccountRef,
+  syntheticAccountIdFromRef,
+} from '../account-scope.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
+import {
+  taskRegistryNamespaceForTenant,
+  type TaskRegistryTenant,
+  type TrainingTaskRegistryScope,
+} from '../task-registry-scope.js';
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
@@ -72,6 +80,7 @@ async function dispatchV5(
   params: Record<string, unknown>,
   input: Record<string, unknown>,
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistryScope?: TrainingTaskRegistryScope,
 ): Promise<V5Response> {
   // v5 handler reads brand/account from the wire-shaped args to derive
   // the session key. `ctx.input` is the full raw input (including
@@ -112,6 +121,7 @@ async function dispatchV5(
   return await handleComplyTestController(args, {
     mode: 'open',
     principal,
+    ...(taskRegistryScope && { taskRegistryScope }),
     ...(storyboardCompat && { storyboardCompat }),
   } satisfies TrainingContext) as V5Response;
 }
@@ -148,11 +158,8 @@ async function requireControllerTaskScope(
   return scope;
 }
 
-type ControllerTaskTenant = 'sales' | 'signals';
-
 function controllerTaskScope(
   input: Record<string, unknown>,
-  tenant: ControllerTaskTenant,
 ): TaskRegistryScope | null {
   // The router overwrites this field after bearer authentication. It is not
   // accepted as caller authority on routes that bypass that trusted bridge.
@@ -160,15 +167,14 @@ function controllerTaskScope(
   if (typeof ownerScope !== 'string' || ownerScope.length === 0) return null;
 
   try {
-    const account = canonicalizeAccountRef(input.account);
+    const accountRef = normalizeControllerAccountRef(input.account);
+    const account = canonicalizeAccountRef(accountRef);
     if (account.kind === 'account_id') {
       return { accountId: account.account_id, ownerScope };
     }
-    const accountId = tenant === 'sales'
-      // Mirrors TrainingSalesPlatform's explicit account resolver.
-      ? `synthetic_${createHash('sha256').update(accountScopeFromRef(input.account)).digest('hex').slice(0, 32)}`
-      // Mirrors TrainingPlatform's signals account resolver.
-      : `synthetic_${account.brand.domain}`;
+    // Both decisioning platforms derive durable task scope from the complete
+    // canonical account identity, including operator and sandbox disposition.
+    const accountId = syntheticAccountIdFromRef(accountRef);
     return { accountId, ownerScope };
   } catch {
     return null;
@@ -196,7 +202,7 @@ function forceAdapter(
 }
 
 function taskCompletionAdapter(
-  tenant: ControllerTaskTenant,
+  tenantId: TaskRegistryTenant,
   storyboardCompat?: TrainingContext['storyboardCompat'],
   taskRegistry?: TaskRegistry,
 ): AdapterShim {
@@ -217,10 +223,22 @@ function taskCompletionAdapter(
       scope = await requireControllerTaskScope(
         taskRegistry,
         taskId,
-        controllerTaskScope(ctx.input, tenant),
+        controllerTaskScope(ctx.input),
       );
     }
-    const controllerResult = await dispatchV5('force_task_completion', params, ctx.input, storyboardCompat);
+    const completionScope = scope
+      ? {
+          ...scope,
+          registryNamespace: taskRegistryNamespaceForTenant(tenantId),
+        }
+      : undefined;
+    const controllerResult = await dispatchV5(
+      'force_task_completion',
+      params,
+      ctx.input,
+      storyboardCompat,
+      completionScope,
+    );
     throwOnFailure(controllerResult);
     if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
       // Persist synchronously so the next polling step cannot race the

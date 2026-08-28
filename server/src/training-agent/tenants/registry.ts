@@ -51,6 +51,7 @@ import type { TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
+import { taskRegistryNamespaceForTenant } from '../task-registry-scope.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -99,7 +100,6 @@ const noopJwksValidator = {
 const CANONICAL_BASE = getCanonicalBase();
 
 const CANONICAL_HOST = new URL(CANONICAL_BASE).host;
-const TASK_REGISTRY_NAMESPACE_PREFIX = 'adcp-training-agent';
 
 function buildHostBaseUrl(): string {
   return CANONICAL_BASE;
@@ -151,7 +151,7 @@ function pickTaskRegistry(tenantId: string): TaskRegistry {
   };
   return createPostgresTaskRegistry({
     pool: lazyPool,
-    namespace: `${TASK_REGISTRY_NAMESPACE_PREFIX}:${tenantId}`,
+    namespace: taskRegistryNamespaceForTenant(tenantId),
     tableName: 'adcp_decisioning_tasks_v2',
   });
 }
