@@ -51,9 +51,11 @@ describe('Slack knowledge global registration', () => {
     expect(baseline).not.toContain('registerToolsFromMap(client, PROPERTY_TOOLS');
     expect(baseline).not.toContain('registerToolsFromMap(client, BRAND_TOOLS');
     expect(baseline).not.toContain('registerToolsFromMap(client, BRAND_CANONICAL_TOOLS');
+    expect(baseline).not.toContain('registerToolsFromMap(client, BILLING_TOOLS');
     expect(bolt).toContain('allTools.push(...PROPERTY_TOOLS);');
     expect(bolt).toContain('allTools.push(...BRAND_TOOLS);');
     expect(bolt).toContain('allTools.push(...BRAND_CANONICAL_TOOLS);');
+    expect(bolt).toContain("BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')");
     expect(legacy).toContain('KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))');
     expect(web).toContain('if (isSlackKnowledgeTool(tool)) continue;');
     expect(voice).toContain('KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))');

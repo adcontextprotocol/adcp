@@ -138,6 +138,26 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('member billing workflow', () => {
+    it('exposes only identity-bound self-service tools to members', () => {
+      const tools = getToolsForSets(['member_billing'], false, false);
+      const memberBillingTools = [
+        'find_membership_products',
+        'create_payment_link',
+        'send_invoice',
+        'confirm_send_invoice',
+        'get_billing_portal',
+      ];
+
+      expect(TOOL_SETS.member_billing.tools).toEqual(memberBillingTools);
+      expect(tools).toEqual(expect.arrayContaining(memberBillingTools));
+      for (const adminTool of TOOL_SETS.billing.tools) {
+        expect(tools).not.toContain(adminTool);
+      }
+      expect(TOOL_SETS.billing.tools.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);
@@ -154,9 +174,9 @@ describe('getToolsForSets', () => {
       expect(tools).toContain('get_account_link');
     });
 
-    it('skips billing tool set in public channels', () => {
-      const billingTools = TOOL_SETS.billing.tools;
-      const tools = getToolsForSets(['billing'], true, true);
+    it('skips member and admin billing sets in public channels', () => {
+      const billingTools = [...TOOL_SETS.member_billing.tools, ...TOOL_SETS.billing.tools];
+      const tools = getToolsForSets(['member_billing', 'billing'], true, true);
       for (const billingTool of billingTools) {
         expect(tools).not.toContain(billingTool);
       }
@@ -164,7 +184,8 @@ describe('getToolsForSets', () => {
 
     it('includes billing tool set in private channels for admins', () => {
       const tools = getToolsForSets(['billing'], true, false);
-      expect(tools).toContain('find_membership_products');
+      expect(tools).toContain('send_payment_request');
+      expect(tools).not.toContain('find_membership_products');
     });
 
     it('keeps Stripe customer relinks behind the precision-gated billing set', () => {

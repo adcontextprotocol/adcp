@@ -237,7 +237,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   } = defs;
   const globalTools = [
     ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...billing.BILLING_TOOLS,
     ...schema.SCHEMA_TOOLS,
     ...directory.DIRECTORY_TOOLS,
     ...url.URL_TOOLS,
@@ -250,7 +249,9 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...directory.DIRECTORY_TOOLS,
     ...slackKnowledge,
     ...illustration.ILLUSTRATION_TOOLS,
-    ...(isPublic ? [] : billing.BILLING_TOOLS),
+    ...(isPublic
+      ? billing.BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')
+      : billing.BILLING_TOOLS),
     ...escalation.ESCALATION_TOOLS,
     ...newsletter.NEWSLETTER_TOOLS,
     ...adcp.ADCP_TOOLS,

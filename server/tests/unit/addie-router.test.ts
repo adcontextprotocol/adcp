@@ -102,7 +102,8 @@ describe('Addie router prompt policy', () => {
     const adminPrompt = buildRoutingPrompt({ message: 'invoice please', source: 'dm', isAAOAdmin: true });
 
     expect(memberPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(false)].join(', ')}`);
-    expect(memberPrompt).toContain('→ [] (use the always-available escalation tool)');
+    expect(memberPrompt).toContain('→ ["member_billing"]');
+    expect(memberPrompt).toContain('Refunds, disputes, failed charges');
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
     expect(adminPrompt).toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
@@ -497,6 +498,10 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).not.toMatch(/\*\*billing\*\*/);
     });
 
+    it('should include member billing set', () => {
+      expect(descriptions).toMatch(/\*\*member_billing\*\*/);
+    });
+
     it('should NOT include outreach set', () => {
       // outreach is adminOnly: true
       expect(descriptions).not.toMatch(/\*\*outreach\*\*/);
@@ -622,16 +627,24 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('list_escalations');
   });
 
-  it('should block billing tools for non-admin users', () => {
+  it('should block admin billing tools for non-admin users', () => {
     const tools = getToolsForSets(['billing'], false);
     expect(tools).not.toContain('create_payment_link');
-    expect(tools).not.toContain('send_invoice');
+    expect(tools).not.toContain('send_payment_request');
   });
 
-  it('should include billing tools for admin users', () => {
+  it('should include admin billing tools for admin users', () => {
     const tools = getToolsForSets(['billing'], true);
+    expect(tools).toContain('send_payment_request');
+    expect(tools).toContain('resend_invoice');
+    expect(tools).not.toContain('create_payment_link');
+  });
+
+  it('should include member billing tools for non-admin users', () => {
+    const tools = getToolsForSets(['member_billing'], false);
     expect(tools).toContain('create_payment_link');
-    expect(tools).toContain('send_invoice');
+    expect(tools).toContain('confirm_send_invoice');
+    expect(tools).toContain('get_billing_portal');
   });
 
   it('should combine multiple sets', () => {

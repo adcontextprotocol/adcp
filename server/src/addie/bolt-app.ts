@@ -1226,18 +1226,23 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
 
-  // Add billing tools for all users (membership signup assistance)
-  // Skip in public channels — billing tools enable enrollment pitching
+  // Add billing tools for private conversations. Public channels retain only
+  // the read-only membership lookup used by certification paywall guidance;
+  // routing still filters it out unless certification selected that tool.
   const isPublicChannel = threadContext?.viewing_channel_is_private === false;
+  const requestBillingTools = isPublicChannel
+    ? BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')
+    : BILLING_TOOLS;
+  const billingHandlers = createBillingToolHandlers(memberContext);
+  allTools.push(...requestBillingTools);
+  for (const tool of requestBillingTools) {
+    const handler = billingHandlers.get(tool.name);
+    if (handler) allHandlers.set(tool.name, handler);
+  }
   if (!isPublicChannel) {
-    const billingHandlers = createBillingToolHandlers(memberContext);
-    allTools.push(...BILLING_TOOLS);
-    for (const [name, handler] of billingHandlers) {
-      allHandlers.set(name, handler);
-    }
     logger.debug('Addie Bolt: Billing tools enabled');
   } else {
-    logger.debug('Addie Bolt: Billing tools skipped (public channel)');
+    logger.debug('Addie Bolt: Only read-only membership lookup enabled (public channel)');
   }
 
   // Add escalation tools for all users

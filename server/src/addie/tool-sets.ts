@@ -373,14 +373,25 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
-  billing: {
-    name: "billing",
+  member_billing: {
+    name: "member_billing",
     description:
-      "Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions, look up pending invoices",
+      "Handle the current member's own billing - find membership pricing, create a payment link, preview and confirm an invoice, or open the organization's billing portal",
     tools: [
       "find_membership_products",
       "create_payment_link",
       "send_invoice",
+      "confirm_send_invoice",
+      "get_billing_portal",
+    ],
+    requiresPrecision: true,
+  },
+
+  billing: {
+    name: "billing",
+    description:
+      "Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts",
+    tools: [
       "send_payment_request",
       "grant_discount",
       "remove_discount",
@@ -596,8 +607,8 @@ export function getToolsForSets(
       if (toolSet.adminOnly && !isAAOAdmin) {
         continue;
       }
-      // Skip billing set in public channels
-      if (isPublicChannel && setName === "billing") {
+      // Skip enrollment and financial actions in public channels.
+      if (isPublicChannel && (setName === "member_billing" || setName === "billing")) {
         continue;
       }
       for (const tool of toolSet.tools) {

@@ -550,7 +550,8 @@ The user is an ADMIN.
   } else {
     conditionalRules += `
 The user is NOT an admin.
-- Billing questions (invoices, payments, membership fees, pricing) → respond with [] (no tools). Use escalate_to_admin (always available regardless of tool set) to create a support ticket on their behalf. Do NOT route to the "billing" tool set.`;
+- The current member can handle membership pricing, payment links, invoice creation, and their organization's billing portal with "member_billing".
+- Refunds, payment disputes, failed charges, and requests to act on another organization require human support → respond with [] (no routed tools) and use escalate_to_admin. Never route a non-admin to the admin-only "billing" set.`;
   }
 
   const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : "";
@@ -629,9 +630,10 @@ ${
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
+- Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
-    ? '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing"]'
-    : '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → [] (use the always-available escalation tool)'}
+    ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
+    : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → ["events", "admin_events"]

@@ -17,10 +17,6 @@ import {
   isSlackKnowledgeTool,
 } from "./mcp/knowledge-search.js";
 import {
-  BILLING_TOOLS,
-  createBillingToolHandlers,
-} from "./mcp/billing-tools.js";
-import {
   SCHEMA_TOOLS,
   createSchemaToolHandlers,
 } from "./mcp/schema-tools.js";
@@ -56,7 +52,6 @@ export async function registerBaselineTools(client: AddieClaudeClient): Promise<
     KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool)),
     createKnowledgeToolHandlers({ slackAccess: { kind: 'public-only' } }),
   );
-  registerToolsFromMap(client, BILLING_TOOLS, createBillingToolHandlers());
   registerToolsFromMap(client, SCHEMA_TOOLS, createSchemaToolHandlers());
   registerToolsFromMap(client, DIRECTORY_TOOLS, createDirectoryToolHandlers());
 }
