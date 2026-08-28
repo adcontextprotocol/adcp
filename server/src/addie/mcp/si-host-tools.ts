@@ -98,6 +98,11 @@ function removeCachedSession(threadId: string): void {
   threadSessionMap.delete(threadId);
 }
 
+/** Keep the routed SI workflow available while this conversation owns a session. */
+export function hasCachedSiSession(threadId: string): boolean {
+  return threadSessionMap.has(threadId);
+}
+
 /**
  * SI Host tools for Addy
  */

@@ -491,6 +491,46 @@ Save the public AdCP test agent credentials for the user's organization so teamm
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
+## sponsored_intelligence
+
+Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation
+
+### `get_si_availability`
+
+Check if an offer or product is available from a brand agent before connecting. This is an anonymous pre-flight check that doesn't share user data.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+### `list_si_agents`
+
+List AAO member brand agents that support Sponsored Intelligence protocol. Shows which brands users can have conversations with.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+### `connect_to_si_agent`
+
+Connect user with an SI-hosted brand agent. Initiates a conversational session where the brand agent can interact with the user.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+### `send_to_si_agent`
+
+Send a message to an active SI session with a brand agent. Use this when the user is already connected and wants to continue the conversation.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+### `end_si_session`
+
+End the current SI session with a brand agent. Use when user is done talking to the brand or wants to return to normal conversation.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
+### `get_si_session_status`
+
+Check if there's an active SI session and get its current status.
+
+*Source: `server/src/addie/mcp/si-host-tools.ts`*
+
 ## content
 
 Manage content workflows — propose news sources, add or update committee documents (admin actions)
@@ -1862,40 +1902,4 @@ Browse the property catalog. Returns properties with their identifiers, classifi
 File a dispute against a catalog entry. For identifier link disputes on medium/weak confidence, the link is suspended immediately pending review. For authoritative/strong links, the dispute is queued for review without suspension.
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
-
-### `get_si_availability`
-
-Check if an offer or product is available from a brand agent before connecting. This is an anonymous pre-flight check that doesn't share user data.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `list_si_agents`
-
-List AAO member brand agents that support Sponsored Intelligence protocol. Shows which brands users can have conversations with.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `connect_to_si_agent`
-
-Connect user with an SI-hosted brand agent. Initiates a conversational session where the brand agent can interact with the user.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `send_to_si_agent`
-
-Send a message to an active SI session with a brand agent. Use this when the user is already connected and wants to continue the conversation.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `end_si_session`
-
-End the current SI session with a brand agent. Use when user is done talking to the brand or wants to return to normal conversation.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
-
-### `get_si_session_status`
-
-Check if there's an active SI session and get its current status.
-
-*Source: `server/src/addie/mcp/si-host-tools.ts`*
 

@@ -98,6 +98,31 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual(['billing']);
   });
 
+  it('adds Sponsored Intelligence tools for a relevant retrieval or active session', () => {
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['directory'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual(['directory', 'sponsored_intelligence']);
+
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['sponsored_intelligence'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual(['sponsored_intelligence']);
+
+    expect(selectSlackToolSets({
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual(['knowledge', 'sponsored_intelligence']);
+  });
+
   it('preserves an already-created legacy admin plan for continuity', () => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['admin'],
