@@ -64,6 +64,105 @@
     {
       "if": {
         "properties": {
+          "adcp": {
+            "required": ["agent_configuration"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "protocol.agent_configuration" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "agent_configuration": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "notification_configs" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["agent_configuration"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "capability_changes": {
+                "properties": {
+                  "notifications": {
+                    "properties": {
+                      "supported": { "const": true },
+                      "registration_task": { "const": "sync_agent_configuration" }
+                    },
+                    "required": ["supported", "registration_task"]
+                  }
+                },
+                "required": ["notifications"]
+              }
+            },
+            "required": ["capability_changes"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "capability_changes": {
+                "properties": {
+                  "notifications": {
+                    "properties": {
+                      "registration_task": { "const": "sync_agent_configuration" }
+                    },
+                    "required": ["registration_task"]
+                  }
+                },
+                "required": ["notifications"]
+              }
+            },
+            "required": ["capability_changes"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "agent_configuration": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "notification_configs" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["agent_configuration"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "media_buy": {
             "properties": {
               "audience_targeting": {
@@ -360,6 +459,62 @@
             }
           ]
         },
+        "agent_configuration": {
+          "type": "object",
+          "x-status": "experimental",
+          "description": "Caller-scoped durable connection configuration accepted by this agent. This is the buyer-to-seller configuration half of negotiation, not a second seller capability document: the seller advertises objective support here, while each authenticated caller submits its desired webhooks and reusable destinations through sync_agent_configuration. Per-account authority and feed selection remain in account/reporting configuration. Sellers exposing this block MUST list protocol.agent_configuration in experimental_features.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "const": true
+            },
+            "sync_task": {
+              "type": "string",
+              "const": "sync_agent_configuration"
+            },
+            "supported_sections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["notification_configs", "reporting_destinations"]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
+            },
+            "max_reporting_destinations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "description": "Maximum caller-scoped destination bindings when reporting_destinations is supported. The task schema has a portable maximum of 64; sellers may advertise a lower operational limit."
+            },
+            "optimistic_concurrency": {
+              "type": "boolean",
+              "description": "Whether expected_configuration_version is enforced. Sellers SHOULD support it when several services may authenticate as the same stable principal."
+            }
+          },
+          "required": ["supported", "sync_task", "supported_sections", "optimistic_concurrency"],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_destinations" }
+                  }
+                },
+                "required": ["supported_sections"]
+              },
+              "then": {
+                "required": ["max_reporting_destinations"]
+              }
+            }
+          ],
+          "x-adcp-validation": {
+            "notification_registration": "When capability_changes.notifications.registration_task is sync_agent_configuration, supported_sections MUST contain notification_configs. Supporting notification_configs requires the same webhook signing, endpoint proof, and stable-principal controls as sync_agent_notification_configs.",
+            "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_agent_configuration when this block is present."
+          },
+          "additionalProperties": false
+        },
         "capability_changes": {
           "type": "object",
           "description": "Freshness metadata and optional invalidation webhooks for this `get_adcp_capabilities` document. Buyers and registries MAY cache capabilities for up to `cache_ttl_seconds` when present, SHOULD compare `capabilities_version` across refreshes when present, and SHOULD re-run `get_adcp_capabilities` after receiving a `capabilities.changed` webhook. This block describes the agent-wide capability document, not per-caller authorization or account-scoped settings. A material capability change is any externally advertised contract change that can affect routing, validation, conformance coverage, task availability, auth/account handling, sandbox support, billing support, reporting delivery methods, creative-library support, targeting support, protocol versions, or other buyer-visible feature gates. Non-contract operational changes that do not alter the response body do not require a revision or webhook fire.",
@@ -383,7 +538,7 @@
             },
             "notifications": {
               "type": "object",
-              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with `sync_agent_notification_configs`; each `capabilities.changed` fire is a small invalidation payload, and consumers repair by re-reading `get_adcp_capabilities`.",
+              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with the declared registration_task; sync_agent_configuration is preferred when the broader connection surface is available, while sync_agent_notification_configs remains the specialized compatibility task. Each capabilities.changed fire is a small invalidation payload, and consumers repair by re-reading get_adcp_capabilities.",
               "oneOf": [
                 {
                   "title": "CapabilityChangeNotificationsSupported",
@@ -391,11 +546,11 @@
                     "supported": {
                       "type": "boolean",
                       "const": true,
-                      "description": "Discriminator. True means the seller accepts `sync_agent_notification_configs` for `capabilities.changed` subscriptions."
+                      "description": "Discriminator. True means the seller accepts the declared registration_task for capabilities.changed subscriptions."
                     },
                     "registration_task": {
                       "type": "string",
-                      "const": "sync_agent_notification_configs",
+                      "enum": ["sync_agent_notification_configs", "sync_agent_configuration"],
                       "description": "Task consumers call to manage their caller-scoped agent-level subscriber set."
                     },
                     "event_types": {
@@ -2466,7 +2621,7 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_agent_configuration.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {

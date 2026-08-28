@@ -1,0 +1,154 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/sync-agent-configuration-response.json",
+  "title": "Sync Agent Configuration Response",
+  "x-status": "experimental",
+  "description": "Result of synchronizing selected caller-scoped agent connection sections. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. Failed responses deliberately cannot carry connection identifiers, versions, or configuration state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "title": "Applied agent configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "applied"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["updated", "unchanged", "cleared"],
+              "description": "Persisted outcome for the submitted sections."
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": false
+            },
+            "connection_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for this authenticated caller relationship. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "configuration_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
+            },
+            "configuration": {
+              "$ref": "/schemas/core/agent-configuration-state.json"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "action", "dry_run", "connection_id", "configuration_version", "configuration"],
+          "additionalProperties": false
+        },
+        {
+          "title": "Validated agent configuration dry run",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "validated"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["would_update", "would_be_unchanged", "would_clear"]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": true
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "action", "dry_run"],
+          "additionalProperties": false
+        },
+        {
+          "title": "Failed agent configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "errors"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["result"],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Connection configuration updated",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "applied",
+          "action": "updated",
+          "dry_run": false,
+          "connection_id": "conn_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+          "configuration": {
+            "notification_configs": [],
+            "reporting_destinations": [
+              {
+                "destination_id": "analytics-warehouse",
+                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+                "state": "ready",
+                "configuration": {
+                  "pattern": "warehouse_materialization",
+                  "destination_id": "analytics-warehouse",
+                  "active": true,
+                  "provider": { "domain": "data-warehouse.example" },
+                  "transport": "bigquery",
+                  "location": "pinnacle-analytics.adcp_reporting",
+                  "accepted_verification_profiles": ["native_commit", "canonical_digest"]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

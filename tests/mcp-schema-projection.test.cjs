@@ -32,6 +32,7 @@ const {
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
+  pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripPresentationAnnotations,
   stripModelContextAnnotations,
@@ -205,6 +206,10 @@ test('model-context presentation keeps request shape and omits validation-only d
         type: 'object',
         additionalProperties: true,
       },
+      ext: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     required: ['destination'],
     oneOf: [
@@ -223,7 +228,48 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
   assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+
+  const negotiated = stripModelContextAnnotations({
+    type: 'object',
+    properties: {
+      ext: {
+        type: 'object',
+        additionalProperties: true,
+        'x-adcp-model-context': 'include',
+      },
+    },
+  });
+  assert.deepEqual(negotiated.properties.ext, {
+    type: 'object',
+    additionalProperties: true,
+  });
+});
+
+test('model-context pruning removes only unreachable root definitions', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      kept: { $ref: '#/$defs/Kept' },
+    },
+    $defs: {
+      Kept: { $ref: '#/$defs/Nested' },
+      Nested: { type: 'string' },
+      Removed: { type: 'integer' },
+    },
+  };
+  assert.deepEqual(pruneUnusedRootDefinitions(source), {
+    type: 'object',
+    properties: {
+      kept: { $ref: '#/$defs/Kept' },
+    },
+    $defs: {
+      Kept: { $ref: '#/$defs/Nested' },
+      Nested: { type: 'string' },
+    },
+  });
+  assert.deepEqual(source.$defs.Removed, { type: 'integer' });
 });
 
 test('draft-07 projection converts dialect-specific keywords without tightening', () => {

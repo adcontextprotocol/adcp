@@ -1,0 +1,178 @@
+id: agent_configuration
+version: "1.0.0"
+title: "Agent connection configuration"
+category: schema_validation
+summary: "Validates the experimental transport-principal-scoped configuration surface, including capability discovery, NO_AUTH rejection, and dry-run reusable destination setup."
+track: core
+required_tools:
+  - sync_agent_configuration
+
+narrative: |
+  `sync_agent_configuration` synchronizes durable resources owned by the stable
+  authenticated caller's relationship with one agent. The request cannot
+  assert its own caller identity, and a ready reporting destination does not
+  grant authority over an advertiser account. Implementations must advertise
+  the experimental surface, reject anonymous mutation, and keep dry-run free
+  of persistence, access grants, and endpoint challenges.
+
+  Multi-principal isolation, destination proof, key rotation, account binding,
+  and optimistic-concurrency races require implementation-specific fixtures
+  or a future controller-backed storyboard.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "protocol.agent_configuration"
+  examples:
+    - "Any AdCP agent that advertises sync_agent_configuration"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent under test exposes `sync_agent_configuration` and advertises
+    `adcp.agent_configuration.supported: true` plus the matching experimental
+    feature.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_declaration
+    title: "Advertise the connection configuration surface"
+    narrative: |
+      Tool presence and the capability document agree on the task name and
+      supported sections. Buyers do not infer configuration support merely
+      from unrelated webhook or warehouse capabilities.
+
+    steps:
+      - id: get_capabilities_declares_agent_configuration
+        title: "Read agent configuration declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: |
+          Return a schema-valid response with:
+          - adcp.agent_configuration.supported: true
+          - adcp.agent_configuration.sync_task: sync_agent_configuration
+          - at least one supported section
+          - experimental_features containing protocol.agent_configuration
+
+        sample_request:
+          context:
+            correlation_id: "agent_configuration--get_capabilities"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "adcp.agent_configuration.supported"
+            value: true
+            description: "Agent advertises caller-scoped configuration"
+          - check: field_value
+            path: "adcp.agent_configuration.sync_task"
+            value: "sync_agent_configuration"
+            description: "Capability points to the implemented sync task"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "protocol.agent_configuration"
+            description: "Experimental feature gate is declared"
+
+  - id: unauthenticated_mutation
+    title: "Reject anonymous configuration"
+    narrative: |
+      The authenticated principal is the storage owner key. Without a stable
+      principal, the seller cannot prevent one caller from replacing or
+      probing another caller's webhooks and destinations.
+
+    steps:
+      - id: sync_agent_configuration_rejects_no_auth
+        title: "Submit a destination with no credentials"
+        task: sync_agent_configuration
+        schema_ref: "protocol/sync-agent-configuration-request.json"
+        response_schema_ref: "protocol/sync-agent-configuration-response.json"
+        doc_ref: "/protocol/sync_agent_configuration"
+        stateful: false
+        auth: none
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Reject before persistence or destination probing with HTTP 401 or
+          403 and do not return connection or configuration state.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#agent_configuration_no_auth"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "agent_configuration--no_auth"
+
+        validations:
+          - check: http_status_in
+            allowed_values: [401, 403]
+            description: "Anonymous caller-scoped mutation is rejected"
+
+  - id: dry_run_destination
+    title: "Validate reusable destination without side effects"
+    narrative: |
+      An inactive destination exercises schema and capability matching without
+      requiring an outbound ownership challenge. dry_run additionally forbids
+      persistence and provider-native grants.
+
+    steps:
+      - id: sync_agent_configuration_dry_run_destination
+        title: "Dry-run one inactive file destination"
+        task: sync_agent_configuration
+        schema_ref: "protocol/sync-agent-configuration-request.json"
+        response_schema_ref: "protocol/sync-agent-configuration-response.json"
+        doc_ref: "/protocol/sync_agent_configuration"
+        stateful: false
+        expected: |
+          Return a validated result with dry_run true and the would-be action.
+          No connection or destination reference, destination grant,
+          persistence, or ownership challenge occurs.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#agent_configuration_dry_run"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          dry_run: true
+          context:
+            correlation_id: "agent_configuration--dry_run"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "validated"
+            description: "Dry-run validation succeeded"
+          - check: field_value
+            path: "result.dry_run"
+            value: true
+            description: "Response confirms no mutation was applied"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "agent_configuration--dry_run"
+            description: "Correlation context is echoed"

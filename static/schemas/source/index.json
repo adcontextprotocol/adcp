@@ -762,6 +762,34 @@
           "$ref": "/schemas/core/agent-notification-config.json",
           "description": "Agent-level webhook subscriber configuration for notifications such as capabilities.changed"
         },
+        "agent-notification-config-state": {
+          "$ref": "/schemas/core/agent-notification-config-state.json",
+          "description": "Credential-free response readback for an agent-level webhook subscriber"
+        },
+        "agent-configuration-state": {
+          "$ref": "/schemas/core/agent-configuration-state.json",
+          "description": "Credential-free caller-scoped connection configuration returned by sync_agent_configuration"
+        },
+        "agent-reporting-destination": {
+          "$ref": "/schemas/core/agent-reporting-destination.json",
+          "description": "Reusable caller-scoped reporting destination configuration"
+        },
+        "agent-reporting-destination-state": {
+          "$ref": "/schemas/core/agent-reporting-destination-state.json",
+          "description": "Seller-issued destination reference and setup state for a reusable reporting destination"
+        },
+        "delivery-provider": {
+          "$ref": "/schemas/core/delivery-provider.json",
+          "description": "Non-secret provider namespace for an external delivery service"
+        },
+        "delivery-recipient": {
+          "$ref": "/schemas/core/delivery-recipient.json",
+          "description": "Provider-interpreted recipient identity for a seller-hosted dataset share"
+        },
+        "reporting-verification-profile-set": {
+          "$ref": "/schemas/core/reporting-verification-profile-set.json",
+          "description": "Allowed native, manifest, or canonical verification profiles for reporting delivery"
+        },
         "agent-webhook-challenge": {
           "$ref": "/schemas/core/agent-webhook-challenge.json",
           "description": "Proof-of-control challenge payload for agent-level notification endpoint activation"
@@ -2361,6 +2389,16 @@
           "response": {
             "$ref": "/schemas/protocol/sync-agent-notification-configs-response.json",
             "description": "Applied agent-level webhook subscriber set with credentials redacted"
+          }
+        },
+        "sync-agent-configuration": {
+          "request": {
+            "$ref": "/schemas/protocol/sync-agent-configuration-request.json",
+            "description": "Declaratively synchronize caller-scoped webhooks and reusable reporting destinations"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/sync-agent-configuration-response.json",
+            "description": "Complete credential-free caller-scoped connection configuration and setup state"
           }
         }
       }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/agent-webhook-challenge.json",
   "title": "Agent Webhook Challenge",
-  "description": "Proof-of-control challenge payload sent by a seller to an agent-level sync_agent_notification_configs.notification_configs[] URL before activating a new or changed active subscriber. Agent-level challenges are valid before any seller account exists, so they bind the seller agent URL, subscriber ID, requested agent-level event types, delivery auth mode, and challenge nonce instead of an account_id. The seller sends this payload as an HTTPS POST after URL normalization and SSRF validation, and before treating the subscriber as active. The challenge POST itself MUST be signed with the seller's RFC 9421 webhook profile key even when the candidate config selects legacy delivery auth; new signers use `adcp_use: \"request-signing\"` and deprecated `webhook-signing` keys remain accepted during the compatibility window. `delivery_auth` describes the future webhook delivery mode, not the challenge's own signing mode.",
+  "description": "Proof-of-control challenge payload sent by a seller to an agent-level notification_configs[] URL registered through sync_agent_configuration or sync_agent_notification_configs before activating a new or changed active subscriber. Agent-level challenges are valid before any seller account exists, so they bind the seller agent URL, subscriber ID, requested agent-level event types, delivery auth mode, and challenge nonce instead of an account_id. The seller sends this payload as an HTTPS POST after URL normalization and SSRF validation, and before treating the subscriber as active. The challenge POST itself MUST be signed with the seller's RFC 9421 webhook profile key even when the candidate config selects legacy delivery auth; new signers use adcp_use request-signing and deprecated webhook-signing keys remain accepted during the compatibility window. delivery_auth describes the future webhook delivery mode, not the challenge's own signing mode.",
   "type": "object",
   "properties": {
     "type": {
@@ -24,7 +24,7 @@
     },
     "subscriber_id": {
       "type": "string",
-      "description": "Buyer-supplied subscriber identifier from the sync_agent_notification_configs.notification_configs[] entry being challenged.",
+      "description": "Buyer-supplied subscriber identifier from the caller-scoped notification_configs[] entry being challenged.",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9_.:-]{1,64}$"

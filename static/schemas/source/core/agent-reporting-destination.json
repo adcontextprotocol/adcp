@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-reporting-destination.json",
+  "title": "Agent Reporting Destination",
+  "x-status": "experimental",
+  "description": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. It does not grant account authority: account/reporting configuration separately binds authorized data to the seller-issued destination_ref. Sellers key ownership to the stable transport principal, never a signing key, token, or request-body identity. Credentials, private keys, bearer profiles, signed URLs, and embedded passwords are forbidden. Sellers implementing this schema advertise protocol.agent_configuration.",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "enum": ["file_transfer", "warehouse_materialization", "dataset_share"]
+    },
+    "destination_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "description": "Caller-selected stable key, unique within this seller relationship. Reusing it replaces desired configuration."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether new account-level delivery configurations may use this destination. False does not delete caller-owned data."
+    },
+    "provider": {
+      "$ref": "/schemas/core/delivery-provider.json"
+    },
+    "transport": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_.-]*$",
+      "description": "Open provider transport name, such as s3, bigquery, delta_sharing, or snowflake_secure_sharing."
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*://[^/\\s]*@)(?!.*\\?)[^\\r\\n]+$",
+      "description": "Provider-native bucket/prefix, project/dataset, database/schema, catalog/schema, or equivalent locator. Never a credential or signed URL."
+    },
+    "accepted_formats": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["jsonl", "csv", "parquet", "avro", "orc"]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Physical formats accepted by a file-transfer destination."
+    },
+    "access_mode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_.-]*$",
+      "description": "Dataset-share access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
+    },
+    "recipient": {
+      "$ref": "/schemas/core/delivery-recipient.json"
+    },
+    "accepted_verification_profiles": {
+      "$ref": "/schemas/core/reporting-verification-profile-set.json"
+    }
+  },
+  "required": ["pattern", "destination_id", "active", "provider", "transport", "accepted_verification_profiles"],
+  "oneOf": [
+    {
+      "title": "File transfer destination",
+      "properties": {
+        "pattern": { "type": "string", "const": "file_transfer" }
+      },
+      "required": ["pattern", "location", "accepted_formats"],
+      "not": {
+        "anyOf": [
+          { "required": ["access_mode"] },
+          { "required": ["recipient"] }
+        ]
+      }
+    },
+    {
+      "title": "Warehouse materialization destination",
+      "properties": {
+        "pattern": { "type": "string", "const": "warehouse_materialization" }
+      },
+      "required": ["pattern", "location"],
+      "not": {
+        "anyOf": [
+          { "required": ["accepted_formats"] },
+          { "required": ["access_mode"] },
+          { "required": ["recipient"] }
+        ]
+      }
+    },
+    {
+      "title": "Dataset share recipient",
+      "properties": {
+        "pattern": { "type": "string", "const": "dataset_share" }
+      },
+      "required": ["pattern", "access_mode", "recipient"],
+      "not": {
+        "anyOf": [
+          { "required": ["location"] },
+          { "required": ["accepted_formats"] }
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "ownership": "Before ready, prove destination or recipient control bound to the stable principal, seller, destination_id, normalized coordinates, and accepted delivery contract.",
+    "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, and secret query parameters. Exchange access through provider-native control planes or out of band.",
+    "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
+    "replacement": "destination_id values are unique within reporting_destinations. Changing a proof-bound tuple requires fresh proof before ready."
+  },
+  "additionalProperties": false
+}
