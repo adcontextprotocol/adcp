@@ -132,7 +132,7 @@ The response returns a seller-issued `destination_ref` and one of these states:
 | `inactive` | New bindings are disabled. Existing caller-owned data is not deleted. |
 | `rejected` | The coordinates or requested path cannot be used. |
 
-`destination_ref` is not a bearer capability. A seller resolves it only for the same authenticated principal and only after separately checking account authorization. Unknown, cross-principal, and unauthorized references fail indistinguishably.
+`destination_ref` is not a bearer capability. It identifies one immutable destination generation for the same authenticated principal. Exact replays preserve the reference; changing provider, transport, normalized coordinates or recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and produces a new reference. Sellers retain older references for existing account bindings and reporting history. Every use still checks account authorization separately, and unknown, cross-principal, and unauthorized references fail indistinguishably.
 
 ### Account consolidation
 
@@ -152,7 +152,7 @@ This is an allowed set, not a claim that every feed may use the weakest member. 
 
 AdCP carries destination coordinates and recipient identifiers, never provider credentials. Private keys, passwords, bearer profiles, signed URLs, and cloud credentials are exchanged through provider-native control planes or an out-of-band onboarding channel.
 
-Before a destination becomes `ready`, the seller proves destination or recipient control and binds that proof to the authenticated principal, seller agent, destination ID, normalized coordinates, and accepted delivery contract. Changed coordinates require fresh proof.
+Before a destination becomes `ready`, the seller proves destination or recipient control and binds that proof to the authenticated principal, seller agent, destination ID, normalized coordinates, and accepted delivery contract. A changed proof-bound tuple requires fresh proof and a new immutable destination reference; replacement never mutates the meaning of a reference already used by an account configuration.
 
 For `notification_configs`, the endpoint proof and webhook-signing rules are identical to [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs). Implementations exposing both tasks maintain one underlying caller-scoped subscriber set.
 

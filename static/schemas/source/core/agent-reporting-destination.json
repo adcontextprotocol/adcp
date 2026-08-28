@@ -15,7 +15,7 @@
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
-      "description": "Caller-selected stable key, unique within this seller relationship. Reusing it replaces desired configuration."
+      "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
     },
     "active": {
       "type": "boolean",
@@ -110,7 +110,7 @@
     "ownership": "Before ready, prove destination or recipient control bound to the stable principal, seller, destination_id, normalized coordinates, and accepted delivery contract.",
     "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, and secret query parameters. Exchange access through provider-native control planes or out of band.",
     "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
-    "replacement": "destination_id values are unique within reporting_destinations. Changing a proof-bound tuple requires fresh proof before ready."
+    "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history."
   },
   "additionalProperties": false
 }
