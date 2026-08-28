@@ -440,6 +440,9 @@ export interface SessionState {
   configuredProducts: Map<string, Product>;
   /** Concrete discovery targeting bound to each configured product ID. */
   configuredProductTargeting: Map<string, Record<string, unknown>>;
+  /** Trusted ownership used to recover a configured offer across SDK account
+   * projection boundaries without exposing or globally trusting its opaque ID. */
+  configuredProductOwners: Map<string, { principal: string; accountScope: string }>;
   /** Durable proposal-successor receipts kept outside immutable proposal
    * snapshots. Finalization uses this to recover an exact idempotent retry
    * after domain state was flushed but before the idempotency receipt was
@@ -684,6 +687,10 @@ export interface PackageState {
    * readback. Delivery simulation still indexes the creative IDs separately. */
   creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
+  /** Exact execution details for demographic targeting accepted on this
+   * package. Kept alongside the effective targeting so create/update/read
+   * surfaces cannot drift after a configured product is selected. */
+  targetingResolution?: Record<string, unknown>;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.

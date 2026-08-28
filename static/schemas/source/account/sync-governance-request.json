@@ -48,10 +48,12 @@
                     "schemes": {
                       "type": "array",
                       "items": {
-                        "$ref": "/schemas/enums/auth-scheme.json"
+                        "type": "string",
+                        "const": "Bearer"
                       },
                       "minItems": 1,
-                      "maxItems": 1
+                      "maxItems": 1,
+                      "description": "The seller authenticates outbound check_governance calls with the registered Bearer credential. Other shared webhook authentication schemes are not valid for this agent-to-agent call."
                     },
                     "credentials": {
                       "type": "string",

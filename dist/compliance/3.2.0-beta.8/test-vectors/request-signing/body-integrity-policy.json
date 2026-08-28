@@ -1,0 +1,189 @@
+{
+  "profile_version": "3.2",
+  "spec_reference": "#content-digest-and-proxy-compatibility",
+  "description": "Post-parse reference-evaluator vectors for the AdCP 3.2 universal body-integrity contract. Inputs are verifier facts established from the HTTP request before dispatch and before trusting any operation or version value carried inside the body; wire parsing and cryptography remain covered by positive/ and negative/ fixtures.",
+  "cases": [
+    {
+      "id": "same-operation-argument-substitution",
+      "endpoint_profile": "3.2",
+      "mode": "supported_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_components_incomplete", "verified_signer_identity": false }
+    },
+    {
+      "id": "create-to-update-media-buy-substitution",
+      "endpoint_profile": "3.2",
+      "mode": "required_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_components_incomplete", "verified_signer_identity": false }
+    },
+    {
+      "id": "tools-call-to-tasks-cancel-substitution",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_supported_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_components_incomplete", "verified_signer_identity": false }
+    },
+    {
+      "id": "tasks-cancel-parameter-substitution",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_required_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_components_incomplete", "verified_signer_identity": false }
+    },
+    {
+      "id": "body-only-substitution",
+      "endpoint_profile": "3.2",
+      "mode": "supported_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": true,
+      "digest_matches_body": false,
+      "cryptographic_signature_valid": true,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_digest_mismatch", "verified_signer_identity": false }
+    },
+    {
+      "id": "body-and-digest-rewritten",
+      "endpoint_profile": "3.2",
+      "mode": "required_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": true,
+      "digest_matches_body": true,
+      "cryptographic_signature_valid": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_invalid", "verified_signer_identity": false }
+    },
+    {
+      "id": "body-and-digest-rewritten-with-stale-signature",
+      "endpoint_profile": "3.2",
+      "mode": "required_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": true,
+      "digest_matches_body": false,
+      "cryptographic_signature_valid": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_invalid", "verified_signer_identity": false }
+    },
+    {
+      "id": "warn-for-missing-binding-with-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "warn_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": true,
+      "expected": { "action": "accept_with_warning", "authentication_source": "fallback", "verified_signer_identity": false }
+    },
+    {
+      "id": "warn-for-missing-binding-without-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_warn_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject_unauthenticated", "verified_signer_identity": false }
+    },
+    {
+      "id": "warn-for-invalid-signature-with-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "warn_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": true,
+      "digest_matches_body": true,
+      "cryptographic_signature_valid": false,
+      "fallback_auth_valid": true,
+      "expected": { "action": "accept_with_warning", "authentication_source": "fallback", "verified_signer_identity": false }
+    },
+    {
+      "id": "warn-for-digest-mismatch-with-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_warn_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": true,
+      "digest_matches_body": false,
+      "cryptographic_signature_valid": true,
+      "fallback_auth_valid": true,
+      "expected": { "action": "accept_with_warning", "authentication_source": "fallback", "verified_signer_identity": false }
+    },
+    {
+      "id": "warn-for-malformed-header-pair-hard-rejects",
+      "endpoint_profile": "3.2",
+      "mode": "warn_for",
+      "signature_header_state": "malformed_pair",
+      "has_body": true,
+      "signature_present": true,
+      "fallback_auth_valid": true,
+      "expected": { "action": "reject", "error_code": "request_signature_header_malformed", "verified_signer_identity": false }
+    },
+    {
+      "id": "signature-stripped-with-valid-bearer-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "required_for",
+      "has_body": true,
+      "signature_present": false,
+      "fallback_auth_valid": true,
+      "expected": { "action": "accept", "authentication_source": "fallback", "verified_signer_identity": false }
+    },
+    {
+      "id": "unsigned-required-without-fallback",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_required_for",
+      "has_body": true,
+      "signature_present": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_required", "verified_signer_identity": false }
+    },
+    {
+      "id": "no-body-signature-needs-no-digest",
+      "endpoint_profile": "3.2",
+      "mode": "protocol_methods_supported_for",
+      "has_body": false,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "cryptographic_signature_valid": true,
+      "fallback_auth_valid": false,
+      "expected": { "action": "accept", "authentication_source": "signature", "verified_signer_identity": true }
+    },
+    {
+      "id": "unbound-body-version-cannot-downgrade-endpoint",
+      "endpoint_profile": "3.2",
+      "request_body_adcp_version": "3.1",
+      "mode": "supported_for",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "fallback_auth_valid": false,
+      "expected": { "action": "reject", "error_code": "request_signature_components_incomplete", "verified_signer_identity": false }
+    },
+    {
+      "id": "legacy-either-remains-compatible",
+      "endpoint_profile": "3.1",
+      "mode": "supported_for",
+      "legacy_digest_policy": "either",
+      "has_body": true,
+      "signature_present": true,
+      "covers_content_digest": false,
+      "cryptographic_signature_valid": true,
+      "fallback_auth_valid": false,
+      "expected": { "action": "accept", "authentication_source": "signature", "verified_signer_identity": true }
+    }
+  ]
+}

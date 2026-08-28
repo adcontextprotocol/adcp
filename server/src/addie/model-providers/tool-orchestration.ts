@@ -17,6 +17,10 @@ import {
 } from '../tool-result-contract.js';
 import type { AddieTool } from '../types.js';
 import type {
+  ModelProvider,
+  ModelProviderToolCallContent,
+  ModelProviderToolReceipt,
+  ModelProviderToolResultContent,
   ModelToolCallContent,
   ModelToolResultContent,
 } from './model-provider.js';
@@ -71,6 +75,12 @@ export interface AddieToolExecutorOptions {
 
 export interface AddieToolCallResult {
   result: ModelToolResultContent;
+  execution: ToolExecution;
+}
+
+export interface AddieProviderToolExecution {
+  result: ModelProviderToolResultContent;
+  receipt: ModelProviderToolReceipt;
   execution: ToolExecution;
 }
 
@@ -148,6 +158,81 @@ function observeNormalizedToolResult(
     }, 'Addie: Oversized tool result content bounded');
   }
   return normalized;
+}
+
+function fallbackProviderToolReceipt(
+  result: ModelProviderToolResultContent,
+): ModelProviderToolReceipt {
+  const displayName = result.name === 'web_search'
+    ? 'Web search'
+    : result.name.replaceAll('_', ' ');
+  const resultSummary = result.isError
+    ? `${displayName} failed`
+    : `${displayName} completed (${result.resultCount} results)`;
+  return {
+    toolCallId: result.toolCallId,
+    toolName: result.name,
+    parameters: {},
+    resultSummary,
+    resultDetails: resultSummary,
+    isError: result.isError,
+  };
+}
+
+/**
+ * Convert completed provider-managed tool results into the same execution
+ * ledger used by custom tools. Results, rather than call blocks, are the
+ * authoritative execution boundary: a mixed provider/custom turn therefore
+ * records each provider action exactly once, while an unfinished provider
+ * call is not reported as completed.
+ */
+export function recordProviderToolResults(
+  provider: Pick<ModelProvider, 'id' | 'deriveProviderToolReceipt'>,
+  calls: readonly ModelProviderToolCallContent[],
+  results: readonly ModelProviderToolResultContent[],
+  options: {
+    executionMode: AddieExecutionMode;
+    startingSequence: number;
+  },
+): AddieProviderToolExecution[] {
+  return results.map((result, index) => {
+    if (result.provider !== provider.id) {
+      throw new Error('Provider tool result does not match selected provider');
+    }
+    const call = calls.find((candidate) => (
+      candidate.provider === provider.id
+      && candidate.id === result.toolCallId
+      && candidate.name === result.name
+    ));
+    const receipt = call && provider.deriveProviderToolReceipt
+      ? provider.deriveProviderToolReceipt(
+          call,
+          result,
+          isEvaluationExecution(options.executionMode) ? 'redacted' : 'production',
+        )
+      : fallbackProviderToolReceipt(result);
+    const normalized = observeNormalizedToolResult(result.name, normalizeToolResult(result.name, {
+      status: receipt.isError ? 'error' : result.resultCount === 0 ? 'empty' : 'ok',
+      model_context: receipt.resultDetails,
+      user_summary: receipt.resultSummary,
+    }));
+    const presentation = recordedPresentation(options.executionMode, normalized);
+    const kind = receipt.isError ? 'error' : 'success';
+    return {
+      result,
+      receipt,
+      execution: {
+        tool_name: receipt.toolName,
+        parameters: recordedParameters(options.executionMode, receipt.parameters),
+        result: recordedResult(options.executionMode, normalized.model_context, kind),
+        result_summary: recordedResult(options.executionMode, presentation.user_summary, kind),
+        is_error: receipt.isError,
+        duration_ms: 0,
+        sequence: options.startingSequence + index + 1,
+        normalized_result: presentation,
+      },
+    };
+  });
 }
 
 function summarizeLegacyToolResult(toolName: string, result: string): string {

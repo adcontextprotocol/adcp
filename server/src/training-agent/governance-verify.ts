@@ -97,6 +97,11 @@ export interface GovernedServiceAuthorizationInput {
   payload: Record<string, unknown>;
   actualCommitment: { amount: number; currency: string };
   authenticatedCaller?: string;
+  expectedPhase?: 'intent' | 'purchase' | 'modification' | 'delivery';
+  expectedSubject?: string;
+  expectedMediaBuyId?: string;
+  verificationJwk?: AdcpJsonWebKey;
+  allowLocalVerificationKeys?: boolean;
 }
 
 export interface GovernedServiceAuthorizationResult {
@@ -120,7 +125,13 @@ export function clearGovernanceTokenReplayRegistry(): void {
   consumedGovernanceTokens.clear();
 }
 
-function resolveJwk(kid: string): AdcpJsonWebKey | null {
+function resolveJwk(
+  kid: string,
+  supplied?: AdcpJsonWebKey,
+  allowLocalVerificationKeys = true,
+): AdcpJsonWebKey | null {
+  if (supplied?.kid === kid) return supplied;
+  if (!allowLocalVerificationKeys) return null;
   const gov = getGovernanceSigningPublicJwk();
   if (kid === gov.kid) return gov;
   const revoked = getRevokedDemoKey().publicJwk;
@@ -181,11 +192,16 @@ export async function verifyGovernedServiceAuthorization(
   }
 
   if (claims.iss !== input.expectedIssuer) {
-    return reject('governance_context issuer does not resolve to the training governance agent.');
+    return reject('governance_context issuer does not match the registered governance authority.');
   }
   const kid = typeof header.kid === 'string' ? header.kid : '';
-  const jwk = resolveJwk(kid);
-  if (!jwk || jwk.adcp_use !== 'governance-signing' || !jwk.key_ops?.includes('verify')) {
+  const jwk = resolveJwk(kid, input.verificationJwk, input.allowLocalVerificationKeys);
+  if (
+    !jwk
+    || jwk.use !== 'sig'
+    || jwk.adcp_use !== 'governance-signing'
+    || !jwk.key_ops?.includes('verify')
+  ) {
     return reject('governance_context signing key is unknown or not authorized for governance verification.');
   }
   try {
@@ -206,29 +222,43 @@ export async function verifyGovernedServiceAuthorization(
 
   const now = Math.floor(Date.now() / 1000);
   const skew = 60;
+  const expectedPhase = input.expectedPhase ?? 'intent';
   if (claims.aud !== input.expectedAudience) return reject('governance_context audience does not match this service.');
   if (claims.caller !== input.authenticatedCaller) return reject('Authenticated buyer does not match the authorized caller.');
-  if (claims.phase !== 'intent' || claims.media_buy_id !== undefined) {
-    return reject('The downstream service requires an intent-phase context without media_buy_id.');
+  if (claims.phase !== expectedPhase) {
+    return reject(`The downstream service requires a ${expectedPhase}-phase governance context.`);
+  }
+  if (expectedPhase === 'intent' && claims.media_buy_id !== undefined) {
+    return reject('An intent-phase governance context must not carry media_buy_id.');
+  }
+  if (input.expectedMediaBuyId !== undefined && claims.media_buy_id !== input.expectedMediaBuyId) {
+    return reject('governance_context media_buy_id does not match the governed resource.');
   }
   if (typeof claims.sub !== 'string' || !claims.sub) return reject('governance_context has no opaque action binding.');
+  if (input.expectedSubject !== undefined && claims.sub !== input.expectedSubject) {
+    return reject('governance_context changed the opaque action binding.');
+  }
   if (typeof claims.plan_hash !== 'string' || !claims.plan_hash) return reject('governance_context has no plan_hash.');
   if (typeof claims.iat !== 'number' || claims.iat > now + skew) return reject('governance_context iat is invalid.');
   if (typeof claims.nbf === 'number' && claims.nbf > now + skew) return reject('governance_context is not active yet.');
   if (typeof claims.exp !== 'number' || claims.exp < now - skew) return reject('governance_context is expired.');
-  if (typeof claims.jti !== 'string' || !claims.jti) return reject('governance_context has no replay identifier.');
-  if (claims.authorized_task !== input.expectedTask) {
-    return reject(`governance_context does not authorize ${input.expectedTask}.`);
+  if (expectedPhase !== 'intent' && claims.exp > now + (30 * 24 * 60 * 60) + skew) {
+    return reject('Execution-phase governance_context exceeds the 30-day lifetime limit.');
   }
-
+  if (typeof claims.jti !== 'string' || !claims.jti) return reject('governance_context has no replay identifier.');
   let expectedPayloadHash: string;
   try {
     expectedPayloadHash = computeGovernedPayloadHash(input.payload);
   } catch {
     return reject('The governed task payload is not finite canonical JSON.');
   }
-  if (claims.authorized_payload_hash !== expectedPayloadHash) {
-    return reject('The governed task payload does not match the signed authorization.');
+  if (expectedPhase === 'intent') {
+    if (claims.authorized_task !== input.expectedTask) {
+      return reject(`governance_context does not authorize ${input.expectedTask}.`);
+    }
+    if (claims.authorized_payload_hash !== expectedPayloadHash) {
+      return reject('The governed task payload does not match the signed authorization.');
+    }
   }
   const commitment = claims.authorized_commitment;
   if (!commitment || typeof commitment !== 'object' || Array.isArray(commitment)) {

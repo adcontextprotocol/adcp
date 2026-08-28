@@ -1,6 +1,5 @@
 import Ajv, { type ValidateFunction } from 'ajv';
-import { collectModelResponse } from './events.js';
-import { addModelUsage, inspectModelTurn, ModelLoopBudget } from './model-turn.js';
+import { appendModelTurnContinuation, ModelTurnLoopState } from './model-turn.js';
 import type {
   ModelProvider,
   ModelRequest,
@@ -134,45 +133,44 @@ export async function executeReadOnlyToolLoop(
   if (byName.size < 1) throw new ReadOnlyToolLoopBoundaryError('unknown_tool_call');
 
   let messages = [...requestSnapshot.messages];
-  let totalUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   const receipts: ReadOnlyToolExecutionReceipt[] = [];
   const seenCallIds = new Set<string>();
-  const loopBudget = new ModelLoopBudget(MAX_ITERATIONS);
+  const modelLoop = new ModelTurnLoopState(MAX_ITERATIONS);
 
-  while (loopBudget.hasRemaining) {
-    const iteration = loopBudget.startNext();
+  while (modelLoop.hasRemaining) {
+    const activeTurn = modelLoop.beginNext();
+    const iteration = activeTurn.iteration;
     const request: ModelRequest = {
       ...requestSnapshot,
       messages,
       tools: snapshotTools.map((tool) => tool.definition),
       providerTools: [],
     };
-    const response = await collectModelResponse(provider.respond(request, {
+    const response = await activeTurn.invoke(provider, request, {
       signal: options.signal,
       beforeDispatch: options.beforeDispatch,
-    }), provider.id);
-    totalUsage = addModelUsage(totalUsage, response.usage);
-    const turn = inspectModelTurn(response);
+    });
+    const turn = activeTurn.acceptResponse(response);
 
-    const calls = turn.toolCalls;
     const unsupportedContinuation = turn.providerToolCalls.length > 0
       || turn.providerToolResults.length > 0;
     if (unsupportedContinuation) {
       throw new ReadOnlyToolLoopBoundaryError('provider_continuation_not_allowed');
     }
-    if (calls.length === 0) {
-      if (turn.action === 'continue') {
-        messages = [...messages, { role: 'assistant', content: response.content }];
-        continue;
-      }
+    if (turn.action === 'continue') {
+      appendModelTurnContinuation(messages, response);
+      continue;
+    }
+    if (turn.action !== 'execute_tools') {
       return {
         response,
         text: turn.textBlocks.map((content) => content.text).join(''),
         iterations: iteration,
-        usage: totalUsage,
+        usage: modelLoop.usage,
         toolExecutions: Object.freeze([...receipts]),
       };
     }
+    const calls = turn.toolCalls;
 
     if (receipts.length + calls.length > MAX_TOOL_CALLS) {
       throw new ReadOnlyToolLoopBoundaryError('tool_call_limit_exceeded');
@@ -243,11 +241,7 @@ export async function executeReadOnlyToolLoop(
         ...(isError && { isError: true }),
       });
     }
-    messages = [
-      ...messages,
-      { role: 'assistant', content: response.content },
-      { role: 'user', content: results },
-    ];
+    appendModelTurnContinuation(messages, response, results);
   }
 
   throw new ReadOnlyToolLoopBoundaryError('iteration_limit_exceeded');

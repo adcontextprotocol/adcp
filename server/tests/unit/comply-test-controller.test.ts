@@ -2474,6 +2474,34 @@ describe('comply_test_controller', () => {
       });
     });
 
+    it('returns the full viewability carrier when a numeric leaf is requested', () => {
+      const narrowed = narrowDeliveryMetricObject({
+        impressions: 100,
+        spend: 5,
+        clicks: 12,
+        viewability: {
+          standard: 'iab',
+          measurable_impressions: 90,
+          viewable_impressions: 72,
+          viewable_rate: 0.8,
+          viewed_seconds: 3.5,
+          viewed_seconds_percentiles: { p50: 3.2 },
+        },
+      }, new Set(['viewable_rate']));
+
+      expect(narrowed).toEqual({
+        impressions: 100,
+        spend: 5,
+        viewability: {
+          standard: 'iab',
+          measurable_impressions: 90,
+          viewable_impressions: 72,
+          viewable_rate: 0.8,
+          viewed_seconds: 3.5,
+        },
+      });
+    });
+
     it('reconciles committed viewed-seconds distributions at package grain', async () => {
       await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_product',

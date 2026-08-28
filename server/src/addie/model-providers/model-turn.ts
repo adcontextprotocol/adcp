@@ -1,13 +1,24 @@
 import type {
+  ModelMessage,
+  ModelProvider,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
+  ModelRequest,
   ModelResponse,
+  ModelRespondOptions,
   ModelTextContent,
   ModelToolCallContent,
+  ModelToolResultContent,
   ModelUsage,
 } from './model-provider.js';
+import { collectModelResponse } from './events.js';
 
-export type ModelTurnAction = 'complete' | 'truncated' | 'tool_use' | 'continue';
+export type ModelTurnAction =
+  | 'complete'
+  | 'truncated'
+  | 'execute_tools'
+  | 'continue'
+  | 'continue_provider_tools';
 
 export interface InspectedModelTurn {
   action: ModelTurnAction;
@@ -15,6 +26,21 @@ export interface InspectedModelTurn {
   toolCalls: ReadonlyArray<ModelToolCallContent>;
   providerToolCalls: ReadonlyArray<ModelProviderToolCallContent>;
   providerToolResults: ReadonlyArray<ModelProviderToolResultContent>;
+}
+
+export interface AcceptedModelTurn extends InspectedModelTurn {
+  response: ModelResponse;
+  discardedRecoveryToolCalls: boolean;
+}
+
+/** Append one canonical assistant continuation and any custom-tool results. */
+export function appendModelTurnContinuation(
+  messages: ModelMessage[],
+  response: ModelResponse,
+  toolResults?: ModelToolResultContent[],
+): void {
+  messages.push({ role: 'assistant', content: response.content });
+  if (toolResults) messages.push({ role: 'user', content: toolResults });
 }
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
@@ -91,6 +117,130 @@ export class ModelLoopBudget {
   }
 }
 
+/**
+ * Canonical state boundary for a provider-neutral model loop. It owns the
+ * logical turn wall, normalized usage, one-response-per-turn discipline, and
+ * optional empty-terminal recovery state. Delivery adapters still own
+ * transport retries and user-facing events.
+ */
+export class ModelTurnLoopState {
+  readonly emptyResponseRecovery = new EmptyResponseRecoveryState();
+  private readonly budget: ModelLoopBudget;
+  private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
+  private awaitingResponse = false;
+
+  constructor(limit: number) {
+    this.budget = new ModelLoopBudget(limit);
+  }
+
+  get limit(): number {
+    return this.budget.limit;
+  }
+
+  get iteration(): number {
+    return this.budget.iteration;
+  }
+
+  get hasRemaining(): boolean {
+    return this.budget.hasRemaining;
+  }
+
+  get usage(): ModelUsage {
+    return { ...this.accumulatedUsage };
+  }
+
+  startNext(): number {
+    if (this.awaitingResponse) {
+      throw new Error('Previous model loop iteration has no response');
+    }
+    const iteration = this.budget.startNext();
+    this.awaitingResponse = true;
+    return iteration;
+  }
+
+  /** Begin one logical turn whose transport attempts share this state slot. */
+  beginNext(): ActiveModelTurn {
+    return new ActiveModelTurn(this, this.startNext());
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): AcceptedModelTurn {
+    if (!this.awaitingResponse) {
+      throw new Error('Model loop response has no active iteration');
+    }
+    // Post-tool recovery is permanently text-only. A malformed provider
+    // response must not be able to request the same mutation a second time.
+    const discardedRecoveryToolCalls = this.emptyResponseRecovery.postToolAttempted
+      && response.finishReason === 'tool_calls';
+    const acceptedResponse: ModelResponse = discardedRecoveryToolCalls
+      ? {
+          ...response,
+          finishReason: 'stop',
+          providerFinishReason: 'end_turn',
+          content: [],
+        }
+      : response;
+    const turn = inspectModelTurn(acceptedResponse);
+    if (options.countUsage !== false) {
+      this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
+    }
+    this.awaitingResponse = false;
+    return Object.freeze({
+      ...turn,
+      response: acceptedResponse,
+      discardedRecoveryToolCalls,
+    });
+  }
+}
+
+/**
+ * One active logical model turn. Sequential transport attempts are allowed so
+ * delivery adapters can retain their retry policy and event timing, but only
+ * one normalized response can be accepted into the common loop.
+ */
+export class ActiveModelTurn {
+  private invocationInFlight = false;
+  private accepted = false;
+
+  constructor(
+    private readonly loop: ModelTurnLoopState,
+    readonly iteration: number,
+  ) {}
+
+  async invoke(
+    provider: ModelProvider,
+    request: ModelRequest,
+    options?: ModelRespondOptions,
+  ): Promise<ModelResponse> {
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    if (this.invocationInFlight) throw new Error('Model turn provider invocation already in flight');
+    this.invocationInFlight = true;
+    try {
+      return await collectModelResponse(
+        provider.respond(request, options),
+        provider.id,
+      );
+    } finally {
+      this.invocationInFlight = false;
+    }
+  }
+
+  acceptResponse(
+    response: ModelResponse,
+    options: { countUsage?: boolean } = {},
+  ): AcceptedModelTurn {
+    if (this.invocationInFlight) {
+      throw new Error('Cannot accept a response while provider invocation is in flight');
+    }
+    if (this.accepted) throw new Error('Model turn already accepted a response');
+    const turn = this.loop.acceptResponse(response, options);
+    this.accepted = true;
+    return turn;
+  }
+}
+
 /** Accumulate normalized usage without inventing absent provider cache metrics. */
 export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage {
   return {
@@ -111,6 +261,14 @@ export function addModelUsage(total: ModelUsage, usage: ModelUsage): ModelUsage 
  * canonical finish reason and canonical content variants exclusively.
  */
 export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
+  const textBlocks = Object.freeze(response.content.filter((content) => content.type === 'text'));
+  const toolCalls = Object.freeze(response.content.filter((content) => content.type === 'tool_call'));
+  const providerToolCalls = Object.freeze(response.content.filter(
+    (content) => content.type === 'provider_tool_call',
+  ));
+  const providerToolResults = Object.freeze(response.content.filter(
+    (content) => content.type === 'provider_tool_result',
+  ));
   let action: ModelTurnAction;
   switch (response.finishReason) {
     case 'stop':
@@ -121,7 +279,15 @@ export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
       action = 'truncated';
       break;
     case 'tool_calls':
-      action = 'tool_use';
+      // A provider-managed tool is continuation state, not an application
+      // mutation. When custom and provider-managed calls coexist, the custom
+      // calls must execute before the next model turn. A malformed tool-call
+      // finish with no canonical calls remains terminal and side-effect free.
+      action = toolCalls.length > 0
+        ? 'execute_tools'
+        : providerToolCalls.length > 0
+          ? 'continue_provider_tools'
+          : 'complete';
       break;
     case 'continue':
       action = 'continue';
@@ -134,13 +300,9 @@ export function inspectModelTurn(response: ModelResponse): InspectedModelTurn {
 
   return Object.freeze({
     action,
-    textBlocks: Object.freeze(response.content.filter((content) => content.type === 'text')),
-    toolCalls: Object.freeze(response.content.filter((content) => content.type === 'tool_call')),
-    providerToolCalls: Object.freeze(response.content.filter(
-      (content) => content.type === 'provider_tool_call',
-    )),
-    providerToolResults: Object.freeze(response.content.filter(
-      (content) => content.type === 'provider_tool_result',
-    )),
+    textBlocks,
+    toolCalls,
+    providerToolCalls,
+    providerToolResults,
   });
 }

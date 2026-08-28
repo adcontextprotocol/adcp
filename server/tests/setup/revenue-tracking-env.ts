@@ -1,5 +1,8 @@
 // Test environment setup for vitest
 // Sets up mock environment variables for testing
+
+import type { Server } from 'node:net';
+import request from 'supertest';
 //
 // This file re-runs before every test file (vitest resets the module
 // registry per file, and setup files are part of that registry), but
@@ -43,3 +46,33 @@ process.env.WORKOS_API_KEY = 'sk_test_mock_key';
 process.env.WORKOS_CLIENT_ID = 'client_mock_id';
 process.env.WORKOS_COOKIE_PASSWORD = 'test-cookie-password-at-least-32-chars-long';
 
+// On macOS, Supertest's `listen(0)` can bind an IPv6 socket while Supertest
+// still builds an IPv4 URL (`127.0.0.1`). Conductor may already own the same
+// numeric port in the separate IPv4 namespace, so the request reaches its
+// JSON 404 handler instead of the Express app. Preserve Supertest's listener
+// lifecycle and select the client loopback address from the actual socket
+// family. Keep the patch Conductor-local; CI and ordinary local runs retain
+// upstream Supertest behavior.
+type SupertestInternal = InstanceType<typeof request.Test>;
+type SupertestPrototype = {
+  __adcpConductorLoopbackPatched?: true;
+  serverAddress(this: SupertestInternal, app: Server, path: string): string;
+};
+
+export function installConductorSupertestLoopback(): void {
+  const testPrototype = request.Test.prototype as unknown as SupertestPrototype;
+  if (testPrototype.__adcpConductorLoopbackPatched) return;
+
+  const originalServerAddress = testPrototype.serverAddress;
+  testPrototype.serverAddress = function serverAddress(app, path) {
+    const url = originalServerAddress.call(this, app, path);
+    const address = app.address();
+    const isIpv6 = address != null
+      && typeof address !== 'string'
+      && (address.family === 'IPv6' || (address.family as string | number) === 6);
+    return isIpv6 ? url.replace('://127.0.0.1:', '://[::1]:') : url;
+  };
+  testPrototype.__adcpConductorLoopbackPatched = true;
+}
+
+if (process.env.CONDUCTOR_IS_LOCAL === '1') installConductorSupertestLoopback();
