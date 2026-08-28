@@ -29,6 +29,7 @@ import {
   handleListTransformers,
   handleControlMediaBuy,
   handleAcceptProposal,
+  handleListCreatives,
   canonicalParamsSatisfied,
   invalidateCache,
   clearTaskStore,
@@ -75,7 +76,10 @@ import {
   HUMAN_REVIEW_POLICY_IDS,
   governanceProposalCommitment,
 } from '../../src/training-agent/governance-handlers.js';
-import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
+import {
+  clearAccountStore,
+  handleListAccountChanges,
+} from '../../src/training-agent/account-handlers.js';
 import { TrainingSalesPlatform, restoreRawPackageSelectors } from '../../src/training-agent/v6-sales-platform.js';
 import { TrainingCreativePlatform } from '../../src/training-agent/v6-creative-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../../src/training-agent/v6-creative-builder-platform.js';
@@ -10088,6 +10092,34 @@ describe('list_creatives handler', () => {
     expect(qs.returned).toBe(0);
   });
 
+  it('does not borrow a missing creative into a non-empty account-less session', async () => {
+    const ownSession = await getSession(sessionKeyFromArgs({}, 'open'));
+    ownSession.creatives.set('own_unscoped_creative', {
+      creativeId: 'own_unscoped_creative',
+      formatKind: 'image',
+      status: 'approved',
+      syncedAt: new Date().toISOString(),
+    });
+
+    const unrelatedAccount = {
+      brand: { domain: 'unrelated-creative-session.example' },
+      operator: 'unrelated-creative-session.example',
+    };
+    const unrelatedSession = await getSession(sessionKeyFromArgs({ account: unrelatedAccount }, 'open'));
+    unrelatedSession.creatives.set('unrelated_session_creative', {
+      creativeId: 'unrelated_session_creative',
+      accountRef: unrelatedAccount,
+      formatKind: 'image',
+      status: 'approved',
+      syncedAt: new Date().toISOString(),
+    });
+
+    const result = await handleListCreatives({
+      filters: { creative_ids: ['unrelated_session_creative'] },
+    }, DEFAULT_CTX) as Record<string, any>;
+    expect(result.creatives).toEqual([]);
+  });
+
   it('query_summary reflects filtered count', async () => {
     const account = { brand: { domain: 'filteredcreatives.example' }, operator: 'filteredcreatives.example' };
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -12270,6 +12302,70 @@ describe('update_media_buy handler', () => {
     const approvals = pkg.creative_approvals as Array<Record<string, unknown>>;
     expect(approvals[0].creative_id).toBe('inline_cr_v2');
     expect(approvals[0].approval_status).toBe('approved');
+  });
+
+  it('publishes inline media-buy creatives through the shared snapshot and change feed', async () => {
+    clearAccountStore();
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { account_id: 'acc_luma_shared' };
+    const buyerContext: TrainingContext = { mode: 'open', principal: 'test:inline-creative-buyer' };
+    const bootstrap = handleListAccountChanges({
+      account,
+      starting_position: 'latest',
+      resource_types: ['creative'],
+    }, buyerContext) as Record<string, any>;
+
+    const { result: createResult } = await simulateCallTool(
+      createTrainingAgentServer(buyerContext),
+      'create_media_buy',
+      {
+        account,
+        brand: { domain: 'luma-outdoor.example' },
+        ...futureFlight(),
+        packages: [{
+          product_id: product.product_id,
+          pricing_option_id: pricingOptions[0].pricing_option_id,
+          budget: 10000,
+          creatives: [{
+            creative_id: 'inline_shared_feed_creative',
+            name: 'Inline shared creative',
+            format_kind: 'video_vast',
+            format_option_ref: {
+              scope: 'product',
+              format_option_id: 'video_preroll_video_vast',
+            },
+            assets: {},
+          }],
+        }],
+      },
+    );
+    expect(createResult.code, JSON.stringify(createResult)).toBeUndefined();
+
+    const drained = handleListAccountChanges({
+      account,
+      cursor: bootstrap.cursor,
+      resource_types: ['creative'],
+    }, buyerContext) as Record<string, any>;
+    expect(drained.changes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: 'created',
+        origin: { kind: 'adcp' },
+        resource: expect.objectContaining({ resource_id: 'inline_shared_feed_creative' }),
+      }),
+    ]));
+
+    const snapshot = await handleListCreatives({
+      account,
+      filters: { creative_ids: ['inline_shared_feed_creative'] },
+    }, { mode: 'open', principal: 'test:other-shared-account-principal' }) as Record<string, any>;
+    expect(snapshot.creatives).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        creative_id: 'inline_shared_feed_creative',
+        name: 'Inline shared creative',
+      }),
+    ]));
   });
 
   it('rejects a shared inline creative replacement that would invalidate an untouched package', async () => {

@@ -28,6 +28,7 @@
           "indicators.changed",
           "creative.purged",
           "account.status_changed",
+          "account.change_recorded",
           "product.created",
           "product.updated",
           "product.priced",

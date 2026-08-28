@@ -197,6 +197,7 @@ test('model-context presentation keeps request shape and omits validation-only d
       },
       mode: { type: 'string', enum: ['direct', 'proposal'] },
       mixed_mode: { type: 'string', enum: ['direct', 1] },
+      exactMode: { type: 'string', const: 'direct' },
       strict: {
         type: 'object',
         properties: { value: { type: 'string' } },
@@ -224,6 +225,8 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
   assert.equal(projected.properties.mode.type, undefined);
   assert.equal(projected.properties.mixed_mode.type, 'string');
+  assert.equal(projected.properties.exactMode.const, 'direct');
+  assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
   assert.equal(projected.properties.extensions.additionalProperties, true);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');

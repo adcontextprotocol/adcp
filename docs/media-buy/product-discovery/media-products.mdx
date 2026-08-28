@@ -337,12 +337,13 @@ Defines creative requirements and restrictions:
 
 ### Placements
 
-Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement declarations, the product placement references that entry with `kind: "publisher_ref"`, `publisher_domain`, and `placement_id`. The product may omit `name` in that case because the publisher declaration resolves the name and other public metadata. When no public publisher declaration exists, the sales agent defines an inline placement with `kind: "seller_inline"` and buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted. Whether a publisher reference resolved from publisher-hosted adagents.json or a community-maintained fallback file is resolver metadata, not a separate placement kind.
+Products can optionally declare specific public ad placements within their inventory. `kind` identifies who owns the placement ID. A `publisher_ref` has canonical `{publisher_domain, placement_id}` identity and resolves in the publisher's `adagents.json`. A `seller_inline` placement is defined by the sales agent; new 3.2 products include `seller_agent` so `{seller_agent, placement_id}` is self-contained. Legacy inline placements without it remain valid but are scoped to the enclosing seller and product. A `publisher_domain` on an inline placement describes inventory context—it does not let the seller mint an ID in that publisher's catalog namespace.
 
 - **`kind: "publisher_ref"`** - Publisher-scoped placement reference resolved from the named publisher's `adagents.json`; requires `publisher_domain`
-- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name`
-- **`publisher_domain`** - Domain whose `adagents.json` defines the referenced placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
-- **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
+- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name` and should include `seller_agent`
+- **`publisher_domain`** - For `publisher_ref`, the domain whose `adagents.json` defines the placement. For `seller_inline`, optional inventory-publisher attribution only.
+- **`seller_agent`** - Defining sales-agent identity for a self-contained inline placement
+- **`placement_id`** - ID within the authority selected by `kind`. Legacy product-context references remain accepted.
 - **`mode: "targetable"`** - The buyer may select this publisher-scoped placement with `targeting_overlay.placement_selection`
 - **`mode: "included"`** - The public placement is fixed product inventory and cannot be cherry-picked. Across discovery, create, and update, a selected request exactly equal to the product's complete included set is an inherent match and may be echoed without `overlay_support.placement_selection`; partial selection requires a selectable product.
 - **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
@@ -529,6 +530,8 @@ constrained route.
     },
     {
       "kind": "seller_inline",
+      "publisher_domain": "daily-pulse.example",
+      "seller_agent": { "agent_url": "https://sales.daily-pulse.example/adcp" },
       "placement_id": "premium_rotation",
       "name": "Premium rotation",
       "mode": "included",
@@ -1602,7 +1605,7 @@ A buyer agent turns a chosen dimensional row into a buy through the existing buy
 
 `kind: "signal"` rows use canonical `signal_ref` plus optional `signal_value` to describe a signal bucket. Use `presence: "present"` for rows where the signal is available with the supplied value, and `presence: "absent"` with `signal_value: null` for the explicit not-present bucket. `signal_id` is only a shorthand when the enclosing object already identifies the signal unambiguously, such as a coverage forecast nested directly under a single `get_signals` item. Product-level forecasts use `ForecastPoint.product_id` for product context; do not add a separate product dimension item.
 
-After purchase, buyers verify one-dimensional marginals with `get_media_buy_delivery.reporting_dimensions` (`geo`, `device_type`, `device_platform`, `audience`, or `placement`) and reconcile measurement expectations through the package's `committed_metrics`, `performance_standards`, and reported `viewability` / `vendor_metric_values`. Standard delivery reporting does not currently return cross-dimensional intersections such as placement x country or product x signal; sellers that need exact post-buy reconciliation for those intersections must expose a seller-specific reporting surface or a future standard intersection capability.
+After purchase, buyers verify marginals with `get_media_buy_delivery.reporting_dimensions` (`geo`, `device_type`, `device_platform`, `audience`, `placement`, `property`, `collection`, or `installment`) and reconcile measurement expectations through the package's `committed_metrics`, `performance_standards`, and reported `viewability` / `vendor_metric_values`. The standardized `collection_property`, `installment_property`, and `placement_property` dimensions prove which property carried a content program, specific airing or programming block, or aggregate placement. Other arbitrary intersections, such as placement × country or product × signal, are not currently standardized.
 
 #### CTV with GRP Demographics
 

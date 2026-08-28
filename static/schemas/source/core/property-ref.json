@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/property-ref.json",
+  "title": "Property Reference",
+  "description": "Canonical reference to a publisher property. Property IDs are scoped to the adagents.json at publisher_domain, so both fields participate in identity.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring this property is hosted.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "property_id": {
+      "$ref": "/schemas/core/property-id.json",
+      "description": "Property ID from the publisher's adagents.json property catalog."
+    }
+  },
+  "required": ["publisher_domain", "property_id"],
+  "additionalProperties": true
+}

@@ -370,6 +370,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 | `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
+| `change_feed` | object | Optional. Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
 #### account.notifications
@@ -398,6 +399,42 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 ```
 
 When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
+
+#### account.change_feed
+
+Declares whether the seller exposes a durable ordered account change feed.
+This capability is separate from `account.notifications`, which covers the
+specialized account lifecycle invalidation, and from `webhook_activity`, which
+is only delivery-attempt diagnostics.
+
+```json
+{
+  "account": {
+    "change_feed": {
+      "supported": true,
+      "read_task": "list_account_changes",
+      "registration_task": "sync_accounts",
+      "event_type": "account.change_recorded",
+      "retention_days": 90,
+      "resource_types": [
+        "account",
+        "account_financials",
+        "media_buy",
+        "package",
+        "creative",
+        "creative_assignment",
+        "delivery_report"
+      ]
+    }
+  }
+}
+```
+
+Advertising a resource type is a completeness commitment: every material
+change to fields recoverable through that resource's authoritative read is
+recorded regardless of origin. Snapshot completeness is normative and is not
+weakened into a self-asserted `complete: true` flag. Account-specific connected
+source status and freshness are returned by `list_account_changes`.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
 

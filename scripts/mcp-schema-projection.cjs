@@ -793,6 +793,18 @@ function stripModelContextAnnotations(schema) {
   walkSchema(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
+    // Exact const values and homogeneous enums already communicate their JSON
+    // types. Mixed enums retain type because it still narrows the listed values.
+    if (Object.hasOwn(node, 'const')) delete node.type;
+    if (typeof node.type === 'string' && Array.isArray(node.enum) && node.enum.length > 0) {
+      const matchesType = node.enum.every(value => {
+        if (node.type === 'integer') return Number.isInteger(value);
+        if (node.type === 'number') return typeof value === 'number' && Number.isFinite(value);
+        if (node.type === 'null') return value === null;
+        return typeof value === node.type;
+      });
+      if (matchesType) delete node.type;
+    }
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves

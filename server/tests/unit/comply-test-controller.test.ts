@@ -258,6 +258,7 @@ describe('comply_test_controller', () => {
       });
       expect(result.success).toBe(true);
       expect(result.scenarios).toContain('force_get_products_arm');
+      expect(result.scenarios).toContain('expire_account_change_cursor');
     });
   });
 
@@ -775,6 +776,68 @@ describe('comply_test_controller', () => {
       expect((creatives as any).creatives.map((creative: any) => creative.creative_id)).toEqual([
         'public_seed_creative',
       ]);
+    });
+
+    it('bridges exact controller fixture IDs across runner-generated accounts without exposing the library', async () => {
+      const publicServer = createTrainingAgentServer({ mode: 'open', principal: 'static:public' });
+      const fixtureAccount = {
+        brand: { domain: 'fixture-seed.example' },
+        operator: 'fixture-seed.example',
+        sandbox: true,
+      };
+
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: fixtureAccount,
+        params: {
+          creative_id: 'controller_fixture_exact_id',
+          fixture: { status: 'approved', format_kind: 'image' },
+        },
+      });
+
+      const { result: exactMatch } = await simulateCallTool(publicServer, 'list_creatives', {
+        account: { account_id: 'acct_runner_generated' },
+        filters: { creative_ids: ['controller_fixture_exact_id'] },
+      });
+      expect((exactMatch as any).creatives.map((creative: any) => creative.creative_id)).toEqual([
+        'controller_fixture_exact_id',
+      ]);
+
+      await simulateCallTool(publicServer, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: fixtureAccount,
+        params: {
+          creative_id: 'pagination_integrity_creative_1',
+          fixture: { status: 'approved', format_kind: 'image' },
+        },
+      });
+
+      const compatServer = createTrainingAgentServer({
+        mode: 'open',
+        principal: 'static:public',
+        storyboardCompat: { version: '3.0' },
+      });
+      const { result: frozenCompatLibrary } = await simulateCallTool(compatServer, 'list_creatives', {
+        account: { account_id: 'acct_pagination_integrity' },
+      });
+      expect((frozenCompatLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .toContain('pagination_integrity_creative_1');
+
+      const { result: arbitraryOpaqueLibrary } = await simulateCallTool(compatServer, 'list_creatives', {
+        account: { account_id: 'acct_runner_generated' },
+      });
+      expect((arbitraryOpaqueLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .not.toContain('pagination_integrity_creative_1');
+
+      const { result: unrelatedLibrary } = await simulateCallTool(publicServer, 'list_creatives', {
+        account: {
+          brand: { domain: 'unrelated-library.example' },
+          operator: 'unrelated-library.example',
+          sandbox: true,
+        },
+      });
+      expect((unrelatedLibrary as any).creatives.map((creative: any) => creative.creative_id))
+        .not.toContain('controller_fixture_exact_id');
     });
 
     it('seed_media_buy preserves available_actions and enforces non-self-serve mode mismatch', async () => {
@@ -3009,6 +3072,7 @@ describe('comply_test_controller', () => {
       expect(impressionRows).toHaveLength(1);
       expect(impressionRows[0]).toMatchObject({
         creative_id: expect.any(String),
+        creative_name: 'Test Creative',
         impressions: 100,
         spend: 0,
       });

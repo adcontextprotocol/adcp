@@ -103,6 +103,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
   return {
     traceId: trace.id,
     metadata: metadata({ generation }),
+    terminalStage: ['ignored', 'reacted'].includes(terminalStatus) ? 'surface' : 'generation',
     terminalStatus,
     finishReason: terminalStatus === 'truncated' ? 'length' : terminalStatus === 'provider_error' ? null : 'stop',
     output: outputMarkers.join(' '),
@@ -272,5 +273,52 @@ describe('fixed cross-provider trace suite', () => {
     const second = passingObservation(FIXED_TRACE_SUITE[1]);
     second.metadata = metadata({ runId: 'another-run' });
     expect(() => summarizeFixedTraceRun([first, second])).toThrow('Mixed fixed trace run metadata');
+  });
+
+  it('rejects observations combined from different tool schemas', () => {
+    const first = passingObservation(FIXED_TRACE_SUITE[0]);
+    const second = passingObservation(FIXED_TRACE_SUITE[1]);
+    second.metadata = metadata({ toolSchemaSha256: createHash('sha256').update('other-schema').digest('hex') });
+    expect(() => summarizeFixedTraceRun([first, second])).toThrow('Mixed fixed trace run metadata');
+  });
+
+  it('accepts an explicitly attributed malformed router result', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const observation = passingObservation(trace);
+    observation.terminalStage = 'router';
+    observation.terminalStatus = 'malformed';
+    observation.finishReason = 'stop';
+    observation.output = 'not-json';
+    observation.flagged = true;
+    observation.route = null;
+    observation.tools = [];
+    observation.metadata = metadata({
+      generation: stage({
+        source: 'not_run',
+        dispatched: false,
+        requestedProvider: null,
+        requestedModel: null,
+        returnedProvider: null,
+        returnedModel: null,
+        modelResolution: null,
+        providerRequestSha256: null,
+        maxOutputTokens: null,
+        timeoutMs: null,
+        maxIterations: null,
+        transportRetries: null,
+        samplingMode: null,
+        temperature: null,
+        usageKnown: false,
+        usage: null,
+        estimatedCostUsd: 0,
+        pricingSource: null,
+        latencyMs: 0,
+      }),
+    });
+    expect(gradeFixedTrace(trace, observation).failures).toEqual(expect.arrayContaining([
+      'routing_mismatch',
+      'answer_assertion_failed',
+    ]));
+    expect(gradeFixedTrace(trace, observation).failures).not.toContain('terminal_stage_mismatch');
   });
 });
