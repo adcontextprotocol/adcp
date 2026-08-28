@@ -45,6 +45,10 @@ import {
 import { BrandDatabase } from "../../db/brand-db.js";
 import { coerceStringArray } from "./input-coercion.js";
 import {
+  ADMIN_ANALYTICS_TOOL,
+  registerAdminAnalyticsHandler,
+} from "./admin-analytics.js";
+import {
   getPendingInvoices,
   getAllOpenInvoices,
   createOrgDiscount,
@@ -926,16 +930,7 @@ Actions:
       required: [],
     },
   },
-  {
-    name: "get_platform_stats",
-    description:
-      "Get admin platform stats: deduplicated people totals plus organization counts by lifecycle tier, membership tier, and subscription status. Use for platform-level member, user, or organization counts.",
-    input_schema: {
-      type: "object" as const,
-      properties: {},
-      required: [],
-    },
-  },
+  ADMIN_ANALYTICS_TOOL,
   {
     name: "list_feed_proposals",
     description:
@@ -1663,42 +1658,9 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   // ============================================
   // MEMBER SEARCH & INTRODUCTION ANALYTICS TOOLS
   // ============================================
-  {
-    name: "get_member_search_analytics",
-    description: "Get analytics about member searches and introductions.",
-    usage_hints: "Monitor directory and introduction performance.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        days: {
-          type: "number",
-          description: "Days to look back (default: 30)",
-        },
-      },
-    },
-  },
-
   // ============================================
   // ORGANIZATION ANALYTICS TOOLS
   // ============================================
-  {
-    name: "list_organizations_by_users",
-    description:
-      "List organizations ranked by user count (website + Slack-only).",
-    usage_hints: "Rank orgs by engagement.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        limit: { type: "number", description: "Max results (default: 20)" },
-        member_status: {
-          type: "string",
-          enum: ["member", "prospect", "churned", "all"],
-          description: "Filter status",
-        },
-        min_users: { type: "number", description: "Min users (default: 1)" },
-      },
-    },
-  },
   {
     name: "list_slack_users_by_org",
     description: "List Slack users from a specific organization.",
@@ -1709,48 +1671,6 @@ Roles: member (default), admin (can manage team), owner (full control)`,
         query: { type: "string", description: "Company name or domain" },
       },
       required: ["query"],
-    },
-  },
-  {
-    name: "list_users_by_engagement",
-    description:
-      "List community members ranked by community points (earned from events, working groups, content, connections, GitHub). Shows relationship stage, organization, and points breakdown by action type.",
-    usage_hints:
-      "Use when asked about most active people, top contributors, highly engaged individuals, who to invite to events, or Tier 3 / most engaged members. Use membership_tier to filter by individual vs company members. For org-level ranking use list_organizations_by_users instead.",
-    input_schema: {
-      type: "object" as const,
-      properties: {
-        limit: { type: "number", description: "Max results (default: 25)" },
-        stage: {
-          type: "string",
-          enum: [
-            "prospect",
-            "welcomed",
-            "exploring",
-            "participating",
-            "contributing",
-            "leading",
-            "all",
-          ],
-          description: "Filter by relationship stage (default: all)",
-        },
-        member_only: {
-          type: "boolean",
-          description:
-            "Only include users from paying member organizations (default: false)",
-        },
-        membership_tier: {
-          type: "string",
-          enum: ["individual", "company", "all"],
-          description:
-            'Filter by membership tier: "individual" (personal workspaces), "company" (company orgs), or "all" (default: all)',
-        },
-        include_breakdown: {
-          type: "boolean",
-          description:
-            "Include points breakdown by action type (default: false)",
-        },
-      },
     },
   },
   {
@@ -12448,5 +12368,6 @@ Use add_committee_leader to assign a leader.`;
     }
   });
 
+  registerAdminAnalyticsHandler(handlers);
   return handlers;
 }

@@ -88,7 +88,8 @@ describe('certification attempt recovery', () => {
     const result = await secondSession.get('get_learner_progress')?.({});
 
     expect(result).toContain('- S3: in progress');
-    expect(result).toContain(`Active attempt: ${ATTEMPT_ID} (started July 19, 2026)`);
+    expect(result).toContain(`Active attempt: ${ATTEMPT_ID}`);
+    expect(result).toContain('[instant: 2026-07-19T14:30:00.000Z; time_zone: UTC]');
     expect(mocks.getUserAttempts).toHaveBeenCalledWith(USER_ID);
   });
 

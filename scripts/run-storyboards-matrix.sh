@@ -250,7 +250,9 @@ if [ "${FLOOR_SET}" = "3.0-compat" ]; then
     # Capability-resolved 3.0.26 replay. N/A storyboards are selection rows,
     # not synthetic clean results, so these floors grade only executed rows.
     "signals:24:98"
-    "sales:40:224"
+    # SDK 14 beta.12 marks unsigned signing-required functional steps N/A for
+    # immutable bundles that predate the functional_dispatch contract.
+    "sales:39:219"
     "governance:27:147"
     "creative:22:109"
     "creative-builder:24:112"
@@ -263,7 +265,7 @@ else
     # declared-scope applicability and quarantines separately from these
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
-    "sales:126:571"
+    "sales:133:632"
     "governance:47:161"
     "creative:49:209"
     "creative-builder:50:184"
@@ -275,6 +277,8 @@ fi
 REGRESSED=0
 SUMMARY=""
 REQUIRED_CLEAN_CURRENT_SALES=(
+  "sales_non_guaranteed"
+  "sales_guaranteed"
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
   "media_buy_seller/vendor_metric_catalog_precondition"
@@ -283,6 +287,7 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "notification_config_lifecycle"
   "notification_config_rejections"
   "wholesale_feed_products"
+  "wholesale_feed_products_scope_isolation"
   "wholesale_feed_product_webhooks"
   "wholesale_feed_bulk_webhooks"
 )
@@ -388,7 +393,7 @@ for entry in "${TENANTS[@]}"; do
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \
       bash scripts/run-storyboards-isolated-shards.sh \
-        --shard-count 8 --max-parallel 4 > "${log}" 2>&1 || orchestrator_failure=1
+        --shard-count 8 --max-parallel 2 --timeout-ms 180000 > "${log}" 2>&1 || orchestrator_failure=1
   else
     TENANT_PATH="${tenant}" \
       PUBLIC_TEST_AGENT_TOKEN="${PUBLIC_TEST_AGENT_TOKEN:-storyboard-local-token}" \

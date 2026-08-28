@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   UnsupportedModelCapabilityError,
   type ModelFinishReason,
@@ -34,27 +35,47 @@ interface AnthropicResponseLike {
   };
 }
 
+export interface AnthropicMessageStreamTransport extends AsyncIterable<unknown> {
+  finalMessage(): Promise<AnthropicResponseLike>;
+}
+
 export interface AnthropicMessagesTransport {
   beta: {
     messages: {
       create(
         request: AnthropicRequest,
-        options: { maxRetries: 0; signal?: AbortSignal },
+        options: { maxRetries: 0 | 2; signal?: AbortSignal },
       ): Promise<AnthropicResponseLike>;
+      stream?(
+        request: AnthropicRequest,
+        options: { maxRetries: 0 | 2; signal?: AbortSignal },
+      ): AnthropicMessageStreamTransport;
     };
   };
 }
 
+export interface AnthropicModelProviderOptions {
+  /** Preserve a caller's established SDK transport retry posture. */
+  transportMaxRetries?: 0 | 2;
+  /** Maximum silence between stream events and before the terminal message. */
+  streamIdleTimeoutMs?: number;
+}
+
 export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
-  streaming: false,
+  streaming: true,
   structuredOutput: false,
   reasoning: true,
-  reasoningEfforts: Object.freeze(['provider_default'] as const),
+  reasoningEfforts: Object.freeze(['provider_default', 'medium'] as const),
   customTools: true,
   providerWebSearch: true,
   imageInput: true,
   documentInput: true,
 });
+
+interface AnthropicTextDelta {
+  index: number;
+  text: string;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -73,6 +94,8 @@ function deepFreeze<T>(value: T): T {
 
 const MAX_CONTINUATION_BYTES = 2 * 1024 * 1024;
 const MAX_RESPONSE_BLOCKS = 1_000;
+const MAX_STREAM_EVENTS = 100_000;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 60_000;
 const ANTHROPIC_WEB_SEARCH_ERROR_CODES = new Set([
   'invalid_tool_input',
   'unavailable',
@@ -147,7 +170,10 @@ function toAnthropicContent(content: ModelMessageContent): Record<string, unknow
 function toAnthropicMessages(messages: ModelRequest['messages']): Array<Record<string, unknown>> {
   const translated = messages.map((message) => {
     const blocks = message.content.map(toAnthropicContent);
-    const content = blocks.length === 1 && blocks[0].type === 'text'
+    const containsIssuedContinuation = message.content.some((content) => (
+      anthropicContinuationPayloads.has(content)
+    ));
+    const content = blocks.length === 1 && blocks[0].type === 'text' && !containsIssuedContinuation
       ? blocks[0].text
       : blocks;
     return { role: message.role, content };
@@ -350,6 +376,123 @@ export function normalizeAnthropicResponse(response: AnthropicResponseLike): Mod
   return deepFreeze(normalized);
 }
 
+async function collectAnthropicStream(
+  stream: AnthropicMessageStreamTransport,
+  options: {
+    idleTimeoutMs: number;
+    abort: (reason: Error) => void;
+    onStreamProgress?: ModelRespondOptions['onStreamProgress'];
+  },
+): Promise<{ response: ModelResponse; textDeltas: AnthropicTextDelta[] }> {
+  const textDeltas: AnthropicTextDelta[] = [];
+  let eventCount = 0;
+  let textBytes = 0;
+  const iterator = stream[Symbol.asyncIterator]();
+  let completed = false;
+
+  const withIdleTimeout = async <T>(operation: PromiseLike<T>): Promise<T> => {
+    const timeoutController = new AbortController();
+    const timeoutError = new Error('Anthropic stream idle timeout');
+    timeoutError.name = 'TimeoutError';
+    try {
+      try {
+        return await Promise.race([
+          Promise.resolve(operation),
+          delay(options.idleTimeoutMs, undefined, { signal: timeoutController.signal })
+            .then(() => { throw timeoutError; }),
+        ]);
+      } catch (error) {
+        // Settle the race with our stable error before aborting the SDK. Some
+        // transports reject synchronously on abort with a provider-specific
+        // error, which must not replace the authoritative timeout reason.
+        if (error === timeoutError) options.abort(timeoutError);
+        throw error;
+      }
+    } finally {
+      timeoutController.abort();
+    }
+  };
+
+  try {
+    while (true) {
+      const next = await withIdleTimeout(iterator.next());
+      if (next.done) {
+        completed = true;
+        break;
+      }
+      eventCount++;
+      if (eventCount > MAX_STREAM_EVENTS) throw new Error('Anthropic stream event limit exceeded');
+      const record = requireRecord(next.value, 'stream event');
+      if (record.type !== 'content_block_delta') continue;
+      options.onStreamProgress?.({ type: 'content_delta' });
+      const delta = requireRecord(record.delta, 'stream delta');
+      if (delta.type !== 'text_delta') continue;
+      if (
+        !Number.isSafeInteger(record.index)
+        || (record.index as number) < 0
+        || typeof delta.text !== 'string'
+      ) throw new Error('Malformed Anthropic text stream delta');
+      textBytes += Buffer.byteLength(delta.text, 'utf8');
+      if (textBytes > MAX_CONTINUATION_BYTES) {
+        throw new Error('Anthropic stream text exceeds size limit');
+      }
+      textDeltas.push({ index: record.index as number, text: delta.text });
+    }
+    const response = normalizeAnthropicResponse(
+      await withIdleTimeout(stream.finalMessage()),
+    );
+    return { response, textDeltas };
+  } finally {
+    if (!completed) {
+      void Promise.resolve(iterator.return?.()).catch(() => undefined);
+    }
+  }
+}
+
+function* normalizedResponseEvents(
+  response: ModelResponse,
+  textDeltas: AnthropicTextDelta[] = [],
+): Generator<NormalizedModelEvent> {
+  const textDeltasByIndex = new Map<number, string[]>();
+  for (const delta of textDeltas) {
+    const chunks = textDeltasByIndex.get(delta.index) ?? [];
+    chunks.push(delta.text);
+    textDeltasByIndex.set(delta.index, chunks);
+  }
+  for (const [index, chunks] of textDeltasByIndex) {
+    const content = response.content[index];
+    if (content?.type !== 'text' || chunks.join('') !== content.text) {
+      throw new Error('Anthropic stream text does not match terminal response');
+    }
+  }
+  yield {
+    type: 'response_start',
+    provider: 'anthropic',
+    model: response.model,
+    id: response.id,
+  };
+  for (let index = 0; index < response.content.length; index++) {
+    const content = response.content[index];
+    if (content.type === 'text') {
+      const streamed = textDeltasByIndex.get(index);
+      if (!streamed || streamed.length === 0) {
+        yield { type: 'text_delta', index, text: content.text };
+      } else {
+        for (const text of streamed) yield { type: 'text_delta', index, text };
+      }
+    } else if (content.type === 'tool_call') {
+      yield { type: 'tool_call', index, call: content };
+    } else if (content.type === 'provider_tool_call') {
+      yield { type: 'provider_tool_call', index, call: content };
+    } else if (content.type === 'provider_tool_result') {
+      yield { type: 'provider_tool_result', index, result: content };
+    } else if (content.type === 'provider_state') {
+      yield { type: 'provider_state', index, state: content as ModelProviderStateContent };
+    }
+  }
+  yield { type: 'response_complete', response };
+}
+
 export function deriveAnthropicProviderToolReceipt(
   call: ModelProviderToolCallContent,
   result: ModelProviderToolResultContent,
@@ -403,9 +546,20 @@ export class AnthropicModelProvider implements ModelProvider {
   readonly id = 'anthropic' as const;
   readonly capabilities = ANTHROPIC_PROVIDER_CAPABILITIES;
   private readonly transport: AnthropicMessagesTransport;
+  private readonly transportMaxRetries: 0 | 2;
+  private readonly streamIdleTimeoutMs: number;
 
-  constructor(apiKey: string, transport?: AnthropicMessagesTransport) {
+  constructor(
+    apiKey: string,
+    transport?: AnthropicMessagesTransport,
+    options: AnthropicModelProviderOptions = {},
+  ) {
     this.transport = transport ?? new Anthropic({ apiKey }) as unknown as AnthropicMessagesTransport;
+    this.transportMaxRetries = options.transportMaxRetries ?? 0;
+    this.streamIdleTimeoutMs = options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
+    if (!Number.isSafeInteger(this.streamIdleTimeoutMs) || this.streamIdleTimeoutMs <= 0) {
+      throw new RangeError('Anthropic stream idle timeout must be a positive integer');
+    }
   }
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -424,6 +578,7 @@ export class AnthropicModelProvider implements ModelProvider {
     const providerRequest = deepFreeze(structuredClone({
       model: request.model,
       max_tokens: request.maxOutputTokens,
+      ...(request.reasoning?.effort === 'medium' && { output_config: { effort: 'medium' } }),
       system: request.system.map((block) => ({
         type: 'text',
         text: block.text,
@@ -455,33 +610,42 @@ export class AnthropicModelProvider implements ModelProvider {
     request: ModelRequest,
     options?: ModelRespondOptions,
   ): AsyncIterable<NormalizedModelEvent> {
+    validateModelCapabilities('anthropic', this.capabilities, request, {
+      streaming: options?.stream,
+    });
     const prepared = this.prepare(request);
     await options?.beforeDispatch?.(prepared);
+    const transportOptions = {
+      maxRetries: this.transportMaxRetries,
+      ...(options?.signal && { signal: options.signal }),
+    };
+    if (options?.stream) {
+      const messages = this.transport.beta.messages;
+      if (!messages.stream) throw new UnsupportedModelCapabilityError('anthropic', 'streaming');
+      const streamController = new AbortController();
+      const abortFromCaller = () => streamController.abort(options.signal?.reason);
+      if (options.signal?.aborted) abortFromCaller();
+      else options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+      let streamed: Awaited<ReturnType<typeof collectAnthropicStream>>;
+      try {
+        streamed = await collectAnthropicStream(messages.stream(
+          prepared.providerRequest as AnthropicRequest,
+          { ...transportOptions, signal: streamController.signal },
+        ), {
+          idleTimeoutMs: this.streamIdleTimeoutMs,
+          abort: (reason) => streamController.abort(reason),
+          onStreamProgress: options.onStreamProgress,
+        });
+      } finally {
+        options.signal?.removeEventListener('abort', abortFromCaller);
+      }
+      yield* normalizedResponseEvents(streamed.response, streamed.textDeltas);
+      return;
+    }
     const response = await this.transport.beta.messages.create(
       prepared.providerRequest as AnthropicRequest,
-      { maxRetries: 0, ...(options?.signal && { signal: options.signal }) },
+      transportOptions,
     );
-    const normalized = normalizeAnthropicResponse(response);
-    yield {
-      type: 'response_start',
-      provider: 'anthropic',
-      model: normalized.model,
-      id: normalized.id,
-    };
-    for (let index = 0; index < normalized.content.length; index++) {
-      const content = normalized.content[index];
-      if (content.type === 'text') {
-        yield { type: 'text_delta', index, text: content.text };
-      } else if (content.type === 'tool_call') {
-        yield { type: 'tool_call', index, call: content };
-      } else if (content.type === 'provider_tool_call') {
-        yield { type: 'provider_tool_call', index, call: content };
-      } else if (content.type === 'provider_tool_result') {
-        yield { type: 'provider_tool_result', index, result: content };
-      } else if (content.type === 'provider_state') {
-        yield { type: 'provider_state', index, state: content as ModelProviderStateContent };
-      }
-    }
-    yield { type: 'response_complete', response: normalized };
+    yield* normalizedResponseEvents(normalizeAnthropicResponse(response));
   }
 }

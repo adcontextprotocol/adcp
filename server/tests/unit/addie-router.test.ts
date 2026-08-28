@@ -104,7 +104,7 @@ describe('Addie router prompt policy', () => {
     expect(memberPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(false)].join(', ')}`);
     expect(memberPrompt).toContain('→ [] (use the always-available escalation tool)');
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
-    expect(adminPrompt).toContain('→ ["billing", "admin"]');
+    expect(adminPrompt).toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
   });
 });
@@ -256,7 +256,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin']);
+        expect(plan!.tool_sets).toEqual(['admin_workflows']);
       }
     });
 
@@ -307,7 +307,7 @@ describe('AddieRouter.quickMatch', () => {
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['admin']);
+        expect(plan!.tool_sets).toEqual(['admin_workflows']);
       }
     });
 
@@ -377,14 +377,14 @@ describe('AddieRouter.quickMatch', () => {
       }
     });
 
-    it('should route "who\'s coming" to events + admin for admins', () => {
+    it('should route "who\'s coming" to events for admins', () => {
       const plan = router.quickMatch(
         makeCtx({ message: "who's coming to the amsterdam meetup tonight", isAAOAdmin: true }),
       );
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
       if (plan!.action === 'respond') {
-        expect(plan!.tool_sets).toEqual(['events', 'admin']);
+        expect(plan!.tool_sets).toEqual(['events']);
       }
     });
 
@@ -506,8 +506,10 @@ describe('getToolSetDescriptionsForRouter', () => {
   describe('admin user', () => {
     const descriptions = getToolSetDescriptionsForRouter(true);
 
-    it('should include admin set', () => {
-      expect(descriptions).toMatch(/\*\*admin\*\*/);
+    it('should include bounded admin domains and hide the legacy set', () => {
+      expect(descriptions).toMatch(/\*\*admin_workflows\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_groups\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });
 
     it('should include billing set', () => {
@@ -551,8 +553,9 @@ describe('TOOL_SETS.admin', () => {
   });
 
   it('should include engagement analytics tools', () => {
-    expect(adminSet.tools).toContain('list_users_by_engagement');
-    expect(adminSet.tools).toContain('get_member_search_analytics');
+    expect(adminSet.tools).toContain('query_admin_analytics');
+    expect(adminSet.tools).not.toContain('list_users_by_engagement');
+    expect(adminSet.tools).not.toContain('get_member_search_analytics');
   });
 
   it('should include working group membership tools', () => {
@@ -560,10 +563,9 @@ describe('TOOL_SETS.admin', () => {
     expect(adminSet.tools).toContain('remove_working_group_member');
   });
 
-  it('should mention committee/working group leadership in description', () => {
-    expect(adminSet.description).toMatch(/committee/i);
-    expect(adminSet.description).toMatch(/working group/i);
-    expect(adminSet.description).toMatch(/leadership/i);
+  it('should be hidden as a compatibility-only surface', () => {
+    expect(adminSet.routerVisible).toBe(false);
+    expect(adminSet.description).toMatch(/compatibility/i);
   });
 });
 

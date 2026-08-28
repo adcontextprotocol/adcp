@@ -36,10 +36,6 @@ import {
   BRAND_CANONICAL_TOOLS,
   createBrandCanonicalToolHandlers,
 } from "./mcp/brand-canonical-tools.js";
-import {
-  PROPERTY_TOOLS,
-  createPropertyToolHandlers,
-} from "./mcp/property-tools.js";
 
 function registerToolsFromMap(
   client: AddieClaudeClient,
@@ -73,5 +69,4 @@ export async function registerBaselineTools(client: AddieClaudeClient): Promise<
   registerToolsFromMap(client, DIRECTORY_TOOLS, createDirectoryToolHandlers());
   registerToolsFromMap(client, BRAND_TOOLS, createBrandToolHandlers());
   registerToolsFromMap(client, BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers());
-  registerToolsFromMap(client, PROPERTY_TOOLS, createPropertyToolHandlers());
 }

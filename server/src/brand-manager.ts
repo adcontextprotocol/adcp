@@ -1316,7 +1316,7 @@ export class BrandManager {
    */
   async resolveBrandRef(
     ref: { domain: string; brand_id?: string },
-    options: { skipCache?: boolean } = {}
+    options: { skipCache?: boolean; maxRedirects?: number } = {}
   ): Promise<ResolvedBrand | null> {
     const resolved = await this.resolveBrand(ref.domain, options);
     if (!ref.brand_id) {

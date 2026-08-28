@@ -125,6 +125,7 @@ import {
   formatMemberContextForPrompt,
   type MemberContext,
 } from "../addie/member-context.js";
+import { buildAuthoritativeTemporalContext } from "../addie/temporal-context.js";
 import {
   getThreadService,
   type Thread,
@@ -677,7 +678,7 @@ export async function prepareRequestWithMemberTools(
   siRetrievalTimeMs = siRetrievalResult.retrieval_time_ms;
 
   // Build per-request context for system prompt (member info, SI agents)
-  const contextSections: string[] = [];
+  const contextSections: string[] = [buildAuthoritativeTemporalContext(memberContext)];
 
   if (memberContext) {
     const memberContextText = formatMemberContextForPrompt(memberContext, 'web');
@@ -1798,7 +1799,18 @@ export function createAddieChatRouter(options?: {
         return;
       }
 
-      const finalStreamText = fullText.trim() ? fullText : response?.text;
+      const terminalText = response.text.trim();
+      const shouldAppendProviderTerminal = response.flag_reason?.startsWith('provider_unavailable:')
+        && !!fullText.trim()
+        && !!terminalText
+        && !fullText.includes(response.text);
+      const usedTerminalText = !fullText.trim() && !!terminalText;
+      if (usedTerminalText || shouldAppendProviderTerminal) {
+        sendEvent("text", { text: shouldAppendProviderTerminal ? `\n\n${response.text}` : response.text });
+      }
+      const finalStreamText = shouldAppendProviderTerminal
+        ? `${fullText}\n\n${response.text}`
+        : fullText.trim() ? fullText : response.text;
       const normalizedStream = ensureNonEmptyAssistantResponse(finalStreamText);
       if (normalizedStream.usedFallback) {
         logger.warn(

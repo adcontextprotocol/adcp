@@ -1068,17 +1068,21 @@ describe('sync_governance', () => {
       await getSession(key);
       return resolveGovernanceAgentsForAccount(key, undefined, partialRef as never);
     });
-    expect(partialRefAgents).toEqual([{ url: 'https://governance.example/mcp' }]);
+    const restoredAgent = {
+      url: 'https://governance.example/mcp',
+      authentication: { schemes: ['Bearer'], credentials: 'tok_restart' },
+    };
+    expect(partialRefAgents).toEqual([restoredAgent]);
     await expect(resolveGovernanceAgentsForAccount(
       sessionKeyFromArgs({ account }, 'open'),
       undefined,
       account,
-    )).resolves.toEqual([{ url: 'https://governance.example/mcp' }]);
+    )).resolves.toEqual([restoredAgent]);
     await expect(resolveGovernanceAgentsForAccount(
       sessionKeyFromArgs({ account: { account_id: String(created.account_id) } }, 'open'),
       undefined,
       { account_id: String(created.account_id) },
-    )).resolves.toEqual([{ url: 'https://governance.example/mcp' }]);
+    )).resolves.toEqual([restoredAgent]);
   });
 
   it('replaces the governance agent on second call', async () => {
@@ -1152,7 +1156,10 @@ describe('sync_governance', () => {
       sessionKeyFromArgs({ account: { account_id: String(created.account_id) } }, 'open'),
       undefined,
       { account_id: String(created.account_id) },
-    )).resolves.toEqual([{ url: 'https://governance.example/mcp' }]);
+    )).resolves.toEqual([{
+      url: 'https://governance.example/mcp',
+      authentication: { schemes: ['Bearer'], credentials: 'initial-secret' },
+    }]);
   });
 
   it('does not lose concurrent same-brand bindings and includes timezone in natural identity', async () => {
@@ -1198,14 +1205,18 @@ describe('sync_governance', () => {
     await expect(store.getByAccountScope('anonymous', accountScopeFromRef(accountB)))
       .resolves.toMatchObject({ accountId: createdB.account_id });
 
-    for (const [account, created] of [[accountA, createdA], [accountB, createdB]] as const) {
+    for (const [index, [account, created]] of ([[accountA, createdA], [accountB, createdB]] as const).entries()) {
+      const expectedAgent = {
+        url: 'https://governance.example/mcp',
+        authentication: { schemes: ['Bearer'], credentials: `concurrent-${index}` },
+      };
       await expect(resolveGovernanceAgentsForAccount('ignored', undefined, account))
-        .resolves.toEqual([{ url: 'https://governance.example/mcp' }]);
+        .resolves.toEqual([expectedAgent]);
       await expect(resolveGovernanceAgentsForAccount(
         'ignored',
         undefined,
         { account_id: created.account_id },
-      )).resolves.toEqual([{ url: 'https://governance.example/mcp' }]);
+      )).resolves.toEqual([expectedAgent]);
     }
     await expect(resolveGovernanceAgentsForAccount(
       'ignored',

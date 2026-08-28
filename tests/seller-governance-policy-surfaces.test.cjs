@@ -149,8 +149,8 @@ test('registry platform profiles pin source versions and reject ambiguous region
   assert.ok(checkEntry(google, 'google_political_advertising_acceptance.json')
     .some(error => error.includes('undeclared jurisdiction group')));
 
-  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/558_policy_acceptance_profiles.sql'), 'utf8');
-  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/559_publish_political_acceptance_policies.sql'), 'utf8');
+  const storageMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/560_policy_acceptance_profiles.sql'), 'utf8');
+  const publicationMigration = fs.readFileSync(path.join(__dirname, '../server/src/db/migrations/561_publish_political_acceptance_policies.sql'), 'utf8');
   assert.match(storageMigration, /acceptance_profile JSONB/);
   assert.match(storageMigration, /issuer JSONB/);
   assert.match(storageMigration, /CREATE TABLE policy_publications/);

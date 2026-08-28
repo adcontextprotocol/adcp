@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   poolQuery: vi.fn(),
   getWebConversations: vi.fn(),
   getModelExecutionReadiness: vi.fn(),
+  getRouterShadowSummary: vi.fn(),
   serveHtmlWithConfig: vi.fn(),
 }));
 
@@ -74,6 +75,11 @@ vi.mock('../../src/db/addie-db.js', () => ({
 
 vi.mock('../../src/addie/model-execution-readiness.js', () => ({
   getModelExecutionReadiness: mocks.getModelExecutionReadiness,
+}));
+
+vi.mock('../../src/addie/router-shadow.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/addie/router-shadow.js')>()),
+  getRouterShadowSummary: mocks.getRouterShadowSummary,
 }));
 
 vi.mock('../../src/utils/html-config.js', () => ({
@@ -177,6 +183,23 @@ describe('Addie real global-admin boundary', () => {
       persisted_data_ready: true,
       blockers: [],
     });
+    mocks.getRouterShadowSummary.mockResolvedValue({
+      days: 7,
+      selected: 1,
+      dispatched: 1,
+      terminal: 1,
+      outcomes: [{ status: 'succeeded', reason: 'valid_plan', count: 1 }],
+      validity: { numerator: 1, denominator: 1 },
+      action_agreement: { numerator: 1, denominator: 1 },
+      tool_set_agreement: { numerator: 0, denominator: 0 },
+      usage: {
+        input_tokens: 10, output_tokens: 4, missing: 0,
+        estimated_cost_micros: 7, reserved_cost_micros: 13468,
+      },
+      latency_ms: {
+        primary_p50: 10, primary_p95: 10, shadow_p50: 20, shadow_p95: 20,
+      },
+    });
     mocks.serveHtmlWithConfig.mockImplementation(
       (_req: express.Request, res: express.Response) => {
         res.status(200).send('Addie admin');
@@ -270,6 +293,27 @@ describe('Addie real global-admin boundary', () => {
       hours: Number.NaN,
       minimumSamples: 100,
     });
+  });
+
+  it('exposes only aggregate router-shadow evidence behind global admin auth', async () => {
+    const denied = await request(app)
+      .get('/api/admin/addie/threads/router-shadow-summary?days=7')
+      .set('Authorization', 'Bearer sk_tenant_read');
+    expect(denied.status).toBe(403);
+    expect(mocks.getRouterShadowSummary).not.toHaveBeenCalled();
+
+    const allowed = await request(app)
+      .get('/api/admin/addie/threads/router-shadow-summary?days=7')
+      .set('Authorization', 'Bearer static-global-admin-key');
+    expect(allowed.status).toBe(200);
+    expect(allowed.body).not.toHaveProperty('attempts');
+    expect(allowed.body.action_agreement).toEqual({ numerator: 1, denominator: 1 });
+    expect(mocks.getRouterShadowSummary).toHaveBeenCalledWith(7);
+
+    const invalid = await request(app)
+      .get('/api/admin/addie/threads/router-shadow-summary?days=9')
+      .set('Authorization', 'Bearer static-global-admin-key');
+    expect(invalid.status).toBe(400);
   });
 });
 

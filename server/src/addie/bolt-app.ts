@@ -40,6 +40,11 @@ import {
 } from './claude-cost-tracker.js';
 import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import {
+  recordProactiveEvent,
+  type AccountLinkCorrelation,
+  type ProactiveDeliveryStatus,
+} from '../db/addie-account-link-correlation-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
 import { linkDomain } from '../db/organization-domains-db.js';
@@ -101,6 +106,7 @@ import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-tele
 import { AddieModelConfig, ModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import { buildAuthoritativeTemporalContext } from './temporal-context.js';
 import {
   sanitizeInput,
   validateOutput,
@@ -167,6 +173,8 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
+import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
+import { ProviderHealthController } from './model-providers/provider-health.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -177,13 +185,18 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { resolveSlackDirectoryContext, type SlackDirectoryAudience } from './directory-access.js';
-import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import {
+  SI_HOST_TOOLS,
+  createSiHostToolHandlers,
+  hasCachedSiSession,
+} from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
 import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
 import { PORTRAIT_TOOLS, createPortraitToolHandlers } from './mcp/portrait-tools.js';
+import { IMAGE_TOOLS, createImageToolHandlers } from './mcp/image-tools.js';
 import { COMMITTEE_LEADER_TOOLS, createCommitteeLeaderToolHandlers } from './mcp/committee-leader-tools.js';
 import { PROPERTY_TOOLS, createPropertyToolHandlers } from './mcp/property-tools.js';
 import { SCHEMA_TOOLS, createSchemaToolHandlers } from './mcp/schema-tools.js';
@@ -234,27 +247,19 @@ import {
   type OfficialDocsCohortReason,
   type ProfiledChannelRespondPlan,
 } from './jobs/shadow-replay-cohort.js';
+import {
+  hasActiveCertificationProgress,
+  resolveRequiredSlackChannelContext,
+  resolveSlackChannelPrivacy,
+  selectSlackToolSets,
+  type SystemChannelRole,
+} from './slack-tool-selection.js';
 
 /**
  * Slack's built-in system bot user ID.
  * Slackbot sends system notifications (e.g., "added you to #channel") that should be ignored.
  */
 const SLACKBOT_USER_ID = 'USLACKBOT';
-const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
-
-/**
- * Tool sets to auto-include when Addie is in a system-configured channel.
- * Keyed by the channel's system role from system_settings.
- */
-type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
-
-const SYSTEM_CHANNEL_TOOL_SETS: Record<SystemChannelRole, string[]> = {
-  prospect: ['admin', 'outreach'],
-  escalation: ['admin'],
-  billing: ['admin', 'billing'],
-  error: ['admin'],
-  admin: ['admin'],
-};
 
 let systemChannelMap: Map<string, SystemChannelRole> | null = null;
 let systemChannelMapExpiresAt = 0;
@@ -681,7 +686,10 @@ export async function buildChannelContext(channelId: string): Promise<Partial<Th
     const channelInfo = await getChannelInfo(channelId);
     if (channelInfo) {
       context.viewing_channel_name = channelInfo.name;
-      context.viewing_channel_is_private = channelInfo.is_private;
+      const channelPrivacy = resolveSlackChannelPrivacy(channelInfo);
+      if (channelPrivacy !== null) {
+        context.viewing_channel_is_private = channelPrivacy;
+      }
       if (channelInfo.purpose?.value) {
         context.viewing_channel_description = channelInfo.purpose.value;
       }
@@ -756,7 +764,6 @@ async function buildCurrentChannelCostOptions(
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
-let setSiContext: (memberContext: MemberContext | null, threadExternalId: string) => void = () => {};
 let initialized = false;
 
 /**
@@ -780,11 +787,15 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   logger.info('Addie Bolt: Initializing...');
 
+  // Share provider health across routing and response generation so an
+  // account-wide failure gates both paths until a bounded recovery probe.
+  const providerHealth = new ProviderHealthController();
+
   // Initialize Claude client
-  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat);
+  claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
   // Initialize router (uses Haiku for fast classification)
-  addieRouter = new AddieRouter(anthropicKey);
+  addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -792,7 +803,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize thread context store
   threadContextStore = new DatabaseThreadContextStore(addieDb);
 
-  // Register shared baseline tools (knowledge, billing, schema, directory, brand, property)
+  // Register shared baseline tools (knowledge, billing, schema, directory, brand)
   // Shared with web chat handler via register-baseline-tools.ts
   await registerBaselineTools(claudeClient);
 
@@ -818,31 +829,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     }
     logger.info('Addie: Google Docs tools registered');
   }
-
-  // Register SI host tools (Sponsored Intelligence protocol)
-  // These enable Addy to connect users with AAO member brand agents
-  // Note: We need to pass context providers that will be called per-request
-  // For now, we register with placeholder getters - actual context comes from handleUserMessage
-  let currentMemberContext: MemberContext | null = null;
-  let currentThreadExternalId: string = '';
-
-  const siHostHandlers = createSiHostToolHandlers(
-    () => currentMemberContext,
-    () => currentThreadExternalId
-  );
-  for (const tool of SI_HOST_TOOLS) {
-    const handler = siHostHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
-  logger.info('Addie: SI host tools registered');
-
-  // Export setters for SI context (called from handleUserMessage)
-  setSiContext = (memberContext: MemberContext | null, threadExternalId: string) => {
-    currentMemberContext = memberContext;
-    currentThreadExternalId = threadExternalId;
-  };
 
   // Create the Assistant
   const assistant = new Assistant({
@@ -1067,10 +1053,11 @@ async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
   existingMemberContext?: MemberContext | null
-): Promise<{ requestContext: string; memberContext: MemberContext | null; hasCertificationContext: boolean }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; hasActiveCertification: boolean }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
+    const temporalContextText = buildAuthoritativeTemporalContext(memberContext);
 
     // Build channel context if available
     let channelContextText = '';
@@ -1102,11 +1089,13 @@ async function buildRequestContext(
     // Add certification module state so Addie remembers active modules
     // even when conversation history is trimmed
     let certContextText = '';
+    let hasActiveCertification = false;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     if (workosUserId) {
       try {
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
+        hasActiveCertification = hasActiveCertificationProgress(progress);
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
@@ -1134,15 +1123,19 @@ async function buildRequestContext(
       }
     }
 
-    const sections = [memberContextText, channelContextText, certContextText].filter(Boolean);
+    const sections = [temporalContextText, memberContextText, channelContextText, certContextText].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
-      hasCertificationContext: !!certContextText,
+      hasActiveCertification,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, hasCertificationContext: false };
+    return {
+      requestContext: buildAuthoritativeTemporalContext(),
+      memberContext: null,
+      hasActiveCertification: false,
+    };
   }
 }
 
@@ -1155,11 +1148,18 @@ async function buildRequestContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId: string,
-  threadId?: string,
+  threadId: string,
   threadContext?: ThreadContext | null,
   directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
-  const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
+  const memberHandlers = createMemberToolHandlers(
+    memberContext,
+    slackUserId,
+    undefined,
+    threadId
+      ? { surface: 'slack', threadId, initiatingUserId: slackUserId }
+      : undefined,
+  );
   const trainingModuleContext: { moduleId?: string } = {
     moduleId: memberContext?.certification?.status === 'in_progress'
       ? memberContext.certification.module_id ?? undefined
@@ -1167,6 +1167,18 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Bind SI identity and session state to this request. The former global
+  // getters could be overwritten by another concurrent Slack request before
+  // a tool call executed, and also kept the SI surface on every provider wire.
+  const siHostHandlers = createSiHostToolHandlers(
+    () => memberContext,
+    () => threadId,
+  );
+  allTools.push(...SI_HOST_TOOLS);
+  for (const [name, handler] of siHostHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Shadow the globally registered anonymous directory handlers with a
   // caller-scoped view. API-access members may discover members_only agents;
@@ -1369,6 +1381,14 @@ async function createUserScopedTools(
     }
   }
 
+  // Image search is declared always available by the router, so the modern
+  // Bolt path must register the corresponding user-scoped definition.
+  const imageHandlers = createImageToolHandlers(slackUserId, threadId);
+  allTools.push(...IMAGE_TOOLS);
+  for (const [name, handler] of imageHandlers) {
+    allHandlers.set(name, handler);
+  }
+
   // Add committee leader tools (co-leader management, self-enforcing permissions)
   const committeeLeaderHandlers = createCommitteeLeaderToolHandlers(memberContext, slackUserId);
   allTools.push(...COMMITTEE_LEADER_TOOLS);
@@ -1445,7 +1465,7 @@ function filterToolsBySet(
   const filteredToolDefs = userTools.tools.filter(tool => allowedToolNames.has(tool.name));
 
   // Filter handlers to match
-  const filteredHandlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+  const filteredHandlers: RequestTools['handlers'] = new Map();
   for (const [name, handler] of userTools.handlers) {
     if (allowedToolNames.has(name)) {
       filteredHandlers.set(name, handler);
@@ -1478,11 +1498,12 @@ async function selectRoutedToolsForSlackResponse(
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; hasCertificationContext?: boolean; threadMessages?: string[] }
+  options?: { isThread?: boolean; hasActiveCertification?: boolean; threadMessages?: string[] }
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
   unavailableHint: string;
+  selectedToolSets: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1497,28 +1518,26 @@ async function selectRoutedToolsForSlackResponse(
 
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
-    const fallbackSets = ['knowledge'];
-    if (userIsAdmin && (source === 'dm' || threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG)) {
-      fallbackSets.push('admin');
-    }
-    const fallbackSystemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-    if (userIsAdmin && fallbackSystemRole) {
-      for (const set of SYSTEM_CHANNEL_TOOL_SETS[fallbackSystemRole] ?? []) {
-        if (!fallbackSets.includes(set)) {
-          fallbackSets.push(set);
-        }
-      }
-    }
+    const fallbackSets = selectSlackToolSets({
+      routerAvailable: false,
+      source,
+      isAdmin: userIsAdmin,
+      workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+      systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+      hasActiveCertification: options?.hasActiveCertification,
+      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+    });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
       fallbackSets,
       userIsAdmin,
-      false
+      threadContext?.viewing_channel_is_private === false,
     );
     return {
       tools: filteredTools,
       isAAOAdmin: userIsAdmin,
       unavailableHint,
+      selectedToolSets: fallbackSets,
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1539,35 +1558,19 @@ async function selectRoutedToolsForSlackResponse(
   // Direct interactions (DMs, mentions, assistant threads) always respond.
   // Non-respond router actions only make sense for channel messages where Addie can stay silent.
   const isDirectInteraction = source === 'dm' || source === 'mention';
-  const selectedSets = plan.action === 'respond'
+  const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
     : isDirectInteraction ? ['knowledge'] : [];
-
-  // Certification sessions use certification + knowledge tools so Addie can verify protocol claims
-  if (options?.hasCertificationContext) {
-    selectedSets.length = 0;
-    selectedSets.push('certification');
-    selectedSets.push('knowledge');
-  }
-
-  // Admin DMs and admin channels: always include admin tools.
-  // Admins DMing Addie are almost always asking operational questions; relying on
-  // the Haiku router to guess "admin" from the message is fragile.
-  const isAdminDm = userIsAdmin && source === 'dm';
-  const isAdminChannel = userIsAdmin && threadContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG;
-  if ((isAdminDm || isAdminChannel) && !options?.hasCertificationContext && !selectedSets.includes('admin')) {
-    selectedSets.push('admin');
-  }
-
-  // System-configured channels: auto-include relevant tool sets for admins
-  const systemRole = threadContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-  if (userIsAdmin && systemRole && !options?.hasCertificationContext) {
-    for (const set of SYSTEM_CHANNEL_TOOL_SETS[systemRole] ?? []) {
-      if (!selectedSets.includes(set)) {
-        selectedSets.push(set);
-      }
-    }
-  }
+  const selectedSets = selectSlackToolSets({
+    routerSelectedSets,
+    routerAvailable: true,
+    source,
+    isAdmin: userIsAdmin,
+    workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
+    systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasActiveCertification: options?.hasActiveCertification,
+    hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+  });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
     userTools,
@@ -1582,7 +1585,7 @@ async function selectRoutedToolsForSlackResponse(
       action: plan.action,
       reason: plan.reason,
       selectedSets,
-      hasCertificationContext: !!options?.hasCertificationContext,
+      hasActiveCertification: !!options?.hasActiveCertification,
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
@@ -1600,6 +1603,7 @@ async function selectRoutedToolsForSlackResponse(
     tools: filteredTools,
     isAAOAdmin: userIsAdmin,
     unavailableHint,
+    selectedToolSets: selectedSets,
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1843,7 +1847,7 @@ async function handleUserMessage({
   }
 
   // Build per-request context for system prompt
-  let { requestContext, memberContext: updatedMemberContext, hasCertificationContext } = await buildRequestContext(
+  let { requestContext, memberContext: updatedMemberContext, hasActiveCertification } = await buildRequestContext(
     userId,
     slackThreadContext
   );
@@ -1854,9 +1858,6 @@ async function handleUserMessage({
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
-
-  // Set SI context for SI host tools (allows them to access member context and thread ID)
-  setSiContext(memberContext, externalId);
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
@@ -1883,14 +1884,14 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasCertificationContext }
+    { isThread: true, hasActiveCertification }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
   // Admin users get higher iteration limit; certification sessions get more iterations
-  const certIterations = hasCertificationContext && !routedTools.isAAOAdmin
+  const certIterations = hasActiveCertification && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
   const dmEffectiveModel = routedTools.requiresPrecision
@@ -1905,6 +1906,7 @@ async function handleUserMessage({
   // user's Addie spend.
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
+    selectedToolSetNames: routedTools.selectedToolSets,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2052,14 +2054,27 @@ async function handleUserMessage({
       } else if (terminalDeliveryPlan === 'normal-stop') {
         // Stop the stream with feedback buttons and any inline images.
         try {
-          // Cap-exceeded responses have no streamed text — deliver the cap
-          // message as the terminal text so the user isn't left with silence.
-          if (response?.flag_reason === 'cost_cap_exceeded') {
-            const capGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-cap-exceeded' });
-            const capValidation = validateOutput(capGuarded.text);
-            const capText = wrapUrlsForSlack(capValidation.sanitized);
-            await streamer.stop({ markdown_text: capText, blocks: [buildFeedbackBlock()] });
+          const providerTerminalText = response?.flag_reason?.startsWith('provider_unavailable:')
+            && response.text.trim()
+            && !fullText.includes(response.text)
+            ? response.text
+            : '';
+          // Local terminal responses normally have no streamed text. If a
+          // provider fails after partial delivery, append the independent
+          // recovery warning before closing the stream as a safety backstop.
+          if (!fullText.trim() && response?.text.trim()) {
+            const terminalGuarded = guardBareJsonEnvelope(response.text, { pathTag: 'dm-streaming-local-terminal' });
+            const terminalValidation = validateOutput(terminalGuarded.text);
+            const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+            await streamer.stop({ markdown_text: terminalText, blocks: [buildFeedbackBlock()] });
           } else {
+            if (providerTerminalText) {
+              const terminalGuarded = guardBareJsonEnvelope(providerTerminalText, { pathTag: 'dm-streaming-provider-terminal' });
+              const terminalValidation = validateOutput(terminalGuarded.text);
+              const terminalText = wrapUrlsForSlack(terminalValidation.sanitized);
+              fullText = `${fullText}\n\n${terminalValidation.sanitized}`;
+              await streamer.append({ markdown_text: `\n\n${terminalText}` });
+            }
             // Extract image URLs from streamed text for Slack Block Kit image blocks
             const { images: streamImages } = extractMarkdownImages(fullText);
             const MAX_SLACK_IMAGES = 3;
@@ -2096,9 +2111,10 @@ async function handleUserMessage({
               // Slack rejects section blocks with empty mrkdwn text. If streaming
               // produced nothing (e.g. upstream overload before any deltas), fall
               // back to a plain apology so the user isn't left silent. For
-              // cost_cap_exceeded, deliver the cap message directly.
+              // A local terminal response may have no streamed text; deliver
+              // its recovery message directly.
               if (!slackText.trim()) {
-                const apology = response?.flag_reason === 'cost_cap_exceeded'
+                const apology = response?.text.trim()
                   ? response.text
                   : isRetriesExhaustedError(stopError)
                     ? `${stopError.reason}. Please try again in a moment.`
@@ -2648,6 +2664,7 @@ async function handleAppMention({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3463,20 +3480,16 @@ export async function buildChannelResponseInvocation(input: {
     threadId,
     channelContext,
   );
-  const selectedToolSets = [...plan.tool_sets];
-  if (
-    userIsAdmin
-    && channelContext?.viewing_channel_working_group_slug === ADMIN_CHANNEL_WG_SLUG
-    && !selectedToolSets.includes('admin')
-  ) {
-    selectedToolSets.push('admin');
-  }
-  const channelSystemRole = channelContext?.viewing_channel_system_role as SystemChannelRole | undefined;
-  if (userIsAdmin && channelSystemRole) {
-    for (const set of SYSTEM_CHANNEL_TOOL_SETS[channelSystemRole] ?? []) {
-      if (!selectedToolSets.includes(set)) selectedToolSets.push(set);
-    }
-  }
+  const selectedToolSets = selectSlackToolSets({
+    routerSelectedSets: plan.tool_sets,
+    routerAvailable: true,
+    source: 'channel',
+    isAdmin: userIsAdmin,
+    workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
+    systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasSponsoredIntelligenceContext:
+      hasCachedSiSession(threadId) || (siRetrievalResult?.agents.length ?? 0) > 0,
+  });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
     userTools,
@@ -3540,6 +3553,7 @@ export async function buildChannelResponseInvocation(input: {
       ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
+      selectedToolSetNames: selectedToolSets,
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
@@ -3889,7 +3903,11 @@ async function handleDirectMessage(
   }
 
   // Build per-request context for system prompt (no channel context for DMs)
-  let { requestContext, memberContext: updatedMemberContext } = await buildRequestContext(userId);
+  let {
+    requestContext,
+    memberContext: updatedMemberContext,
+    hasActiveCertification,
+  } = await buildRequestContext(userId);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
@@ -3922,7 +3940,8 @@ async function handleDirectMessage(
     memberContext,
     userId,
     thread.thread_id,
-    null
+    null,
+    { isThread: true, hasActiveCertification },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -3945,6 +3964,7 @@ async function handleDirectMessage(
         ? { modelOverride: ModelConfig.depth }
         : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4339,6 +4359,7 @@ async function handleActiveThreadReply({
     ...(routedTools.isAAOAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
+    selectedToolSetNames: routedTools.selectedToolSets,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -4732,8 +4753,34 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
+      const shadowCandidate = selectRouterShadowCohort({
+        channelId,
+        opportunityId: event.ts,
+        // Final admission rechecks current Slack metadata inside the detached
+        // observer. These optimistic values only avoid scheduling work when
+        // the independent feature/config/sample gate is already closed.
+        channelIsPublic: true,
+        channelIsShared: false,
+      });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx),
+        addieRouter.route(routingCtx, {
+          ...(shadowCandidate.selected && {
+            observer: async (observation) => {
+              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
+                .catch(() => null);
+              await runRouterShadow({
+                channelId,
+                opportunityId: event.ts,
+                channelIsPublic: currentChannel?.is_private === false,
+                channelIsShared: currentChannel === null
+                  || currentChannel.is_shared
+                  || currentChannel.is_org_shared
+                  || currentChannel.is_pending_ext_shared === true,
+                observation,
+              });
+            },
+          }),
+        }),
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;
@@ -5038,27 +5085,99 @@ async function handleChannelMessage({
  * Send a proactive message when a user links their account
  */
 export async function sendAccountLinkedMessage(
-  slackUserId: string,
+  origin: AccountLinkCorrelation,
   userName?: string
 ): Promise<boolean> {
+  const recordOutcome = async (
+    deliveryStatus: ProactiveDeliveryStatus,
+    reasonCode: string,
+  ): Promise<void> => {
+    try {
+      await recordProactiveEvent({
+        eventType: 'account_linked',
+        correlationId: origin.correlationId,
+        surface: origin.surface,
+        threadId: origin.threadId,
+        initiatingUserId: origin.initiatingUserId,
+        deliveryStatus,
+        reasonCode,
+      });
+    } catch (error) {
+      logger.error({
+        error,
+        correlationId: origin.correlationId,
+        threadId: origin.threadId,
+        reasonCode: 'proactive_event_persistence_failed',
+      }, 'Addie Bolt: Failed to persist proactive account-link event');
+    }
+  };
+
   if (!initialized || !boltApp) {
-    logger.warn('Addie Bolt: Not initialized, cannot send account linked message');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_not_initialized',
+    }, 'Addie Bolt: Cannot deliver account linked message');
+    await recordOutcome('failed', 'slack_not_initialized');
     return false;
   }
 
   const threadService = getThreadService();
 
-  // Find the user's most recent Addie thread (within 30 minutes)
-  const recentThread = await threadService.getUserRecentThread(slackUserId, 'slack', 30);
-  if (!recentThread) {
-    logger.debug({ slackUserId }, 'Addie Bolt: No recent thread found for account linked message');
+  if (origin.surface !== 'slack') {
+    logger.warn({
+      correlationId: origin.correlationId,
+      surface: origin.surface,
+      reasonCode: 'surface_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'surface_mismatch');
     return false;
   }
 
-  // Parse external_id back to channel_id:thread_ts
-  const [channelId, threadTs] = recentThread.external_id.split(':');
+  // Revalidate the exact thread immediately before delivery. Correlation
+  // consumption already performs the same checks atomically; this protects
+  // against state changes between OAuth completion and the Slack API call.
+  let thread;
+  try {
+    thread = await threadService.getThread(origin.threadId);
+  } catch (error) {
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'thread_validation_failed',
+    }, 'Addie Bolt: Failed to validate account-link delivery thread');
+    await recordOutcome('failed', 'thread_validation_failed');
+    return false;
+  }
+  if (
+    !thread
+    || thread.channel !== 'slack'
+    || thread.user_type !== 'slack'
+    || thread.user_id !== origin.initiatingUserId
+    || thread.external_id !== origin.externalId
+  ) {
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      initiatingUserId: origin.initiatingUserId,
+      reasonCode: 'thread_identity_mismatch',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'thread_identity_mismatch');
+    return false;
+  }
+
+  // Parse the validated external_id back to channel_id:thread_ts.
+  const separator = origin.externalId.indexOf(':');
+  const channelId = separator > 0 ? origin.externalId.slice(0, separator) : '';
+  const threadTs = separator > 0 ? origin.externalId.slice(separator + 1) : '';
   if (!channelId || !threadTs) {
-    logger.warn({ slackUserId, externalId: recentThread.external_id }, 'Addie Bolt: Invalid external_id format');
+    logger.warn({
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'invalid_slack_thread_identity',
+    }, 'Addie Bolt: Skipping account linked message');
+    await recordOutcome('skipped', 'invalid_slack_thread_identity');
     return false;
   }
 
@@ -5074,22 +5193,42 @@ export async function sendAccountLinkedMessage(
       thread_ts: threadTs,
     });
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Addie Bolt: Failed to send account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'slack_delivery_failed',
+    }, 'Addie Bolt: Failed to send account linked message');
+    await recordOutcome('failed', 'slack_delivery_failed');
     return false;
   }
 
   // Log as a system message in the unified thread (separate from Slack send)
   try {
     await threadService.addMessage({
-      thread_id: recentThread.thread_id,
+      thread_id: origin.threadId,
       role: 'system',
       content: messageText,
     });
   } catch (error) {
-    logger.error({ error, threadId: recentThread.thread_id }, 'Addie Bolt: Failed to save account linked message');
+    logger.error({
+      error,
+      correlationId: origin.correlationId,
+      threadId: origin.threadId,
+      reasonCode: 'system_event_persistence_failed',
+    }, 'Addie Bolt: Failed to save account linked system event');
+    await recordOutcome('delivered', 'slack_delivered_system_persistence_failed');
+    return true;
   }
 
-  logger.info({ slackUserId, channelId }, 'Addie Bolt: Sent account linked message');
+  await recordOutcome('delivered', 'slack_correlated_thread_delivered');
+  logger.info({
+    correlationId: origin.correlationId,
+    threadId: origin.threadId,
+    initiatingUserId: origin.initiatingUserId,
+    channelId,
+    reasonCode: 'slack_correlated_thread_delivered',
+  }, 'Addie Bolt: Sent account linked message');
   return true;
 }
 
@@ -5744,11 +5883,16 @@ async function handleReactionAdded({
   }
 
   // Fetch channel context (includes working group if channel is linked to one)
-  let channelContext: ThreadContext | undefined;
-  try {
-    channelContext = await buildChannelContext(itemChannel);
-  } catch (error) {
-    logger.debug({ error, itemChannel }, 'Addie Bolt: Could not get channel context for reaction handler');
+  const channelContext = await resolveRequiredSlackChannelContext(
+    itemChannel,
+    buildChannelContext,
+  );
+  if (!channelContext) {
+    logger.warn(
+      { event: 'addie_reaction_channel_context_unavailable' },
+      'Addie Bolt: Skipping reaction response because channel privacy could not be verified',
+    );
+    return;
   }
 
   // Build per-request context for system prompt (pass channelContext so public channel guard is included)

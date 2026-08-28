@@ -1,0 +1,187 @@
+id: creative/policy_backed_rejections
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Policy-backed creative rejections"
+category: creative
+summary: "Reports each violated registry policy as its own CREATIVE_REJECTED error entry."
+track: creative
+required_tools:
+  - get_products
+  - sync_creatives
+
+requires:
+  - controller
+
+narrative: |
+  A buyer first discovers a controller-seeded product whose complete policy
+  universe contains exactly two registry policies. It then submits a canonical
+  display tag fixture that deterministically violates both: the hosted tag performs
+  an automatic redirect without user interaction and makes an insecure HTTP
+  network request from a secure serving context.
+
+  The seller may delegate detection to any governance agent or scanner. Detection
+  method and vendor identity remain implementation details; the interoperable
+  result is one CREATIVE_REJECTED entry per violated registry policy. Human-readable
+  reasons and suggestions are useful supplements, but the structured policy_id is
+  the conformance surface. Lifecycle event reasons remain orthogonal because this
+  test covers the immediate sync_creatives result, not a later status transition.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publisher creative intake platforms"
+    - "Seller agents backed by a governance scanner"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The controller isolates this run to one product whose enforced_policies list
+    contains exactly creative_security_auto_redirect and
+    creative_security_https_only. Discovery proves applicability before the buyer
+    submits the hosted display-tag fixture. No other policy applies to this closed
+    fixture, so exactly two policy error entries are expected.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product-policy-backed-rejections"
+      name: "Policy-Backed Creative Rejection Test Product"
+      description: "Sandbox display inventory enforcing exactly the two registry policies exercised by the rejection fixture"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      enforced_policies:
+        - "creative_security_auto_redirect"
+        - "creative_security_https_only"
+      pricing_options:
+        - pricing_option_id: "policy-backed-rejections-cpm"
+          pricing_model: "cpm"
+          rate: 5.00
+          currency: "USD"
+
+phases:
+  - id: discover_policy_applicability
+    title: "Discover the seller's enforced policies"
+    narrative: |
+      The buyer confirms that the selected product declares both registry policy
+      IDs before submitting a creative. This makes the rejection test applicable
+      only when the seller has explicitly selected the two shared policies.
+    steps:
+      - id: get_product_policies
+        title: "Read enforced_policies from the selected product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the controller-seeded product with exactly the two policy IDs
+          exercised by the hosted rejection fixture.
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#creative_policy_backed_rejections_discover"
+          buying_mode: "brief"
+          brief: "Policy-Backed Creative Rejection Test Product display inventory"
+          required_policies:
+            - "creative_security_auto_redirect"
+            - "creative_security_https_only"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          context:
+            correlation_id: "creative_policy_backed_rejections--discover"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].product_id"
+            value: "test-product-policy-backed-rejections"
+            description: "The isolated policy fixture product is selected"
+          - check: array_length
+            path: "products[0].enforced_policies"
+            value: 2
+            description: "The fixture's complete policy universe contains exactly two policies"
+          - check: field_contains
+            path: "products[0].enforced_policies[*]"
+            value: "creative_security_auto_redirect"
+            description: "Seller declares the automatic-redirect policy"
+          - check: field_contains
+            path: "products[0].enforced_policies[*]"
+            value: "creative_security_https_only"
+            description: "Seller declares the HTTPS-only policy"
+
+  - id: reject_multiple_policies
+    title: "Reject one creative for two policies"
+    narrative: |
+      The hosted test tag assigns window.location without user interaction and
+      separately fetches an HTTP resource. The response must preserve the
+      one-policy-per-entry invariant; a synthesized combined code or one entry
+      carrying an ambiguous multi-policy reference is non-conformant.
+    steps:
+      - id: sync_dual_violation_creative
+        title: "Submit a creative with two deterministic policy violations"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/governance/creative/policy-backed-rejections"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return one failed per-creative result whose errors array contains exactly
+          two CREATIVE_REJECTED entries, in any order:
+          - details.policy_id: creative_security_auto_redirect
+          - details.policy_id: creative_security_https_only
+
+          Each entry may also carry message, suggestion, reasons, policy_url, or
+          detector provenance. Those fields do not replace the structured policy_id.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "policy_backed_dual_violation"
+              name: "Policy-backed rejection fixture"
+              format_kind: "display_tag"
+              assets:
+                tag_url:
+                  asset_type: "url"
+                  url_type: "tracker_script"
+                  url: "https://adcontextprotocol.org/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js"
+          idempotency_key: "$generate:uuid_v4#creative_policy_backed_rejections_dual_violation"
+          context:
+            correlation_id: "creative_policy_backed_rejections--dual_violation"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "The policy-violating creative is rejected as a per-item failure"
+          - check: array_length
+            path: "creatives[0].errors"
+            value: 2
+            description: "Exactly one error entry is emitted for each of the two violated policies"
+          - check: field_contains
+            path: "creatives[0].errors[*]"
+            value:
+              code: "CREATIVE_REJECTED"
+              details:
+                policy_id: "creative_security_auto_redirect"
+            description: "One CREATIVE_REJECTED entry identifies the automatic-redirect policy"
+          - check: field_contains
+            path: "creatives[0].errors[*]"
+            value:
+              code: "CREATIVE_REJECTED"
+              details:
+                policy_id: "creative_security_https_only"
+            description: "A separate CREATIVE_REJECTED entry identifies the HTTPS-only policy"

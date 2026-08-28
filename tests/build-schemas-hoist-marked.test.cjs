@@ -357,3 +357,18 @@ test('hoists a discriminated oneOf appearing twice — regression for issue #485
   // Directive stripped.
   assert.equal(result.$defs.SignalSelector['x-adcp-hoist'], undefined);
 });
+
+test('production AssetVariant stays hoisted to bound bundled creative validators', () => {
+  const source = JSON.parse(fs.readFileSync(
+    path.join(__dirname, '..', 'static', 'schemas', 'source', 'core', 'assets', 'asset-union.json'),
+    'utf8',
+  ));
+
+  // BuildCreativeResponse reaches CreativeManifest through several success
+  // branches. Inlining the full discriminated asset union at every occurrence
+  // produced a 53 MB AJV function and a runtime call-stack overflow after the
+  // 3.2 macro/display-tag additions. The named union is a canonical type, so
+  // keep one root $defs copy and reference it from every manifest occurrence.
+  assert.equal(source.title, 'AssetVariant');
+  assert.equal(source['x-adcp-hoist'], true);
+});

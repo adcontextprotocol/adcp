@@ -65,6 +65,10 @@ import {
   getShadowReplayJudgmentSummary,
 } from "../addie/jobs/shadow-replay-trace.js";
 import { getModelExecutionReadiness } from '../addie/model-execution-readiness.js';
+import {
+  ROUTER_SHADOW_RETENTION_DAYS,
+  getRouterShadowSummary,
+} from '../addie/router-shadow.js';
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -615,6 +619,29 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         "Error fetching shadow replay capture summary",
       );
       res.status(500).json({ error: "Unable to fetch shadow replay capture summary" });
+    }
+  });
+
+  // GET /api/admin/addie/threads/router-shadow-summary
+  // Aggregate-only rollout evidence. This endpoint never returns attempts,
+  // identifiers, prompts, responses, free-form reasons, or HMACs.
+  apiRouter.get('/threads/router-shadow-summary', async (req, res) => {
+    const days = typeof req.query.days === 'string' && req.query.days.trim() !== ''
+      ? Number(req.query.days)
+      : 7;
+    if (!Number.isInteger(days) || days < 1 || days > ROUTER_SHADOW_RETENTION_DAYS) {
+      return res.status(400).json({
+        error: `days must be an integer from 1 to ${ROUTER_SHADOW_RETENTION_DAYS}`,
+      });
+    }
+    try {
+      res.json(await getRouterShadowSummary(days));
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching router shadow summary',
+      );
+      res.status(500).json({ error: 'Unable to fetch router shadow summary' });
     }
   });
 

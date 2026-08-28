@@ -1,8 +1,8 @@
 id: governance_aware_seller/governance_multi_agent_rejected
-version: "1.0.0"
-title: "Seller rejects sync_governance with more than one governance agent"
+version: "1.0.1"
+title: "Seller registers one governance agent and rejects multiple agents"
 category: governance_aware_seller
-summary: "Verifies that any seller required to implement sync_governance rejects a request carrying more than one governance_agents entry, enforcing the maxItems: 1 constraint."
+summary: "Verifies valid single-agent registration and rejection of a governance_agents payload that violates the maxItems: 1 constraint."
 track: media_buy
 required_tools:
   - sync_governance
@@ -10,9 +10,9 @@ required_tools:
 narrative: |
   PR #3015 constrained governance_agents to maxItems: 1 — one governance agent
   per account, mirroring the singular governance_context on the protocol envelope.
-  The sync_governance task doc states that sellers MUST reject registrations
-  carrying more than one agent entry and surface a clear error pointing at the
-  one-agent-per-account invariant.
+  This scenario first proves the valid registration path, then verifies that
+  sellers reject registrations carrying more than one agent entry and surface a
+  clear error pointing at the one-agent-per-account invariant.
 
   A seller that silently accepts a two-agent payload (persisting only the first
   entry, or all entries) passes every happy-path governance scenario without ever
@@ -20,9 +20,9 @@ narrative: |
   sync_governance request with two governance_agents entries and expects the seller
   to respond with INVALID_REQUEST.
 
-  No governance agent is needed — only the seller's request-schema validation is
-  under test. The test is intentionally narrow: account setup followed by a
-  single schema-violating sync_governance call.
+  No live governance-agent call is needed: the seller persists the configured
+  endpoint, and the schema-invalid replacement must be rejected before it can
+  alter that binding.
 
 agent:
   interaction_model: media_buy_seller
@@ -37,9 +37,9 @@ caller:
 
 prerequisites:
   description: |
-    A seller that supports sync_governance and validates the governance_agents
-    maxItems: 1 constraint on receipt. The scenario does not require a live
-    governance agent — only the seller is under test.
+    A seller that supports sync_governance, persists a single configured endpoint,
+    and validates the governance_agents maxItems: 1 constraint on receipt. The
+    scenario does not require a live governance agent — only the seller is under test.
   test_kit: "test-kits/acme-outdoor.yaml"
 
 phases:
@@ -69,6 +69,49 @@ phases:
           - check: field_present
             path: "accounts[0].account_id"
             description: "Account has a platform-assigned ID"
+
+  - id: single_agent_registered
+    title: "Register one governance agent"
+    steps:
+      - id: sync_governance_one_agent
+        title: "Register the account's governance agent"
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Seller persists the single governance endpoint and reports the account
+          registration as synced.
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "https://test-agent.adcontextprotocol.org"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          idempotency_key: "$generate:uuid_v4#governance_aware_seller_single_agent_registered"
+          context:
+            correlation_id: "governance_aware_seller--single_agent_registered--sync_governance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "synced"
+            description: "Seller accepts the valid single-agent registration"
+          - check: field_value
+            path: "accounts[0].governance_agents[0].url"
+            value: "https://test-agent.adcontextprotocol.org"
+            description: "Seller echoes the persisted governance endpoint"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_aware_seller--single_agent_registered--sync_governance"
+            description: "Context correlation_id echoed verbatim"
 
   - id: multi_agent_rejected
     title: "sync_governance with two agents — rejected"

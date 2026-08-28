@@ -42,11 +42,14 @@ describe('Slack knowledge global registration', () => {
 
   it('keeps every shared-client registration site structurally scoped', () => {
     const baseline = readFileSync(new URL('../../src/addie/register-baseline-tools.ts', import.meta.url), 'utf8');
+    const bolt = readFileSync(new URL('../../src/addie/bolt-app.ts', import.meta.url), 'utf8');
     const legacy = readFileSync(new URL('../../src/addie/handler.ts', import.meta.url), 'utf8');
     const web = readFileSync(new URL('../../src/routes/addie-chat.ts', import.meta.url), 'utf8');
     const voice = readFileSync(new URL('../../src/routes/tavus.ts', import.meta.url), 'utf8');
 
     expect(baseline).toContain('KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))');
+    expect(baseline).not.toContain('registerToolsFromMap(client, PROPERTY_TOOLS');
+    expect(bolt).toContain('allTools.push(...PROPERTY_TOOLS);');
     expect(legacy).toContain('KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))');
     expect(web).toContain('if (isSlackKnowledgeTool(tool)) continue;');
     expect(voice).toContain('KNOWLEDGE_TOOLS.filter((tool) => !isSlackKnowledgeTool(tool))');

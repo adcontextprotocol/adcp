@@ -255,15 +255,16 @@ test('current /sales runs fixed orchestrators with isolated children behind one 
   assert.match(workflow, /sales_storyboards:\n\s+name: Storyboards \(current \/sales\)/);
   assert.match(workflow, /needs: sales_storyboard_orchestrators/);
   assert.match(workflow, /ORCHESTRATOR_RESULT: \$\{\{ needs\.sales_storyboard_orchestrators\.result \}\}/);
-  assert.match(workflow, /MIN_CLEAN: 126/);
-  assert.match(workflow, /MIN_PASSED: 571/);
-  assert.match(matrixRunner, /"sales:126:571"/);
+  assert.match(workflow, /MIN_CLEAN: 133/);
+  assert.match(workflow, /MIN_PASSED: 632/);
+  assert.match(matrixRunner, /"sales:133:632"/);
   assert.match(workflow, /Training agent · current \/sales/);
   assert.match(workflow, /echo "failed=\$\{failed_sum\}"/);
   assert.match(workflow, /echo "not_applicable=\$\{not_applicable_sum\}"/);
   assert.match(matrixRunner, /bash scripts\/run-storyboards-isolated-shards\.sh/);
-  assert.match(matrixRunner, /--shard-count 8 --max-parallel 4/);
+  assert.match(matrixRunner, /--shard-count 8 --max-parallel 2 --timeout-ms 180000/);
   assert.match(matrixRunner, /orchestrator_failure=1/);
+  assert.match(workflow, /wholesale_feed_products_scope_isolation/);
   assert.match(workflow, /media_buy_seller\/compact_direct_buy_lifecycle:7:0/);
 });
 
@@ -290,7 +291,7 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
     ['signals', 45, 80],
-    ['sales', 126, 571],
+    ['sales', 133, 632],
     ['governance', 47, 161],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
@@ -316,7 +317,7 @@ test('3.0 compatibility floors are capability-resolved and mirrored locally', ()
   const matrixRunner = fs.readFileSync(MATRIX_RUNNER, 'utf8');
   const baselines = [
     ['signals', 24, 98],
-    ['sales', 40, 224],
+    ['sales', 39, 219],
     ['governance', 27, 147],
     ['creative', 22, 109],
     ['creative-builder', 24, 112],

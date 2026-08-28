@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg';
 import { getPool, isDatabaseInitialized } from '../db/client.js';
+import { decrypt, encrypt } from '../db/encryption.js';
 import type { AccountRef } from './types.js';
 
 export interface GovernanceBindingRecord {
@@ -8,7 +9,10 @@ export interface GovernanceBindingRecord {
   accountScope: string;
   brandDomain: string;
   account: AccountRef;
-  agents: Array<{ url: string }>;
+  agents: Array<{
+    url: string;
+    authentication: { schemes: string[]; credentials: string };
+  }>;
   updatedAt: string;
 }
 
@@ -29,12 +33,21 @@ interface GovernanceBindingRow extends QueryResultRow {
   account_scope: string;
   brand_domain: string;
   account_ref: AccountRef | string;
-  agents: Array<{ url: string }> | string;
+  agents: Array<{
+    url: string;
+    authentication: { schemes: string[] };
+  }> | string;
+  credentials_encrypted: string;
+  credentials_iv: string;
   updated_at: Date | string;
 }
 
 function parseJson<T>(value: T | string): T {
   return typeof value === 'string' ? JSON.parse(value) as T : value;
+}
+
+function bindingCredentialSalt(principal: string, accountId: string): string {
+  return `governance-binding:${principal}\u001F${accountId}`;
 }
 
 function bindingFromRow(row: GovernanceBindingRow): GovernanceBindingRecord {
@@ -44,39 +57,71 @@ function bindingFromRow(row: GovernanceBindingRow): GovernanceBindingRecord {
     agent === null
     || typeof agent !== 'object'
     || typeof agent.url !== 'string'
+    || agent.authentication === null
+    || typeof agent.authentication !== 'object'
+    || !Array.isArray(agent.authentication.schemes)
+    || agent.authentication.schemes.some(scheme => typeof scheme !== 'string')
   ))) {
     throw new Error('Stored governance-agent binding is malformed.');
   }
+  if (typeof row.credentials_encrypted !== 'string' || typeof row.credentials_iv !== 'string') {
+    throw new Error('Stored governance-agent binding credentials are malformed.');
+  }
+  const credentials = decrypt(
+    row.credentials_encrypted,
+    row.credentials_iv,
+    bindingCredentialSalt(row.principal_scope, row.account_id),
+  );
   return {
     principal: row.principal_scope,
     accountId: row.account_id,
     accountScope: row.account_scope,
     brandDomain: row.brand_domain,
     account,
-    agents: agents.map(agent => ({ url: agent.url })),
+    agents: agents.map(agent => ({
+      url: agent.url,
+      authentication: {
+        schemes: [...agent.authentication.schemes],
+        credentials,
+      },
+    })),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
 const BINDING_COLUMNS = `
   principal_scope, account_id, account_scope, brand_domain,
-  account_ref, agents, updated_at
+  account_ref, agents, credentials_encrypted, credentials_iv, updated_at
 `;
 
 export class PostgresGovernanceBindingStore implements GovernanceBindingStore {
   constructor(private readonly db: PgQueryable) {}
 
   async upsert(binding: GovernanceBindingRecord): Promise<void> {
+    const agent = binding.agents[0];
+    if (!agent || binding.agents.length !== 1) {
+      throw new Error('Governance bindings require exactly one agent.');
+    }
+    const sealedCredentials = encrypt(
+      agent.authentication.credentials,
+      bindingCredentialSalt(binding.principal, binding.accountId),
+    );
+    const durableAgents = [{
+      url: agent.url,
+      authentication: { schemes: [...agent.authentication.schemes] },
+    }];
     await this.db.query(
       `INSERT INTO governance_agent_bindings (
          principal_scope, account_id, account_scope, brand_domain,
-         account_ref, agents, updated_at
-       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::timestamptz)
+         account_ref, agents, credentials_encrypted, credentials_iv, updated_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::timestamptz)
        ON CONFLICT (principal_scope, account_id) DO UPDATE SET
          account_scope = EXCLUDED.account_scope,
          brand_domain = EXCLUDED.brand_domain,
          account_ref = EXCLUDED.account_ref,
          agents = EXCLUDED.agents,
+         credentials_encrypted = EXCLUDED.credentials_encrypted,
+         credentials_iv = EXCLUDED.credentials_iv,
          updated_at = EXCLUDED.updated_at`,
       [
         binding.principal,
@@ -84,7 +129,9 @@ export class PostgresGovernanceBindingStore implements GovernanceBindingStore {
         binding.accountScope,
         binding.brandDomain,
         JSON.stringify(binding.account),
-        JSON.stringify(binding.agents),
+        JSON.stringify(durableAgents),
+        sealedCredentials.encrypted,
+        sealedCredentials.iv,
         binding.updatedAt,
       ],
     );

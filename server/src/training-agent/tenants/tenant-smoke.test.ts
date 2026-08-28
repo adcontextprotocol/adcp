@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
-import { clearAccountStore } from '../account-handlers.js';
+import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import { clearIdempotencyCache } from '../idempotency.js';
 import {
   clearSessions,
@@ -28,10 +28,12 @@ import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { getCanonicalBase } from '../canonical-base.js';
+import { setGovernanceAuthorityTestOverride } from '../task-handlers.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { TrainingCreativePlatform } from '../v6-creative-platform.js';
+import { GovernanceAgentStub } from '@adcp/sdk/testing';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -413,16 +415,28 @@ describe('tenant routing smoke', () => {
       expect(missingKey.result?.isError).toBe(true);
       expect(missingKey.result?.content?.[0]?.text).toContain('idempotency_key');
 
-      for (const [id, governanceAgent] of [
-        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }],
-        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }],
+      for (const [id, governanceAgent, schemaRejected] of [
+        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, true],
+        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }, true],
+        [6, { url: 'https://127.0.0.1/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
+        [11, { url: 'https://localhost/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
       ] as const) {
         const invalid = await callTenantTool(url, id, 'sync_governance', {
           ...payload,
           idempotency_key: `${payload.idempotency_key}-${id}`,
           accounts: [{ account, governance_agents: [governanceAgent] }],
-        }) as { result?: { isError?: boolean } };
-        expect(invalid.result?.isError).toBe(true);
+        }) as { result?: {
+          isError?: boolean;
+          structuredContent?: { accounts?: Array<{ status?: string; errors?: Array<{ code?: string }> }> };
+        } };
+        if (schemaRejected) {
+          expect(invalid.result?.isError).toBe(true);
+        } else {
+          expect(invalid.result?.structuredContent?.accounts?.[0]).toMatchObject({
+            status: 'failed',
+            errors: [{ code: 'INVALID_REQUEST' }],
+          });
+        }
       }
 
       const invalidAccount = await callTenantTool(url, 10, 'list_accounts', {
@@ -516,11 +530,123 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('delegates a governed media-buy commitment to the registered governance agent', async () => {
+    const { baseUrl, close } = await bootServer();
+    const stub = new GovernanceAgentStub();
+    try {
+      const { url: stubUrl } = await stub.start();
+      const authorityUrl = 'https://governance.example/mcp';
+      (stub as unknown as { issuer: string }).issuer = authorityUrl;
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      await initializeTenant(salesUrl);
+      const generateContext = stub.generateContext.bind(stub);
+      stub.generateContext = input => generateContext({
+        ...input,
+        phase: input.phase === 'execution' ? 'purchase' : input.phase,
+      });
+      setGovernanceAuthorityTestOverride(authorityUrl, {
+        jwk: stub.publicJwk,
+        fetch: (_input, init) => fetch(stubUrl, init),
+      });
+
+      const brand = { domain: 'tenant-seller-delegation.example' };
+      const account = { brand, operator: 'pinnacle-agency.example' };
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      await callTenantTool(salesUrl, 200, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-seller-delegation-account',
+      });
+      // The public request schema correctly requires HTTPS. Exercise the handler
+      // seam directly so the local HTTP stub can observe the outbound call.
+      const registration = await handleSyncGovernance({
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: authorityUrl,
+            authentication: { schemes: ['Bearer'], credentials: stub.authToken },
+          }],
+        }],
+        idempotency_key: 'tenant-seller-delegation-registration',
+      } as unknown as Parameters<typeof handleSyncGovernance>[0], { mode: 'open', principal: 'static:public' });
+      expect(registration).toMatchObject({ accounts: [{ status: 'synced' }] });
+
+      const productResponse = structured(await callTenantTool(salesUrl, 202, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'Display inventory for a governed reference buy',
+        brand,
+        account,
+      })) as {
+        products?: Array<{
+          product_id?: string;
+          pricing_options?: Array<{ pricing_option_id?: string; floor_price?: number; fixed_price?: number }>;
+        }>;
+      };
+      const product = productResponse.products?.find(candidate => candidate.pricing_options?.[0]?.pricing_option_id);
+      expect(product?.product_id).toEqual(expect.any(String));
+      const pricing = product!.pricing_options![0]!;
+      const createPayload = {
+        account,
+        brand,
+        total_budget: { amount: 500, currency: 'USD' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
+        packages: [{
+          product_id: product!.product_id,
+          pricing_option_id: pricing.pricing_option_id,
+          budget: 500,
+          bid_price: Math.max(pricing.floor_price ?? pricing.fixed_price ?? 1, 1),
+        }],
+        idempotency_key: 'tenant-seller-delegation-create',
+      };
+
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const governanceContext = await stub.generateContext({
+        planId: 'opaque-plan-binding',
+        checkId: 'chk_stub_intent',
+        audience: `${getCanonicalBase()}/sales`,
+        caller,
+        task: 'create_media_buy',
+        payload: createPayload,
+        commitment: { amount: 500, currency: 'USD' },
+        phase: 'intent',
+      });
+
+      const created = structured(await callTenantTool(salesUrl, 205, 'create_media_buy', {
+        ...createPayload,
+        governance_context: governanceContext,
+      }));
+      expect(created?.adcp_error, JSON.stringify(created)).toBeUndefined();
+      const delegated = stub.getCallsForTool('check_governance');
+      expect(delegated).toHaveLength(1);
+      expect(delegated[0]?.params).toMatchObject({
+        caller: `${getCanonicalBase()}/sales`,
+        governance_context: governanceContext,
+        phase: 'purchase',
+        planned_delivery: expect.objectContaining({
+          media_buy_id: expect.any(String),
+          total_budget: 500,
+          currency: 'USD',
+          channels: expect.any(Array),
+        }),
+      });
+    } finally {
+      setGovernanceAuthorityTestOverride('https://governance.example/mcp', undefined);
+      await stub.stop();
+      await close();
+    }
+  }, 30000);
+
   it('advertises exact governance-enforcement task claims on each enforcing tenant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const expected: Record<string, string[]> = {
-        sales: ['buy_products', 'accept_proposal', 'control_media_buy'],
+        sales: ['buy_products', 'accept_proposal', 'control_media_buy', 'create_media_buy'],
         signals: ['activate_signal'],
         brand: ['acquire_rights'],
         creative: ['build_creative'],
@@ -537,15 +663,30 @@ describe('tenant routing smoke', () => {
             } };
             experimental_features?: string[];
             specialisms?: string[];
+            media_buy?: {
+              audience_targeting?: { supported_activation_methods?: Array<Record<string, unknown>> };
+            };
           } };
         };
         const capabilities = response.result?.structuredContent;
         expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
-          tasks.map(task => ({ task, modes: ['signed_context'] })),
+          tasks.map(task => ({
+            task,
+            modes: task === 'create_media_buy'
+              ? ['signed_context', 'online_execution_check']
+              : ['signed_context'],
+          })),
         );
         expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents?.any_of)
           .toContainEqual({ kind: 'agent_url', agent_url: 'https://governance.example/mcp' });
         expect(capabilities?.experimental_features).toContain('governance.campaign');
+        if (tenant === 'sales') {
+          expect(capabilities?.experimental_features).toContain('media_buy.audience_activation');
+          expect(capabilities?.media_buy?.audience_targeting?.supported_activation_methods).toEqual([
+            { pattern: 'sync_audiences' },
+            { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+          ]);
+        }
         if (tenant === 'creative-builder') {
           expect(capabilities?.specialisms).toContain('creative-transformers');
         }
@@ -680,7 +821,7 @@ describe('tenant routing smoke', () => {
         };
         expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe(adcpVersion === '3.0' ? '3.0' : '3.1');
         expect(nonBetaCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
-          { task: 'create_media_buy', modes: ['signed_context'] },
+          { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
         ]);
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();

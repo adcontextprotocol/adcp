@@ -170,6 +170,25 @@ phases:
   });
 });
 
+test('array_length accepts inclusive range matchers', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: array_length
+            path: products
+            min: 1
+            max: 5
+`;
+  withTempStoryboardDir('array-range.yaml', doc, (dir) => {
+    assert.deepEqual(lint(dir), []);
+  });
+});
+
 test('invalid_negative_path: arbitrary labels are rejected', () => {
   const doc = `
 id: temp_storyboard

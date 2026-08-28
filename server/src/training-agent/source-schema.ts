@@ -89,7 +89,8 @@ function bundleSchema(root: JsonSchema): JsonSchema {
   const definitions = new Map<string, JsonSchema>();
 
   function definitionKey(relativePath: string, fragment = ''): string {
-    return `${relativePath}${fragment ? `#${fragment}` : ''}`;
+    const compactPath = relativePath.endsWith('.json') ? relativePath.slice(0, -5) : relativePath;
+    return `${compactPath}${fragment ? `#${fragment}` : ''}`;
   }
 
   function definitionRef(relativePath: string, fragment = ''): string {
@@ -139,7 +140,7 @@ function bundleSchema(root: JsonSchema): JsonSchema {
           throw new Error(`Unsupported non-pointer local schema fragment: ${ref}`);
         }
         ensureDefinition(definitionPath);
-        rewrittenRef = `#/$defs/${pointerSegment(definitionPath)}${fragment}`;
+        rewrittenRef = `${definitionRef(definitionPath)}${fragment}`;
       }
 
       const siblings = Object.fromEntries(

@@ -562,7 +562,7 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('member features');
     });
 
-    it('returns sign-in link when user has slack_user_id but no workos_user_id', async () => {
+    it('requires a safe conversation origin before linking a Slack identity', async () => {
       const handlers = createMemberToolHandlers({
         is_mapped: true,
         is_member: false,
@@ -577,9 +577,8 @@ describe('createMemberToolHandlers', () => {
       const handler = handlers.get('get_account_link')!;
       const result = await handler({});
 
-      expect(result).toContain('Link Your Account');
-      expect(result).toContain('agenticadvertising.org/auth/login');
-      expect(result).toContain('slack_user_id=U12345');
+      expect(result).toContain("couldn't create a secure account-link URL");
+      expect(result).not.toContain('slack_user_id=U12345');
     });
   });
 
