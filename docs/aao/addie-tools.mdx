@@ -619,9 +619,9 @@ Remove a document from a committee. The document will no longer be tracked or di
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-## billing (admin only)
+## member_billing
 
-Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions, look up pending invoices
+Handle the current member's own billing - find membership pricing, create a payment link, preview and confirm an invoice, or open the organization's billing portal
 
 ### `find_membership_products`
 
@@ -649,6 +649,27 @@ the signed-in session, never from caller-supplied input. After calling this and 
 call confirm_send_invoice to send.
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
+
+### `confirm_send_invoice`
+
+Send an invoice for the authenticated member's own organization after they have
+confirmed the details shown by send_invoice. The contact email, company, and billing address come
+from the signed-in session — they cannot be overridden. The org must already have a billing address
+on file (set via the dashboard or invite-acceptance flow).
+
+*Source: `server/src/addie/mcp/billing-tools.ts`*
+
+### `get_billing_portal`
+
+Get a link to the Stripe Customer Portal where an organization owner or admin can view invoices, download receipts, update payment methods, and manage the subscription.
+Use this when an owner or admin asks about receipts, invoices, billing history, payment methods, or subscription management.
+The user must be signed in and have an active owner or admin role in the selected organization.
+
+*Source: `server/src/addie/mcp/billing-tools.ts`*
+
+## billing (admin only)
+
+Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts
 
 ### `send_payment_request`
 
@@ -1789,23 +1810,6 @@ Preview the engagement plan for a person — shows contact eligibility, scored o
 Get a health report on the outreach system: stage breakdown, over-contacted people approaching circuit breaker, outreach volume, and email stats. Use to assess system health or when asked "how is outreach doing?"
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `confirm_send_invoice`
-
-Send an invoice for the authenticated member's own organization after they have
-confirmed the details shown by send_invoice. The contact email, company, and billing address come
-from the signed-in session — they cannot be overridden. The org must already have a billing address
-on file (set via the dashboard or invite-acceptance flow).
-
-*Source: `server/src/addie/mcp/billing-tools.ts`*
-
-### `get_billing_portal`
-
-Get a link to the Stripe Customer Portal where an organization owner or admin can view invoices, download receipts, update payment methods, and manage the subscription.
-Use this when an owner or admin asks about receipts, invoices, billing history, payment methods, or subscription management.
-The user must be signed in and have an active owner or admin role in the selected organization.
-
-*Source: `server/src/addie/mcp/billing-tools.ts`*
 
 ### `parse_brand_properties`
 

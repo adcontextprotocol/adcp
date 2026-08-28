@@ -201,6 +201,23 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('### Member account and organization self-service');
   });
 
+  it('scopes complete member billing guidance to the routed billing surface', () => {
+    const billing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_billing'], false, false),
+      selectedToolSetNames: ['member_billing'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(billing).toContain('### Member billing self-service');
+    expect(billing).toContain('confirm_send_invoice');
+    expect(billing).toContain('- **member_billing**');
+    expect(knowledge).not.toContain('### Member billing self-service');
+    expect(buildAddieStableToolReference()).not.toContain('**Billing Support (for members):**');
+  });
+
   it('scopes roadmap and file-handling guidance to knowledge requests', () => {
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
