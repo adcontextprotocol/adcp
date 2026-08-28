@@ -110,6 +110,20 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('property catalog workflow', () => {
+    it('routes the complete audit, enrichment, catalog, and dispute surface', () => {
+      expect(getToolsForSets(['agent_testing'], false, false)).toEqual(
+        expect.arrayContaining([
+          'check_property_list',
+          'enhance_property',
+          'resolve_catalog',
+          'browse_catalog',
+          'dispute_catalog_entry',
+        ]),
+      );
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);

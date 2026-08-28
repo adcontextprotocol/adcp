@@ -299,6 +299,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "save_property",
       "list_properties",
       "list_missing_properties",
+      "check_property_list",
+      "enhance_property",
+      "resolve_catalog",
+      "browse_catalog",
+      "dispute_catalog_entry",
     ],
   },
 

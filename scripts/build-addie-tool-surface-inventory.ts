@@ -242,7 +242,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...directory.DIRECTORY_TOOLS,
     ...brand.BRAND_TOOLS,
     ...brandCanonical.BRAND_CANONICAL_TOOLS,
-    ...property.PROPERTY_TOOLS,
     ...url.URL_TOOLS,
     ...googleDocs.GOOGLE_DOCS_TOOLS,
   ];

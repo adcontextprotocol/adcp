@@ -624,7 +624,7 @@ ${
 - Questions about AdCP, protocols, implementation → ["knowledge"]
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Testing/validating AdCP agent implementations → ["agent_testing"]
+- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Content workflows, GitHub issues, proposals → ["content"]
