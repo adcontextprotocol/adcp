@@ -219,10 +219,6 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
     'The beta.12 packaged webhook receiver bounds shutdown memory and retry capture, but the current webhook_emission run still exceeds the isolated runner\'s 120-second result deadline. Remove when the storyboard returns a result inside the runner budget.',
   ],
   [
-    'wholesale_feed_signals_scope_isolation',
-    'The beta.12 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
-  ],
-  [
     'media_buy_seller/refine_finalize_exclusivity',
     'The vector assumes brief discovery returns at least two proposals, although supports_proposals does not commit a seller to that cardinality and the storyboard seeds no proposal fixtures. Remove when the vector deterministically seeds two proposals or gates the multi-finalize branch on an observed pair.',
   ],
@@ -764,7 +760,19 @@ function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
   return YAML.parse(readFileSync(path, 'utf-8')) as LoadedTestKit;
 }
 
-function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
+function brandFromKit(
+  kit: LoadedTestKit | undefined,
+  storyboardId: string,
+): StoryboardRunOptions['brand'] | undefined {
+  // These conformance vectors deliberately switch between two explicitly
+  // authored account identities. Supplying the test-kit brand makes the SDK
+  // runner's brand invariant overwrite both identities, which turns the
+  // cross-scope probe into a second public-scope request and invalidates the
+  // test itself.
+  if (
+    storyboardId === 'wholesale_feed_products_scope_isolation'
+    || storyboardId === 'wholesale_feed_signals_scope_isolation'
+  ) return undefined;
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
 }
@@ -988,7 +996,7 @@ async function main() {
     clearForcedTaskCompletions();
     clearCatalogEventStores();
     const kit = loadTestKit(storyboard);
-    const brand = brandFromKit(kit);
+    const brand = brandFromKit(kit, storyboard.id);
     const testKit = testKitOptionsFromKit(kit);
     const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;

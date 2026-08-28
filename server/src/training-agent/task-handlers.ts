@@ -2772,8 +2772,13 @@ function productForThreeZeroStoryboardCompat(product: Product): Product {
 
 function productForServedAdcpVersion(product: Product, servedAdcpVersion: string | undefined): Product {
   if (supportsGetProductsRejected(servedAdcpVersion)) return product;
-  const { audience_activation: _audienceActivation, ...rest } = product as Product & {
+  const {
+    audience_activation: _audienceActivation,
+    overlay_support: _overlaySupport,
+    ...rest
+  } = product as Product & {
     audience_activation?: unknown;
+    overlay_support?: unknown;
   };
   return rest as Product;
 }
