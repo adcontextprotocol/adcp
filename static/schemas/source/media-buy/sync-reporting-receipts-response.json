@@ -5,6 +5,10 @@
   "x-status": "experimental",
   "description": "Per-receipt durable recording results. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
   "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" },
+    { "$ref": "/schemas/core/protocol-envelope.json" }
+  ],
   "properties": {
     "results": {
       "type": "array",
@@ -60,5 +64,5 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["results"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

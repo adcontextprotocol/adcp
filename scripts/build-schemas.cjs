@@ -76,6 +76,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'sync_creatives',
     'sync_event_sources',
     'sync_governance',
+    'sync_reporting_receipts',
   ],
   creative: [
     'build_creative',

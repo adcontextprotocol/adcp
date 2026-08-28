@@ -63,7 +63,7 @@ totals. Its selected verification profile adds one of:
 If evidence differs, consumers submit `status: rejected` with stable rejection codes.
 A receipt ID is immutable. Exact retries are unchanged; reuse with different content
 is an idempotency conflict. Sellers return `received_at` and expose the durable receipt
-through `get_reporting_status`, allowing the consumer to read back that agreement.
+through [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status), allowing the consumer to read back that agreement.
 
 One canonical revision may fan out to several destinations or principals. Each
 materialization is reconciled independently, and one consumer's receipt never counts

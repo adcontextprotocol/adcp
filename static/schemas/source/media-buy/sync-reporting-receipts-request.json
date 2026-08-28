@@ -3,6 +3,7 @@
   "$id": "/schemas/media-buy/sync-reporting-receipts-request.json",
   "title": "Sync Reporting Receipts Request",
   "x-status": "experimental",
+  "x-tool-summary": "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
   "description": "Submit durable authenticated consumer reconciliation results for reporting materializations. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal.",
   "type": "object",
   "properties": {

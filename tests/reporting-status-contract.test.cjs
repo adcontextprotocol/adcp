@@ -254,6 +254,7 @@ describe('managed reporting status contract', () => {
       receipts: [receipt],
     }), true, JSON.stringify(validateReceiptRequest.errors));
     assert.equal(validateReceiptResponse({
+      status: 'completed',
       results: [{ result: 'recorded', receipt: { ...receipt, received_at: '2026-08-27T04:01:01Z' } }],
     }), true, JSON.stringify(validateReceiptResponse.errors));
 
