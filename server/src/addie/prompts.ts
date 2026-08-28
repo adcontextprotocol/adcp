@@ -241,6 +241,14 @@ The registry combines publisher-controlled adagents.json entries with revision-t
 Use check_property_list to audit the supplied domains and surface its report_url. Unknown domains appear in the assess bucket. Run enhance_property on those domains one at a time; it assesses publisher legitimacy and submits qualifying entries for registry review.`,
   },
   {
+    selectedToolSets: ['agent_testing'],
+    requiredToolNames: ['resolve_catalog', 'browse_catalog', 'dispute_catalog_entry'],
+    text: `### Property catalog operations
+- resolve_catalog: Add or refresh a publisher domain in the property catalog after checking its live declarations.
+- browse_catalog: Browse catalog entries by identifier, type, domain, or status.
+- dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
+  },
+  {
     selectedToolSets: ['knowledge', 'agent_testing', 'agent_conformance', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
