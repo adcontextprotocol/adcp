@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/enums/tracker-execution-actor.json",
+  "title": "Tracker Execution Actor",
+  "description": "Actor responsible for initiating a buyer-supplied tracker under a seller-authored execution contract. This v1 vocabulary is intentionally narrower than the macro resolver actor vocabulary.",
+  "type": "string",
+  "enum": [
+    "seller",
+    "request_executor"
+  ]
+}

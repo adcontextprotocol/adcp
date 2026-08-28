@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.2.0-beta.9
+
+### Minor Changes
+
+- 2fecc3e: Add the AdCP 3.2 draft account change feed from RFC #6810: source-neutral authoritative reads, `list_account_changes`, `account.change_recorded`, account-specific connected-source coverage, 90-day retention, explicit cursor-expiry recovery, capability-gated conformance, and a shared-account training lab. The RFC remains open for beta integration feedback.
+- 5f1199f: Add symmetric, product-scoped application receipts for property and collection lists in product discovery and proposal-refinement responses.
+- fe6c585: Add authority-discriminated placement identity and property, collection,
+  installment, collection-by-property, installment-by-property, and
+  placement-by-property delivery
+  reporting. The new intersections provide affirmative delivery evidence instead
+  of relying on independent marginals, with explicit per-response suppression
+  flags. Released-compatible whole-placement echo shapes remain accepted in
+  placement selection. Also add optional `creative_name` convenience metadata
+  while keeping `creative_id` as stable identity.
+- a1672f9: Add registry-backed seller acceptance-policy discovery with reusable version-pinned platform profiles, proposal-bound media-buy change terms, structured seller disposition evidence on failed governance outcomes, and seller acceptance criteria for buyer-selected governance agents. Add typed change constraints and status scope, project accepted terms into current `available_actions` through `change_term_id`, and deprecate the released 3.1 `terms_ref` action-link overload for removal in 4.0 while retaining explicit 3.1 compatibility. Add compliance storyboards for product promises, proposal materialization, accepted-term persistence, service-mode routing, state transitions, latent rights, and cross-version action parsing. Harden all four surfaces against stale or ambiguous policy, authorization confusion, untrusted audit evidence, unsafe remote resolution, and rejected-binding persistence.
+
+### Patch Changes
+
+- 3981795: Make proposal-finalization cardinality conditional on observed proposal identities, restore audience-impairment coherence grading through the compliance controller, and re-enable async signals task-scope grading across account, owner, and tenant boundaries.
+- a6d1e49: Expand and harden the 3.2 reference sales agent and conformance corpus with targeting-aware discovery, advanced delivery reporting, audience-activation discovery, governed seller delegation, and strict current-source sales grading; restore and regression-gate the packaged wholesale-product scope check; and document the remaining runtime and coverage boundaries precisely.
+
 ## 3.2.0-beta.8
 
 ### Patch Changes

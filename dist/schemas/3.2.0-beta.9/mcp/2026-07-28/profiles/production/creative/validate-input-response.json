@@ -1,0 +1,1122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/mcp/2026-07-28/profiles/production/creative/validate-input-response.json",
+  "type": "object",
+  "required": [
+    "results"
+  ],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:creative~1validate-input-result.json"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "$ref": "#/$defs/external:core~1version-envelope.json"
+    },
+    {
+      "$ref": "#/$defs/external:core~1protocol-envelope.json"
+    }
+  ],
+  "$defs": {
+    "external:creative/validate-input-result.json": {
+      "type": "object",
+      "required": [
+        "target",
+        "result_kind"
+      ],
+      "properties": {
+        "target": {
+          "type": "object",
+          "required": [
+            "kind",
+            "id"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "canonical",
+                "product",
+                "third_party_format",
+                "capability"
+              ]
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "kind": {
+                    "const": "capability"
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              },
+              "then": {
+                "properties": {
+                  "id": {
+                    "pattern": "^[a-zA-Z0-9_-]+$"
+                  }
+                }
+              }
+            }
+          ],
+          "additionalProperties": true
+        },
+        "result_kind": {
+          "type": "string",
+          "enum": [
+            "validated_pass",
+            "validated_fail",
+            "unvalidatable_nondeterministic"
+          ]
+        },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rule",
+              "field"
+            ],
+            "properties": {
+              "rule": {
+                "type": "string"
+              },
+              "expected": {},
+              "predicted": {},
+              "field": {
+                "type": "string"
+              },
+              "retry_with": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rule",
+              "field"
+            ],
+            "properties": {
+              "rule": {
+                "type": "string"
+              },
+              "expected": {},
+              "predicted": {}
+            },
+            "additionalProperties": true
+          }
+        },
+        "macro_resolution_results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1macro-resolution-result.json"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "result_kind": {
+                "const": "validated_pass"
+              }
+            },
+            "required": [
+              "result_kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "violations"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result_kind": {
+                "const": "unvalidatable_nondeterministic"
+              }
+            },
+            "required": [
+              "result_kind"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "violations"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
+    "external:core/macro-resolution-result.json": {
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "adcp_semantic_identity": "when dialect is adcp, dialect_semantic must equal universal_semantic"
+        },
+        "spec": "docs/creative/universal-macros.mdx#capability-matching-and-validation"
+      },
+      "type": "object",
+      "properties": {
+        "declaration_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "macro_declaration"
+        },
+        "asset_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dialect": {
+          "$ref": "#/$defs/external:enums~1macro-dialect.json"
+        },
+        "dialect_namespace": {
+          "type": "string",
+          "format": "uri"
+        },
+        "dialect_revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dialect_semantic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mapping_status": {
+          "$ref": "#/$defs/external:enums~1macro-mapping-status.json"
+        },
+        "universal_semantic": {
+          "$ref": "#/$defs/external:enums~1universal-macro.json"
+        },
+        "operation": {
+          "$ref": "#/$defs/external:enums~1macro-processing-operation.json"
+        },
+        "performed_by": {
+          "$ref": "#/$defs/external:enums~1macro-resolver.json"
+        },
+        "requested_encoding": {
+          "$ref": "#/$defs/external:core~1macro-encoding.json"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "unavailable_behavior": {
+          "type": "string",
+          "enum": [
+            "preserve",
+            "omit_parameter",
+            "dialect_sentinel",
+            "reject"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "resolvable",
+            "preserved_for_downstream",
+            "unsupported",
+            "ambiguous"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/external:enums~1macro-resolution-reason.json"
+        },
+        "matched_encodings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1macro-encoding.json"
+          }
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "declaration_id",
+        "asset_path",
+        "token",
+        "dialect",
+        "dialect_semantic",
+        "mapping_status",
+        "operation",
+        "requested_encoding",
+        "required",
+        "unavailable_behavior",
+        "status",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "dialect": {
+                "enum": [
+                  "iab_vast",
+                  "iab_daast",
+                  "vendor"
+                ]
+              }
+            },
+            "required": [
+              "dialect"
+            ]
+          },
+          "then": {
+            "required": [
+              "dialect_namespace",
+              "dialect_revision"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dialect": {
+                "enum": [
+                  "adcp",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "dialect"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "dialect_namespace"
+                  ]
+                },
+                {
+                  "required": [
+                    "dialect_revision"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mapping_status": {
+                "const": "verified_universal"
+              }
+            },
+            "required": [
+              "mapping_status"
+            ]
+          },
+          "then": {
+            "required": [
+              "universal_semantic"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "universal_semantic"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "enum": [
+                  "translate_to_native",
+                  "resolve_value"
+                ]
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "required": [
+              "performed_by"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dialect": {
+                "enum": [
+                  "iab_vast",
+                  "iab_daast"
+                ]
+              },
+              "operation": {
+                "const": "resolve_value"
+              }
+            },
+            "required": [
+              "dialect",
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "performed_by": {
+                "const": "request_executor"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dialect": {
+                "const": "adcp"
+              }
+            },
+            "required": [
+              "dialect"
+            ]
+          },
+          "then": {
+            "required": [
+              "universal_semantic"
+            ],
+            "properties": {
+              "dialect_semantic": {
+                "$ref": "#/$defs/external:enums~1universal-macro.json"
+              },
+              "mapping_status": {
+                "const": "verified_universal"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "dialect": {
+                "const": "unknown"
+              }
+            },
+            "required": [
+              "dialect"
+            ]
+          },
+          "then": {
+            "properties": {
+              "mapping_status": {
+                "const": "unresolved"
+              },
+              "operation": {
+                "const": "preserve"
+              },
+              "requested_encoding": {
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  },
+                  "depth": {
+                    "const": 0
+                  }
+                }
+              },
+              "required": {
+                "const": false
+              },
+              "unavailable_behavior": {
+                "const": "preserve"
+              },
+              "status": {
+                "const": "preserved_for_downstream"
+              },
+              "reason": {
+                "const": "preserved_unknown"
+              }
+            },
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "performed_by"
+                  ]
+                },
+                {
+                  "required": [
+                    "universal_semantic"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "preserve"
+              }
+            },
+            "required": [
+              "operation"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requested_encoding": {
+                "properties": {
+                  "kind": {
+                    "const": "none"
+                  },
+                  "depth": {
+                    "const": 0
+                  }
+                }
+              },
+              "required": {
+                "const": false
+              },
+              "unavailable_behavior": {
+                "const": "preserve"
+              },
+              "status": {
+                "const": "preserved_for_downstream"
+              }
+            },
+            "not": {
+              "required": [
+                "performed_by"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "required": {
+                "const": true
+              }
+            },
+            "required": [
+              "required"
+            ]
+          },
+          "then": {
+            "properties": {
+              "unavailable_behavior": {
+                "const": "reject"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "resolvable"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "const": "capability_match"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "preserved_for_downstream"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "operation": {
+                "const": "preserve"
+              },
+              "reason": {
+                "enum": [
+                  "preserved_unknown",
+                  "preserved_for_downstream"
+                ]
+              }
+            },
+            "not": {
+              "required": [
+                "performed_by"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "unsupported"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "dialect_unsupported",
+                  "namespace_mismatch",
+                  "revision_mismatch",
+                  "semantic_unsupported",
+                  "operation_unsupported",
+                  "resolver_mismatch",
+                  "context_unsupported",
+                  "encoding_unsupported"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ambiguous"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "const": "ambiguous_mapping"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "external:enums/macro-dialect.json": {
+      "type": "string",
+      "enum": [
+        "adcp",
+        "iab_vast",
+        "iab_daast",
+        "vendor",
+        "unknown"
+      ]
+    },
+    "external:enums/macro-mapping-status.json": {
+      "type": "string",
+      "enum": [
+        "verified_universal",
+        "dialect_defined",
+        "unresolved"
+      ]
+    },
+    "external:enums/universal-macro.json": {
+      "type": "string",
+      "enum": [
+        "MEDIA_BUY_ID",
+        "PACKAGE_ID",
+        "CREATIVE_ID",
+        "CACHEBUSTER",
+        "TIMESTAMP",
+        "CLICK_URL",
+        "GDPR",
+        "GDPR_CONSENT",
+        "US_PRIVACY",
+        "GPP_STRING",
+        "GPP_SID",
+        "IP_ADDRESS",
+        "LIMIT_AD_TRACKING",
+        "DEVICE_TYPE",
+        "OS",
+        "OS_VERSION",
+        "DEVICE_MAKE",
+        "DEVICE_MODEL",
+        "USER_AGENT",
+        "APP_BUNDLE",
+        "APP_NAME",
+        "COUNTRY",
+        "REGION",
+        "CITY",
+        "ZIP",
+        "DMA",
+        "LAT",
+        "LONG",
+        "DEVICE_ID",
+        "DEVICE_ID_TYPE",
+        "DOMAIN",
+        "PAGE_URL",
+        "REFERRER",
+        "KEYWORDS",
+        "PLACEMENT_ID",
+        "FOLD_POSITION",
+        "AD_WIDTH",
+        "AD_HEIGHT",
+        "VIDEO_ID",
+        "VIDEO_TITLE",
+        "VIDEO_DURATION",
+        "VIDEO_CATEGORY",
+        "CONTENT_GENRE",
+        "CONTENT_RATING",
+        "PLAYER_WIDTH",
+        "PLAYER_HEIGHT",
+        "POD_POSITION",
+        "POD_SIZE",
+        "AD_BREAK_ID",
+        "STATION_ID",
+        "COLLECTION_NAME",
+        "INSTALLMENT_ID",
+        "AUDIO_DURATION",
+        "TMPX",
+        "IMPRESSION_ID",
+        "AXEM",
+        "CATALOG_ID",
+        "SKU",
+        "GTIN",
+        "OFFERING_ID",
+        "JOB_ID",
+        "HOTEL_ID",
+        "FLIGHT_ID",
+        "VEHICLE_ID",
+        "LISTING_ID",
+        "STORE_ID",
+        "PROGRAM_ID",
+        "DESTINATION_ID",
+        "CREATIVE_VARIANT_ID",
+        "APP_ITEM_ID",
+        "ITEM_NAME",
+        "ITEM_DESCRIPTION",
+        "ITEM_TAGLINE",
+        "ITEM_PRICE",
+        "ITEM_PRICE_CURRENCY"
+      ]
+    },
+    "external:enums/macro-processing-operation.json": {
+      "type": "string",
+      "enum": [
+        "translate_to_native",
+        "resolve_value",
+        "preserve"
+      ]
+    },
+    "external:enums/macro-resolver.json": {
+      "type": "string",
+      "enum": [
+        "buyer",
+        "creative_agent",
+        "seller",
+        "request_executor",
+        "source_ad_server"
+      ]
+    },
+    "external:core/macro-encoding.json": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "none",
+            "rfc3986",
+            "iab_vast_uri"
+          ]
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "kind",
+        "depth"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "none"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "depth": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "rfc3986"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "depth": {
+                "minimum": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "iab_vast_uri"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "depth": {
+                "const": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "external:enums/macro-resolution-reason.json": {
+      "type": "string",
+      "enum": [
+        "capability_match",
+        "preserved_unknown",
+        "preserved_for_downstream",
+        "dialect_unsupported",
+        "namespace_mismatch",
+        "revision_mismatch",
+        "semantic_unsupported",
+        "operation_unsupported",
+        "resolver_mismatch",
+        "context_unsupported",
+        "encoding_unsupported",
+        "ambiguous_mapping"
+      ]
+    },
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/protocol-envelope.json": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string"
+        },
+        "context": {
+          "$ref": "#/$defs/external:core~1context.json"
+        },
+        "task_id": {
+          "type": "string",
+          "x-entity": "task"
+        },
+        "status": {
+          "$ref": "#/$defs/external:enums~1task-status.json"
+        },
+        "message": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "replayed": {
+          "type": "boolean",
+          "default": false
+        },
+        "adcp_error": {
+          "$ref": "#/$defs/external:core~1error.json"
+        },
+        "push_notification_config": {
+          "$ref": "#/$defs/external:core~1push-notification-config.json"
+        },
+        "governance_context": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[\\x20-\\x7E]+$"
+        },
+        "payload": {
+          "type": "object",
+          "x-adcp-open-payload": true,
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "task_status"
+            ]
+          },
+          {
+            "required": [
+              "response_status"
+            ]
+          }
+        ]
+      },
+      "notes": [
+        "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+        "Transport serialization (normative):",
+        "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+        "  - A2A 1.0 with the AdCP profile extension: `task.status.state` carries the transport invocation lifecycle used to select the extraction location; `task.contextId` carries `context_id`, while `task.id` is an independent A2A transport identifier. The complete AdCP response, including its protocol-level `status` and any application-layer `task_id`, is canonically carried in `task.artifacts[0].parts[].DataPart` on final states; `task.status.message.parts[].DataPart` is the fallback container used only for interim A2A states (working, native submitted, input-required) where no final artifact has been emitted yet. For a structured AdCP business rejection or Submitted response, A2A is `completed` while the DataPart carries `status: rejected` or `status: submitted` because the handler invocation succeeded. An AdCP `task_id` MUST NOT be copied into artifact metadata or inferred from `task.id`. Receivers MUST prefer artifacts when present and MUST NOT overwrite a DataPart's status with the A2A state. See `a2a-profile-extension.mdx` and `a2a-response-extraction.mdx` for the full binding and extraction algorithm.",
+        "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+        "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+        "`status` is REQUIRED on the conceptual AdCP response across all transports. On MCP and REST it appears as a sibling field at the JSON root (or `structuredContent` root for MCP). On A2A it is carried inside the authoritative DataPart alongside the task body; `task.status.state` separately carries the A2A transport lifecycle and selects where that DataPart is found. Receivers MUST preserve the DataPart status when present. The schema-level `required: [status]` enforces the post-extraction AdCP shape. `payload` remains intentionally NOT required — it is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+        "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:enums/task-status.json": {
+      "type": "string",
+      "enum": [
+        "submitted",
+        "working",
+        "input-required",
+        "completed",
+        "canceled",
+        "failed",
+        "rejected",
+        "auth-required",
+        "unknown"
+      ]
+    },
+    "external:core/error.json": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "message": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "retry_after": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pointer": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "keyword": {
+                "type": "string"
+              },
+              "schemaPath": {
+                "type": "string"
+              },
+              "schema_id": {
+                "type": "string"
+              },
+              "discriminator": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "property_name": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "property_name",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "pointer",
+              "message",
+              "keyword"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "recovery": {
+          "type": "string",
+          "enum": [
+            "transient",
+            "correctable",
+            "terminal"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "producer",
+            "sdk"
+          ]
+        },
+        "sdk_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    }
+  }
+}

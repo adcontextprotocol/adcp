@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/account/list-account-changes-response.json",
+  "title": "List Account Changes Response",
+  "description": "Durable account change feed page. cursor is always present, including for an empty page at the tail; ordinary pagination-response semantics do not apply.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/protocol-envelope.json"
+    }
+  ],
+  "discriminator": {
+    "propertyName": "status"
+  },
+  "oneOf": [
+    {
+      "description": "Successful feed page.",
+      "required": [
+        "status",
+        "changes",
+        "cursor",
+        "has_more",
+        "available_since",
+        "generated_at"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "not": {
+        "required": [
+          "adcp_error"
+        ]
+      }
+    },
+    {
+      "description": "Fatal feed failure, including CURSOR_EXPIRED. Both envelope and payload error layers are present.",
+      "required": [
+        "status",
+        "adcp_error",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        },
+        "errors": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "properties": {
+    "changes": {
+      "type": "array",
+      "description": "Matching changes in oldest-first total account order. Timestamps are descriptive and do not define this order.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/account-change.json"
+      },
+      "maxItems": 100
+    },
+    "cursor": {
+      "type": "string",
+      "description": "Opaque checkpoint strictly after the high-water scanned by this page. Always persist this value, including when changes is empty or has_more is false. A filtered empty page still advances past scanned nonmatching records.",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "has_more": {
+      "type": "boolean",
+      "description": "True when more retained matching changes were available at generation time. False means caught up to seller ingestion, not necessarily to an unavailable or delayed connected source."
+    },
+    "available_since": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Oldest time for which the seller currently retains change records for this account and caller. The capability guarantees at least 90 days after adoption; pre-adoption history is not fabricated."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Seller time when this page and its source-coverage watermarks were generated."
+    },
+    "source_coverage": {
+      "type": "array",
+      "description": "Account-specific feed and connector coverage. Buyers use this to distinguish feed catch-up from upstream freshness. Omission means no additional connected-source coverage is declared.",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "Opaque seller or connection reference.",
+            "maxLength": 255
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "seller",
+              "connected_platform"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "current",
+              "delayed",
+              "unavailable",
+              "not_configured"
+            ],
+            "description": "Connector freshness classification. For connected_platform, current means last_successful_sync_at is no older than stale_after_seconds at generated_at and the seller knows of no ingestion gap; delayed means that threshold is exceeded or a gap is known."
+          },
+          "coverage_start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Earliest upstream time covered by this source after connection or retention limits."
+          },
+          "observed_through": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Latest upstream point the seller has successfully observed."
+          },
+          "last_successful_sync_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stale_after_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2592000,
+            "description": "Maximum age of last_successful_sync_at at generated_at for this connected source to self-classify as current. Required by the protocol contract whenever a connected source reports current."
+          },
+          "resource_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+            },
+            "maxItems": 50,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "status",
+          "resource_types"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "connected_platform"
+                },
+                "status": {
+                  "type": "string",
+                  "const": "current"
+                }
+              },
+              "required": [
+                "kind",
+                "status"
+              ]
+            },
+            "then": {
+              "required": [
+                "last_successful_sync_at",
+                "stale_after_seconds"
+              ]
+            }
+          }
+        ],
+        "additionalProperties": true
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Caught up after acquiring a latest checkpoint",
+      "data": {
+        "adcp_version": "3.2",
+        "status": "completed",
+        "changes": [],
+        "cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0Mn0",
+        "has_more": false,
+        "available_since": "2026-05-26T00:00:00Z",
+        "generated_at": "2026-08-24T12:00:00Z",
+        "source_coverage": [
+          {
+            "source_id": "seller",
+            "kind": "seller",
+            "status": "current",
+            "resource_types": [
+              "account",
+              "media_buy",
+              "creative"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
