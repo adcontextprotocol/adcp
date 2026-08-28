@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/placement-identity.json",
+  "title": "Placement Identity",
+  "description": "Self-contained identity for either a publisher-catalog placement or a sales-agent-defined inline placement. The discriminator names which authority owns placement_id.",
+  "oneOf": [
+    {
+      "title": "Publisher catalog placement identity",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "publisher_ref"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Domain whose adagents.json declares placement_id."
+        },
+        "placement_id": {
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "placement"
+        }
+      },
+      "required": [
+        "kind",
+        "publisher_domain",
+        "placement_id"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Seller inline placement identity",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "seller_inline"
+        },
+        "seller_agent": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/seller-agent-ref.json",
+          "description": "Sales agent that defines and maintains the inline placement namespace."
+        },
+        "placement_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable placement ID within the defining sales agent's namespace. The agent MUST NOT reuse it for a different semantic placement.",
+          "x-entity": "placement"
+        }
+      },
+      "required": [
+        "kind",
+        "seller_agent",
+        "placement_id"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

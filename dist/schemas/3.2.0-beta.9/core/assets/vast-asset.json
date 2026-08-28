@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/assets/vast-asset.json",
+  "title": "VAST Asset",
+  "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving. Unlike the hosted `video` asset, a VAST tag carries no `width`/`height`: a VAST response can return multiple renditions of differing dimensions, and the player selects one per device at serve time, so there is no single width/height for the ad. Dimensional, duration, and codec *constraints* for a placement live on the format/requirements layer, not on this asset.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "vast",
+      "description": "Discriminator identifying this as a VAST asset. See /schemas/creative/asset-types for the registry."
+    },
+    "vast_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/enums/vast-version.json",
+      "description": "Exact VAST version declared by the supplied URL response or inline document. Required by the 3.2 canonical `video_vast` manifest path; optional only on the deprecated named-format compatibility path. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/macro-declaration.json"
+      },
+      "minItems": 1,
+      "description": "One declaration per exact occurrence in a field carried by this asset. A URL-delivered asset can declare only occurrences in its locator `url`; tokens discovered later in a fetched VAST response require document validation evidence or an inline/snapshotted asset and MUST NOT be guessed from the locator. IAB tokens cite a registry namespace and revision rather than copying the live registry into AdCP."
+    },
+    "vpaid_enabled": {
+      "type": "boolean",
+      "description": "Whether VPAID (Video Player-Ad Interface Definition) is supported"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "description": "Expected video duration in milliseconds (if known)",
+      "minimum": 0
+    },
+    "tracking_events": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/enums/vast-tracking-event.json"
+      },
+      "description": "Tracking events supported by this VAST tag"
+    },
+    "captions_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to captions file (WebVTT, SRT, etc.)",
+      "x-accessibility": true
+    },
+    "audio_description_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to audio description track for visually impaired users",
+      "x-accessibility": true
+    },
+    "provenance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "url",
+          "description": "Discriminator indicating VAST is delivered via URL endpoint"
+        },
+        "url": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/macro-bearing-url.json",
+          "description": "URL endpoint returning VAST XML. Macro delimiters remain byte-preserved; declarations distinguish occurrences in this locator URL from occurrences in inline or fetched VAST content."
+        },
+        "macro_declarations": {
+          "items": {
+            "properties": {
+              "location": {
+                "properties": {
+                  "field": {
+                    "const": "url"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "delivery_type",
+        "url"
+      ]
+    },
+    {
+      "properties": {
+        "delivery_type": {
+          "type": "string",
+          "const": "inline",
+          "description": "Discriminator indicating VAST is delivered as inline XML content"
+        },
+        "content": {
+          "type": "string",
+          "description": "Inline VAST XML content"
+        },
+        "macro_declarations": {
+          "items": {
+            "properties": {
+              "location": {
+                "properties": {
+                  "field": {
+                    "const": "content"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "delivery_type",
+        "content"
+      ]
+    }
+  ],
+  "discriminator": {
+    "propertyName": "delivery_type"
+  },
+  "additionalProperties": true
+}
