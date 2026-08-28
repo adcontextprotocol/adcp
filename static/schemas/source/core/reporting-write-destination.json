@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-write-destination.json",
   "title": "Reporting Write Destination",
   "x-status": "experimental",
-  "description": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued binding or asks the seller to validate and bind a provider-native location. Access grants name advertised producer identities; credentials never transit AdCP.",
+  "description": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued binding or asks the seller to validate and bind a provider-native location. The seller verifies authenticated-caller authority for the account/feed/scope and destination control before readiness. A destination_ref is bound to that caller/account and cannot be probed or reused across scopes. Access grants name advertised producer identities; credentials never transit AdCP.",
   "type": "object",
   "oneOf": [
     {
@@ -19,12 +19,16 @@
       "title": "Provision binding",
       "properties": {
         "mode": { "type": "string", "const": "provision" },
-        "provider": { "$ref": "/schemas/core/brand-ref.json", "description": "Platform hosting the destination." },
+        "provider": { "type": "object", "description": "Platform hosting the destination.", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "location": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL." },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Optional provider access family used for capability matching." }
       },
       "required": ["mode", "provider", "location"],
       "additionalProperties": false
     }
-  ]
+  ],
+  "x-adcp-validation": {
+    "authorization": "Bind every destination_ref to the authenticated caller and resolved account. Reject unknown, unauthorized, cross-caller, and cross-account refs indistinguishably.",
+    "destination_proof": "Before ready, prove destination control and caller authority for every selected feed and media-buy scope. Revoke grants when the configuration, caller authorization, or account becomes inactive."
+  }
 }

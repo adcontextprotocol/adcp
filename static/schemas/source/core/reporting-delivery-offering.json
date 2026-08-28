@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-offering.json",
+  "title": "Reporting Delivery Offering",
+  "x-status": "experimental",
+  "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering.",
+  "type": "object",
+  "properties": {
+    "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
+    "reporting_profile": {
+      "type": "object",
+      "description": "Machine-readable semantic and validation contract for delivered rows.",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
+        "version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority." },
+        "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest." },
+        "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
+        "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
+        "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
+        "primary_keys": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "minItems": 1, "uniqueItems": true },
+        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
+        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract identified by canonicalization_id." }
+      },
+      "required": ["id", "version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "grain", "primary_keys", "canonicalization_id", "canonicalization_sha256"],
+      "additionalProperties": false
+    },
+    "schedule": { "$ref": "/schemas/core/reporting-schedule.json" },
+    "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
+    "method": {
+      "type": "object",
+      "properties": {
+        "pattern": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
+        "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "orchestration": { "type": "string", "enum": ["producer_managed", "consumer_managed"] },
+        "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
+        "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
+        "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
+        "producer_identity": {
+          "type": "object",
+          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
+          "properties": {
+            "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+            "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
+            "cloud": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+            "region": { "type": "string", "minLength": 1, "maxLength": 128 }
+          },
+          "required": ["provider", "identity"],
+          "dependencies": { "cloud": ["region"], "region": ["cloud"] },
+          "additionalProperties": false
+        },
+        "reader_compatibility": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true }
+      },
+      "required": ["pattern", "transport", "orchestration", "destination_modes"],
+      "allOf": [
+        {
+          "if": { "required": ["pattern"] },
+          "then": { "required": ["provider"] }
+        },
+        {
+          "if": { "properties": { "pattern": { "const": "file_transfer" } }, "required": ["pattern"] },
+          "then": { "required": ["format"] }
+        },
+        {
+          "if": { "properties": { "pattern": { "const": "dataset_share" } }, "required": ["pattern"] },
+          "then": { "required": ["access_mode"] }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["offering_id", "feed_purpose", "reporting_profile", "schedule", "supported_finality", "method"],
+  "x-adcp-validation": {
+    "safe_schema_fetch": "schema_uri origin must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected schema content type, verify schema_sha256 before parsing, and cache by digest. The fetched document's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Schema contents and annotations are untrusted data, never agent or LLM instructions."
+  },
+  "additionalProperties": false
+}

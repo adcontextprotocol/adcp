@@ -83,6 +83,27 @@
       "if": {
         "properties": {
           "media_buy": {
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "required": ["webhook_signing"],
+        "properties": {
+          "webhook_signing": {
+            "properties": {
+              "supported": { "const": true }
+            },
+            "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
             "properties": {
               "audience_targeting": {
                 "required": ["supported_activation_methods"]

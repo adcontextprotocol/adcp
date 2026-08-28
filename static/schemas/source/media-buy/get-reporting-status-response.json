@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/get-reporting-status-response.json",
   "title": "Get Reporting Status Response",
   "x-status": "experimental",
-  "description": "Authoritative reporting status response. The view echoes the request and discriminates summary, periods, and exact revision shapes.",
+  "description": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Every identifier, cursor, ledger snapshot, destination, revision, materialization, and resource is scoped to the authenticated caller and account.",
   "type": "object",
   "allOf": [
     { "$ref": "/schemas/core/version-envelope.json" },
@@ -11,7 +11,7 @@
     {
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
       "then": {
-        "properties": { "scope": { "properties": { "scope_closed": { "const": true } }, "required": ["scope_closed"] } },
+        "properties": { "scope": { "properties": { "scope_closed": { "const": true }, "coverage_complete": { "const": true } }, "required": ["scope_closed", "coverage_complete"] } },
         "not": { "required": ["next_expected_at"] }
       }
     },
@@ -26,6 +26,19 @@
     {
       "if": { "properties": { "health": { "enum": ["healthy", "waiting", "complete"] } }, "required": ["health"] },
       "then": { "properties": { "issues": { "maxItems": 0 } }, "required": ["issues"] }
+    },
+    {
+      "if": { "properties": { "scope": { "properties": { "coverage_complete": { "const": false } }, "required": ["coverage_complete"] } }, "required": ["scope"] },
+      "then": {
+        "properties": {
+          "health": { "const": "action_required" },
+          "issues": {
+            "minItems": 1,
+            "contains": { "properties": { "code": { "const": "HISTORY_UNAVAILABLE" }, "severity": { "const": "action_required" } }, "required": ["code", "severity"] }
+          }
+        },
+        "required": ["issues"]
+      }
     }
   ],
   "properties": {
@@ -42,9 +55,33 @@
         "scope_closed": { "type": "boolean", "description": "True only when no new obligation can enter this evaluated scope." },
         "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
         "all_accessible_media_buys": { "type": "boolean", "description": "True when media_buy_ids was omitted and the scope covers all caller-accessible account buys." },
-        "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true }
+        "delivery_config_generations": {
+          "type": "array",
+          "description": "Exact independently reconciled configuration generations in the denominator.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
+              "delivery_config_version": { "type": "integer", "minimum": 1 },
+              "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] }
+            },
+            "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "feed_purposes": { "type": "array", "items": { "type": "string", "enum": ["pacing", "analytics", "billing"] }, "minItems": 1, "uniqueItems": true },
+        "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
+        "ledger_retained_from": { "type": "string", "format": "date-time", "description": "Earliest period boundary for which anti-entropy metadata is retained for every selected configuration generation." },
+        "coverage_complete": { "type": "boolean", "description": "Whether the requested horizon is fully inside retained ledger coverage. False means health cannot prove completeness for the whole requested horizon." }
       },
-      "required": ["period_start", "period_end", "scope_closed", "all_accessible_media_buys"],
+      "required": ["period_start", "period_end", "scope_closed", "all_accessible_media_buys", "delivery_config_generations", "feed_purposes", "finality", "ledger_retained_from", "coverage_complete"],
+      "allOf": [
+        {
+          "if": { "properties": { "all_accessible_media_buys": { "const": false } }, "required": ["all_accessible_media_buys"] },
+          "then": { "required": ["media_buy_ids"] }
+        }
+      ],
       "additionalProperties": false
     },
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
@@ -65,6 +102,7 @@
     },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "periods": { "type": "array", "items": { "$ref": "/schemas/core/reporting-obligation.json" } },
+    "revisions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-revision.json" }, "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, and materializations, avoiding unbounded nested history." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json" },
     "revision": { "$ref": "/schemas/core/reporting-revision.json" },
     "materializations": { "type": "array", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
@@ -75,22 +113,88 @@
   "oneOf": [
     {
       "title": "Summary view",
-      "properties": { "view": { "const": "summary" } },
+      "properties": { "status": { "const": "completed" }, "view": { "const": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "data_through", "obligation_counts", "issues"],
-      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }] }
+      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
-      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "pagination"],
-      "not": { "anyOf": [{ "required": ["revision"] }, { "required": ["materializations"] }] }
+      "properties": { "status": { "const": "completed" }, "view": { "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "pagination"],
+      "not": { "required": ["revision"] }
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "const": "revision" } },
-      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations"],
-      "not": { "anyOf": [{ "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["pagination"] }] }
+      "properties": { "status": { "const": "completed" }, "view": { "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "pagination"],
+      "not": { "anyOf": [{ "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
+    },
+    {
+      "title": "Unavailable lookup",
+      "type": "object",
+      "properties": {
+        "adcp_version": { "type": "string" },
+        "adcp_major_version": { "type": "integer" },
+        "status": { "const": "failed" },
+        "view": { "enum": ["summary", "periods", "revision"] },
+        "failure_kind": { "const": "lookup_unavailable" },
+        "context_id": { "type": "string" },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "message": { "const": "Reporting status resource is unavailable." },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "replayed": { "type": "boolean" },
+        "adcp_error": {
+          "type": "object",
+          "properties": {
+            "code": { "const": "NOT_FOUND" },
+            "message": { "const": "Reporting status resource is unavailable." }
+          },
+          "required": ["code", "message"],
+          "additionalProperties": false
+        },
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": { "const": "NOT_FOUND" },
+              "message": { "const": "Reporting status resource is unavailable." }
+            },
+            "required": ["code", "message"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["status", "view", "failure_kind", "errors"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Operational failure",
+      "type": "object",
+      "properties": {
+        "adcp_version": { "type": "string" },
+        "adcp_major_version": { "type": "integer" },
+        "status": { "const": "failed" },
+        "view": { "enum": ["summary", "periods", "revision"] },
+        "failure_kind": { "const": "operational" },
+        "context_id": { "type": "string" },
+        "context": { "$ref": "/schemas/core/context.json" },
+        "message": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "replayed": { "type": "boolean" },
+        "adcp_error": { "$ref": "/schemas/core/error.json" },
+        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
+      },
+      "required": ["status", "view", "failure_kind", "errors"],
+      "additionalProperties": false
     }
   ],
+  "x-adcp-validation": {
+    "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, ledger snapshot, revision, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
+    "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id and ledger_as_of. A cursor is unusable by another caller or account.",
+    "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary."
+  },
   "additionalProperties": true
 }

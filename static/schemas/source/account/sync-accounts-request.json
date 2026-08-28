@@ -89,11 +89,16 @@
           "reporting_delivery_configs": {
             "type": "array",
             "x-status": "experimental",
-            "description": "Caller-owned desired state for durable reporting delivery on this account. Declarative replacement is scoped to (authenticated caller, resolved account): omission leaves that caller's set unchanged; [] removes that caller's set; another caller's entries MUST NOT be read, replaced, or deleted. Entries are keyed by delivery_config_id. destination.mode provision asks the seller to create or validate a binding from non-secret provider coordinates; destination.mode existing reuses a seller-issued destination_ref. Credentials never transit AdCP. Permitted in both provisioning and settings-update modes. Sellers accepting this field MUST advertise media_buy.reporting_delivery in experimental_features and echo resolved secret-free state on sync_accounts and list_accounts.",
+            "description": "Caller-owned desired state for durable reporting delivery on this account. Declarative replacement is scoped to (authenticated caller, resolved account): omission leaves that caller's set unchanged; [] deactivates that caller's set and starts grant revocation; another caller's entries MUST NOT be read, replaced, or deleted. Entries are keyed by immutable (delivery_config_id, delivery_config_version); duplicate tuples MUST reject the entire account entry, and reusing a tuple with changed content MUST be rejected. destination.mode provision asks the seller to verify caller disclosure authority and destination/recipient control from non-secret provider coordinates; destination.mode existing reuses a caller/account-bound seller-issued destination_ref. Unknown, unauthorized, cross-account, and cross-caller refs MUST be indistinguishable. Credentials never transit AdCP, including nested extension fields. Permitted in both provisioning and settings-update modes. Sellers accepting this field MUST advertise media_buy.reporting_delivery in experimental_features and echo resolved secret-free state on sync_accounts and list_accounts.",
             "items": {
               "$ref": "/schemas/core/reporting-delivery-config.json"
             },
-            "maxItems": 16
+            "maxItems": 16,
+            "x-adcp-validation": {
+              "unique_config_generation": "Reject the account entry when two items share delivery_config_id and delivery_config_version.",
+              "immutable_generation": "A previously observed tuple must retain identical feed/profile/scope/finality/schedule/method/destination content. Only active and revocation_effective_at are mutable lifecycle intent.",
+              "authorization": "Verify authenticated-caller authority for the account, requested reporting scope, recipient, and destination before applying."
+            }
           },
           "notification_configs": {
             "type": "array",

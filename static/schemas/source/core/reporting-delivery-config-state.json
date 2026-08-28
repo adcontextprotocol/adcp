@@ -3,19 +3,23 @@
   "$id": "/schemas/core/reporting-delivery-config-state.json",
   "title": "Reporting Delivery Configuration State",
   "x-status": "experimental",
-  "description": "Seller-resolved state for one caller-owned reporting delivery configuration. It echoes the secret-free desired configuration and adds the durable binding and setup result. A setup URL is an authenticated UI/API entry point, not a bearer credential; it MUST use HTTPS and MUST NOT embed access tokens or signed credentials.",
+  "description": "Seller-resolved state for one caller/account-owned immutable reporting delivery configuration generation. It echoes the secret-free desired configuration and adds the durable binding and setup result. The seller MUST verify that the authenticated caller may disclose the selected feeds and media-buy scope to the recipient before readiness. A setup URL is an authenticated UI/API entry point, not a bearer credential: agents MUST NOT auto-fetch it, preview it, or treat its content as instructions; it MUST use HTTPS, have no userinfo, token, or signed credential, and use an origin controlled by the seller or named provider.",
   "type": "object",
   "properties": {
     "configuration": { "$ref": "/schemas/core/reporting-delivery-config.json" },
     "state": { "type": "string", "enum": ["pending_validation", "pending_setup", "ready", "action_required", "inactive"] },
     "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued stable binding. Present once the destination or recipient has been resolved; callers can use it with destination.mode existing on later syncs." },
     "validated_at": { "type": "string", "format": "date-time" },
+    "activated_at": { "type": "string", "format": "date-time" },
+    "deactivated_at": { "type": "string", "format": "date-time" },
+    "publication_stopped_at": { "type": "string", "format": "date-time", "description": "Applied cutoff after which the seller starts no new obligations or publications for this generation." },
+    "seller_managed_access_ends_at": { "type": "string", "format": "date-time", "description": "End of historical access to a producer-hosted share/resource for a still-authorized principal after voluntary deactivation. Inapplicable to data already written into a buyer-owned destination." },
     "setup": {
       "type": "object",
       "description": "Secret-free next step when provider-side authorization or recipient activation cannot be completed automatically.",
       "properties": {
         "action": { "type": "string", "enum": ["grant_access", "activate_recipient", "authorize_provider", "repair_access"] },
-        "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000, "description": "Untrusted display text only. SDKs and agents dispatch only on the closed action value and never execute embedded links or instructions." },
         "url": { "type": "string", "format": "uri", "pattern": "^https://" },
         "expires_at": { "type": "string", "format": "date-time" }
       },
@@ -28,7 +32,11 @@
   "allOf": [
     {
       "if": { "properties": { "state": { "const": "ready" } } },
-      "then": { "required": ["destination_ref", "validated_at"] }
+      "then": {
+        "properties": { "configuration": { "properties": { "active": { "const": true } } } },
+        "required": ["destination_ref", "validated_at", "activated_at"],
+        "not": { "anyOf": [{ "required": ["setup"] }, { "required": ["issues"] }, { "required": ["deactivated_at"] }] }
+      }
     },
     {
       "if": { "properties": { "state": { "enum": ["pending_setup", "action_required"] } } },
@@ -36,8 +44,15 @@
     },
     {
       "if": { "properties": { "state": { "const": "inactive" } } },
-      "then": { "properties": { "configuration": { "properties": { "active": { "const": false } } } } }
+      "then": {
+        "required": ["deactivated_at", "publication_stopped_at"]
+      }
     }
   ],
+  "x-adcp-validation": {
+    "binding_authorization": "destination_ref and any recipient identity MUST be bound to the authenticated caller and resolved account. Proof of recipient/destination control and authorization to disclose the selected feed/scope MUST precede ready.",
+    "revocation": "Voluntary deactivation stops new obligations/publication at publication_stopped_at. A still-authorized principal may retain a producer-hosted historical share only through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and terminates seller-controlled transport access and provider grants within authorization_revocation_seconds. For buyer-owned destinations, the seller revokes write ability but cannot revoke the buyer's access to bytes already delivered; buyer retention governs those copies.",
+    "safe_setup_url": "Reject URL userinfo, non-HTTPS, credential-like query/fragment values, redirects or origins outside the seller/named provider allowlist. Agents must surface the URL for explicit human action without fetching or interpreting its content."
+  },
   "additionalProperties": false
 }

@@ -3,13 +3,14 @@
   "$id": "/schemas/core/reporting-obligation.json",
   "title": "Reporting Obligation",
   "x-status": "experimental",
-  "description": "Period-level status joining what reporting was expected to any produced immutable revisions and delivery materializations. An obligation exists before its first revision or webhook, making missing-first-report detection possible.",
+  "description": "Period-level status joining what reporting was expected to any produced immutable revisions and delivery materializations. An obligation exists before its first revision or webhook, making missing-first-report detection possible. All nested revisions and materializations MUST match this obligation's authenticated caller/account, configuration generation, report definition, feed, period, and scope.",
   "type": "object",
   "properties": {
     "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation" },
     "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config" },
+    "delivery_config_version": { "type": "integer", "minimum": 1 },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition" },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing", "exposure"] },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
     "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
@@ -24,14 +25,50 @@
       "additionalProperties": false
     },
     "expected_at": { "type": "string", "format": "date-time" },
+    "schedule": { "$ref": "/schemas/core/reporting-schedule.json", "description": "Resolved immutable schedule generation that created this obligation." },
+    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved caller/account-bound destination or recipient binding for this obligation." },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
     "production_status": { "type": "string", "enum": ["not_due", "pending", "published", "failed"], "description": "Whether any revision has been produced for this obligation. published includes zero-row revisions." },
-    "revisions": { "type": "array", "description": "All retained revisions for this obligation, oldest to newest. Implementations MUST NOT collapse this to the latest restatement.", "items": { "$ref": "/schemas/core/reporting-revision.json" } },
-    "materializations": { "type": "array", "description": "All retained delivery attempts for revisions in this obligation, including failed attempts and later retries.", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
+    "revision_count": { "type": "integer", "minimum": 0, "description": "Number of revision records for this obligation in the consistent ledger snapshot." },
+    "materialization_count": { "type": "integer", "minimum": 0, "description": "Number of materialization records for this obligation's revisions in the consistent ledger snapshot." },
+    "successful_materialization_count": { "type": "integer", "minimum": 0, "description": "Number of available/delivered verified materializations in the consistent ledger snapshot." },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
-    "ext": { "$ref": "/schemas/core/ext.json" }
+    "resource_retained_until": { "type": "string", "format": "date-time", "description": "Minimum time through which at least one verified materialization for a completed obligation remains readable." }
   },
-  "required": ["reporting_obligation_id", "delivery_config_id", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "required_finality", "health", "production_status", "revisions", "materializations", "issues"],
+  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "schedule", "destination_ref", "required_finality", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "issues"],
+  "allOf": [
+    {
+      "if": { "properties": { "health": { "enum": ["healthy", "complete"] } }, "required": ["health"] },
+      "then": {
+        "properties": {
+          "production_status": { "const": "published" },
+          "revision_count": { "minimum": 1 },
+          "materialization_count": { "minimum": 1 },
+          "successful_materialization_count": { "minimum": 1 },
+          "issues": { "maxItems": 0 }
+        },
+        "required": ["resource_retained_until"]
+      }
+    },
+    {
+      "if": { "properties": { "production_status": { "const": "published" } }, "required": ["production_status"] },
+      "then": { "properties": { "revision_count": { "minimum": 1 } } }
+    },
+    {
+      "if": { "properties": { "health": { "enum": ["delayed", "action_required"] } }, "required": ["health"] },
+      "then": { "properties": { "issues": { "minItems": 1 } } }
+    },
+    {
+      "if": { "properties": { "production_status": { "const": "failed" } }, "required": ["production_status"] },
+      "then": { "properties": { "issues": { "minItems": 1 } } }
+    }
+  ],
+  "x-adcp-validation": {
+    "nested_identity": "Every revision and materialization ledger record associated with this obligation MUST equal its account_id, delivery_config_id, delivery_config_version, destination_ref, report_definition_id, feed_purpose, reporting_profile, period, and applicable media_buy_ids; each materialization reporting_revision_id MUST name an associated revision.",
+    "complete_finality": "complete requires a published revision at required_finality and at least one verified readable materialization for that revision through resource_retained_until. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
+    "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained revision.",
+    "record_counts": "revision_count, materialization_count, and successful_materialization_count MUST equal the complete associated record totals for this obligation in ledger_snapshot_id, even when records appear on different pages."
+  },
   "additionalProperties": false
 }

@@ -3,13 +3,16 @@
   "$id": "/schemas/core/reporting-materialization.json",
   "title": "Reporting Materialization",
   "x-status": "experimental",
-  "description": "One attempt to expose an immutable reporting revision through a configured delivery method. Automated retry creates a new materialization and attempt number while preserving reporting_revision_id. available is a verified producer-hosted pull/share claim; delivered is a verified recipient/destination or inline-push claim.",
+  "description": "One attempt to expose an immutable reporting revision through a configured durable delivery method. Automated retry creates a new materialization and attempt number while preserving reporting_revision_id. available is a verified producer-hosted pull/share claim; delivered is a verified recipient/destination claim. Existing per-buy inline reporting remains on its existing data API and is outside this v1 managed ledger.",
   "type": "object",
   "properties": {
     "reporting_materialization_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_materialization" },
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
-    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Configuration that requested this materialization. Omitted only for per-buy inline reporting without an account durable-delivery config." },
-    "method": { "type": "string", "enum": ["inline_webhook", "file_transfer", "dataset_share", "warehouse_materialization"] },
+    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Durable configuration that requested this materialization." },
+    "delivery_config_version": { "type": "integer", "minimum": 1 },
+    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved destination/share binding, scoped to the authenticated caller and account." },
+    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
+    "method": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
     "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
     "attempt": { "type": "integer", "minimum": 1 },
     "status": { "type": "string", "enum": ["pending", "available", "delivered", "failed"], "description": "Immutable result of this attempt. Staleness is evaluated in get_reporting_status health, not stored as a materialization state." },
@@ -18,10 +21,9 @@
     "failure_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z][A-Z0-9_]*$", "description": "Stable safe failure classification. MUST NOT include credentials or provider response bodies." },
     "resource": { "$ref": "/schemas/core/reporting-resource.json" },
     "verification": { "$ref": "/schemas/core/reporting-verification.json" },
-    "created_at": { "type": "string", "format": "date-time" },
-    "ext": { "$ref": "/schemas/core/ext.json" }
+    "created_at": { "type": "string", "format": "date-time" }
   },
-  "required": ["reporting_materialization_id", "reporting_revision_id", "method", "attempt", "status", "created_at"],
+  "required": ["reporting_materialization_id", "reporting_revision_id", "delivery_config_id", "delivery_config_version", "destination_ref", "feed_purpose", "method", "attempt", "status", "created_at"],
   "allOf": [
     {
       "if": { "properties": { "status": { "enum": ["available", "delivered"] } }, "required": ["status"] },
@@ -30,7 +32,42 @@
     {
       "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
       "then": { "required": ["failed_at", "failure_code"] }
+    },
+    {
+      "if": { "properties": { "method": { "const": "file_transfer" } }, "required": ["method"] },
+      "then": {
+        "properties": {
+          "resource": { "properties": { "kind": { "const": "manifest" } } },
+          "verification": { "properties": { "physical_checksums": { "minItems": 1 } }, "required": ["physical_checksums"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "method": { "const": "dataset_share" } }, "required": ["method"] },
+      "then": {
+        "properties": {
+          "resource": { "properties": { "kind": { "const": "dataset" } } },
+          "verification": { "properties": { "verification_path": { "const": "representative_consumer" } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "method": { "const": "warehouse_materialization" } }, "required": ["method"] },
+      "then": {
+        "properties": {
+          "resource": { "properties": { "kind": { "const": "warehouse_relation" } } },
+          "verification": { "properties": { "verification_path": { "const": "destination" } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "feed_purpose": { "const": "billing" }, "status": { "enum": ["available", "delivered"] } }, "required": ["feed_purpose", "status"] },
+      "then": { "properties": { "verification": { "required": ["canonical_content_digest"] } } }
     }
   ],
+  "x-adcp-validation": {
+    "revision_match": "delivery_config_id, delivery_config_version, destination_ref, feed_purpose, verification.row_count, and verification.canonical_content_digest MUST equal the referenced revision and its caller/account-bound configuration generation.",
+    "authorization": "The caller MUST be authorized for the referenced account and destination binding. Cross-caller and cross-account identifiers MUST be rejected without revealing whether they exist."
+  },
   "additionalProperties": false
 }

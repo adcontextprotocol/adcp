@@ -805,16 +805,20 @@ function stripModelContextAnnotations(schema) {
       });
       if (matchesType) delete node.type;
     }
-    // ext is always an implementation-owned escape hatch, not a portable
-    // argument an agent can infer. Keep it in canonical/discovery validation,
-    // but do not spend prompt context repeating it through every object graph.
-    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) {
-      delete node.properties.ext;
-    }
-    if (Array.isArray(node.required)) {
-      node.required = node.required.filter(name => name !== 'ext');
-      if (node.required.length === 0) delete node.required;
-    }
+    // Arbitrary implementation extensions are not safe model-authored input.
+    // A schema may explicitly opt a negotiated, closed extension surface into
+    // model context; canonical validation always retains the source contract.
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties) && node.properties.ext) {
+      if (node.properties.ext['x-adcp-model-context'] === 'include') {
+        node.properties.ext = { type: 'object', additionalProperties: true };
+      } else {
+        delete node.properties.ext;
+        if (Array.isArray(node.required)) {
+          node.required = node.required.filter(name => name !== 'ext');
+          if (node.required.length === 0) delete node.required;
+          }
+        }
+      }
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves

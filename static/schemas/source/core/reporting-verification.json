@@ -14,9 +14,10 @@
       "properties": {
         "algorithm": { "type": "string", "enum": ["sha256"] },
         "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Versioned AdCP or reporting-profile canonicalization rules used to produce the digest." }
+        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Versioned AdCP or reporting-profile canonicalization rules used to produce the digest." },
+        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract." }
       },
-      "required": ["algorithm", "value", "canonicalization_id"],
+      "required": ["algorithm", "value", "canonicalization_id", "canonicalization_sha256"],
       "additionalProperties": false
     },
     "physical_checksums": {
@@ -26,16 +27,30 @@
         "type": "object",
         "properties": {
           "object_ref": { "type": "string", "minLength": 1, "maxLength": 1024 },
-          "algorithm": { "type": "string", "minLength": 1, "maxLength": 64 },
-          "value": { "type": "string", "minLength": 1, "maxLength": 512 }
+          "algorithm": { "type": "string", "enum": ["sha256", "sha512"] },
+          "value": { "type": "string", "pattern": "^(?:[A-Fa-f0-9]{64}|[A-Fa-f0-9]{128})$" }
         },
         "required": ["object_ref", "algorithm", "value"],
         "additionalProperties": false
       },
       "minItems": 1
     },
-    "ext": { "$ref": "/schemas/core/ext.json" }
+    "native_commit_evidence": {
+      "type": "object",
+      "description": "Supplementary provider-native immutable version evidence; never sufficient without a recomputed canonical content digest.",
+      "properties": {
+        "native_version_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "observed_through": { "type": "string", "enum": ["representative_consumer", "destination"] }
+      },
+      "required": ["native_version_ref", "observed_through"],
+      "additionalProperties": false
+    }
   },
-  "required": ["verified_at", "verification_path", "row_count"],
+  "required": ["verified_at", "verification_path", "row_count", "canonical_content_digest"],
+  "x-adcp-validation": {
+    "consumer_recomputation": "canonical_content_digest MUST be recomputed through verification_path over the exact selected resource before available/delivered or downstream commit; it MUST equal the referenced revision digest and row_count.",
+    "native_version_match": "When native_commit_evidence is present, native_version_ref MUST equal resource.native_version_ref and observed_through MUST match the consumer/destination verification path.",
+    "checksum_binding": "Every physical_checksums.object_ref MUST be an object selected by this exact immutable resource/manifest; algorithm and value length MUST agree."
+  },
   "additionalProperties": false
 }

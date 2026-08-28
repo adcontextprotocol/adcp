@@ -14,9 +14,9 @@ reporting delivery. It answers whether every report that should exist is present
 usable. It does not replace [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
 as the reporting-data API.
 
-**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-request.json)
+**Request schema:** [`get-reporting-status-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-reporting-status-request.json)
 
-**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-reporting-status-response.json)
+**Response schema:** [`get-reporting-status-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-reporting-status-response.json)
 
 ## Views
 
@@ -25,8 +25,8 @@ Every request explicitly selects one response shape:
 | View | Use |
 | --- | --- |
 | `summary` | Answer “where is my reporting?” for an account, media-buy, and time scope. |
-| `periods` | Enumerate the cursor-paginated obligation ledger, including all retained revisions and materialization attempts. |
-| `revision` | Resolve one exact `reporting_revision_id` and its resources. |
+| `periods` | Enumerate a flat cursor-paginated ledger of obligations, retained revisions, and materialization attempts. |
+| `revision` | Resolve one exact `reporting_revision_id` and a cursor-paginated page of materialization attempts. |
 
 SDKs may default a convenience `status()` call to `summary`; the wire request remains
 explicit so adding a filter never silently changes the response type.
@@ -35,6 +35,8 @@ explicit so adding a filter never silently changes the response type.
 {
   "account": { "account_id": "acc_123" },
   "view": "summary",
+  "delivery_config_ids": ["analytics-daily"],
+  "feed_purposes": ["analytics"],
   "period": {
     "start": "2026-08-01T00:00:00Z",
     "end": "2026-08-28T00:00:00Z"
@@ -53,7 +55,18 @@ explicit so adding a filter never silently changes the response type.
     "period_start": "2026-08-01T00:00:00Z",
     "period_end": "2026-08-28T00:00:00Z",
     "scope_closed": false,
-    "all_accessible_media_buys": true
+    "all_accessible_media_buys": true,
+    "delivery_config_generations": [
+      {
+        "delivery_config_id": "analytics-daily",
+        "delivery_config_version": 1,
+        "feed_purpose": "analytics"
+      }
+    ],
+    "feed_purposes": ["analytics"],
+    "finality": ["official"],
+    "ledger_retained_from": "2026-07-29T00:00:00Z",
+    "coverage_complete": true
   },
   "health": "action_required",
   "data_through": "2026-08-26T00:00:00Z",
@@ -89,12 +102,18 @@ explicit so adding a filter never silently changes the response type.
 | `waiting` | No obligation in this active scope is due yet. |
 | `delayed` | At least one obligation is late but still inside automatic recovery. |
 | `action_required` | An SLA or retry boundary was crossed; `issues[]` supplies the human action. |
-| `complete` | This scope is closed and every applicable official obligation and required materialization is satisfied. |
+| `complete` | This scope is closed, fully covered by retained ledger history, and every obligation has its required finality and a verified readable materialization. |
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
 `waiting` applies only when nothing is due. `complete` requires
 `scope.scope_closed: true`; a current but open account scope is `healthy`, not
 `complete`.
+
+Health is evaluated over the exact `delivery_config_generations`, `feed_purposes`,
+finality, media buys, and time horizon echoed in `scope`. Buyers can query billing,
+analytics, and pacing independently; a delayed analytics feed cannot silently taint or
+hide billing status. A snapshot-required pacing obligation can become `complete` from
+a snapshot revision—`complete` means required finality, not always `official`.
 
 ## Reliability model
 
@@ -104,17 +123,28 @@ The periods view keeps three facts distinct:
   webhook is detectable.
 - A **revision** is one immutable emitted version. A zero-row revision is real; a
   restatement gets a new ID and retains supersession lineage.
-- A **materialization** is one attempt to expose that revision through an inline
-  webhook, file transfer, dataset share, or warehouse. A retry gets a new
+- A **materialization** is one attempt to expose that revision through a durable file
+  transfer, dataset share, or warehouse. A retry gets a new
   materialization ID but keeps the same revision ID.
 
 All historical revisions retained under the advertised capability window appear in
 the ledger. Consumers must not assume the latest restatement is the only relevant
 revision.
 
-`reporting_revision_id` is the portable AdCP identity. `native_version_ref` is optional
-platform evidence—for example a Delta version, Snowflake object identity, BigQuery job,
-or manifest generation—and never substitutes for the AdCP ID.
+`reporting_revision_id` is the portable AdCP identity. Every ready resource selects
+immutable bytes or an immutable native snapshot/version—for example a Delta version,
+Snowflake object identity, BigQuery snapshot, or manifest generation—and never
+substitutes for the AdCP ID. Revision and verification row counts and canonical
+digests must agree.
+
+Per-buy `reporting_webhook` remains the existing low-latency data API. It is not a
+durable materialization in this first managed-ledger version; a short-period pacing
+configuration plus the signed readiness doorbell is the reliable fast path here.
+
+Periods pagination applies to the flat union of `periods[]` obligation records,
+`revisions[]`, and `materializations[]`, so one heavily restated or retried period
+cannot create an unbounded nested response. Each obligation's record counts let the
+SDK prove it found the complete associated history across pages.
 
 ## Readiness and recovery
 
@@ -127,7 +157,9 @@ The webhook contains only account, configuration, revision, materialization, fin
 and freshness metadata. Receivers call `get_reporting_status` to resolve the resource.
 Credentials, signed URLs, activation URLs, and object lists never belong in the event.
 
-Delivery is at least once and may be out of order. SDKs combine webhook deduplication,
+Delivery is signed, at least once, and may be out of order. SDKs deduplicate transport
+retries by authenticated sender plus `idempotency_key`, deduplicate ingestion by
+revision/materialization identity, and combine this with
 periodic status polling, checksum verification, and a durable local checkpoint to
 produce effectively-once downstream publication. The protocol does not claim
 exactly-once network delivery.
@@ -137,17 +169,21 @@ exactly-once network delivery.
 Account durable-delivery desired state is configured through
 `sync_accounts.accounts[].reporting_delivery_configs[]`. Replacement is scoped to the
 authenticated caller and account; one caller cannot remove another caller's entries.
-Each method carries a `destination` in one of two modes:
+Each entry is an immutable `(delivery_config_id, delivery_config_version)` generation;
+changing scope, schedule, profile, method, or destination requires a higher version.
+It selects one atomic `offering_id` advertised by the seller and carries a
+`destination` in one of two modes:
 
 - `provision` supplies non-secret provider coordinates and asks the seller to create
   or validate the binding; and
 - `existing` supplies the seller-issued `destination_ref` returned by an earlier sync.
 
-For a Databricks dataset share, the buyer sends the provider, access mode
-(`databricks_to_databricks` or `open_sharing`), and its recipient identity. The seller
+For a Databricks dataset share, the buyer selects an atomic offering with one provider,
+access mode, transport, and orchestration combination, then sends its recipient
+identity. The seller
 creates the share/recipient binding. For a buyer-owned warehouse or object store, the
-buyer sends its provider-native location and grants the seller one of the
-`producer_identities` advertised in capabilities. A consumer-managed transfer such as
+buyer sends its provider-native location and grants the seller the
+`producer_identity` advertised in the selected atomic offering. A consumer-managed transfer such as
 GAM to BigQuery uses the same provisioned-location shape even though the transfer
 service, rather than the seller process, writes the table.
 
@@ -158,12 +194,14 @@ service, rather than the seller process, writes the table.
 `action_required`, and `inactive` distinguish binding setup from report delivery
 health. Once resolved, the seller returns a stable `destination_ref`. When a provider
 requires an interactive grant or Open Sharing activation, `setup` may return an HTTPS
-authenticated entry point and a concrete action. It must never be a bearer URL or
-contain credentials.
+authenticated entry point and a concrete action. Agents must not fetch, preview, or
+interpret it; they surface it for explicit human action. It must use a seller/provider
+origin and never be a bearer URL or contain credentials.
 
 Each configuration represents one independently reconciled feed. `feed_purpose`
-distinguishes fast `pacing`, `analytics`, invoice-authoritative `billing`, and
-authorized `exposure` data. `schedule.period_duration`, `schedule.alignment`, and
+distinguishes fast `pacing`, `analytics`, and invoice-authoritative `billing` data.
+Event-level exposure delivery is deferred until it has a separate privacy and
+authorization contract. `schedule.period_duration`, `schedule.alignment`, and
 `schedule.delivery_sla` determine which period obligations must exist and when they
 become overdue. Install multiple configurations when the buyer needs, for example, a
 15-minute snapshot pacing feed, daily official analytics, and billing-cycle official
@@ -179,24 +217,51 @@ Supported patterns are:
 Orchestration is declared separately as `producer_managed` or `consumer_managed`.
 It does not imply who owns the destination or which platform service writes it.
 
-The experimental capability advertises supported patterns/transports, formats and
-reader constraints, reporting profiles/finality, automatic recovery duration, and
-status/resource retention. Explicit acknowledgement and replay tasks are deferred;
+The experimental capability advertises atomic feed/profile/schema/schedule/finality/
+method offerings, automatic recovery duration, metadata retention, exact-resource
+retention, authorization revocation latency, and reader constraints. Explicit
+acknowledgement and replay tasks are deferred;
 ordinary missed-event recovery reads retained immutable resources through this task.
+
+Each profile includes an exact HTTPS schema URI and SHA-256 digest. SDKs fetch only
+from the authenticated seller, named provider, or AdCP registry origin; reject IP
+literals, private/reserved DNS, userinfo, redirects, and DNS/connect mismatch; cap
+response bytes/time/content type; and verify the digest before parsing. Schema content
+and annotations are untrusted data, never agent instructions. Schemas are
+self-contained bundles using the closed, SDK-bundled JSON Schema 2020-12 dialect.
+SDKs install no network resolver and recursively reject every non-fragment `$ref`, all
+`$dynamicRef`/`$recursiveRef` keywords, unknown metaschemas/vocabularies, reference
+cycle, excessive depth/node count, and oversized regex before compilation.
 
 ## Complete reconciliation
 
 Every response carries `ledger_snapshot_id` and `ledger_as_of`. A periods cursor is
 bound to that immutable snapshot, every page repeats its identity, and
 `pagination.total_count` is required. SDKs reject a changed snapshot identity, dedupe
-obligations by `reporting_obligation_id`, and finish only when the unique stored count
-equals `total_count`. Later revisions are discovered by the next reconciliation; they
+each record by its type-specific immutable ID, and finish only when the unique stored
+record count equals `total_count` and each obligation's revision/materialization counts
+match. Later revisions are discovered by the next reconciliation; they
 never move the result set underneath an in-progress page walk.
+
+`scope.ledger_retained_from` and `scope.coverage_complete` prevent expired history from
+looking complete. Metadata may outlive physical resources; each completed obligation
+also states `resource_retained_until`, and at least one exact verified resource remains
+readable through that time and the advertised resource-retention window. Outside those boundaries, the seller reports an
+explicit unavailable/error condition rather than silently claiming completeness.
 
 Deferring a separate replay mutation does not defer recovery. Missing webhooks,
 duplicates, out-of-order notifications, zero-row periods, failed materializations, and
 restatements all converge through the obligation ledger. A buyer-side safety policy
 may react to `delayed` or `action_required` by calling the existing
 [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) task with its
-normal revision and idempotency protections. This read task never pauses spend
-implicitly.
+normal revision and idempotency protections. Automatic pause is an explicit buyer SDK
+policy and must use at least two fresh authenticated reads across a grace interval for
+a selected pacing or billing feed. The exact buy must be in the issue scope and the
+cause must be seller-responsible overdue production/delivery, not buyer/provider setup.
+Pauses are idempotent, never trigger from a webhook alone or an unselected analytics
+feed, and never auto-resume spend. This read task never pauses spend implicitly.
+
+The authenticated caller identity comes from transport authentication, not payload
+fields. Accounts, destination bindings, cursors, snapshots, revisions,
+materializations, and resources are caller/account scoped; unknown and unauthorized
+identifiers return indistinguishable errors.

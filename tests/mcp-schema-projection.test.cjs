@@ -236,6 +236,21 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.extensions.additionalProperties, true);
   assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+
+  const negotiated = stripModelContextAnnotations({
+    type: 'object',
+    properties: {
+      ext: {
+        type: 'object',
+        additionalProperties: true,
+        'x-adcp-model-context': 'include',
+      },
+    },
+  });
+  assert.deepEqual(negotiated.properties.ext, {
+    type: 'object',
+    additionalProperties: true,
+  });
 });
 
 test('model-context pruning removes only unreachable root definitions', () => {
