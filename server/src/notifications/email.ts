@@ -19,7 +19,8 @@ if (!RESEND_API_KEY) {
 }
 
 const FROM_EMAIL = 'AgenticAdvertising.org <hello@updates.agenticadvertising.org>';
-const FROM_EMAIL_ADDIE = 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>';
+const ADDIE_EMAIL_ADDRESS = 'addie@updates.agenticadvertising.org';
+const FROM_EMAIL_ADDIE = `Addie from AgenticAdvertising.org <${ADDIE_EMAIL_ADDRESS}>`;
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
 
 /**
@@ -819,7 +820,7 @@ export async function sendEmailReply(data: {
   htmlContent: string;
   textContent: string;
   fromName?: string; // Name to show (defaults to "Addie from AgenticAdvertising.org")
-  fromEmail?: string; // Email address to send from (defaults to addie@agenticadvertising.org)
+  fromEmail?: string; // Email address to send from (defaults to the verified Addie sender)
   excludeAddresses?: string[]; // Addresses to exclude from recipients (e.g., the Addie address itself)
 }): Promise<{ success: boolean; messageId?: string; error?: string }> {
   if (!resend) {
@@ -828,17 +829,21 @@ export async function sendEmailReply(data: {
   }
 
   const fromName = data.fromName || 'Addie from AgenticAdvertising.org';
-  // Validate fromEmail is from our domain to prevent spoofing
-  const ALLOWED_FROM_DOMAINS = ['agenticadvertising.org', 'updates.agenticadvertising.org'];
+  // Only send from the Resend-verified subdomain. Preserve legacy plus-address
+  // local parts so replies continue using the inbound conversation alias.
   const fromEmail = (() => {
     if (data.fromEmail) {
-      const domain = data.fromEmail.split('@')[1]?.toLowerCase();
-      if (domain && ALLOWED_FROM_DOMAINS.includes(domain)) {
+      const [localPart, domain, ...extraParts] = data.fromEmail.split('@');
+      const normalizedDomain = domain?.toLowerCase();
+      if (localPart && extraParts.length === 0 && normalizedDomain === 'updates.agenticadvertising.org') {
         return data.fromEmail;
+      }
+      if (localPart && extraParts.length === 0 && normalizedDomain === 'agenticadvertising.org') {
+        return `${localPart}@updates.agenticadvertising.org`;
       }
       logger.warn({ requestedFromEmail: data.fromEmail }, 'Rejected invalid fromEmail domain');
     }
-    return 'addie@agenticadvertising.org';
+    return ADDIE_EMAIL_ADDRESS;
   })();
   const from = `${fromName} <${fromEmail}>`;
 
@@ -1036,7 +1041,7 @@ export async function sendIntroductionEmail(data: {
 
   try {
     const { data: sendData, error } = await resend.emails.send({
-      from: 'Addie from AgenticAdvertising.org <addie@agenticadvertising.org>',
+      from: FROM_EMAIL_ADDIE,
       to: data.memberEmail,
       replyTo: data.requesterEmail,
       subject,

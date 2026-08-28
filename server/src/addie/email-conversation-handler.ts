@@ -251,7 +251,7 @@ export async function handleEmailConversation(
       textContent: outputValidation.sanitized,
       fromEmail: input.addieAddress.includes('+')
         ? input.addieAddress
-        : 'addie@agenticadvertising.org',
+        : 'addie@updates.agenticadvertising.org',
     });
 
     if (!replyResult.success) {
