@@ -21,7 +21,7 @@
     "server/src/addie/handler.ts": "cf9d66b7b2700cefd2811d2d9c627ea2683c556e6c3afd36ecc99cac12aa5407",
     "server/src/routes/addie-chat.ts": "da80a42faf005441f4afbf1d003ccb7067dbd4e87b90dae96c0023511806fc08",
     "server/src/routes/tavus.ts": "640e818f0ecd4da6c72f310b7582f7bc1f2c00fd77dbe0dc521f53459e31003f",
-    "server/src/addie/email-conversation-handler.ts": "c094474b506fe9d695122bf451c79930d5e5f3f0dc56d3e77c5c2b3f3b66e9e5",
+    "server/src/addie/email-conversation-handler.ts": "091feb8569d9d254351c2c37b11747e34d3e5f6777bc362e5de750c05568a4a5",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
     "server/src/addie/tool-sets.ts": "a6a375c9c4e360d3628a465acaf9892f844e17346433f1523ee9cd4573525838"
