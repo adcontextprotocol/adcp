@@ -61,7 +61,9 @@ These parameters are negotiated between buyer and seller during product discover
 sequenceDiagram
     participant Brand
     participant Buyer as Buyer Agent
+    participant BuyerReviewer as Buyer-side Human Reviewer
     participant Seller as Seller Agent
+    participant SellerReviewer as Seller-side Human Reviewer
     participant Verifier as Verification Agent
 
     Note over Brand,Verifier: 1. SETUP PHASE
@@ -75,8 +77,16 @@ sequenceDiagram
     Seller->>Verifier: calibrate_content (sample artifacts)
     Verifier-->>Seller: verdict + explanation
     Seller->>Verifier: "What about this edge case?"
+    opt Optional buyer-side human review (internal, not an AdCP task)
+        Verifier->>BuyerReviewer: Escalate policy interpretation
+        BuyerReviewer-->>Verifier: Policy judgment + rationale
+    end
     Verifier-->>Seller: clarification
-    Note over Seller: Seller builds local model
+    opt Optional seller-side human review (internal, not an AdCP task)
+        Seller->>SellerReviewer: Validate local treatment against clarification
+        SellerReviewer-->>Seller: Content judgment + rationale
+    end
+    Note over Seller: Seller updates local model from calibration outcomes
 
     Note over Brand,Verifier: 3. RUNTIME PHASE
     loop High-volume decisioning
