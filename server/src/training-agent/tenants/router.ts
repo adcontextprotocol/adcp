@@ -33,6 +33,7 @@ import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 import { PUBLISHERS } from '../publishers.js';
+import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
 
 const logger = createLogger('training-agent-tenant-router');
@@ -402,7 +403,25 @@ function tenantMcpHandler(
         && req.body.params.arguments
         && typeof req.body.params.arguments === 'object'
       ) {
+        // Internal scope is derived only from the authenticated credential.
+        // Scrub any caller value even when no buyer agent resolves.
+        delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
+        const credential = apiKeyCredential(req, principal);
+        const demoToken = principal.startsWith('static:demo:')
+          ? principal.slice('static:demo:'.length)
+          : undefined;
+        const buyerAgent = await trainingBuyerAgentRegistry.resolve({
+          credential,
+          ...(demoToken && { extra: { demo_token: demoToken } }),
+          input: req.body.params.arguments,
+        });
+        // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
+        // Re-resolve from the same trusted credential inputs here so the
+        // administrative controller can address only this caller's task.
+        if (buyerAgent?.agent_url) {
+          req.body.params.arguments.__training_task_owner_scope = `agent:${buyerAgent.agent_url}`;
+        }
       }
 
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {

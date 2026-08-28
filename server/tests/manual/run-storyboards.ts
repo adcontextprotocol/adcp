@@ -221,10 +221,6 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
     'wholesale_feed_signals_scope_isolation',
     'The beta.12 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
   ],
-  [
-    'media_buy_seller/refine_finalize_exclusivity',
-    'The vector assumes brief discovery returns at least two proposals, although supports_proposals does not commit a seller to that cardinality and the storyboard seeds no proposal fixtures. Remove when the vector deterministically seeds two proposals or gates the multi-finalize branch on an observed pair.',
-  ],
 ]);
 
 const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
@@ -318,14 +314,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'media_buy_seller/inline_creatives_without_sync/get_products_legacy_format',
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
-  ],
-  [
-    'media_buy_seller/dependency_impairment_audience/get_buy_impaired',
-    'The authored impairment.coherence invariant attempts to resolve an audience status from public media-buy state, but the audience lifecycle is controller-internal and has no read task. The step-level health and impairment assertions pass; remove when the invariant consumes controller state or the protocol exposes an audience read.',
-  ],
-  [
-    'signals_baseline/get_signals_async/list_signals_task_wrong_account',
-    'The packaged framework task registry does not apply the request account when list_tasks filters by task_id, exposing the same authenticated caller task across sandbox accounts. The submitted, same-account listing, and completion phases remain active. Remove when task registry reads enforce account scope.',
   ],
   [
     'governance_delivery_monitor/check_governance_drift',
