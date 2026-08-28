@@ -57,7 +57,7 @@ import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
-import { registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
+import { registerSharedPublicBrandPartition, runWithSessionContext } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
