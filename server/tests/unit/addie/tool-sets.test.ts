@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { getToolsForSets, ALWAYS_AVAILABLE_TOOLS, ALWAYS_AVAILABLE_ADMIN_TOOLS, TOOL_SETS, buildUnavailableSetsHint } from '../../../src/addie/tool-sets.js';
+import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
+import {
+  ADMIN_DOMAIN_TOOL_SETS,
+  ALWAYS_AVAILABLE_ADMIN_TOOLS,
+  ALWAYS_AVAILABLE_TOOLS,
+  LEGACY_ADMIN_TOOLS,
+  TOOL_SETS,
+  buildUnavailableSetsHint,
+  getToolsForSets,
+  getValidToolSetNames,
+} from '../../../src/addie/tool-sets.js';
 
 describe('getToolsForSets', () => {
   describe('admin always-available tools', () => {
@@ -22,6 +32,132 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('bounded admin domains', () => {
+    it('keeps every router-visible admin domain at twelve tools or fewer', () => {
+      for (const [name, tools] of Object.entries(ADMIN_DOMAIN_TOOL_SETS)) {
+        expect(tools.length, name).toBeLessThanOrEqual(12);
+        expect(TOOL_SETS[name].tools).toEqual(tools);
+      }
+    });
+
+    it('preserves the exact 66-tool legacy surface without exposing it to new router plans', () => {
+      expect(LEGACY_ADMIN_TOOLS).toHaveLength(66);
+      expect(new Set(LEGACY_ADMIN_TOOLS).size).toBe(66);
+      expect(TOOL_SETS.admin.tools).toEqual(LEGACY_ADMIN_TOOLS);
+      expect(TOOL_SETS.admin.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin')).toBe(false);
+    });
+
+    it('loads only the selected admin domain and rejects it for non-admins', () => {
+      const adminTools = getToolsForSets(['admin_prospects'], true, false);
+      expect(adminTools).toContain('query_prospects');
+      expect(adminTools).not.toContain('merge_organizations');
+      expect(adminTools).not.toContain('create_event');
+
+      const memberTools = getToolsForSets(['admin_prospects'], false, false);
+      expect(memberTools).not.toContain('query_prospects');
+    });
+
+    it('keeps the legacy set callable only as a continuity shim', () => {
+      const tools = getToolsForSets(['admin'], true, false);
+      expect(tools).toContain('query_prospects');
+      expect(tools).toContain('merge_organizations');
+      expect(buildUnavailableSetsHint([], true)).not.toContain('**admin**');
+    });
+
+    it('generates the compact catalog from router-visible domains only', () => {
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organizations**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin** *(admin only)*');
+    });
+  });
+
+  describe('certification workflow', () => {
+    it('keeps every instructed checkpoint, build, feedback, and credential-recovery tool on the routed surface', () => {
+      const tools = getToolsForSets(['certification'], false, false);
+
+      expect(tools).toEqual(expect.arrayContaining([
+        'start_certification_module',
+        'complete_certification_module',
+        'check_credentials',
+        'checkpoint_teaching_progress',
+        'get_build_phase_instructions',
+        'save_learner_feedback',
+        'set_my_name',
+        'find_membership_products',
+        'call_adcp_task',
+      ]));
+    });
+  });
+
+  describe('Sponsored Intelligence workflow', () => {
+    it('exposes the complete SI host surface only when its domain is selected', () => {
+      const siTools = [
+        'get_si_availability',
+        'list_si_agents',
+        'connect_to_si_agent',
+        'send_to_si_agent',
+        'end_si_session',
+        'get_si_session_status',
+      ];
+
+      expect(getToolsForSets(['sponsored_intelligence'], false, false)).toEqual(
+        expect.arrayContaining(siTools),
+      );
+      expect(getToolsForSets(['knowledge'], false, false)).not.toEqual(
+        expect.arrayContaining(siTools),
+      );
+    });
+  });
+
+  describe('property catalog workflow', () => {
+    it('routes the complete audit, enrichment, catalog, and dispute surface', () => {
+      expect(getToolsForSets(['agent_testing'], false, false)).toEqual(
+        expect.arrayContaining([
+          'check_property_list',
+          'enhance_property',
+          'resolve_catalog',
+          'browse_catalog',
+          'dispute_catalog_entry',
+        ]),
+      );
+    });
+  });
+
+  describe('brand canonical-document workflow', () => {
+    it('routes the complete publish, reciprocity, notification, and logo surface', () => {
+      expect(getToolsForSets(['directory'], false, false)).toEqual(
+        expect.arrayContaining([
+          'upload_brand_logo',
+          'publish_brand_canonical_document',
+          'add_to_brand_refs',
+          'check_mutual_assertion',
+          'notify_pending_verification',
+        ]),
+      );
+    });
+  });
+
+  describe('member billing workflow', () => {
+    it('exposes only identity-bound self-service tools to members', () => {
+      const tools = getToolsForSets(['member_billing'], false, false);
+      const memberBillingTools = [
+        'find_membership_products',
+        'create_payment_link',
+        'send_invoice',
+        'confirm_send_invoice',
+        'get_billing_portal',
+      ];
+
+      expect(TOOL_SETS.member_billing.tools).toEqual(memberBillingTools);
+      expect(tools).toEqual(expect.arrayContaining(memberBillingTools));
+      for (const adminTool of TOOL_SETS.billing.tools) {
+        expect(tools).not.toContain(adminTool);
+      }
+      expect(TOOL_SETS.billing.tools.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);
@@ -38,9 +174,9 @@ describe('getToolsForSets', () => {
       expect(tools).toContain('get_account_link');
     });
 
-    it('skips billing tool set in public channels', () => {
-      const billingTools = TOOL_SETS.billing.tools;
-      const tools = getToolsForSets(['billing'], true, true);
+    it('skips member and admin billing sets in public channels', () => {
+      const billingTools = [...TOOL_SETS.member_billing.tools, ...TOOL_SETS.billing.tools];
+      const tools = getToolsForSets(['member_billing', 'billing'], true, true);
       for (const billingTool of billingTools) {
         expect(tools).not.toContain(billingTool);
       }
@@ -48,7 +184,8 @@ describe('getToolsForSets', () => {
 
     it('includes billing tool set in private channels for admins', () => {
       const tools = getToolsForSets(['billing'], true, false);
-      expect(tools).toContain('find_membership_products');
+      expect(tools).toContain('send_payment_request');
+      expect(tools).not.toContain('find_membership_products');
     });
 
     it('keeps Stripe customer relinks behind the precision-gated billing set', () => {

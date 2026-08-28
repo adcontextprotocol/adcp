@@ -12,6 +12,7 @@
 import { randomUUID } from 'crypto';
 import { query, getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
+import type { LocalModelResponseReason, ModelExecution, ModelFallbackReason, ModelProviderId, ModelResolution } from './model-providers/model-provider.js';
 
 const logger = createLogger('addie-thread-service');
 
@@ -112,9 +113,8 @@ export interface Thread {
   updated_at: Date;
 }
 
-export interface CreateMessageInput {
+interface CreateMessageInputBase {
   thread_id: string;
-  role: MessageRole;
   content: string;
   content_sanitized?: string;
   tools_used?: string[];
@@ -168,6 +168,12 @@ export interface CreateMessageInput {
   finalize_client_turn_status?: 'completed' | 'interrupted';
 }
 
+export type CreateMessageInput = CreateMessageInputBase & (
+  /** Atomic requested/actual provider identity for every assistant response. */
+  | { role: 'assistant'; model_execution: ModelExecution }
+  | { role: Exclude<MessageRole, 'assistant'>; model_execution?: never }
+);
+
 export interface ThreadMessage {
   message_id: string;
   thread_id: string;
@@ -178,6 +184,14 @@ export interface ThreadMessage {
   tool_calls: Array<{ name: string; input: unknown; result: unknown; duration_ms?: number; is_error?: boolean }> | null;
   knowledge_ids: number[] | null;
   model: string | null;
+  model_execution_source: 'provider' | 'local' | 'legacy' | null;
+  requested_model_provider: ModelProviderId | null;
+  requested_model: string | null;
+  model_provider: ModelProviderId | null;
+  provider_model: string | null;
+  provider_model_resolution: ModelResolution | null;
+  provider_fallback_reason: ModelFallbackReason | null;
+  local_response_reason: LocalModelResponseReason | null;
   latency_ms: number | null;
   tokens_input: number | null;
   tokens_output: number | null;
@@ -529,14 +543,16 @@ export class ThreadService {
       const result = await client.query<ThreadMessage>(
         `INSERT INTO addie_thread_messages (
           thread_id, role, content, content_sanitized, tools_used, tool_calls,
-          knowledge_ids, model, latency_ms, tokens_input, tokens_output,
+          knowledge_ids, model, model_execution_source, requested_model_provider, requested_model,
+          model_provider, provider_model, provider_model_resolution, provider_fallback_reason, local_response_reason,
+          latency_ms, tokens_input, tokens_output,
           flagged, flag_reason, sequence_number,
           timing_system_prompt_ms, timing_total_llm_ms, timing_total_tool_ms,
           processing_iterations, tokens_cache_creation, tokens_cache_read, active_rule_ids,
           router_decision, config_version_id, email_message_id,
           user_id, user_display_name, message_source,
           client_request_id, delivery_status
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
         RETURNING *`,
         [
           input.thread_id,
@@ -547,6 +563,14 @@ export class ThreadService {
           input.tool_calls ? stripNullBytesFromJson(JSON.stringify(input.tool_calls)) : null,
           input.knowledge_ids ?? null,
           input.model ?? null,
+          input.model_execution?.source ?? null,
+          input.model_execution?.requested_provider ?? null,
+          input.model_execution?.requested_model ?? null,
+          input.model_execution?.source === 'provider' ? input.model_execution.provider : null,
+          input.model_execution?.source === 'provider' ? stripNullBytesString(input.model_execution.model) : null,
+          input.model_execution?.source === 'provider' ? input.model_execution.model_resolution : null,
+          input.model_execution?.source === 'provider' ? input.model_execution.fallback_reason : null,
+          input.model_execution?.source === 'local' ? input.model_execution.reason : null,
           input.latency_ms ?? null,
           input.tokens_input ?? null,
           input.tokens_output ?? null,
@@ -809,6 +833,10 @@ export class ThreadService {
     const result = await query(
       `UPDATE addie_thread_messages
        SET
+         model_execution_source = CASE
+           WHEN role = 'assistant' THEN COALESCE(model_execution_source, 'legacy')
+           ELSE model_execution_source
+         END,
          rating = $2,
          rating_category = $3,
          rating_notes = $4,
@@ -839,7 +867,14 @@ export class ThreadService {
    */
   async flagMessage(messageId: string, reason: string): Promise<void> {
     await query(
-      `UPDATE addie_thread_messages SET flagged = TRUE, flag_reason = $2 WHERE message_id = $1`,
+      `UPDATE addie_thread_messages
+       SET model_execution_source = CASE
+             WHEN role = 'assistant' THEN COALESCE(model_execution_source, 'legacy')
+             ELSE model_execution_source
+           END,
+           flagged = TRUE,
+           flag_reason = $2
+       WHERE message_id = $1`,
       [messageId, reason]
     );
   }
@@ -855,7 +890,13 @@ export class ThreadService {
   ): Promise<void> {
     await query(
       `UPDATE addie_thread_messages
-       SET outcome = $2, user_sentiment = $3, intent_category = $4
+       SET model_execution_source = CASE
+             WHEN role = 'assistant' THEN COALESCE(model_execution_source, 'legacy')
+             ELSE model_execution_source
+           END,
+           outcome = $2,
+           user_sentiment = $3,
+           intent_category = $4
        WHERE message_id = $1`,
       [messageId, outcome, sentiment || null, intentCategory || null]
     );
@@ -1056,25 +1097,6 @@ export class ThreadService {
       // No linked Slack - just return web threads
       return this.getUserThreads(workosUserId, 'workos', limit);
     }
-  }
-
-  /**
-   * Get a user's most recent thread (for proactive messages)
-   */
-  async getUserRecentThread(
-    userId: string,
-    userType: UserType,
-    maxAgeMinutes = 30
-  ): Promise<Thread | null> {
-    const result = await query<Thread>(
-      `SELECT * FROM addie_threads
-       WHERE user_type = $1 AND user_id = $2
-         AND last_message_at > NOW() - make_interval(mins => $3)
-       ORDER BY last_message_at DESC
-       LIMIT 1`,
-      [userType, userId, maxAgeMinutes]
-    );
-    return result.rows[0] || null;
   }
 
   /**

@@ -14,27 +14,27 @@
     "ACCOUNT_IDENTITY_CONFLICT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Account identity reconciliation returns this when a requested rekey would collide with another account's natural key. New 3.2 account wire code — held for 3.2."
+      "note": "Account identity reconciliation returns this when a requested rekey would collide with another account's natural key. New 3.2 account wire code \u2014 held for 3.2."
     },
     "ACCOUNT_MOVED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Account identity reconciliation returns this structured redirect when an authorized caller uses a tombstoned former natural key. New 3.2 account wire code — held for 3.2."
+      "note": "Account identity reconciliation returns this structured redirect when an authorized caller uses a tombstoned former natural key. New 3.2 account wire code \u2014 held for 3.2."
     },
     "ACCOUNT_REQUIRED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Cross-role governance enforcement uses this when a governed service cannot determine task applicability because neither the request nor referenced resource identifies an account. New wire code on the experimental governance.campaign surface — held for 3.2."
+      "note": "Cross-role governance enforcement uses this when a governed service cannot determine task applicability because neither the request nor referenced resource identifies an account. New wire code on the experimental governance.campaign surface \u2014 held for 3.2."
     },
     "AMBIGUOUS_BIDDING_POLICY": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Canonical 3.2 bidding-policy migration guard. Returned when a package combines the new bidding block with legacy bid_price or legacy monetary optimization targets, leaving execution policy ambiguous. New wire code — held for 3.2."
+      "note": "Canonical 3.2 bidding-policy migration guard. Returned when a package combines the new bidding block with legacy bid_price or legacy monetary optimization targets, leaving execution policy ambiguous. New wire code \u2014 held for 3.2."
     },
     "CONFLICTING_SELECTORS": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Canonical 3.2 PackageRequest migration guard. Returned when multiple resolvable format selector routes select different product format contracts. New wire code — held for 3.2."
+      "note": "Canonical 3.2 PackageRequest migration guard. Returned when multiple resolvable format selector routes select different product format contracts. New wire code \u2014 held for 3.2."
     },
     "CURSOR_EXPIRED": {
       "disposition": "held-for-next-minor",
@@ -44,27 +44,27 @@
     "BIDDING_PLACEMENT_CONFLICT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Canonical 3.2 bidding-policy placement validation. Returned when media-buy and package policies cannot be represented together by the provider's campaign/ad-set hierarchy. New wire code — held for 3.2."
+      "note": "Canonical 3.2 bidding-policy placement validation. Returned when media-buy and package policies cannot be represented together by the provider's campaign/ad-set hierarchy. New wire code \u2014 held for 3.2."
     },
     "SIGNAL_TARGETING_INCOMPATIBLE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Signal-driven creative fan-out (#5240/#5304) — reject-at-trafficking when a signal-built creative is assigned to a package with incompatible signal targeting. New 3.1 creative-fan-out surface; wire change — held for 3.1."
+      "note": "Signal-driven creative fan-out (#5240/#5304) \u2014 reject-at-trafficking when a signal-built creative is assigned to a package with incompatible signal targeting. New 3.1 creative-fan-out surface; wire change \u2014 held for 3.1."
     },
     "EVALUATOR_AGENT_NOT_ACCEPTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Creative-feature-oracle gate/rank pipeline (#5241/#5311) — off-allowlist evaluator agent_url rejection, mirroring PROVENANCE_VERIFIER_NOT_ACCEPTED for the get_creative_features-agent gate. New 3.1 creative surface; wire change — held for 3.1."
+      "note": "Creative-feature-oracle gate/rank pipeline (#5241/#5311) \u2014 off-allowlist evaluator agent_url rejection, mirroring PROVENANCE_VERIFIER_NOT_ACCEPTED for the get_creative_features-agent gate. New 3.1 creative surface; wire change \u2014 held for 3.1."
     },
     "CREATIVE_INACCESSIBLE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "get_creative_features finalization — governance agent could not retrieve the creative_manifest assets for evaluation. Documented in get_creative_features.mdx error example but absent from the canonical enum; added to close the phantom as the task is promoted from 3.0 proposal to normative in 3.1 (#3456 enum-membership criterion). Wire change — held for 3.1."
+      "note": "get_creative_features finalization \u2014 governance agent could not retrieve the creative_manifest assets for evaluation. Documented in get_creative_features.mdx error example but absent from the canonical enum; added to close the phantom as the task is promoted from 3.0 proposal to normative in 3.1 (#3456 enum-membership criterion). Wire change \u2014 held for 3.1."
     },
     "CREATIVE_LOCALE_NOT_ACCEPTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Native creative-localization assignment rejection when a package's effective format locale_policy has no eligible materialized variant. New 3.1 creative surface; wire change — held for 3.1."
+      "note": "Native creative-localization assignment rejection when a package's effective format locale_policy has no eligible materialized variant. New 3.1 creative surface; wire change \u2014 held for 3.1."
     },
     "CREATIVE_REVISION_CONTENT_MISMATCH": {
       "disposition": "held-for-next-minor",
@@ -74,52 +74,52 @@
     "FEED_FETCH_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "sync_catalogs feed-ingestion error — platform could not fetch the catalog feed URL. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+      "note": "sync_catalogs feed-ingestion error \u2014 platform could not fetch the catalog feed URL. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change \u2014 held for 3.1."
     },
     "INVALID_FEED_FORMAT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "sync_catalogs error — feed content does not match the declared feed_format. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+      "note": "sync_catalogs error \u2014 feed content does not match the declared feed_format. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change \u2014 held for 3.1."
     },
     "ITEM_VALIDATION_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "sync_catalogs error — one or more catalog items failed schema validation (see item_issues). Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+      "note": "sync_catalogs error \u2014 one or more catalog items failed schema validation (see item_issues). Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change \u2014 held for 3.1."
     },
     "CATALOG_LIMIT_EXCEEDED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "sync_catalogs error — account has reached its maximum catalog count. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change — held for 3.1."
+      "note": "sync_catalogs error \u2014 account has reached its maximum catalog count. Documented in sync_catalogs.mdx but absent from the canonical enum; added to close the phantom (#3456 follow-up). Wire change \u2014 held for 3.1."
     },
     "BUDGET_CAP_REACHED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "build_creative spend controls — emitted when a per-call max_spend ceiling stops production early (advisory on a partial BuildCreativeVariantSuccess, or terminal when even the first leaf exceeds the cap). New 3.1 creative-transformer surface; wire change — held for 3.1."
+      "note": "build_creative spend controls \u2014 emitted when a per-call max_spend ceiling stops production early (advisory on a partial BuildCreativeVariantSuccess, or terminal when even the first leaf exceeds the cap). New 3.1 creative-transformer surface; wire change \u2014 held for 3.1."
     },
     "UNPRICEABLE_OUTPUT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Creative transformers per-output pricing (transformer.pricing_options applies_to_output_format_ids) — emitted when a build targets an output no pricing option covers and none is unscoped. New 3.1 creative-transformer surface; wire change — held for 3.1."
+      "note": "Creative transformers per-output pricing (transformer.pricing_options applies_to_output_format_ids) \u2014 emitted when a build targets an output no pricing option covers and none is unscoped. New 3.1 creative-transformer surface; wire change \u2014 held for 3.1."
     },
     "ACTION_NOT_ALLOWED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Pairs with allowed_actions[] / available_actions[] surface (#4480). Returned when an update_media_buy mutation maps to an action not currently available on the buy; carries structured error.details (attempted_action, reason, currently_available_actions) so buyer SDKs can offer recovery without re-fetching. Wire change — held for 3.1."
+      "note": "Pairs with allowed_actions[] / available_actions[] surface (#4480). Returned when an update_media_buy mutation maps to an action not currently available on the buy; carries structured error.details (attempted_action, reason, currently_available_actions) so buyer SDKs can offer recovery without re-fetching. Wire change \u2014 held for 3.1."
     },
     "AUTH_INVALID": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "AUTH_REQUIRED split (#3739) — terminal-recovery half (credentials presented but rejected). Wire change — held for 3.1. Pairs with AUTH_MISSING."
+      "note": "AUTH_REQUIRED split (#3739) \u2014 terminal-recovery half (credentials presented but rejected). Wire change \u2014 held for 3.1. Pairs with AUTH_MISSING."
     },
     "AUTHORIZATION_REQUIRED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Published-post reference creatives can require additional creator, identity, or post authorization before serving. Wire change — held for 3.1."
+      "note": "Published-post reference creatives can require additional creator, identity, or post authorization before serving. Wire change \u2014 held for 3.1."
     },
     "AUTH_MISSING": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "AUTH_REQUIRED split (#3739) — correctable-recovery half (no credentials presented). Wire change — held for 3.1. Pairs with AUTH_INVALID."
+      "note": "AUTH_REQUIRED split (#3739) \u2014 correctable-recovery half (no credentials presented). Wire change \u2014 held for 3.1. Pairs with AUTH_INVALID."
     },
     "AGENT_BLOCKED": {
       "disposition": "held-for-next-minor",
@@ -144,7 +144,7 @@
     "BILLING_OUT_OF_BAND": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Creative-agent report_usage rejection for accounts that bill via a non-AdCP channel (flat license, SaaS contract, bundled enterprise). Pairs with capabilities.creative.bills_through_adcp pre-call discriminator (#2881). Distinct from BILLING_NOT_SUPPORTED (per-value rejection on a billable account) — this signals the whole billing surface is offline. Wire change — held for 3.1."
+      "note": "Creative-agent report_usage rejection for accounts that bill via a non-AdCP channel (flat license, SaaS contract, bundled enterprise). Pairs with capabilities.creative.bills_through_adcp pre-call discriminator (#2881). Distinct from BILLING_NOT_SUPPORTED (per-value rejection on a billable account) \u2014 this signals the whole billing surface is offline. Wire change \u2014 held for 3.1."
     },
     "BRAND_REQUIRED": {
       "disposition": "held-for-next-minor",
@@ -159,7 +159,7 @@
     "CREATIVE_VALUE_NOT_ALLOWED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Pairs with text-asset-requirements.allowed_values (#4331). Closed-set creative validation rejection. Wire change — held for 3.1."
+      "note": "Pairs with text-asset-requirements.allowed_values (#4331). Closed-set creative validation rejection. Wire change \u2014 held for 3.1."
     },
     "CREDENTIAL_IN_ARGS": {
       "disposition": "held-for-next-major",
@@ -174,7 +174,7 @@
     "IDEMPOTENCY_IN_FLIGHT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Pairs with security.mdx#idempotency rule 9 (first-insert-wins / concurrent-retry resolution). Lets sellers reject-and-redirect on concurrent retry instead of blocking; buyers retry with the same key after the top-level error.retry_after. Wire change — held for 3.1."
+      "note": "Pairs with security.mdx#idempotency rule 9 (first-insert-wins / concurrent-retry resolution). Lets sellers reject-and-redirect on concurrent retry instead of blocking; buyers retry with the same key after the top-level error.retry_after. Wire change \u2014 held for 3.1."
     },
     "PAYMENT_TERMS_NOT_SUPPORTED": {
       "disposition": "held-for-next-minor",
@@ -204,7 +204,7 @@
     "PROVENANCE_SYNTHETIC_DEPICTION_MISSING": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Synthetic-depiction declaration policy gate (#6512). Additive 3.2 provenance error vocabulary — held for 3.2."
+      "note": "Synthetic-depiction declaration policy gate (#6512). Additive 3.2 provenance error vocabulary \u2014 held for 3.2."
     },
     "PROVENANCE_DISCLOSURE_MISSING": {
       "disposition": "held-for-next-minor",
@@ -239,32 +239,32 @@
     "FORMAT_PROJECTION_FAILED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Canonical-formats v1→v2 projection advisory (#3307). Non-fatal; surfaces on get_products errors[] when an SDK can't project a v1 named format to a v2 canonical via the registry. Wire change — held for 3.1."
+      "note": "Canonical-formats v1\u2192v2 projection advisory (#3307). Non-fatal; surfaces on get_products errors[] when an SDK can't project a v1 named format to a v2 canonical via the registry. Wire change \u2014 held for 3.1."
     },
     "FORMAT_DECLARATION_DIVERGENT": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
+      "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change \u2014 held for 3.1."
     },
     "FORMAT_SHAPE_PROMOTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
-      "note": "Canonical-format promotion advisory for legacy custom declarations after seller_rendered_stateful_display and coordinated_placements become first-class in 3.2. Additive wire code — held for 3.2."
+      "note": "Canonical-format promotion advisory for legacy custom declarations after seller_rendered_stateful_display and coordinated_placements become first-class in 3.2. Additive wire code \u2014 held for 3.2."
     },
     "FORMAT_DECLARATION_V1_AMBIGUOUS": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Canonical-formats v1-ambiguity advisory (#3307; adcp-client #1815). Non-fatal; surfaces when registry has only family-level structural entries for a canonical (no invertible literal) so SDK can't pick a specific v1 format_id mechanically. SDKs MUST NOT synthesize — seller MUST author v1_format_ref on the v2 declaration. Wire change — held for 3.1."
+      "note": "Canonical-formats v1-ambiguity advisory (#3307; adcp-client #1815). Non-fatal; surfaces when registry has only family-level structural entries for a canonical (no invertible literal) so SDK can't pick a specific v1 format_id mechanically. SDKs MUST NOT synthesize \u2014 seller MUST author v1_format_ref on the v2 declaration. Wire change \u2014 held for 3.1."
     },
     "FORMAT_OPTION_UNRESOLVED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Canonical-formats format-option resolution advisory (#3307; #4620). Non-fatal; surfaces when a placement's `format_options[].format_option_id` references a format option not declared in the file's top-level `formats[]`. Same-file scope only (cross-file lookup not supported by design). Wire change — held for 3.1."
+      "note": "Canonical-formats format-option resolution advisory (#3307; #4620). Non-fatal; surfaces when a placement's `format_options[].format_option_id` references a format option not declared in the file's top-level `formats[]`. Same-file scope only (cross-file lookup not supported by design). Wire change \u2014 held for 3.1."
     },
     "FORMAT_NOT_SUPPORTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Creative-agent canonical build routing rejection (#4591). Returned by build_creative when target_format_id.id is not an advertised creative.supported_formats[].capability_id or supported legacy named format. Wire change — held for 3.1."
+      "note": "Creative-agent canonical build routing rejection (#4591). Returned by build_creative when target_format_id.id is not an advertised creative.supported_formats[].capability_id or supported legacy named format. Wire change \u2014 held for 3.1."
     },
     "PRIVATE_FIELD_IN_PUBLIC_PLACEMENT": {
       "disposition": "held-for-next-minor",
@@ -274,37 +274,37 @@
     "PLACE_TARGET_UNAVAILABLE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Identifier-based place targeting (#5588). Non-fatal get_media_buys resource-state error when a catalog-pinned target can no longer execute; preserves the echoed target and provides a correctable resolver/update path. Wire change — held for 3.1."
+      "note": "Identifier-based place targeting (#5588). Non-fatal get_media_buys resource-state error when a catalog-pinned target can no longer execute; preserves the echoed target and provides a correctable resolver/update path. Wire change \u2014 held for 3.1."
     },
     "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count — v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change — held for 3.1."
+      "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count \u2014 v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change \u2014 held for 3.1."
     },
     "PIXEL_TRACKER_LOSSY_DOWNGRADE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "pixel_tracker → v1 url+tracker_pixel downgrade advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 buyer SDK downgrades a pixel_tracker asset for a 3.0.x seller. URL still fires; lost fields (event variant, method:js execution context, or custom event timing) reported in error.details. Wire change — held for 3.1."
+      "note": "pixel_tracker \u2192 v1 url+tracker_pixel downgrade advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 buyer SDK downgrades a pixel_tracker asset for a 3.0.x seller. URL still fires; lost fields (event variant, method:js execution context, or custom event timing) reported in error.details. Wire change \u2014 held for 3.1."
     },
     "PIXEL_TRACKER_UPGRADE_INFERRED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "v1 url+tracker_pixel → pixel_tracker upgrade-by-inference advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 SDK upgrades a v1 tracker by inferring event and method from asset_id conventions. Wire change — held for 3.1."
+      "note": "v1 url+tracker_pixel \u2192 pixel_tracker upgrade-by-inference advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 SDK upgrades a v1 tracker by inferring event and method from asset_id conventions. Wire change \u2014 held for 3.1."
     },
     "STALE_RESPONSE": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "Graceful-degradation advisory (#4899). Non-fatal; emitted alongside a populated payload that the seller served from cache past its freshness target because an upstream or sub-agent fetch failed. Distinct from SERVICE_UNAVAILABLE (empty payload + fatal). Details follow error-details/stale-response.json (served_from_cache, cache_age_seconds, optional upstream + original_error). Wire change — held for 3.1."
+      "note": "Graceful-degradation advisory (#4899). Non-fatal; emitted alongside a populated payload that the seller served from cache past its freshness target because an upstream or sub-agent fetch failed. Distinct from SERVICE_UNAVAILABLE (empty payload + fatal). Details follow error-details/stale-response.json (served_from_cache, cache_age_seconds, optional upstream + original_error). Wire change \u2014 held for 3.1."
     },
     "UNSUPPORTED_GRANULARITY": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "From get_media_buy_delivery windowed-pull recovery (#4590). Returned when a buyer requests a time_granularity the seller did not declare in reporting_capabilities.windowed_pull_granularities. Wire change — held for 3.1."
+      "note": "From get_media_buy_delivery windowed-pull recovery (#4590). Returned when a buyer requests a time_granularity the seller did not declare in reporting_capabilities.windowed_pull_granularities. Wire change \u2014 held for 3.1."
     },
     "UNSUPPORTED_PROVISIONING": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
-      "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode — settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change — held for 3.1."
+      "note": "From sync_accounts polymorphic-key refactor (#2261). Returned per-entry when the seller does not implement the entry's `sync_accounts` mode \u2014 settings-update sellers (explicit-account platforms) reject natural-key entries; provisioning-only sellers reject AccountRef-keyed entries. Wire change \u2014 held for 3.1."
     },
     "INVALID_PRICING_OPTION": {
       "disposition": "held-for-next-minor",
@@ -345,6 +345,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.2",
       "note": "VAST validation contract: wrapper-chain resolution exceeded max_wrapper_depth, looped, or timed out, for sellers declaring creative_specs.vast_validation: wrapper. New VAST-validation surface; wire change, held for 3.2."
+    },
+    "SOURCE_ACCESS_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.2",
+      "note": "External audience sources on sync_audiences (#6540, experimental media_buy.audience_activation). Per-audience failure when the seller cannot read a dataset share or platform segment; error.field distinguishes bad reference vs missing grant vs vendor outage. New 3.2 wire code \u2014 held for 3.2."
     }
   }
 }

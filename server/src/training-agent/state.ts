@@ -273,6 +273,7 @@ function createSession(): SessionState {
     negotiatedPricingOptions: new Map(),
     configuredProducts: new Map(),
     configuredProductTargeting: new Map(),
+    configuredProductOwners: new Map(),
     proposalLifecycleLinks: new Map(),
     proposalRefinementRecords: new Map(),
     creatives: new Map(),
@@ -522,6 +523,10 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
     configuredProductTargeting: asMap(
       hydrated.configuredProductTargeting,
       fresh.configuredProductTargeting,
+    ),
+    configuredProductOwners: asMap(
+      hydrated.configuredProductOwners,
+      fresh.configuredProductOwners,
     ),
     proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
     proposalRefinementRecords: asMap(hydrated.proposalRefinementRecords, fresh.proposalRefinementRecords),

@@ -251,6 +251,15 @@ describe('signGovernanceContext — compact JWS issuance', () => {
     };
 
     await expect(verifyGovernedServiceAuthorization(base)).resolves.toMatchObject({ ok: true });
+    await expect(verifyGovernedServiceAuthorization({
+      ...base,
+      allowLocalVerificationKeys: false,
+    })).resolves.toMatchObject({ ok: false });
+    await expect(verifyGovernedServiceAuthorization({
+      ...base,
+      allowLocalVerificationKeys: false,
+      verificationJwk: getGovernanceSigningPublicJwk(),
+    })).resolves.toMatchObject({ ok: true });
     await expect(verifyGovernedServiceAuthorization({ ...base, authenticatedCaller: 'https://attacker.example' }))
       .resolves.toMatchObject({ ok: false, errorCode: 'PERMISSION_DENIED' });
     await expect(verifyGovernedServiceAuthorization({ ...base, expectedAudience: 'https://other.example' }))
@@ -271,6 +280,56 @@ describe('signGovernanceContext — compact JWS issuance', () => {
 
     vi.setSystemTime(new Date('2026-08-04T12:17:00Z'));
     await expect(verifyGovernedServiceAuthorization(base)).resolves.toMatchObject({ ok: false });
+  });
+
+  it('requires a signed purchase-phase authorization for the online execution result', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-04T12:00:00Z'));
+    const payload = {
+      media_buy_id: 'mb_execution_001',
+      total_budget: 500,
+      currency: 'USD',
+      channels: ['display'],
+    };
+    const token = await signGovernanceContext({
+      issuer: 'https://governance.example/mcp',
+      audience: 'https://seller.example/mcp',
+      bindingId: 'opaque-action-binding',
+      phase: 'purchase',
+      caller: 'https://seller.example/mcp',
+      checkId: 'chk_execution',
+      authorizedCommitment: { amount: 500, currency: 'USD' },
+      authorizedTask: 'create_media_buy',
+      authorizedPayloadHash: computeGovernedPayloadHash(payload),
+      plan: SAMPLE_PLAN,
+    });
+    const base = {
+      token,
+      expectedIssuer: 'https://governance.example/mcp',
+      expectedAudience: 'https://seller.example/mcp',
+      expectedTask: 'create_media_buy',
+      expectedPhase: 'purchase' as const,
+      expectedSubject: 'opaque-action-binding',
+      payload,
+      actualCommitment: { amount: 500, currency: 'USD' },
+      authenticatedCaller: 'https://seller.example/mcp',
+      allowLocalVerificationKeys: false,
+      verificationJwk: getGovernanceSigningPublicJwk(),
+    };
+
+    await expect(verifyGovernedServiceAuthorization(base)).resolves.toMatchObject({ ok: true });
+    await expect(verifyGovernedServiceAuthorization({ ...base, token: '' }))
+      .resolves.toMatchObject({ ok: false });
+    await expect(verifyGovernedServiceAuthorization({ ...base, expectedPhase: 'intent' }))
+      .resolves.toMatchObject({ ok: false });
+    await expect(verifyGovernedServiceAuthorization({ ...base, expectedAudience: 'https://other-seller.example' }))
+      .resolves.toMatchObject({ ok: false });
+    await expect(verifyGovernedServiceAuthorization({ ...base, expectedSubject: 'different-action-binding' }))
+      .resolves.toMatchObject({ ok: false });
+    const parts = token.split('.');
+    const tampered = `${parts[0]}.${parts[1]}.${parts[2].startsWith('A') ? 'B' : 'A'}${parts[2].slice(1)}`;
+    await expect(verifyGovernedServiceAuthorization({ ...base, token: tampered }))
+      .resolves.toMatchObject({ ok: false });
   });
 
   it('matches the published cross-language governance payload-hash vectors', () => {

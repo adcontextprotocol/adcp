@@ -4,10 +4,12 @@ const {
   resolveUserOrgAuthorizationMock,
   evaluateUserOrgRoleAuthorizationMock,
   getRuntimeSettingDbMock,
+  captureEventMock,
 } = vi.hoisted(() => ({
   resolveUserOrgAuthorizationMock: vi.fn(),
   evaluateUserOrgRoleAuthorizationMock: vi.fn(),
   getRuntimeSettingDbMock: vi.fn(),
+  captureEventMock: vi.fn(),
 }));
 
 vi.mock("../../src/utils/resolve-user-org-authorization.js", () => ({
@@ -19,11 +21,16 @@ vi.mock("../../src/db/system-settings-db.js", () => ({
   getOrganizationAuthorizationEnforcement: getRuntimeSettingDbMock,
 }));
 
+vi.mock("../../src/utils/posthog.js", () => ({
+  captureEvent: captureEventMock,
+}));
+
 import {
   evaluateOrganizationAuthorizationCanary,
   invalidateOrganizationAuthorizationRuntimeSettingCache,
   isOrganizationAuthorizationBoundaryAllowedByEnvironment,
   ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+  recordOrganizationAuthorizationCanaryDecision,
 } from "../../src/middleware/organization-authorization-canary.js";
 
 const BOUNDARY = ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ;
@@ -35,6 +42,7 @@ describe("organization authorization canary", () => {
     resolveUserOrgAuthorizationMock.mockReset();
     evaluateUserOrgRoleAuthorizationMock.mockReset();
     getRuntimeSettingDbMock.mockReset();
+    captureEventMock.mockReset();
     invalidateOrganizationAuthorizationRuntimeSettingCache();
   });
 
@@ -87,6 +95,46 @@ describe("organization authorization canary", () => {
 
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "false";
     expect(isOrganizationAuthorizationBoundaryAllowedByEnvironment(BOUNDARY)).toBe(false);
+  });
+
+  it("records enforced decisions without credential, membership, or organization identifiers", () => {
+    recordOrganizationAuthorizationCanaryDecision(BOUNDARY, {
+      enforced: true,
+      status: "authorized",
+      membership: {
+        organizationId: "org_sensitive",
+        role: "member",
+        source: "workos",
+      },
+    });
+
+    expect(captureEventMock).toHaveBeenCalledWith(
+      "server-metrics",
+      "org_authorization_canary",
+      {
+        boundary: BOUNDARY,
+        decision: "authorized",
+        unavailable_sources: undefined,
+      }
+    );
+    expect(JSON.stringify(captureEventMock.mock.calls)).not.toContain("sensitive");
+
+    captureEventMock.mockClear();
+    recordOrganizationAuthorizationCanaryDecision(BOUNDARY, {
+      enforced: true,
+      status: "unavailable",
+      unavailableSources: ["workos", "runtime_config"],
+    });
+
+    expect(captureEventMock).toHaveBeenCalledWith(
+      "server-metrics",
+      "org_authorization_canary",
+      {
+        boundary: BOUNDARY,
+        decision: "unavailable",
+        unavailable_sources: ["workos", "runtime_config"],
+      }
+    );
   });
 
   it("keeps legacy authorization when the audited runtime gate is off", async () => {

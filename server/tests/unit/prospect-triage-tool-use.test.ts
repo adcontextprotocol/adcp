@@ -8,7 +8,7 @@
  *     already catch this and return action='skip', reason='assessment_error')
  *   - Runtime company_type allowlist still bounds bogus enum values
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   anthropicCreate: vi.fn(),
@@ -44,11 +44,14 @@ function toolUseResponse(input: unknown) {
 describe('assessWithClaude: tool_use contract', () => {
   let assessWithClaude: typeof import('../../src/services/prospect-triage.js').assessWithClaude;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
+    process.env.ANTHROPIC_API_KEY = 'test-key';
+    ({ assessWithClaude } = await import('../../src/services/prospect-triage.js'));
+  });
+
+  beforeEach(() => {
     process.env.ANTHROPIC_API_KEY = 'test-key';
     mocks.anthropicCreate.mockReset();
-    vi.resetModules();
-    ({ assessWithClaude } = await import('../../src/services/prospect-triage.js'));
   });
 
   it('ships assess_prospect with input_schema constraining action/owner/priority/company_type', async () => {
@@ -152,9 +155,7 @@ describe('assessWithClaude: tool_use contract', () => {
 
   it('returns the no-Claude fallback when ANTHROPIC_API_KEY is unset', async () => {
     delete process.env.ANTHROPIC_API_KEY;
-    vi.resetModules();
-    const mod = await import('../../src/services/prospect-triage.js');
-    const result = await mod.assessWithClaude('example.com', '');
+    const result = await assessWithClaude('example.com', '');
     expect(result.reason).toBe('claude_not_configured');
     expect(mocks.anthropicCreate).not.toHaveBeenCalled();
   });

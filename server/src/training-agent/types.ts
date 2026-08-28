@@ -78,6 +78,8 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Exact trusted partition used by the SDK task registry. */
+  taskRegistryScope?: Readonly<{ registryNamespace: string; accountId: string; ownerScope: string }>;
   /** Validated wire input before SDK account extraction; used only to verify
    * governance payload bindings against the exact buyer-authorized request. */
   requestInput?: Record<string, unknown>;
@@ -294,6 +296,18 @@ export interface ComplyDeliveryAccumulator {
     viewable_impressions?: number;
     viewable_rate?: number;
     viewed_seconds?: number;
+    viewed_seconds_percentiles?: {
+      p25: number;
+      p50: number;
+      p75: number;
+      p90: number;
+      p95: number;
+    };
+    viewed_seconds_histogram?: Array<{
+      lower_bound_seconds: number;
+      upper_bound_seconds?: number;
+      impressions: number;
+    }>;
     standard?: string;
   };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
@@ -304,11 +318,13 @@ export interface ComplyDeliveryAccumulator {
   deferredVendorMetrics?: Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>;
   /** Package-scoped measurement deferrals, keyed by package_id. */
   deferredVendorMetricsByPackage?: Record<string, Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>>;
   /** Per-call snapshots with a UTC delivery date for deterministic range tests. */
   datedSimulations?: ComplyDatedDeliverySimulation[];
@@ -440,6 +456,9 @@ export interface SessionState {
   configuredProducts: Map<string, Product>;
   /** Concrete discovery targeting bound to each configured product ID. */
   configuredProductTargeting: Map<string, Record<string, unknown>>;
+  /** Trusted ownership used to recover a configured offer across SDK account
+   * projection boundaries without exposing or globally trusting its opaque ID. */
+  configuredProductOwners: Map<string, { principal: string; accountScope: string }>;
   /** Durable proposal-successor receipts kept outside immutable proposal
    * snapshots. Finalization uses this to recover an exact idempotent retry
    * after domain state was flushed but before the idempotency receipt was
@@ -684,6 +703,10 @@ export interface PackageState {
    * readback. Delivery simulation still indexes the creative IDs separately. */
   creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
+  /** Exact execution details for demographic targeting accepted on this
+   * package. Kept alongside the effective targeting so create/update/read
+   * surfaces cannot drift after a configured product is selected. */
+  targetingResolution?: Record<string, unknown>;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.

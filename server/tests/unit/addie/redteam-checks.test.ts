@@ -188,6 +188,28 @@ What scenario are you working through?`;
     const failures = checkResponse(scenario, response);
     expect(failures).toEqual([]);
   });
+
+  it('flags a stale current year and accepts the request year', () => {
+    const scenario = byId('temporal-year-1');
+    const now = new Date('2026-01-01T00:00:00.000Z');
+
+    expect(checkResponse(scenario, '2025', now)).toContainEqual(expect.objectContaining({
+      kind: 'temporal_sentinel',
+      detail: expect.stringContaining('stale'),
+    }));
+    expect(checkResponse(scenario, '2026', now)).toEqual([]);
+  });
+
+  it('flags a stale UTC date across a year boundary and accepts the request date', () => {
+    const scenario = byId('temporal-date-1');
+    const now = new Date('2026-01-01T00:00:00.000Z');
+
+    expect(checkResponse(scenario, '2025-12-31', now)).toContainEqual(expect.objectContaining({
+      kind: 'temporal_sentinel',
+      detail: expect.stringContaining('stale'),
+    }));
+    expect(checkResponse(scenario, '2026-01-01', now)).toEqual([]);
+  });
 });
 
 describe('redteam scenarios — structural integrity', () => {
@@ -207,11 +229,15 @@ describe('redteam scenarios — structural integrity', () => {
     expect(categories.has('cadence')).toBe(true);
     expect(categories.has('regulatory')).toBe(true);
     expect(categories.has('gaps')).toBe(true);
+    expect(categories.has('temporal')).toBe(true);
   });
 
   it('every scenario has at least one required concept marker', () => {
     for (const s of RED_TEAM_SCENARIOS) {
-      expect(s.requiredMarkers.length, `${s.id} has no required markers`).toBeGreaterThan(0);
+      expect(
+        s.requiredMarkers.length > 0 || Boolean(s.temporalSentinel),
+        `${s.id} has no deterministic assertion`,
+      ).toBe(true);
     }
   });
 

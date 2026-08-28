@@ -46,6 +46,15 @@ function response(toolNames: string[]): AddieResponse {
     tools_used: toolNames,
     tool_executions: [],
     flagged: false,
+    model_execution: {
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-example-chat',
+      provider: 'anthropic',
+      model: 'claude-example-chat',
+      model_resolution: 'exact',
+      fallback_reason: null,
+    },
   };
 }
 
@@ -348,6 +357,15 @@ function generatedResponse(overrides: Partial<AddieResponse> = {}): AddieRespons
     tools_used: [],
     tool_executions: [],
     flagged: false,
+    model_execution: {
+      source: 'provider',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-example-chat',
+      provider: 'anthropic',
+      model: 'claude-example-chat',
+      model_resolution: 'exact',
+      fallback_reason: null,
+    },
     usage: { input_tokens: 123, output_tokens: 45 },
     ...overrides,
   };

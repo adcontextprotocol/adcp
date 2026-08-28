@@ -3,7 +3,7 @@
  * exposes the tenant key.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
-import { clearAccountStore } from '../account-handlers.js';
+import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import {
   clearSessions,
   flushDirtySessions,
@@ -25,10 +25,14 @@ import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
 import { getCanonicalBase } from '../canonical-base.js';
+import { setGovernanceAuthorityTestOverride } from '../task-handlers.js';
 import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { TrainingCreativePlatform } from '../v6-creative-platform.js';
+import { accountScopeFromRef } from '../account-scope.js';
+import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
+import { GovernanceAgentStub } from '@adcp/sdk/testing';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -108,13 +112,13 @@ function stageLatestThreeZeroSchemaBundle(): void {
   });
 }
 
-async function initializeTenant(url: string): Promise<void> {
+async function initializeTenant(url: string, token = 'test-token'): Promise<void> {
   await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -125,13 +129,19 @@ async function initializeTenant(url: string): Promise<void> {
   });
 }
 
-async function callTenantTool(url: string, id: number, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function callTenantTool(
+  url: string,
+  id: number,
+  name: string,
+  args: Record<string, unknown>,
+  token = 'test-token',
+): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -369,16 +379,28 @@ describe('tenant routing smoke', () => {
       expect(missingKey.result?.isError).toBe(true);
       expect(missingKey.result?.content?.[0]?.text).toContain('idempotency_key');
 
-      for (const [id, governanceAgent] of [
-        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }],
-        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }],
+      for (const [id, governanceAgent, schemaRejected] of [
+        [4, { url: 'http://governance.example/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, true],
+        [5, { url: 'https://governance.example/mcp', authentication: { schemes: ['Basic'], credentials: 'short' } }, true],
+        [6, { url: 'https://127.0.0.1/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
+        [11, { url: 'https://localhost/mcp', authentication: payload.accounts[0].governance_agents[0].authentication }, false],
       ] as const) {
         const invalid = await callTenantTool(url, id, 'sync_governance', {
           ...payload,
           idempotency_key: `${payload.idempotency_key}-${id}`,
           accounts: [{ account, governance_agents: [governanceAgent] }],
-        }) as { result?: { isError?: boolean } };
-        expect(invalid.result?.isError).toBe(true);
+        }) as { result?: {
+          isError?: boolean;
+          structuredContent?: { accounts?: Array<{ status?: string; errors?: Array<{ code?: string }> }> };
+        } };
+        if (schemaRejected) {
+          expect(invalid.result?.isError).toBe(true);
+        } else {
+          expect(invalid.result?.structuredContent?.accounts?.[0]).toMatchObject({
+            status: 'failed',
+            errors: [{ code: 'INVALID_REQUEST' }],
+          });
+        }
       }
 
       const invalidAccount = await callTenantTool(url, 10, 'list_accounts', {
@@ -415,11 +437,123 @@ describe('tenant routing smoke', () => {
     }
   }, 30000);
 
+  it('delegates a governed media-buy commitment to the registered governance agent', async () => {
+    const { baseUrl, close } = await bootServer();
+    const stub = new GovernanceAgentStub();
+    try {
+      const { url: stubUrl } = await stub.start();
+      const authorityUrl = 'https://governance-stub.invalid/mcp';
+      (stub as unknown as { issuer: string }).issuer = authorityUrl;
+      const salesUrl = `${baseUrl}/sales/mcp`;
+      await initializeTenant(salesUrl);
+      const generateContext = stub.generateContext.bind(stub);
+      stub.generateContext = input => generateContext({
+        ...input,
+        phase: input.phase === 'execution' ? 'purchase' : input.phase,
+      });
+      setGovernanceAuthorityTestOverride(authorityUrl, {
+        jwk: stub.publicJwk,
+        fetch: (_input, init) => fetch(stubUrl, init),
+      });
+
+      const brand = { domain: 'tenant-seller-delegation.example' };
+      const account = { brand, operator: 'pinnacle-agency.example' };
+      const structured = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      await callTenantTool(salesUrl, 200, 'sync_accounts', {
+        accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
+        idempotency_key: 'tenant-seller-delegation-account',
+      });
+      // The public request schema correctly requires HTTPS. Exercise the handler
+      // seam directly so the local HTTP stub can observe the outbound call.
+      const registration = handleSyncGovernance({
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: authorityUrl,
+            authentication: { schemes: ['Bearer'], credentials: stub.authToken },
+          }],
+        }],
+        idempotency_key: 'tenant-seller-delegation-registration',
+      } as unknown as Parameters<typeof handleSyncGovernance>[0], { mode: 'open', principal: 'static:public' });
+      expect(registration).toMatchObject({ accounts: [{ status: 'synced' }] });
+
+      const productResponse = structured(await callTenantTool(salesUrl, 202, 'get_products', {
+        buying_mode: 'brief',
+        brief: 'Display inventory for a governed reference buy',
+        brand,
+        account,
+      })) as {
+        products?: Array<{
+          product_id?: string;
+          pricing_options?: Array<{ pricing_option_id?: string; floor_price?: number; fixed_price?: number }>;
+        }>;
+      };
+      const product = productResponse.products?.find(candidate => candidate.pricing_options?.[0]?.pricing_option_id);
+      expect(product?.product_id).toEqual(expect.any(String));
+      const pricing = product!.pricing_options![0]!;
+      const createPayload = {
+        account,
+        brand,
+        total_budget: { amount: 500, currency: 'USD' },
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-06-30T23:59:59Z',
+        packages: [{
+          product_id: product!.product_id,
+          pricing_option_id: pricing.pricing_option_id,
+          budget: 500,
+          bid_price: Math.max(pricing.floor_price ?? pricing.fixed_price ?? 1, 1),
+        }],
+        idempotency_key: 'tenant-seller-delegation-create',
+      };
+
+      const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
+        .update('test-token')
+        .digest('hex')
+        .slice(0, 32)}`;
+      const governanceContext = await stub.generateContext({
+        planId: 'opaque-plan-binding',
+        checkId: 'chk_stub_intent',
+        audience: `${getCanonicalBase()}/sales`,
+        caller,
+        task: 'create_media_buy',
+        payload: createPayload,
+        commitment: { amount: 500, currency: 'USD' },
+        phase: 'intent',
+      });
+
+      const created = structured(await callTenantTool(salesUrl, 205, 'create_media_buy', {
+        ...createPayload,
+        governance_context: governanceContext,
+      }));
+      expect(created?.adcp_error, JSON.stringify(created)).toBeUndefined();
+      const delegated = stub.getCallsForTool('check_governance');
+      expect(delegated).toHaveLength(1);
+      expect(delegated[0]?.params).toMatchObject({
+        caller: `${getCanonicalBase()}/sales`,
+        governance_context: governanceContext,
+        phase: 'purchase',
+        planned_delivery: expect.objectContaining({
+          media_buy_id: expect.any(String),
+          total_budget: 500,
+          currency: 'USD',
+          channels: expect.any(Array),
+        }),
+      });
+    } finally {
+      setGovernanceAuthorityTestOverride('https://governance-stub.invalid/mcp', undefined);
+      await stub.stop();
+      await close();
+    }
+  }, 30000);
+
   it('advertises exact governance-enforcement task claims on each enforcing tenant', async () => {
     const { baseUrl, close } = await bootServer();
     try {
       const expected: Record<string, string[]> = {
-        sales: ['buy_products', 'accept_proposal', 'control_media_buy'],
+        sales: ['buy_products', 'accept_proposal', 'control_media_buy', 'create_media_buy'],
         signals: ['activate_signal'],
         brand: ['acquire_rights'],
         creative: ['build_creative'],
@@ -433,13 +567,28 @@ describe('tenant routing smoke', () => {
             adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
             experimental_features?: string[];
             specialisms?: string[];
+            media_buy?: {
+              audience_targeting?: { supported_activation_methods?: Array<Record<string, unknown>> };
+            };
           } };
         };
         const capabilities = response.result?.structuredContent;
         expect(capabilities?.adcp?.governance_enforcement?.tasks).toEqual(
-          tasks.map(task => ({ task, modes: ['signed_context'] })),
+          tasks.map(task => ({
+            task,
+            modes: task === 'create_media_buy'
+              ? ['signed_context', 'online_execution_check']
+              : ['signed_context'],
+          })),
         );
         expect(capabilities?.experimental_features).toContain('governance.campaign');
+        if (tenant === 'sales') {
+          expect(capabilities?.experimental_features).toContain('media_buy.audience_activation');
+          expect(capabilities?.media_buy?.audience_targeting?.supported_activation_methods).toEqual([
+            { pattern: 'sync_audiences' },
+            { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
+          ]);
+        }
         if (tenant === 'creative-builder') {
           expect(capabilities?.specialisms).toContain('creative-transformers');
         }
@@ -560,7 +709,7 @@ describe('tenant routing smoke', () => {
         };
         expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe('3.0');
         expect(nonBetaCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
-          { task: 'create_media_buy', modes: ['signed_context'] },
+          { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
         ]);
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
@@ -1890,14 +2039,27 @@ describe('tenant routing smoke', () => {
         expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'submitted' }),
       ]);
 
-      const completed = payload(await callTenantTool(url, 6, 'comply_test_controller', {
+      const signalsUrl = `${baseUrl}/signals/mcp`;
+      await initializeTenant(signalsUrl);
+      const salesAccountId = `synthetic_${createHash('sha256')
+        .update(accountScopeFromRef(account))
+        .digest('hex')
+        .slice(0, 32)}`;
+      const crossTenantRead = payload(await callTenantTool(signalsUrl, 6, 'list_tasks', {
+        account: { account_id: salesAccountId },
+        filters: { task_ids: [taskId] },
+        pagination: { max_results: 1 },
+      }));
+      expect(crossTenantRead).toMatchObject({ tasks: [] });
+
+      const completed = payload(await callTenantTool(url, 7, 'comply_test_controller', {
         account,
         scenario: 'force_task_completion',
         params: { task_id: taskId, result: completion },
       }));
-      expect(completed).toMatchObject({ success: true, current_state: 'completed' });
+      expect(completed, JSON.stringify(completed)).toMatchObject({ success: true, current_state: 'completed' });
 
-      const terminalRead = payload(await callTenantTool(url, 7, 'get_task_status', {
+      const terminalRead = payload(await callTenantTool(url, 8, 'get_task_status', {
         account,
         task_id: taskId,
         include_result: true,
@@ -1909,7 +2071,7 @@ describe('tenant routing smoke', () => {
         result: completion,
       });
 
-      const terminalList = payload(await callTenantTool(url, 8, 'list_tasks', {
+      const terminalList = payload(await callTenantTool(url, 9, 'list_tasks', {
         account,
         filters: { task_ids: [taskId], task_type: 'create_media_buy', status: 'completed' },
         pagination: { max_results: 1 },
@@ -1920,7 +2082,300 @@ describe('tenant routing smoke', () => {
     } finally {
       await close();
     }
-  }, 15000);
+  }, 60000);
+
+  it('isolates forced get_signals tasks across natural account operators', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'signals-task-scope.example' },
+        operator: 'signals-task-scope.example',
+        sandbox: true,
+      };
+      const otherAccount = {
+        ...account,
+        operator: 'operator-b.example',
+      };
+      const taskId = 'task_training_signals_account_scope';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 10, 'comply_test_controller', {
+        account,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 11, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 12, 'list_tasks', {
+        account,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 1, returned: 1 },
+        tasks: [expect.objectContaining({ task_id: taskId })],
+      });
+
+      expect(payload(await callTenantTool(url, 13, 'list_tasks', {
+        account: otherAccount,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 0, returned: 0 },
+        tasks: [],
+      });
+
+      expect(payload(await callTenantTool(url, 14, 'comply_test_controller', {
+        account: otherAccount,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 15, 'get_signals', {
+        account: otherAccount,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 16, 'list_tasks', {
+        account: otherAccount,
+        filters: { task_ids: [taskId], task_type: 'get_signals' },
+        pagination: { max_results: 1 },
+      }))).toMatchObject({
+        query_summary: { total_matching: 1, returned: 1 },
+        tasks: [expect.objectContaining({ task_id: taskId })],
+      });
+
+      expect(payload(await callTenantTool(url, 17, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+
+      expect(payload(await callTenantTool(url, 18, 'comply_test_controller', {
+        account: otherAccount,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('completes a forced get_signals task for an opaque sandbox account', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url);
+      const account = { account_id: 'signals_opaque_task_account' };
+      const controllerAccount = { ...account, sandbox: true };
+      const taskId = 'task_training_signals_opaque_scope';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 20, 'comply_test_controller', {
+        account: controllerAccount,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }))).toMatchObject({ success: true });
+
+      expect(payload(await callTenantTool(url, 21, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      expect(payload(await callTenantTool(url, 22, 'comply_test_controller', {
+        account: controllerAccount,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+      }))).toMatchObject({ success: true, current_state: 'completed' });
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('isolates forced task completion by authenticated owner and account', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      const ownerA = 'demo-task-owner-a-v1';
+      const ownerB = 'demo-task-owner-b-v1';
+      await initializeTenant(url, ownerA);
+      await initializeTenant(url, ownerB);
+
+      const accountA = {
+        brand: { domain: 'task-owner-a.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const accountB = {
+        brand: { domain: 'task-owner-b.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const taskId = 'task_shared_across_scopes';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+      const armAndCreate = async (
+        token: string,
+        account: Record<string, unknown>,
+        suffix: string,
+      ) => {
+        const armed = payload(await callTenantTool(url, 20, 'comply_test_controller', {
+          account,
+          scenario: 'force_create_media_buy_arm',
+          params: { arm: 'submitted', task_id: taskId },
+        }, token));
+        expect(armed?.success).toBe(true);
+        const submitted = payload(await callTenantTool(url, 21, 'create_media_buy', {
+          account,
+          brand: (account as { brand: unknown }).brand,
+          start_time: 'asap',
+          end_time: '2099-09-30T23:59:59Z',
+          packages: [{
+            product_id: 'async_lifecycle_video_q3',
+            pricing_option_id: 'async_lifecycle_cpm',
+            budget: 30_000,
+          }],
+          idempotency_key: `training-task-scope-${suffix}-0001`,
+        }, token));
+        expect(submitted).toMatchObject({ status: 'submitted', task_id: taskId });
+      };
+      const read = async (token: string, account: Record<string, unknown>) => payload(
+        await callTenantTool(url, 22, 'get_task_status', { account, task_id: taskId, include_result: true }, token),
+      );
+      const complete = async (
+        token: string,
+        account: Record<string, unknown>,
+        mediaBuyId: string,
+      ) => payload(await callTenantTool(url, 23, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: {
+            media_buy_id: mediaBuyId,
+            media_buy_status: 'pending_creatives',
+            confirmed_at: '2026-08-15T12:00:00Z',
+            revision: 1,
+            currency: 'USD',
+            packages: [{
+              package_id: `pkg_${mediaBuyId}`,
+              product_id: 'async_lifecycle_video_q3',
+              pricing_option_id: 'async_lifecycle_cpm',
+              budget: 30_000,
+              paused: false,
+            }],
+          },
+        },
+      }, token));
+
+      await armAndCreate(ownerA, accountA, 'owner-a-account-a');
+
+      expect(await complete(ownerB, accountA, 'mb_cross_owner_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
+      expect(await complete(ownerA, accountB, 'mb_cross_account_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
+      expect(await read(ownerA, accountA)).toMatchObject({ status: 'submitted' });
+
+      const ownerACompletion = await complete(ownerA, accountA, 'mb_owner_a_account_a');
+      expect(ownerACompletion, JSON.stringify(ownerACompletion)).toMatchObject({
+        success: true,
+        current_state: 'completed',
+      });
+      expect(await read(ownerA, accountA)).toMatchObject({
+        status: 'completed',
+        result: { media_buy_id: 'mb_owner_a_account_a' },
+      });
+    } finally {
+      await close();
+    }
+  }, 20000);
+
+  it('does not trust a caller-supplied task owner scope when buyer-agent resolution fails', async () => {
+    const { baseUrl, close } = await bootServer();
+    const token = 'test-token';
+    const resolveSpy = vi.spyOn(trainingBuyerAgentRegistry, 'resolve');
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url, token);
+      const account = {
+        brand: { domain: 'task-owner-forgery.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const taskId = 'task_owner_scope_forgery';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 30, 'comply_test_controller', {
+        account,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }, token))).toMatchObject({ success: true });
+      expect(payload(await callTenantTool(url, 31, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }, token))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      // Simulate a credential that authenticates but has no registered buyer
+      // agent. The router must remove the forged internal owner before the
+      // comply adapter sees the request.
+      resolveSpy.mockResolvedValueOnce(null);
+      const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
+      const attack = payload(await callTenantTool(url, 32, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+        __training_task_owner_scope:
+          `agent:https://training-agent.adcontextprotocol.org/authenticated/${keyId}`,
+      }, token));
+
+      expect(attack).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(payload(await callTenantTool(url, 33, 'get_task_status', {
+        account,
+        task_id: taskId,
+      }, token))).toMatchObject({ status: 'submitted' });
+    } finally {
+      resolveSpy.mockRestore();
+      await close();
+    }
+  }, 30000);
 
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();

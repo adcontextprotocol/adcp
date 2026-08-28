@@ -25,7 +25,7 @@
           "properties": {
             "viewability_standard": {
               "$ref": "/schemas/enums/viewability-standard.json",
-              "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+              "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`, `viewed_seconds`, `viewed_seconds_percentiles`, `viewed_seconds_histogram`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field. A distribution whose standard remains unspecified MUST NOT be combined with any other row, including another row with an unspecified standard."
             },
             "completion_source": {
               "$ref": "/schemas/enums/completion-source.json",

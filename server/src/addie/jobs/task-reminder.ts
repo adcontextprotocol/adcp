@@ -233,6 +233,9 @@ async function sendReminderDm(slackUserId: string, message: string): Promise<boo
           thread_id: thread.thread_id,
           role: 'assistant',
           content: message,
+          model_execution: {
+            source: 'local', requested_provider: null, requested_model: null, reason: 'canned_response',
+          },
         });
       } catch (err) {
         logger.warn({ err, slackUserId }, 'Failed to save reminder to thread service');

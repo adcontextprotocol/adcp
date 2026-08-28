@@ -431,7 +431,8 @@ export function createEscalationToolHandlers(
         summary: e.summary,
         status: e.status,
         status_label: statusLabel[e.status] || e.status,
-        submitted: new Date(e.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+        submitted_at: new Date(e.created_at).toISOString(),
+        submitted_time_zone: 'UTC',
         resolution_notes: e.resolution_notes || undefined,
       }));
 

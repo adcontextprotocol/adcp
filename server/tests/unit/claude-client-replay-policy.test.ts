@@ -33,6 +33,8 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
 }));
 
 vi.mock('@anthropic-ai/sdk', () => ({
+  APIError: class APIError extends Error {},
+  APIConnectionError: class APIConnectionError extends Error {},
   default: class {
     beta = {
       messages: {
@@ -42,7 +44,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
           const response = sdkState.nonStreamingResponses.shift();
           if (!response) throw new Error('Missing non-streaming response fixture');
           if (response instanceof Error) throw response;
-          return response;
+          return {
+            id: `msg_test_${sdkState.calls.length}`,
+            model: String(payload.model),
+            ...response as Record<string, unknown>,
+          };
         }),
         stream: vi.fn((payload: Record<string, unknown>) => {
           sdkState.calls.push(payload);
@@ -50,7 +56,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
           if (!response) throw new Error('Missing streaming response fixture');
           return {
             async *[Symbol.asyncIterator]() {},
-            finalMessage: vi.fn().mockResolvedValue(response),
+            finalMessage: vi.fn().mockResolvedValue({
+              id: `msg_test_${sdkState.calls.length}`,
+              model: String(payload.model),
+              ...response,
+            }),
           };
         }),
       },
@@ -583,5 +593,35 @@ describe('AddieClaudeClient replay execution policy', () => {
     );
     expect(productionTools.some((entry) => entry.name === 'web_search')).toBe(true);
     expect(replayTools.some((entry) => entry.name === 'web_search')).toBe(false);
+  });
+
+  it('keeps the large cacheable prompt block stable across routed domains', () => {
+    const client = new AddieClaudeClient('unused', 'test-model');
+    client.registerTool(tool('query_prospects', 'pure_local'), vi.fn().mockResolvedValue('prospects'));
+    client.registerTool(tool('merge_organizations', 'mutation'), vi.fn().mockResolvedValue('merged'));
+    const prepare = (selectedToolSetNames: string[], allowedToolNames: string[]) =>
+      client.prepareMessageInvocation(
+        'current question',
+        undefined,
+        undefined,
+        undefined,
+        {
+          executionMode: 'replay',
+          disableServerTools: true,
+          selectedToolSetNames,
+          allowedToolNames,
+          invocationHashKey: 'prompt-cache-key',
+          invocationHashDomain: 'prompt-cache-test:v1',
+        },
+      );
+
+    const prospects = prepare(['admin_prospects'], ['query_prospects']);
+    const organizations = prepare(['admin_organizations'], ['merge_organizations']);
+
+    expect(prospects.system_blocks).toHaveLength(3);
+    expect(organizations.system_blocks).toHaveLength(3);
+    expect(prospects.system_blocks[0].sha256).toBe(organizations.system_blocks[0].sha256);
+    expect(prospects.system_blocks[1].sha256).not.toBe(organizations.system_blocks[1].sha256);
+    expect(prospects.system_blocks[2].sha256).toBe(organizations.system_blocks[2].sha256);
   });
 });

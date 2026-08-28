@@ -72,9 +72,9 @@ test('released storyboard runs forward schemaRoot with adcpVersion', () => {
   }
 });
 
-test('3.0 compatibility keeps exact schema selection and overrides only the wire version', () => {
+test('storyboard runs pin the intended wire surface without changing schema selection', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
-  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun \? '3\.0' : undefined/);
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*releasedComplianceVersion === undefined[\s\S]*\? '3\.2-beta\.6'[\s\S]*: undefined/);
   assert.equal(
     (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
     3,

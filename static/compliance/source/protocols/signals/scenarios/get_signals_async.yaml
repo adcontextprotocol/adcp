@@ -81,7 +81,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
+            operator: "novamotors.example"
             sandbox: true
           scenario: "force_get_signals_arm"
           params:
@@ -136,7 +136,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
+            operator: "novamotors.example"
             sandbox: true
           signal_spec: "In-market EV buyers near dealerships with high purchase intent"
           pagination:
@@ -179,7 +179,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
+            operator: "novamotors.example"
             sandbox: true
           filters:
             task_ids:
@@ -282,7 +282,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
+            operator: "novamotors.example"
             sandbox: true
           scenario: "force_task_completion"
           params:
@@ -370,7 +370,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "pinnacle-agency.example"
+            operator: "novamotors.example"
             sandbox: true
           context:
             correlation_id: "get_signals_async--get_task_status_completed"

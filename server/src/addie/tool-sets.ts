@@ -22,6 +22,8 @@ export interface ToolSet {
   tools: string[];
   /** If true, requires admin role */
   adminOnly?: boolean;
+  /** If false, retained only for compatibility with an older routed plan. */
+  routerVisible?: boolean;
   /** If true, requires precision model (Opus) */
   requiresPrecision?: boolean;
 }
@@ -78,6 +80,111 @@ export const ALWAYS_AVAILABLE_ADMIN_TOOLS = [
  * to prevent enrollment pitching where it doesn't belong
  */
 const ENROLLMENT_TOOLS = ["get_account_link"];
+
+/**
+ * Bounded admin domains exposed to the router. These retain the existing
+ * atomic tool names, schemas, handlers, authorization, confirmation, and
+ * audit behavior while preventing every admin turn from receiving the old
+ * monolithic surface.
+ */
+export const ADMIN_DOMAIN_TOOL_SETS = {
+  admin_events: [
+    "create_event",
+    "update_event",
+    "manage_event_registrations",
+    "check_person_event_status",
+    "invite_to_event",
+  ],
+  admin_prospects: [
+    "add_prospect",
+    "update_prospect",
+    "enrich_company",
+    "query_prospects",
+    "prospect_search_lusha",
+    "claim_prospect",
+    "triage_prospect_domain",
+    "suggest_prospects",
+  ],
+  admin_feeds: [
+    "search_industry_feeds",
+    "add_industry_feed",
+    "get_feed_stats",
+    "list_feed_proposals",
+    "approve_feed_proposal",
+    "reject_feed_proposal",
+    "add_media_contact",
+  ],
+  admin_groups: [
+    "create_chapter",
+    "list_chapters",
+    "create_industry_gathering",
+    "list_industry_gatherings",
+    "list_working_groups",
+    "get_working_group",
+    "add_committee_leader",
+    "remove_committee_leader",
+    "list_committee_leaders",
+    "add_working_group_member",
+    "remove_working_group_member",
+    "rename_working_group",
+  ],
+  admin_organizations: [
+    "merge_organizations",
+    "find_duplicate_orgs",
+    "check_domain_health",
+    "manage_organization_domains",
+    "update_org_member_role",
+    "list_slack_users_by_org",
+    "list_paying_members",
+    "update_member_logo",
+    "update_member_profile",
+  ],
+  admin_workflows: [
+    "query_admin_analytics",
+    "list_flagged_conversations",
+    "review_flagged_conversation",
+    "set_reminder",
+    "my_upcoming_tasks",
+    "complete_task",
+    "log_conversation",
+  ],
+  admin_brands: [
+    "list_missing_brands",
+    "list_missing_properties",
+    "list_pending_brand_logos",
+    "list_brand_logos",
+    "review_brand_logo",
+    "list_pending_community_mirrors",
+    "transfer_brand_ownership",
+    "list_orphaned_brands",
+  ],
+} as const;
+
+const LEGACY_ADMIN_BILLING_TOOLS = [
+  "list_pending_invoices",
+  "get_account",
+  "resend_invoice",
+  "update_billing_email",
+];
+
+const LEGACY_ADMIN_OUTREACH_TOOLS = [
+  "get_outreach_stats",
+  "get_outreach_history",
+  "send_outreach",
+  "lookup_person",
+  "get_action_items",
+  "create_contact",
+];
+
+/**
+ * Exact compatibility union for plans created before the admin-domain split.
+ * It is deliberately hidden from new router prompts and validation.
+ */
+export const LEGACY_ADMIN_TOOLS = [
+  ...Object.values(ADMIN_DOMAIN_TOOL_SETS).flat(),
+  ...LEGACY_ADMIN_BILLING_TOOLS,
+  ...LEGACY_ADMIN_OUTREACH_TOOLS,
+];
 
 /**
  * Tool set definitions
@@ -168,6 +275,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "save_brand",
       "list_brands",
       "list_missing_brands",
+      "upload_brand_logo",
+      "publish_brand_canonical_document",
+      "add_to_brand_refs",
+      "check_mutual_assertion",
+      "notify_pending_verification",
     ],
   },
 
@@ -192,6 +304,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "save_property",
       "list_properties",
       "list_missing_properties",
+      "check_property_list",
+      "enhance_property",
+      "resolve_catalog",
+      "browse_catalog",
+      "dispute_catalog_entry",
     ],
   },
 
@@ -219,6 +336,20 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  sponsored_intelligence: {
+    name: "sponsored_intelligence",
+    description:
+      "Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation",
+    tools: [
+      "get_si_availability",
+      "list_si_agents",
+      "connect_to_si_agent",
+      "send_to_si_agent",
+      "end_si_session",
+      "get_si_session_status",
+    ],
+  },
+
   content: {
     name: "content",
     // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
@@ -242,14 +373,25 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
-  billing: {
-    name: "billing",
+  member_billing: {
+    name: "member_billing",
     description:
-      "Handle billing and payment operations - create payment links, send invoices, manage discounts and promotions, look up pending invoices",
+      "Handle the current member's own billing - find membership pricing, create a payment link, preview and confirm an invoice, or open the organization's billing portal",
     tools: [
       "find_membership_products",
       "create_payment_link",
       "send_invoice",
+      "confirm_send_invoice",
+      "get_billing_portal",
+    ],
+    requiresPrecision: true,
+  },
+
+  billing: {
+    name: "billing",
+    description:
+      "Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts",
+    tools: [
       "send_payment_request",
       "grant_discount",
       "remove_discount",
@@ -314,88 +456,70 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  admin_events: {
+    name: "admin_events",
+    description:
+      "Administer events: create or update events, manage registrations, check a person's status, and send invitations (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_events],
+    adminOnly: true,
+  },
+
+  admin_prospects: {
+    name: "admin_prospects",
+    description:
+      "Manage the prospect pipeline: add, update, enrich, search, claim, triage, and suggest prospect organizations (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_prospects],
+    adminOnly: true,
+  },
+
+  admin_feeds: {
+    name: "admin_feeds",
+    description:
+      "Manage industry news feeds and media contacts, including review of proposed feeds (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_feeds],
+    adminOnly: true,
+  },
+
+  admin_groups: {
+    name: "admin_groups",
+    description:
+      "Manage chapters, gatherings, committees, working groups, leaders, memberships, and group names (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_groups],
+    adminOnly: true,
+  },
+
+  admin_organizations: {
+    name: "admin_organizations",
+    description:
+      "Manage member organizations, domains, roles, directory profiles, and duplicate organizations (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organizations],
+    adminOnly: true,
+  },
+
+  admin_workflows: {
+    name: "admin_workflows",
+    description:
+      "Run internal analytics, flagged-conversation review, reminders, tasks, and conversation logging (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_workflows],
+    adminOnly: true,
+  },
+
+  admin_brands: {
+    name: "admin_brands",
+    description:
+      "Review brand and property registry gaps, logo submissions, community mirrors, and orphaned brand ownership (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brands],
+    adminOnly: true,
+  },
+
+  // Compatibility only: a plan already carrying the old `admin` set can
+  // finish without losing tools, but new router prompts cannot select it.
   admin: {
     name: "admin",
-    // NOTE: list_escalations and resolve_escalation are intentionally NOT listed
-    // here — they live in ALWAYS_AVAILABLE_ADMIN_TOOLS and are reachable for
-    // admins regardless of routing. Duplicating them here caused Sonnet to
-    // hallucinate that escalation management was unavailable when `admin` wasn't
-    // selected. See #2998.
-    description:
-      "Administrative operations - manage prospects, organizations, feeds, escalations, user roles, committee/working group leadership, event management (create/update events, manage registrations, invites, attendee lists), member insights and engagement analytics, community-wide engagement ranking, brand logo registry review queue (approve/reject pending logos), edit a member's directory profile or logo on their behalf (admin only)",
-    tools: [
-      // Event management (admin)
-      "create_event",
-      "update_event",
-      "manage_event_registrations",
-      "check_person_event_status",
-      "invite_to_event",
-      "list_pending_invoices",
-      "get_account",
-      "add_prospect",
-      "update_prospect",
-      "enrich_company",
-      "query_prospects",
-      "prospect_search_lusha",
-      "search_industry_feeds",
-      "add_industry_feed",
-      "get_feed_stats",
-      "get_platform_stats",
-      "list_feed_proposals",
-      "approve_feed_proposal",
-      "reject_feed_proposal",
-      "add_media_contact",
-      "list_flagged_conversations",
-      "review_flagged_conversation",
-      "create_chapter",
-      "list_chapters",
-      "create_industry_gathering",
-      "list_industry_gatherings",
-      "list_working_groups",
-      "get_working_group",
-      "add_committee_leader",
-      "remove_committee_leader",
-      "list_committee_leaders",
-      "merge_organizations",
-      "find_duplicate_orgs",
-      "check_domain_health",
-      "manage_organization_domains",
-      "update_org_member_role",
-      "claim_prospect",
-      "triage_prospect_domain",
-      "suggest_prospects",
-      "set_reminder",
-      "my_upcoming_tasks",
-      "complete_task",
-      "log_conversation",
-      "get_member_search_analytics",
-      "list_organizations_by_users",
-      "list_users_by_engagement",
-      "list_slack_users_by_org",
-      "list_paying_members",
-      "resend_invoice",
-      "update_billing_email",
-      "add_working_group_member",
-      "remove_working_group_member",
-      "rename_working_group",
-      "list_missing_brands",
-      "list_missing_properties",
-      "get_outreach_stats",
-      "get_outreach_history",
-      "send_outreach",
-      "lookup_person",
-      "get_action_items",
-      "list_pending_brand_logos",
-      "list_brand_logos",
-      "review_brand_logo",
-      "list_pending_community_mirrors",
-      "update_member_logo",
-      "update_member_profile",
-      "transfer_brand_ownership",
-      "list_orphaned_brands",
-      "create_contact",
-    ],
+    description: "Legacy monolithic admin compatibility surface",
+    tools: [...LEGACY_ADMIN_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   outreach: {
@@ -409,6 +533,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "lookup_person",
       "get_action_items",
       "get_account",
+      "create_contact",
     ],
     adminOnly: true,
   },
@@ -433,6 +558,15 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "test_out_modules",
       "start_certification_exam",
       "complete_certification_exam",
+      "check_credentials",
+      "checkpoint_teaching_progress",
+      "get_build_phase_instructions",
+      "save_learner_feedback",
+      // Credential issuance can require the learner to supply a display name.
+      // Keep the recovery pair on the same routed surface.
+      "set_my_name",
+      // Certification paywalls direct learners to the read-only product lookup.
+      "find_membership_products",
       // AdCP tasks (route to training agent during certification via call_adcp_task)
       "call_adcp_task",
     ],
@@ -473,8 +607,8 @@ export function getToolsForSets(
       if (toolSet.adminOnly && !isAAOAdmin) {
         continue;
       }
-      // Skip billing set in public channels
-      if (isPublicChannel && setName === "billing") {
+      // Skip enrollment and financial actions in public channels.
+      if (isPublicChannel && (setName === "member_billing" || setName === "billing")) {
         continue;
       }
       for (const tool of toolSet.tools) {
@@ -494,6 +628,9 @@ export function getUnavailableSets(
   isAAOAdmin: boolean = false,
 ): string[] {
   return Object.keys(TOOL_SETS).filter((setName) => {
+    if (TOOL_SETS[setName].routerVisible === false) {
+      return false;
+    }
     // Don't mention admin set to non-admins
     if (TOOL_SETS[setName].adminOnly && !isAAOAdmin) {
       return false;
@@ -580,6 +717,7 @@ export function requiresPrecision(selectedSets: string[]): boolean {
 export function getValidToolSetNames(isAAOAdmin: boolean = false): Set<string> {
   return new Set(
     Object.entries(TOOL_SETS)
+      .filter(([_, set]) => set.routerVisible !== false)
       .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
       .map(([name]) => name),
   );
@@ -592,6 +730,7 @@ export function getToolSetDescriptionsForRouter(
   isAAOAdmin: boolean = false,
 ): string {
   return Object.entries(TOOL_SETS)
+    .filter(([_, set]) => set.routerVisible !== false)
     .filter(([_, set]) => !set.adminOnly || isAAOAdmin)
     .map(([name, set]) => `- **${name}**: ${set.description}`)
     .join("\n");

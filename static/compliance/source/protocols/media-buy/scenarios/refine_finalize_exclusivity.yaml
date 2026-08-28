@@ -38,10 +38,10 @@ narrative: |
      validation step (tolerated as optional) while the matching branch contributes; the
      gate asserts at least one contributed.
 
-     A second brief is attempted in the setup_second_proposal phase to capture a second
-     proposal_id. If the seller returns fewer than two proposals, all multi-finalize phases
-     skip gracefully via skip_if guards and the storyboard still passes on the two mandatory
-     cases.
+     A second brief is attempted in the setup_second_proposal phase to capture its first
+     proposal_id. If the seller returns the same proposal identity for both briefs, all
+     multi-finalize phases skip via skip_if guards and the storyboard still passes on the
+     two mandatory cases.
 
 agent:
   interaction_model: media_buy_seller
@@ -125,17 +125,17 @@ phases:
             description: "At least one proposal returned with an ID"
 
   - id: setup_second_proposal
-    title: "Attempt second proposal capture for multi-finalize coverage"
+    title: "Attempt distinct proposal capture for multi-finalize coverage"
     optional: true
     narrative: |
-      Sends a second brief to capture a second proposal_id for the multi-finalize branch
-      set. This phase is optional: if the seller returns fewer than two proposals, this
-      phase fails gracefully and all multi-finalize phases skip via skip_if guards. The
-      two mandatory error-probe phases (mixed_finalize_rejected, non_proposal_finalize_rejected)
-      are unaffected.
+      Sends a second brief and captures the first returned proposal_id for the multi-finalize
+      branch set. A seller may return one proposal per brief, including the same stable
+      proposal for both identical briefs. When the identities match, all multi-finalize
+      phases skip via skip_if guards. The two mandatory error-probe phases
+      (mixed_finalize_rejected, non_proposal_finalize_rejected) are unaffected.
     steps:
       - id: get_products_brief_second
-        title: "Second brief to capture proposal_id_2"
+        title: "Second brief to seek a distinct proposal identity"
         task: get_products
         schema_ref: "media-buy/get-products-request.json"
         response_schema_ref: "media-buy/get-products-response.json"
@@ -143,10 +143,9 @@ phases:
         comply_scenario: full_sales_flow
         stateful: false
         expected: |
-          Return at least two proposals. proposals[1].proposal_id is captured as
-          proposal_id_2. If the seller returns only one proposal, this step fails
-          (tolerated — phase is optional), proposal_id_2 stays unset, and the
-          multi-finalize phases skip gracefully.
+          Return at least one proposal. proposals[0].proposal_id is captured as
+          proposal_id_2. If it matches proposal_id_1, the multi-finalize phases
+          skip because this seller has not exposed two usable proposal identities.
         sample_request:
           idempotency_key: "$generate:uuid_v4#media_buy_seller_refine_finalize_exclusivity_setup_second_proposal_get_products_brief_second"
           buying_mode: "brief"
@@ -156,13 +155,13 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
         context_outputs:
-          - path: "proposals[1].proposal_id"
+          - path: "proposals[0].proposal_id"
             key: "proposal_id_2"
         validations:
           - id: get_products_brief_second.proposal_id_2_present
             check: field_present
-            path: "proposals[1].proposal_id"
-            description: "Second proposal present for multi-finalize test"
+            path: "proposals[0].proposal_id"
+            description: "Second brief returns a proposal identity for comparison"
 
   - id: mixed_finalize_rejected
     title: "Mixed finalize rejected"
@@ -211,7 +210,7 @@ phases:
             description: "Mixed finalize + non-finalize refine[] rejected with INVALID_REQUEST"
           - id: mixed_finalize.error_field_present
             check: field_present
-            path: "errors[0].field"
+            path: "adcp_error.field"
             description: "Seller populates error.field pointing at the offending refine entry"
 
   - id: non_proposal_finalize_rejected

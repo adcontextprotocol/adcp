@@ -114,8 +114,15 @@ const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
-// version for schema selection and override only the request envelope.
-const wireAdcpVersion = isThreeZeroCompatRun ? '3.0' : undefined;
+// version for schema selection and override only the request envelope. Source
+// runs also pin the current wire release: capability discovery must describe
+// the surface being graded instead of falling back to the agent's legacy 3.0
+// unpinned default.
+const wireAdcpVersion = isThreeZeroCompatRun
+  ? '3.0'
+  : releasedComplianceVersion === undefined
+    ? '3.2-beta.6'
+    : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -202,25 +209,17 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
 
 /**
  * Storyboards we know fail against the training agent for reasons that aren't
- * a regression — track each entry with the upstream/internal issue that gates
- * removal so the skip list doesn't silently grow.
+ * a regression — give each entry a concrete removal condition (and an active
+ * tracker where one exists) so the skip list doesn't silently grow.
  */
 const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
     'webhook_emission',
-    'adcontextprotocol/adcp-client#2653: the packaged loopback webhook runner does not complete and exhausts the hosted runner memory envelope before returning a result. Remove when webhook_emission completes with bounded memory.',
-  ],
-  [
-    'wholesale_feed_products_scope_isolation',
-    'adcontextprotocol/adcp-client#2654: the packaged storyboard path projects the reserved account-overlay request as cache_scope public rather than account and retains excessive memory. Direct training-agent account-overlay coverage remains green. Remove when the packaged runner preserves the account scope.',
+    'The beta.12 packaged webhook receiver bounds shutdown memory and retry capture, but the current webhook_emission run still exceeds the isolated runner\'s 120-second result deadline. Remove when the storyboard returns a result inside the runner budget.',
   ],
   [
     'wholesale_feed_signals_scope_isolation',
-    'adcontextprotocol/adcp-client#2654: the packaged storyboard path replaces the reserved account-overlay identity with the test-kit brand, so the agent correctly resolves cache_scope public. Direct account-overlay coverage remains green. Remove when the packaged runner preserves the step account scope.',
-  ],
-  [
-    'media_buy_seller/refine_finalize_exclusivity',
-    'The vector assumes brief discovery returns at least two proposals, although supports_proposals does not commit a seller to that cardinality and the storyboard seeds no proposal fixtures. Remove when the vector deterministically seeds two proposals or gates the multi-finalize branch on an observed pair.',
+    'The beta.12 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
   ],
 ]);
 
@@ -240,14 +239,6 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
   [
     'sales/creative/native_localization',
     'The localization storyboard begins capability assertions without first gating on creative.has_creative_library and localization support. The sales tenant accepts inline creatives but does not advertise a localized creative library. Remove when capability gating precedes execution.',
-  ],
-  [
-    'sales/sales_non_guaranteed',
-    'The sales tenant can store a governance-agent registration but does not yet orchestrate the external check_governance call required before a governed media-buy commitment. Remove when seller-side governance delegation returns a signed approval context for create_media_buy.',
-  ],
-  [
-    'sales/sales_guaranteed',
-    'The sales tenant can store a governance-agent registration but does not yet orchestrate the external check_governance call required before a governed media-buy commitment. Remove when seller-side governance delegation returns a signed approval context for create_media_buy.',
   ],
   [
     'signals/agent_notification_configs',
@@ -307,12 +298,7 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
   ],
 ]);
 
-const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
-  [
-    'media_buy_seller/targeting_aware_discovery',
-    'adcontextprotocol/adcp#6199: this 3.2 compliance contract is schema- and path-validated now, but the training-agent runtime must remain unimplemented until published 3.2 SDK types expose the targeting-aware discovery fields. Remove after #6199 lands.',
-  ],
-]);
+const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([]);
 
 /**
  * Per-step skip list. Entries are `{storyboard_id}/{step_id}` keys mapped to a
@@ -321,7 +307,8 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
  *
  * Use this when one step in an otherwise-green storyboard is blocked by an
  * upstream issue and skipping the whole storyboard would lose passing
- * coverage. Track every entry with a linked issue.
+ * coverage. Every entry names a concrete removal condition; link an issue
+ * when an active tracker exists.
  */
 const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
@@ -329,32 +316,24 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
   ],
   [
-    'media_buy_seller/dependency_impairment_audience/get_buy_impaired',
-    'The authored impairment.coherence invariant attempts to resolve an audience status from public media-buy state, but the audience lifecycle is controller-internal and has no read task. The step-level health and impairment assertions pass; remove when the invariant consumes controller state or the protocol exposes an audience read.',
-  ],
-  [
-    'signals_baseline/get_signals_async/list_signals_task_wrong_account',
-    'The packaged framework task registry does not apply the request account when list_tasks filters by task_id, exposing the same authenticated caller task across sandbox accounts. The submitted, same-account listing, and completion phases remain active. Remove when task registry reads enforce account scope.',
-  ],
-  [
     'governance_delivery_monitor/check_governance_drift',
     'The packaged runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],
   [
     'creative_transformers/build_variants',
-    'adcontextprotocol/adcp-client#2105: the packaged storyboard response validator still rejects the BuildCreativeVariantSuccess creatives[]/variants[] arm emitted by the training agent, so the runner cannot promote the produced build_variant_id into later storyboard context. Remove when the creative_transformers build_variants step schema-grades under the packaged SDK.',
+    'The beta.12 packaged storyboard response validator still rejects the BuildCreativeVariantSuccess creatives[]/variants[] arm emitted by the training agent, so the runner cannot promote the produced build_variant_id into later storyboard context. The previously cited adcp-client#2105 tracked a different schema-bundle API and is closed; remove this skip when the build_variants response schema-grades under the packaged SDK.',
   ],
   [
     'creative_transformers/refine_variant',
-    'Same blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
+    'Same beta.12 blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
-    'adcontextprotocol/adcp-client#2392: the packaged SDK canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
+    'The beta.12 packaged SDK still canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading, despite closure of adcp-client#2392. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_unprojectable_legacy_dual_emission',
-    'adcontextprotocol/adcp-client#2392: the packaged SDK drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
+    'The beta.12 packaged SDK still drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE, despite closure of adcp-client#2392. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
   ],
 ]);
 

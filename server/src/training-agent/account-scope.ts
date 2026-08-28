@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { AccountRef, OperatorUnit } from './types.js';
 
 const ACCOUNT_ID_KEYS = new Set(['account_id']);
@@ -197,4 +198,37 @@ export function accountScopeFromRef(value: AccountRef | unknown): string {
     timezone: account.timezone ?? null,
     sandbox: account.sandbox,
   })}`;
+}
+
+/** Stable framework account ID for a canonical natural account reference. */
+export function syntheticAccountIdFromRef(value: AccountRef | unknown): string {
+  return `synthetic_${createHash('sha256')
+    .update(accountScopeFromRef(value))
+    .digest('hex')
+    .slice(0, 32)}`;
+}
+
+/**
+ * Convert the comply controller's sandbox assertion into a canonical AccountRef.
+ * Opaque IDs carry `sandbox: true` only as a controller gate assertion; sandbox
+ * is not part of the opaque AccountRef identity itself.
+ */
+export function normalizeControllerAccountRef(value: unknown): AccountRef {
+  if (isRecord(value) && typeof value.account_id === 'string' && value.sandbox === true) {
+    const { sandbox: _sandboxAssertion, ...accountRef } = value;
+    const canonical = canonicalizeAccountRef(accountRef);
+    if (canonical.kind !== 'account_id') invalid('account.account_id must identify an opaque account.');
+    return { account_id: canonical.account_id };
+  }
+
+  const canonical = canonicalizeAccountRef(value);
+  if (canonical.kind === 'account_id') return { account_id: canonical.account_id };
+  return {
+    brand: canonical.brand,
+    operator: canonical.operator,
+    ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+    ...(canonical.currency && { currency: canonical.currency }),
+    ...(canonical.timezone && { timezone: canonical.timezone }),
+    ...(canonical.sandbox && { sandbox: true }),
+  };
 }

@@ -251,7 +251,7 @@ export async function handleEmailConversation(
       textContent: outputValidation.sanitized,
       fromEmail: input.addieAddress.includes('+')
         ? input.addieAddress
-        : 'addie@agenticadvertising.org',
+        : 'addie@updates.agenticadvertising.org',
     });
 
     if (!replyResult.success) {
@@ -274,6 +274,7 @@ export async function handleEmailConversation(
           }))
         : undefined,
       model: effectiveModel,
+        model_execution: response.model_execution,
       latency_ms: Date.now() - startTime,
       tokens_input: response.usage?.input_tokens,
       tokens_output: response.usage?.output_tokens,

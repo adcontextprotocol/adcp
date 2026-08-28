@@ -13,6 +13,7 @@ import {
   validateNormalizedModelResponse,
 } from '../../../src/addie/model-providers/events.js';
 import {
+  classifyLocalModelExecution,
   UnsupportedModelCapabilityError,
   type ModelProviderCapabilities,
   type ModelRequest,
@@ -20,6 +21,15 @@ import {
   type NormalizedModelEvent,
 } from '../../../src/addie/model-providers/model-provider.js';
 import { AddieClaudeClient } from '../../../src/addie/claude-client.js';
+
+describe('model execution selection integrity', () => {
+  it('rejects a partially populated requested provider/model tuple', () => {
+    expect(() => classifyLocalModelExecution(
+      { requested_provider: 'openai', requested_model: null } as never,
+      'provider_error',
+    )).toThrow('Requested provider and model must be supplied together');
+  });
+});
 
 function request(overrides: Partial<ModelRequest> = {}): ModelRequest {
   return {
@@ -293,6 +303,27 @@ describe('AnthropicModelProvider request translation', () => {
     expect(prepared.providerRequest).not.toHaveProperty('metadata');
   });
 
+  it('maps canonical medium reasoning to the Sonnet output control envelope', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    expect(provider.prepare(request({ reasoning: { effort: 'medium' } })).providerRequest)
+      .toMatchObject({ output_config: { effort: 'medium' } });
+  });
+
+  it('preserves issued text blocks as arrays for same-provider continuation', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    const continuation = normalizeAnthropicResponse(response({
+      stop_reason: 'pause_turn',
+      content: [{ type: 'text', text: 'Server work is pending.' }],
+    })).content;
+
+    expect(provider.prepare(request({
+      messages: [{ role: 'assistant', content: continuation }],
+    })).providerRequest.messages).toEqual([{
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Server work is pending.' }],
+    }]);
+  });
+
   it('fails closed on structured output instead of silently dropping it', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
     expect(() => provider.prepare(request({
@@ -418,6 +449,162 @@ describe('AnthropicModelProvider response normalization', () => {
     ]);
     await expect(collectModelResponse((async function* () { yield* events; })(), 'anthropic'))
       .resolves.toMatchObject({ finishReason: 'stop' });
+  });
+
+  it('allows the production caller to preserve two SDK transport retries', async () => {
+    const create = vi.fn(async () => response());
+    const provider = new AnthropicModelProvider(
+      'unused',
+      { beta: { messages: { create } } },
+      { transportMaxRetries: 2 },
+    );
+
+    for await (const _event of provider.respond(request())) {
+      // Drain the response.
+    }
+
+    expect(create.mock.calls[0]?.[1]).toEqual({ maxRetries: 2 });
+  });
+
+  it('uses the streaming transport while preserving normalized chunk boundaries', async () => {
+    const create = vi.fn();
+    const stream = vi.fn(() => ({
+      async *[Symbol.asyncIterator]() {
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'do' },
+        };
+        yield {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'ne' },
+        };
+      },
+      finalMessage: vi.fn(async () => response()),
+    }));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      { beta: { messages: { create, stream } } },
+      { transportMaxRetries: 2 },
+    );
+    const onStreamProgress = vi.fn();
+
+    const events: NormalizedModelEvent[] = [];
+    for await (const event of provider.respond(request(), { stream: true, onStreamProgress })) events.push(event);
+    const normalized = await collectModelResponse((async function* () { yield* events; })());
+
+    expect(normalized.content).toEqual([{ type: 'text', text: 'done' }]);
+    expect(events.filter((event) => event.type === 'text_delta')).toEqual([
+      { type: 'text_delta', index: 0, text: 'do' },
+      { type: 'text_delta', index: 0, text: 'ne' },
+    ]);
+    expect(create).not.toHaveBeenCalled();
+    expect(onStreamProgress).toHaveBeenCalledTimes(2);
+    expect(onStreamProgress).toHaveBeenNthCalledWith(1, { type: 'content_delta' });
+    expect(stream).toHaveBeenCalledWith(
+      provider.prepare(request()).providerRequest,
+      { maxRetries: 2, signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it('aborts a stream that stays idle before its first event', async () => {
+    let transportSignal: AbortSignal | undefined;
+    const iteratorReturn = vi.fn(async () => ({ done: true, value: undefined }));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      {
+        beta: {
+          messages: {
+            create: vi.fn(),
+            stream: vi.fn((_payload, options) => {
+              transportSignal = options.signal;
+              return {
+                [Symbol.asyncIterator]() {
+                  return {
+                    next: () => new Promise<IteratorResult<unknown>>(() => undefined),
+                    return: iteratorReturn,
+                  };
+                },
+                finalMessage: vi.fn(),
+              };
+            }),
+          },
+        },
+      },
+      { streamIdleTimeoutMs: 10 },
+    );
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toMatchObject({ name: 'TimeoutError', message: 'Anthropic stream idle timeout' });
+    expect(transportSignal?.aborted).toBe(true);
+    expect(iteratorReturn).toHaveBeenCalledOnce();
+  });
+
+  it('aborts a stream that stays idle waiting for its terminal message', async () => {
+    let transportSignal: AbortSignal | undefined;
+    const finalMessage = vi.fn(() => new Promise<never>(() => undefined));
+    const provider = new AnthropicModelProvider(
+      'unused',
+      {
+        beta: {
+          messages: {
+            create: vi.fn(),
+            stream: vi.fn((_payload, options) => {
+              transportSignal = options.signal;
+              return {
+                async *[Symbol.asyncIterator]() {
+                  yield {
+                    type: 'content_block_delta',
+                    index: 0,
+                    delta: { type: 'text_delta', text: 'partial' },
+                  };
+                },
+                finalMessage,
+              };
+            }),
+          },
+        },
+      },
+      { streamIdleTimeoutMs: 10 },
+    );
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toMatchObject({ name: 'TimeoutError', message: 'Anthropic stream idle timeout' });
+    expect(finalMessage).toHaveBeenCalledOnce();
+    expect(transportSignal?.aborted).toBe(true);
+  });
+
+  it('rejects streamed text that disagrees with the terminal response', async () => {
+    const provider = new AnthropicModelProvider('unused', {
+      beta: {
+        messages: {
+          create: vi.fn(),
+          stream: vi.fn(() => ({
+            async *[Symbol.asyncIterator]() {
+              yield {
+                type: 'content_block_delta',
+                index: 0,
+                delta: { type: 'text_delta', text: 'different' },
+              };
+            },
+            finalMessage: vi.fn(async () => response()),
+          })),
+        },
+      },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toThrow('Anthropic stream text does not match terminal response');
+  });
+
+  it('fails closed when a transport cannot provide streaming', async () => {
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create: vi.fn() } },
+    });
+
+    await expect(collectModelResponse(provider.respond(request(), { stream: true })))
+      .rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
   });
 
   it('freezes the exact nested envelope before provenance and dispatch', async () => {
