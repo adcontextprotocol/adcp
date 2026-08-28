@@ -100,6 +100,8 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Exact trusted partition used by the SDK task registry. */
+  taskRegistryScope?: Readonly<{ registryNamespace: string; accountId: string; ownerScope: string }>;
   /** Validated wire input before SDK account extraction; used only to verify
    * governance payload bindings against the exact buyer-authorized request. */
   requestInput?: Record<string, unknown>;

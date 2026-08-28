@@ -11,7 +11,6 @@
  * bodies that throw `AdcpError` directly) is a follow-up.
  */
 
-import { createHash } from 'node:crypto';
 import {
   AdcpError,
   type DecisioningPlatform,
@@ -60,8 +59,9 @@ import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
-import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
+import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
+import { taskRegistryScopeFromContext } from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
 import {
   SellerManagedControlJobCoordinator,
@@ -731,7 +731,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
     const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
     const id = canonical.kind === 'account_id'
       ? canonical.account_id
-      : `synthetic_${createHash('sha256').update(accountScopeFromRef(accountRef)).digest('hex').slice(0, 32)}`;
+      : syntheticAccountIdFromRef(accountRef);
     return {
       id,
       name: brandDomain ?? id,
@@ -958,9 +958,9 @@ export class TrainingSalesPlatform
         typeof (v5Result as { task_id?: unknown }).task_id === 'string'
       ) {
         const submitted = v5Result as { task_id: string; message?: string };
-        const completionOwnerKey = sessionKeyFromArgs(args, 'open');
+        const completionScope = taskRegistryScopeFromContext(ctx, 'sales');
         return ctx.handoffToTask(
-          async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
+          async () => await waitForForcedTaskCompletion(submitted.task_id, completionScope),
           { task_id: submitted.task_id },
         );
       }

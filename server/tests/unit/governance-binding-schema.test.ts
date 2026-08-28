@@ -9,7 +9,7 @@ function migration(name: string): string {
 
 describe('durable governance and task schemas', () => {
   it('stores each governance binding once with both immutable account aliases', () => {
-    const sql = migration('562_governance_bindings_and_task_owner_scope.sql');
+    const sql = migration('563_governance_bindings_and_task_owner_scope.sql');
     expect(sql).toContain('CREATE TABLE IF NOT EXISTS governance_agent_bindings');
     expect(sql).toContain('PRIMARY KEY (principal_scope, account_id)');
     expect(sql).toContain('UNIQUE (principal_scope, account_scope)');
@@ -52,7 +52,7 @@ describe('durable governance and task schemas', () => {
 
   it('upgrades fresh and existing task registries to the SDK owner-scope shape', () => {
     const base = migration('463_adcp_decisioning_tasks.sql');
-    const upgrade = migration('562_governance_bindings_and_task_owner_scope.sql');
+    const upgrade = migration('563_governance_bindings_and_task_owner_scope.sql');
     expect(base).toContain('CREATE TABLE IF NOT EXISTS adcp_decisioning_tasks');
     expect(upgrade).toContain('ADD COLUMN IF NOT EXISTS owner_scope TEXT');
     expect(upgrade).toContain('idx_adcp_decisioning_tasks_owner_account');
@@ -60,7 +60,7 @@ describe('durable governance and task schemas', () => {
   });
 
   it('defines a recoverable leased seller-managed execution outbox', () => {
-    const sql = migration('563_seller_managed_control_jobs.sql');
+    const sql = migration('564_seller_managed_control_jobs.sql');
     for (const fragment of [
       'task_id TEXT PRIMARY KEY',
       'owner_scope TEXT NOT NULL',

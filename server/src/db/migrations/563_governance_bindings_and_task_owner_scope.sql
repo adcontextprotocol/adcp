@@ -1,4 +1,4 @@
--- Migration 562: authoritative seller-side governance-agent bindings. Each principal/account
+-- Migration 563: authoritative seller-side governance-agent bindings. Each principal/account
 -- has one atomic row addressable by either seller account_id or the complete
 -- canonical natural identity. Credentials are encrypted separately from the
 -- non-secret agent descriptor so they never appear in binding JSON.

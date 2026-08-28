@@ -4,6 +4,7 @@ import {
   type AdcpStructuredError,
   type IdempotencyStore,
   type TaskRegistry,
+  type TaskRegistryScope,
 } from '@adcp/sdk/server';
 import { query } from '../db/client.js';
 import { decrypt, deriveKey, encrypt } from '../db/encryption.js';
@@ -615,7 +616,7 @@ export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManag
   return {
     ...registry,
     async authorizeSellerManagedReplay(opts) {
-      const existing = await registry.getTask(opts.taskId);
+      const existing = await registry._getTaskUnsafe(opts.taskId);
       if (existing && (existing.tool !== 'control_media_buy' || existing.accountId !== opts.accountId)) {
         throw new Error(`Seller-managed task replay scope mismatch: ${opts.taskId}`);
       }
@@ -627,7 +628,7 @@ export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManag
     },
     async create(opts) {
       if (opts.overrideTaskId?.startsWith('smc_')) {
-        const existing = await registry.getTask(opts.overrideTaskId);
+        const existing = await registry._getTaskUnsafe(opts.overrideTaskId);
         if (existing) {
           const ownerScope = opts.ownerScope ?? `account:${opts.accountId}`;
           const authorizedOwner = authorizedOwners.get(opts.overrideTaskId);
@@ -640,10 +641,15 @@ export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManag
       }
       return await registry.create(opts);
     },
-    async getTask<TResult = unknown>(taskId: string) {
-      const existing = await registry.getTask<TResult>(taskId);
+    async getTask<TResult = unknown>(taskId: string, scope: TaskRegistryScope) {
+      const authorizedOwner = authorizedOwners.get(taskId);
+      const existing = authorizedOwner === scope.ownerScope
+        ? await registry._getTaskUnsafe<TResult>(taskId)
+        : await registry.getTask<TResult>(taskId, scope);
       const ownerScope = authorizedOwners.get(taskId);
-      return existing && ownerScope ? { ...existing, ownerScope } : existing;
+      return existing && ownerScope === scope.ownerScope && existing.accountId === scope.accountId
+        ? { ...existing, ownerScope }
+        : existing;
     },
     ...(registry.list && {
       async list(opts) {
@@ -651,7 +657,7 @@ export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManag
         const tasks = [...listed.tasks];
         for (const [taskId, ownerScope] of authorizedOwners) {
           if (ownerScope !== opts.ownerScope || tasks.some(task => task.taskId === taskId)) continue;
-          const task = await registry.getTask(taskId);
+          const task = await registry._getTaskUnsafe(taskId);
           if (task?.accountId === opts.accountId) tasks.push({ ...task, ownerScope });
         }
         return { tasks };
@@ -847,7 +853,8 @@ export class SellerManagedControlJobCoordinator {
 
   private async process(claim: ClaimedJob, recoveryWorker: boolean): Promise<Record<string, unknown>> {
     let job = claim.job;
-    const task = await this.taskRegistry.getTask(job.taskId);
+    let taskScope = { accountId: job.accountId, ownerScope: job.ownerScope };
+    const task = await this.taskRegistry.getTask(job.taskId, taskScope);
     if (!task) {
       if (Date.now() - Date.parse(job.createdAt) < TASK_CREATE_GRACE_MS) {
         await this.store.retry(claim, TASK_CREATE_GRACE_MS);
@@ -860,14 +867,14 @@ export class SellerManagedControlJobCoordinator {
           overrideTaskId: job.taskId,
         });
       } catch (err) {
-        const racedTask = await this.taskRegistry.getTask(job.taskId);
+        const racedTask = await this.taskRegistry.getTask(job.taskId, taskScope);
         if (!racedTask) throw err;
       }
     }
 
     if (job.status === 'working') {
       try {
-        await this.taskRegistry.updateProgress(job.taskId, {
+        await this.taskRegistry.updateProgress(job.taskId, taskScope, {
           message: 'Processing seller-managed media-buy control',
         });
         const result = await this.executeWithLeaseHeartbeat(claim, job);
@@ -885,6 +892,7 @@ export class SellerManagedControlJobCoordinator {
         const durable = await this.store.get(job.taskId);
         if (!durable) throw new Error(`Seller-control outcome disappeared: ${job.taskId}`);
         job = durable;
+        taskScope = { accountId: job.accountId, ownerScope: job.ownerScope };
       } catch (err) {
         if (err instanceof RetryableSellerControlError) throw err;
         if (err instanceof AdcpError) {
@@ -897,6 +905,7 @@ export class SellerManagedControlJobCoordinator {
           const durable = await this.store.get(job.taskId);
           if (!durable) throw new Error(`Seller-control failure disappeared: ${job.taskId}`);
           job = durable;
+          taskScope = { accountId: job.accountId, ownerScope: job.ownerScope };
         } else {
           await this.store.retry(claim, this.retryDelay(job));
           logger.error({ err, taskId: job.taskId }, 'Seller-managed control execution will be retried');
@@ -906,7 +915,7 @@ export class SellerManagedControlJobCoordinator {
     }
 
     if (job.status === 'failed' && job.error) {
-      await this.taskRegistry.fail(job.taskId, job.error, job.result);
+      await this.taskRegistry.fail(job.taskId, taskScope, job.error, job.result);
       if (recoveryWorker) {
         await this.notify(job);
         await this.store.markTaskSynced(claim);
@@ -916,7 +925,7 @@ export class SellerManagedControlJobCoordinator {
     if (job.status !== 'succeeded' || !job.result) {
       throw new Error(`Seller-managed control job has no durable outcome: ${job.taskId}`);
     }
-    await this.taskRegistry.complete(job.taskId, job.result);
+    await this.taskRegistry.complete(job.taskId, taskScope, job.result);
     if (recoveryWorker) {
       await this.notify(job);
       await this.store.markTaskSynced(claim);

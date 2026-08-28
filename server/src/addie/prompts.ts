@@ -222,7 +222,22 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - resolve_brand: Resolve a domain to its canonical brand identity from brand.json.
 - save_brand: Add a community brand. It is not needed after research_brand, which auto-saves enrichment.
 - list_brands: Browse registry entries.
-- list_missing_brands: Show the most-requested brands not yet in the registry.`,
+- list_missing_brands: Show the most-requested brands not yet in the registry.
+- upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.`,
+  },
+  {
+    selectedToolSets: ['directory'],
+    requiredToolNames: [
+      'publish_brand_canonical_document',
+      'add_to_brand_refs',
+      'check_mutual_assertion',
+      'notify_pending_verification',
+    ],
+    text: `### Brand canonical-document operations
+- publish_brand_canonical_document: Generate and validate a leaf brand document for the operator to host; the tool does not upload it.
+- add_to_brand_refs: Add the reciprocal child pointer to a house portfolio.
+- check_mutual_assertion: Verify whether leaf and house documents reciprocally assert the relationship.
+- notify_pending_verification: Use only after check_mutual_assertion returns leaf_only with the published house contact. Respect its feature flag and rate limit.`,
   },
   {
     selectedToolSets: ['agent_testing'],

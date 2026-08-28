@@ -275,6 +275,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "save_brand",
       "list_brands",
       "list_missing_brands",
+      "upload_brand_logo",
+      "publish_brand_canonical_document",
+      "add_to_brand_refs",
+      "check_mutual_assertion",
+      "notify_pending_verification",
     ],
   },
 

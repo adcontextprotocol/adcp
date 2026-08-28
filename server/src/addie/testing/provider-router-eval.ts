@@ -116,6 +116,7 @@ export const SYNTHETIC_ROUTER_CORPUS: ReadonlyArray<RouterEvalCase> = Object.fre
   { id: 'protocol-schema', context: dm('Which field carries the media buy identifier in AdCP 3.2?'), expected: { action: 'respond', toolSets: ['knowledge'], confidence: 'high', requiresDepth: false } },
   { id: 'membership-profile', context: dm('Please show me my member profile.'), expected: { action: 'respond', toolSets: ['member'], confidence: 'high', requiresDepth: false } },
   { id: 'directory-vendor', context: dm('Find member organizations that offer retail media services.'), expected: { action: 'respond', toolSets: ['directory'], confidence: 'high', requiresDepth: false } },
+  { id: 'brand-canonical', context: dm('Check whether this leaf brand and its corporate house have reciprocal brand.json assertions.'), expected: { action: 'respond', toolSets: ['directory'], confidence: 'high', requiresDepth: false } },
   { id: 'agent-validation', context: dm('Validate my AdCP agent implementation.'), expected: { action: 'respond', toolSets: ['agent_testing'], confidence: 'high', requiresDepth: false } },
   { id: 'property-catalog', context: dm('Audit this property list and add legitimate missing domains to the catalog.'), expected: { action: 'respond', toolSets: ['agent_testing'], confidence: 'high', requiresDepth: false } },
   { id: 'execute-buy', context: dm('Create a media buy for my approved campaign.'), expected: { action: 'respond', toolSets: ['adcp_operations'], confidence: 'high', requiresDepth: false } },

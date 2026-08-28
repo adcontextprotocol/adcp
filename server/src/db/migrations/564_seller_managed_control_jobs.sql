@@ -1,4 +1,4 @@
--- Migration 563: recoverable execution outbox for seller-managed control_media_buy jobs.
+-- Migration 564: recoverable execution outbox for seller-managed control_media_buy jobs.
 -- No FK to adcp_decisioning_tasks: the outbox is committed before SDK task
 -- creation so a worker can recover a crash in that boundary.
 CREATE TABLE IF NOT EXISTS seller_managed_control_jobs (

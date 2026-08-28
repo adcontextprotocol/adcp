@@ -2,6 +2,7 @@ import type { StoryboardRunOptions } from '@adcp/sdk/testing';
 
 export interface LoadedTestKit {
   brand?: { house?: { domain?: string }; brand_id?: string };
+  commercial_relationship?: string;
   auth?: {
     api_key?: string;
     basic?: { username?: string; password?: string; credentials?: string };
@@ -38,7 +39,11 @@ export function testKitOptionsFromKit(
     throw new Error('test kit declares auth credentials without auth.probe_task — required by runner');
   }
   const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
+  const commercialRelationship = kit?.commercial_relationship;
   return {
+    ...(commercialRelationship !== undefined && {
+      commercial_relationship: commercialRelationship,
+    }),
     auth: {
       ...(auth.api_key !== undefined && { api_key: auth.api_key }),
       ...(auth.basic !== undefined && { basic: auth.basic }),

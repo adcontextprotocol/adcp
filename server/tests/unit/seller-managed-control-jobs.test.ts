@@ -22,6 +22,7 @@ const INPUT = {
   request: { media_buy_id: 'buy_recovery_test', revision: 4 },
   executionContext: { mode: 'open' as const },
 };
+const TASK_SCOPE = { accountId: INPUT.accountId, ownerScope: INPUT.ownerScope };
 
 async function registerTask(taskRegistry: ReturnType<typeof createInMemoryTaskRegistry>): Promise<void> {
   await taskRegistry.create({
@@ -76,7 +77,10 @@ describe('seller-managed control durable jobs', () => {
       tool: 'control_media_buy', accountId: INPUT.accountId,
       ownerScope: 'session:new-connection', overrideTaskId: INPUT.taskId,
     })).resolves.toEqual({ taskId: INPUT.taskId });
-    expect(await registry.getTask(INPUT.taskId)).toMatchObject({
+    expect(await registry.getTask(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:new-connection',
+    })).toMatchObject({
       ownerScope: 'session:new-connection',
     });
     expect(await registry.list?.({
@@ -107,7 +111,10 @@ describe('seller-managed control durable jobs', () => {
       tool: 'control_media_buy', accountId: INPUT.accountId,
       ownerScope: 'session:replacement', overrideTaskId: INPUT.taskId,
     })).resolves.toEqual({ taskId: INPUT.taskId });
-    expect(await registry.getTask(INPUT.taskId)).toMatchObject({
+    expect(await registry.getTask(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:replacement',
+    })).toMatchObject({
       accountId: INPUT.accountId,
       ownerScope: 'session:replacement',
     });
@@ -136,7 +143,10 @@ describe('seller-managed control durable jobs', () => {
         ['replacement', null, INPUT.accountId], 'request-hash',
       ],
     });
-    expect(await registry.getTask(INPUT.taskId)).toMatchObject({
+    expect(await registry.getTask(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:replacement',
+    })).toMatchObject({
       ownerScope: 'session:replacement',
     });
   });
@@ -182,7 +192,7 @@ describe('seller-managed control durable jobs', () => {
     }), store);
     await replacement.runAvailable();
 
-    expect(await tasks.getTask(INPUT.taskId)).toMatchObject({
+    expect(await tasks.getTask(INPUT.taskId, TASK_SCOPE)).toMatchObject({
       status: 'completed',
       accountId: INPUT.accountId,
       ownerScope: INPUT.ownerScope,
@@ -230,7 +240,7 @@ describe('seller-managed control durable jobs', () => {
     await replacement.runAvailable();
 
     expect(mutations).toBe(1);
-    expect(await tasks.getTask(INPUT.taskId)).toMatchObject({
+    expect(await tasks.getTask(INPUT.taskId, TASK_SCOPE)).toMatchObject({
       status: 'completed', result: { revision: 5 },
     });
   });
@@ -254,7 +264,7 @@ describe('seller-managed control durable jobs', () => {
     await worker.runAvailable();
     expect(mutations).toBe(0);
     expect(revision).toBe(5);
-    expect(await tasks.getTask(INPUT.taskId)).toMatchObject({
+    expect(await tasks.getTask(INPUT.taskId, TASK_SCOPE)).toMatchObject({
       status: 'failed', error: { code: 'CONFLICT' },
     });
   });
@@ -298,7 +308,7 @@ describe('seller-managed control durable jobs', () => {
       }],
     }), store);
     await expect(contender.runAvailable()).rejects.toThrow('Another media-buy mutation is in progress');
-    expect(await tasks.getTask(INPUT.taskId)).not.toMatchObject({ status: 'failed' });
+    expect(await tasks.getTask(INPUT.taskId, TASK_SCOPE)).not.toMatchObject({ status: 'failed' });
 
     releaseFirst();
     await expect(firstRun).rejects.toThrow('Lost seller-control lease');
@@ -308,7 +318,7 @@ describe('seller-managed control durable jobs', () => {
       return receipt;
     }, store);
     await replacement.runAvailable();
-    expect(await tasks.getTask(INPUT.taskId)).toMatchObject({
+    expect(await tasks.getTask(INPUT.taskId, TASK_SCOPE)).toMatchObject({
       status: 'completed', result: receipt,
     });
     expect(await store.get(INPUT.taskId)).toMatchObject({ status: 'succeeded' });

@@ -124,6 +124,20 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('brand canonical-document workflow', () => {
+    it('routes the complete publish, reciprocity, notification, and logo surface', () => {
+      expect(getToolsForSets(['directory'], false, false)).toEqual(
+        expect.arrayContaining([
+          'upload_brand_logo',
+          'publish_brand_canonical_document',
+          'add_to_brand_refs',
+          'check_mutual_assertion',
+          'notify_pending_verification',
+        ]),
+      );
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);
