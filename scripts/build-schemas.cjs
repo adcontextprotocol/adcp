@@ -69,7 +69,7 @@ const MCP_ROLE_PROFILE_TOOLS = {
     'report_usage',
     'request_proposals',
     'sync_accounts',
-    'sync_agent_notification_configs',
+    'sync_agent_configuration',
     'sync_audiences',
     'sync_catalogs',
     'sync_creatives',

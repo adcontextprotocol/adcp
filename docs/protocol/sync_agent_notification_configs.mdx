@@ -6,6 +6,8 @@ description: "Register agent-level webhook subscribers, starting with capabiliti
 
 Register, replace, pause, or clear caller-scoped agent-level webhook subscribers. This task manages notifications whose lifecycle belongs to the seller agent itself rather than to an account, media buy, creative, or other account-scoped resource.
 
+This is the specialized compatibility surface. When the seller advertises [`sync_agent_configuration`](/docs/protocol/sync_agent_configuration), use its `notification_configs` section so webhooks and reusable connection resources share one versioned caller-scoped configuration. Sellers exposing both tasks maintain one underlying subscriber set.
+
 The initial event type is `capabilities.changed`, an invalidation signal for cached [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) responses.
 
 **Request Schema**: [`/schemas/v3/protocol/sync-agent-notification-configs-request.json`](https://adcontextprotocol.org/schemas/v3/protocol/sync-agent-notification-configs-request.json)
@@ -13,7 +15,7 @@ The initial event type is `capabilities.changed`, an invalidation signal for cac
 
 ## When to call
 
-First call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Only call this task when the seller advertises:
+First call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Only call this task when the seller advertises it as the registration task:
 
 ```json
 {
@@ -30,6 +32,8 @@ First call [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Only
   }
 }
 ```
+
+When `registration_task` is [`sync_agent_configuration`](/docs/protocol/sync_agent_configuration), call that task instead.
 
 Sellers that do not advertise support MUST reject the task rather than silently accepting a subscriber that will never fire. When `notifications.supported: true`, the same `capability_changes` block MUST include `cache_ttl_seconds` and `capabilities_version` so receivers have a bounded polling fallback and a stable comparison after missed webhooks.
 

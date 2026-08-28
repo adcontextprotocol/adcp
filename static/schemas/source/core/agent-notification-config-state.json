@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-notification-config-state.json",
+  "title": "Agent Notification Config State",
+  "description": "Credential-free readback of one caller-scoped agent-level webhook subscription. The optional legacy authentication selector identifies the scheme only; write-only credentials can never appear.",
+  "type": "object",
+  "properties": {
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "event_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["capabilities.changed"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "authentication": {
+      "type": "object",
+      "deprecated": true,
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": ["schemes"],
+      "additionalProperties": false
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["subscriber_id", "url", "event_types"],
+  "additionalProperties": false
+}

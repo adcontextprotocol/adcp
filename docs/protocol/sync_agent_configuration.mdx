@@ -1,0 +1,163 @@
+---
+title: sync_agent_configuration
+description: "Synchronize authenticated caller-scoped webhooks and reusable reporting destinations with an AdCP agent."
+"og:title": "AdCP — sync_agent_configuration"
+---
+
+`sync_agent_configuration` establishes durable configuration for the relationship between one authenticated caller and one AdCP agent. It is the buyer-to-seller configuration half of capability negotiation:
+
+- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the agent can support.
+- `sync_agent_configuration` states which supported connection resources this caller wants to use.
+- [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and domain tasks authorize and configure work for particular advertiser accounts.
+
+The task does not accept a buyer-agent URL or identity in its body. Caller identity comes from authenticated transport.
+
+{/* Using latest because this experimental schema is not yet released. Update after release. */}
+**Request schema:** [`/schemas/latest/protocol/sync-agent-configuration-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-configuration-request.json)
+
+{/* Using latest because this experimental schema is not yet released. Update after release. */}
+**Response schema:** [`/schemas/latest/protocol/sync-agent-configuration-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-configuration-response.json)
+
+## Identity and authority
+
+The seller resolves the configuration owner from a stable authenticated principal: for example, a verified signed-request identity, OAuth client subject, API-key subject, or registry identity. Request-body fields, a raw signing key ID, and an access token are not owner identifiers.
+
+Key rotation or token renewal preserves the configuration only when the seller maps the new credential to the same stable principal. Two principals cannot merge their configurations by claiming the same `connection_id`, URL, or destination. Administrative principal linking occurs through a separately authorized onboarding process.
+
+The response's `connection_id` is a seller-issued audit and routing handle. It is not a credential and does not authorize any advertiser account.
+
+## Discovery
+
+Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) includes both:
+
+```json
+{
+  "adcp": {
+    "agent_configuration": {
+      "supported": true,
+      "sync_task": "sync_agent_configuration",
+      "supported_sections": [
+        "notification_configs",
+        "reporting_destinations"
+      ],
+      "max_reporting_destinations": 16,
+      "optimistic_concurrency": true
+    }
+  },
+  "experimental_features": ["protocol.agent_configuration"]
+}
+```
+
+Unsupported sections are rejected, not ignored.
+
+## Synchronization semantics
+
+`configuration` contains one or more independently replaceable sections:
+
+| Section | Meaning |
+|---|---|
+| `notification_configs` | Caller-scoped agent-level webhook subscribers, currently including `capabilities.changed`. |
+| `reporting_destinations` | Reusable, non-secret file, warehouse, or dataset-share destinations. |
+
+For each submitted section:
+
+- The array is complete desired state for that section.
+- `[]` clears the section for new use.
+- An omitted section remains unchanged.
+- All submitted sections apply atomically, or none do.
+- `dry_run: true` returns `result.kind: validated` with the would-be action, without persistence, grants, endpoint challenges, connection IDs, destination references, or configuration versions.
+
+When `expected_configuration_version` is present, the seller applies a new operation only if it equals the current opaque version. A stale version returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without mutation. This prevents two services using the same principal from silently overwriting each other. Retries of one logical request reuse both its `idempotency_key` and body. The seller resolves an exact idempotent replay before evaluating the version fence, so a lost successful response remains replayable after the persisted version advances.
+
+## Reusable reporting destinations
+
+A destination is registered once for the caller's connection and can later be referenced from several advertiser accounts for which that caller is independently authorized.
+
+```json
+{
+  "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
+  "configuration": {
+    "reporting_destinations": [
+      {
+        "pattern": "file_transfer",
+        "destination_id": "reporting-archive",
+        "active": true,
+        "provider": { "domain": "object-store.example" },
+        "transport": "s3",
+        "location": "s3://pinnacle-reporting/adcp/",
+        "accepted_formats": ["parquet"],
+        "accepted_verification_profiles": [
+          "manifest_checksums",
+          "canonical_digest"
+        ]
+      },
+      {
+        "pattern": "warehouse_materialization",
+        "destination_id": "analytics-warehouse",
+        "active": true,
+        "provider": { "domain": "data-warehouse.example" },
+        "transport": "bigquery",
+        "location": "pinnacle-analytics.adcp_reporting",
+        "accepted_verification_profiles": [
+          "native_commit",
+          "canonical_digest"
+        ]
+      },
+      {
+        "pattern": "dataset_share",
+        "destination_id": "daily-share",
+        "active": true,
+        "provider": { "domain": "data-platform.example" },
+        "transport": "delta_sharing",
+        "access_mode": "open_sharing",
+        "recipient": {
+          "identity": "reporting@example.com"
+        },
+        "accepted_verification_profiles": ["native_commit"]
+      }
+    ]
+  }
+}
+```
+
+Each destination declares one atomic delivery pattern. Register separate destination IDs when the same provider coordinates support materially different ownership or access paths.
+
+The response returns a seller-issued `destination_ref` and one of these states:
+
+| State | Meaning |
+|---|---|
+| `validating` | Automated ownership or access validation is in progress. |
+| `ready` | The destination is eligible for a new authorized account/feed binding. |
+| `action_required` | A typed provider-native setup action must be completed. |
+| `inactive` | New bindings are disabled. Existing caller-owned data is not deleted. |
+| `rejected` | The coordinates or requested path cannot be used. |
+
+`destination_ref` is not a bearer capability. A seller resolves it only for the same authenticated principal and only after separately checking account authorization. Unknown, cross-principal, and unauthorized references fail indistinguishably.
+
+### Account consolidation
+
+A consolidated destination can receive reporting from many seller accounts. The destination registration proves where this caller may receive data; it does not prove which data the caller may receive. The managed reporting delivery specification supplies that second authorization by binding an account-scoped feed configuration to the reusable `destination_ref`. Consolidated files, rows, and partitions must retain seller and account identity so downstream consumers can reconcile them independently.
+
+## Verification profiles
+
+Destination setup advertises verification profiles the caller can accept:
+
+- `native_commit`: provider-native transaction/version evidence with row counts and control totals. Appropriate for frequent warehouse snapshots when allowed by the feed profile.
+- `manifest_checksums`: a manifest-last file commit with cryptographic object checksums.
+- `canonical_digest`: recomputation of a canonical logical-content digest. Appropriate for billing and strict-conformance feeds.
+
+This is an allowed set, not a claim that every feed may use the weakest member. The selected seller offering and account-level feed configuration choose one acceptable profile.
+
+## Secrets and proof
+
+AdCP carries destination coordinates and recipient identifiers, never provider credentials. Private keys, passwords, bearer profiles, signed URLs, and cloud credentials are exchanged through provider-native control planes or an out-of-band onboarding channel.
+
+Before a destination becomes `ready`, the seller proves destination or recipient control and binds that proof to the authenticated principal, seller agent, destination ID, normalized coordinates, and accepted delivery contract. Changed coordinates require fresh proof.
+
+For `notification_configs`, the endpoint proof and webhook-signing rules are identical to [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs). Implementations exposing both tasks maintain one underlying caller-scoped subscriber set.
+
+## Compatibility
+
+[`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) remains the specialized compatibility task for agents that only support capability-change subscribers. When `capability_changes.notifications.registration_task` is `sync_agent_configuration`, clients manage those subscribers through the `notification_configs` section here.
+
+The broader task does not turn [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) into caller-specific state. Capabilities remain cacheable seller facts; connection configuration remains authenticated caller state.

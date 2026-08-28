@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-configuration-state.json",
+  "title": "Agent Configuration State",
+  "x-status": "experimental",
+  "description": "Complete caller-scoped connection configuration visible after sync. Secrets are never returned. The seller keys this state by its own agent identity and the stable authenticated caller principal.",
+  "type": "object",
+  "properties": {
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/agent-notification-config-state.json"
+      },
+      "maxItems": 16,
+      "description": "Current agent-level webhook subscribers. authentication.credentials is always omitted because it is write-only."
+    },
+    "reporting_destinations": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/agent-reporting-destination-state.json"
+      },
+      "maxItems": 64,
+      "description": "Current reusable reporting destination bindings and setup states. destination_id and destination_ref values MUST each be unique within this caller-scoped array."
+    }
+  },
+  "required": ["notification_configs", "reporting_destinations"],
+  "additionalProperties": false
+}
