@@ -15,17 +15,20 @@
  * v5 response into the v6 typed result.
  */
 
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import {
   TestControllerError,
   type ComplyControllerConfig,
   type ComplyControllerContext,
 } from '@adcp/sdk/testing';
-import { TOOL_INPUT_SHAPE, type TaskRegistry } from '@adcp/sdk/server';
+import { TOOL_INPUT_SHAPE, type TaskRegistry, type TaskRegistryScope } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
+import { accountScopeFromRef, canonicalizeAccountRef } from '../account-scope.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
+const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
 
 /**
  * v5 handler return shape — wide union of seed/force/simulate response
@@ -78,6 +81,7 @@ async function dispatchV5(
     : 'anonymous';
   const cleanInput = { ...input };
   delete cleanInput[TRAINING_PRINCIPAL_FIELD];
+  delete cleanInput[TRAINING_TASK_OWNER_SCOPE_FIELD];
   // The frozen 3.0 facade is itself a sandbox-only surface, but its released
   // AccountRef allowed opaque `{ account_id }` values without the later
   // explicit `sandbox: true` assertion. Restore that trusted adapter context
@@ -129,6 +133,48 @@ function throwOnFailure(result: V5Response): void {
 // site narrow back to the typed adapter shape.
 type AdapterShim = (params: unknown, ctx: ComplyControllerContext) => Promise<unknown>;
 
+async function requireControllerTaskScope(
+  taskRegistry: TaskRegistry,
+  taskId: string,
+  scope: TaskRegistryScope | null,
+): Promise<TaskRegistryScope> {
+  // Never recover scope from the target record. Task IDs are public and may
+  // intentionally repeat across accounts and authenticated runners.
+  if (!scope) {
+    throw new TestControllerError('NOT_FOUND', `Task ${taskId} not found`);
+  }
+  const task = await taskRegistry.getTask(taskId, scope);
+  if (!task) throw new TestControllerError('NOT_FOUND', `Task ${taskId} not found`);
+  return scope;
+}
+
+type ControllerTaskTenant = 'sales' | 'signals';
+
+function controllerTaskScope(
+  input: Record<string, unknown>,
+  tenant: ControllerTaskTenant,
+): TaskRegistryScope | null {
+  // The router overwrites this field after bearer authentication. It is not
+  // accepted as caller authority on routes that bypass that trusted bridge.
+  const ownerScope = input[TRAINING_TASK_OWNER_SCOPE_FIELD];
+  if (typeof ownerScope !== 'string' || ownerScope.length === 0) return null;
+
+  try {
+    const account = canonicalizeAccountRef(input.account);
+    if (account.kind === 'account_id') {
+      return { accountId: account.account_id, ownerScope };
+    }
+    const accountId = tenant === 'sales'
+      // Mirrors TrainingSalesPlatform's explicit account resolver.
+      ? `synthetic_${createHash('sha256').update(accountScopeFromRef(input.account)).digest('hex').slice(0, 32)}`
+      // Mirrors TrainingPlatform's signals account resolver.
+      : `synthetic_${account.brand.domain}`;
+    return { accountId, ownerScope };
+  } catch {
+    return null;
+  }
+}
+
 function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['storyboardCompat']): AdapterShim {
   return async (params, ctx) => {
     const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
@@ -141,13 +187,47 @@ function seedAdapter(scenario: string, storyboardCompat?: TrainingContext['story
 function forceAdapter(
   scenario: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
-  afterSuccess?: (params: Record<string, unknown>) => Promise<void>,
 ): AdapterShim {
   return async (params, ctx) => {
     const result = await dispatchV5(scenario, params as Record<string, unknown>, ctx.input, storyboardCompat);
     throwOnFailure(result);
-    await afterSuccess?.(params as Record<string, unknown>);
     return result;
+  };
+}
+
+function taskCompletionAdapter(
+  tenant: ControllerTaskTenant,
+  storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry?: TaskRegistry,
+): AdapterShim {
+  return async (rawParams, ctx) => {
+    const params = rawParams as Record<string, unknown>;
+    const taskId = params.task_id;
+    const result = params.result;
+    let scope: TaskRegistryScope | undefined;
+    if (
+      taskRegistry
+      && typeof taskId === 'string'
+      && result
+      && typeof result === 'object'
+      && !Array.isArray(result)
+    ) {
+      // Authorize before dispatchV5 signals the pending worker. Checking only
+      // after dispatch would still let a cross-scope caller resolve it.
+      scope = await requireControllerTaskScope(
+        taskRegistry,
+        taskId,
+        controllerTaskScope(ctx.input, tenant),
+      );
+    }
+    const controllerResult = await dispatchV5('force_task_completion', params, ctx.input, storyboardCompat);
+    throwOnFailure(controllerResult);
+    if (taskRegistry && scope && typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
+      // Persist synchronously so the next polling step cannot race the
+      // background handoff worker's identical idempotent completion.
+      await taskRegistry.complete(taskId, scope, result as Record<string, unknown>);
+    }
+    return controllerResult;
   };
 }
 
@@ -181,6 +261,7 @@ const SALES_COMPLY_INPUT_SCHEMA = {
   }).passthrough(),
   brand: z.object({ domain: z.string().optional() }).passthrough().optional(),
   [TRAINING_PRINCIPAL_FIELD]: z.string().optional(),
+  [TRAINING_TASK_OWNER_SCOPE_FIELD]: z.string().optional(),
 };
 
 /**
@@ -263,18 +344,7 @@ export function buildSignalsComplyConfig(
       session_status: cast(forceAdapter('force_session_status', storyboardCompat)),
       ...(storyboardCompat?.version === '3.0' ? {} : {
         get_signals_arm: cast(forceAdapter('force_get_signals_arm', storyboardCompat)),
-        task_completion: cast(forceAdapter(
-          'force_task_completion',
-          storyboardCompat,
-          async params => {
-            if (!taskRegistry) return;
-            const taskId = params.task_id;
-            const result = params.result;
-            if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-              await taskRegistry.complete(taskId, result);
-            }
-          },
-        )),
+        task_completion: cast(taskCompletionAdapter('signals', storyboardCompat, taskRegistry)),
       }),
     },
   };
@@ -305,22 +375,7 @@ export function buildSalesComplyConfig(
       media_buy_status: cast(forceAdapter('force_media_buy_status', storyboardCompat)),
       create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm', storyboardCompat)),
       get_products_arm: cast(forceAdapter('force_get_products_arm', storyboardCompat)),
-      task_completion: cast(forceAdapter(
-        'force_task_completion',
-        storyboardCompat,
-        async params => {
-          if (!taskRegistry) return;
-          const taskId = params.task_id;
-          const result = params.result;
-          if (typeof taskId === 'string' && result && typeof result === 'object' && !Array.isArray(result)) {
-            // The controller response is not returned until the buyer-visible
-            // registry reflects completion, avoiding a race with the next
-            // get_task_status storyboard step. The handoff worker performs
-            // the same idempotent completion after its waiter resolves.
-            await taskRegistry.complete(taskId, result);
-          }
-        },
-      )),
+      task_completion: cast(taskCompletionAdapter('sales', storyboardCompat, taskRegistry)),
       // force_creative_status drives dependency_impairment storyboards —
       // toggles creative.status and propagates to dependent media buys'
       // impairments[] via the v5 store's propagateCreativeImpairment.

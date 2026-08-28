@@ -33,6 +33,7 @@ import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 import { PUBLISHERS } from '../publishers.js';
+import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -402,6 +403,21 @@ function tenantMcpHandler(
         && typeof req.body.params.arguments === 'object'
       ) {
         req.body.params.arguments.__training_principal = principal;
+        const credential = apiKeyCredential(req, principal);
+        const demoToken = principal.startsWith('static:demo:')
+          ? principal.slice('static:demo:'.length)
+          : undefined;
+        const buyerAgent = await trainingBuyerAgentRegistry.resolve({
+          credential,
+          ...(demoToken && { extra: { demo_token: demoToken } }),
+          input: req.body.params.arguments,
+        });
+        // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
+        // Re-resolve from the same trusted credential inputs here so the
+        // administrative controller can address only this caller's task.
+        if (buyerAgent?.agent_url) {
+          req.body.params.arguments.__training_task_owner_scope = `agent:${buyerAgent.agent_url}`;
+        }
       }
 
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {

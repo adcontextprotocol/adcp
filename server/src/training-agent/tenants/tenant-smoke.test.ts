@@ -29,6 +29,7 @@ import { projectV1ProductToV2 } from '@adcp/sdk/v2/projection';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { TrainingCreativePlatform } from '../v6-creative-platform.js';
+import { accountScopeFromRef } from '../account-scope.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -108,13 +109,13 @@ function stageLatestThreeZeroSchemaBundle(): void {
   });
 }
 
-async function initializeTenant(url: string): Promise<void> {
+async function initializeTenant(url: string, token = 'test-token'): Promise<void> {
   await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -125,13 +126,19 @@ async function initializeTenant(url: string): Promise<void> {
   });
 }
 
-async function callTenantTool(url: string, id: number, name: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+async function callTenantTool(
+  url: string,
+  id: number,
+  name: string,
+  args: Record<string, unknown>,
+  token = 'test-token',
+): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      authorization: 'Bearer test-token',
+      authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       jsonrpc: '2.0',
@@ -1890,14 +1897,27 @@ describe('tenant routing smoke', () => {
         expect.objectContaining({ task_id: taskId, task_type: 'create_media_buy', status: 'submitted' }),
       ]);
 
-      const completed = payload(await callTenantTool(url, 6, 'comply_test_controller', {
+      const signalsUrl = `${baseUrl}/signals/mcp`;
+      await initializeTenant(signalsUrl);
+      const salesAccountId = `synthetic_${createHash('sha256')
+        .update(accountScopeFromRef(account))
+        .digest('hex')
+        .slice(0, 32)}`;
+      const crossTenantRead = payload(await callTenantTool(signalsUrl, 6, 'list_tasks', {
+        account: { account_id: salesAccountId },
+        filters: { task_ids: [taskId] },
+        pagination: { max_results: 1 },
+      }));
+      expect(crossTenantRead).toMatchObject({ tasks: [] });
+
+      const completed = payload(await callTenantTool(url, 7, 'comply_test_controller', {
         account,
         scenario: 'force_task_completion',
         params: { task_id: taskId, result: completion },
       }));
-      expect(completed).toMatchObject({ success: true, current_state: 'completed' });
+      expect(completed, JSON.stringify(completed)).toMatchObject({ success: true, current_state: 'completed' });
 
-      const terminalRead = payload(await callTenantTool(url, 7, 'get_task_status', {
+      const terminalRead = payload(await callTenantTool(url, 8, 'get_task_status', {
         account,
         task_id: taskId,
         include_result: true,
@@ -1909,7 +1929,7 @@ describe('tenant routing smoke', () => {
         result: completion,
       });
 
-      const terminalList = payload(await callTenantTool(url, 8, 'list_tasks', {
+      const terminalList = payload(await callTenantTool(url, 9, 'list_tasks', {
         account,
         filters: { task_ids: [taskId], task_type: 'create_media_buy', status: 'completed' },
         pagination: { max_results: 1 },
@@ -1920,7 +1940,112 @@ describe('tenant routing smoke', () => {
     } finally {
       await close();
     }
-  }, 15000);
+  }, 60000);
+
+  it('isolates forced task completion by authenticated owner and account', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      const ownerA = 'demo-task-owner-a-v1';
+      const ownerB = 'demo-task-owner-b-v1';
+      await initializeTenant(url, ownerA);
+      await initializeTenant(url, ownerB);
+
+      const accountA = {
+        brand: { domain: 'task-owner-a.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const accountB = {
+        brand: { domain: 'task-owner-b.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const taskId = 'task_shared_across_scopes';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+      const armAndCreate = async (
+        token: string,
+        account: Record<string, unknown>,
+        suffix: string,
+      ) => {
+        const armed = payload(await callTenantTool(url, 20, 'comply_test_controller', {
+          account,
+          scenario: 'force_create_media_buy_arm',
+          params: { arm: 'submitted', task_id: taskId },
+        }, token));
+        expect(armed?.success).toBe(true);
+        const submitted = payload(await callTenantTool(url, 21, 'create_media_buy', {
+          account,
+          brand: (account as { brand: unknown }).brand,
+          start_time: 'asap',
+          end_time: '2099-09-30T23:59:59Z',
+          packages: [{
+            product_id: 'async_lifecycle_video_q3',
+            pricing_option_id: 'async_lifecycle_cpm',
+            budget: 30_000,
+          }],
+          idempotency_key: `training-task-scope-${suffix}-0001`,
+        }, token));
+        expect(submitted).toMatchObject({ status: 'submitted', task_id: taskId });
+      };
+      const read = async (token: string, account: Record<string, unknown>) => payload(
+        await callTenantTool(url, 22, 'get_task_status', { account, task_id: taskId, include_result: true }, token),
+      );
+      const complete = async (
+        token: string,
+        account: Record<string, unknown>,
+        mediaBuyId: string,
+      ) => payload(await callTenantTool(url, 23, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: {
+            media_buy_id: mediaBuyId,
+            media_buy_status: 'pending_creatives',
+            confirmed_at: '2026-08-15T12:00:00Z',
+            revision: 1,
+            currency: 'USD',
+            packages: [{
+              package_id: `pkg_${mediaBuyId}`,
+              product_id: 'async_lifecycle_video_q3',
+              pricing_option_id: 'async_lifecycle_cpm',
+              budget: 30_000,
+              paused: false,
+            }],
+          },
+        },
+      }, token));
+
+      await armAndCreate(ownerA, accountA, 'owner-a-account-a');
+
+      expect(await complete(ownerB, accountA, 'mb_cross_owner_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
+      expect(await complete(ownerA, accountB, 'mb_cross_account_attack')).toMatchObject({
+        status: 'failed',
+        success: false,
+        error: 'NOT_FOUND',
+      });
+      expect(await read(ownerA, accountA)).toMatchObject({ status: 'submitted' });
+
+      const ownerACompletion = await complete(ownerA, accountA, 'mb_owner_a_account_a');
+      expect(ownerACompletion, JSON.stringify(ownerACompletion)).toMatchObject({
+        success: true,
+        current_state: 'completed',
+      });
+      expect(await read(ownerA, accountA)).toMatchObject({
+        status: 'completed',
+        result: { media_buy_id: 'mb_owner_a_account_a' },
+      });
+    } finally {
+      await close();
+    }
+  }, 20000);
 
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
