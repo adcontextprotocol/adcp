@@ -1,8 +1,8 @@
 /**
  * Shared baseline tool registration for all Addie channels (Slack, Web, etc.)
  *
- * Registers context-free tools that don't require per-user or per-channel state.
- * Both bolt-app.ts (Slack) and addie-chat.ts (Web) call this to stay in sync.
+ * Registers context-free tools intentionally retained on every request.
+ * Route-scoped domains are registered by each channel as request tools.
  *
  * Channel-specific tools (URL fetching with Slack token, Google Docs, etc.)
  * are registered separately by each channel handler.
@@ -28,14 +28,6 @@ import {
   DIRECTORY_TOOLS,
   createDirectoryToolHandlers,
 } from "./mcp/directory-tools.js";
-import {
-  BRAND_TOOLS,
-  createBrandToolHandlers,
-} from "./mcp/brand-tools.js";
-import {
-  BRAND_CANONICAL_TOOLS,
-  createBrandCanonicalToolHandlers,
-} from "./mcp/brand-canonical-tools.js";
 
 function registerToolsFromMap(
   client: AddieClaudeClient,
@@ -51,7 +43,7 @@ function registerToolsFromMap(
 }
 
 /**
- * Register all context-free baseline tools on a ClaudeClient instance.
+ * Register the shared baseline tools that remain global on a ClaudeClient.
  * Call this during initialization for any channel.
  */
 export async function registerBaselineTools(client: AddieClaudeClient): Promise<void> {
@@ -67,6 +59,4 @@ export async function registerBaselineTools(client: AddieClaudeClient): Promise<
   registerToolsFromMap(client, BILLING_TOOLS, createBillingToolHandlers());
   registerToolsFromMap(client, SCHEMA_TOOLS, createSchemaToolHandlers());
   registerToolsFromMap(client, DIRECTORY_TOOLS, createDirectoryToolHandlers());
-  registerToolsFromMap(client, BRAND_TOOLS, createBrandToolHandlers());
-  registerToolsFromMap(client, BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers());
 }

@@ -803,7 +803,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize thread context store
   threadContextStore = new DatabaseThreadContextStore(addieDb);
 
-  // Register shared baseline tools (knowledge, billing, schema, directory, brand)
+  // Register shared baseline tools (knowledge, billing, schema, directory)
   // Shared with web chat handler via register-baseline-tools.ts
   await registerBaselineTools(claudeClient);
 
