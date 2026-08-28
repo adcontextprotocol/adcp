@@ -475,6 +475,73 @@ describe('Email Notifications', () => {
     });
   });
 
+  describe('sendIntroductionEmail', () => {
+    it('sends from the verified updates subdomain', async () => {
+      const { sendIntroductionEmail } = await import('../../src/notifications/email.js');
+
+      const result = await sendIntroductionEmail({
+        memberEmail: 'member@example.com',
+        memberName: 'Taylor Member',
+        memberSlug: 'example-member',
+        requesterName: 'Riley Requester',
+        requesterEmail: 'riley@example.com',
+        requesterMessage: 'I would like to connect.',
+      });
+
+      expect(result).toEqual({ success: true, messageId: 'test-email-id' });
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
+          to: 'member@example.com',
+          replyTo: 'riley@example.com',
+        })
+      );
+    });
+  });
+
+  describe('sendEmailReply', () => {
+    const threadContext = {
+      messageId: '<message-123@example.com>',
+      subject: 'Sender domain regression',
+      from: 'Requester <requester@example.com>',
+      to: ['addie@agenticadvertising.org'],
+    };
+
+    it('defaults to the verified updates subdomain', async () => {
+      const { sendEmailReply } = await import('../../src/notifications/email.js');
+
+      const result = await sendEmailReply({
+        threadContext,
+        htmlContent: '<p>Reply</p>',
+        textContent: 'Reply',
+      });
+
+      expect(result).toEqual({ success: true, messageId: 'test-email-id' });
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: 'Addie from AgenticAdvertising.org <addie@updates.agenticadvertising.org>',
+        })
+      );
+    });
+
+    it('moves legacy plus-address senders onto the verified subdomain', async () => {
+      const { sendEmailReply } = await import('../../src/notifications/email.js');
+
+      await sendEmailReply({
+        threadContext,
+        htmlContent: '<p>Reply</p>',
+        textContent: 'Reply',
+        fromEmail: 'addie+prospect@agenticadvertising.org',
+      });
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: 'Addie from AgenticAdvertising.org <addie+prospect@updates.agenticadvertising.org>',
+        })
+      );
+    });
+  });
+
   describe('hasSignupEmailBeenSent', () => {
     it('should return true if member signup email was sent', async () => {
       mockHasEmailBeenSent.mockImplementation(({ email_type }) => {
