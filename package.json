@@ -16,6 +16,7 @@
     "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts && tsx scripts/build-addie-tool-surface-inventory.ts",
     "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check && tsx scripts/build-addie-tool-surface-inventory.ts --check && node scripts/check-addie-tool-inventory-portability.mjs",
+    "test:addie-fixed-traces": "vitest run --config server/vitest.config.ts server/tests/unit/addie/fixed-trace-suite.test.ts",
     "build:schemas": "node scripts/build-schemas.cjs",
     "test:mcp-schema-projection": "npm run build:schemas && node --test --test-force-exit --test-timeout=60000 tests/mcp-schema-projection.test.cjs tests/mcp-schema-analysis.test.cjs",
     "experiment:mcp-schema-context": "npm run build:schemas && node scripts/run-mcp-schema-context-experiment.cjs",

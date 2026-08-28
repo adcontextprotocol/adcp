@@ -495,6 +495,14 @@
       "default": false,
       "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list. When false, the product is a fixed bundle; when true, collection selection is a product-scoped overlay capability."
     },
+    "list_applications": {
+      "type": "array",
+      "description": "Product-scoped receipts for every effective property- or collection-list targeting reference. Sellers MUST return one receipt per application regardless of response field projection; exclusion applications receive a receipt even when summary.matched is zero, while zero matches for any inclusion application make the product ineligible and it is not returned. Each receipt uses the same pre-list product inventory baseline; pricing and forecast reflect inventory remaining after all effective lists are composed.",
+      "items": {
+        "$ref": "/schemas/core/inventory-list-application.json"
+      },
+      "minItems": 1
+    },
     "installments": {
       "type": "array",
       "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",

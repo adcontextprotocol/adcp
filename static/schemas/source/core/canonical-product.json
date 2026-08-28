@@ -67,6 +67,12 @@
       "required": ["submitted_count"],
       "additionalProperties": false
     },
+    "list_applications": {
+      "type": "array",
+      "description": "Product-scoped receipts for every effective property- or collection-list targeting reference. Sellers MUST return one receipt per application regardless of response field projection; exclusion applications receive a receipt even when summary.matched is zero, while zero matches for any inclusion application make the product ineligible and it is not returned. Each receipt uses the same pre-list product inventory baseline; pricing and forecast reflect inventory remaining after all effective lists are composed.",
+      "items": { "$ref": "/schemas/core/inventory-list-application.json" },
+      "minItems": 1
+    },
     "brief_relevance": { "type": "string" },
     "expires_at": { "type": "string", "format": "date-time" },
     "allowed_actions": {
