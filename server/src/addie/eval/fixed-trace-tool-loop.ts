@@ -225,8 +225,15 @@ export async function executeFixedTraceToolLoop(
       throw new FixedTraceToolLoopBoundaryError('tool_call_limit_exceeded');
     }
     const calls = turn.toolCalls.map((call) => deepFreeze(structuredClone(call)));
+    const batchCallIds = new Set<string>();
+    const batchToolNames = new Set<string>();
     for (const call of calls) {
-      if (seenCallIds.has(call.id) || seenToolNames.has(call.name)) {
+      if (
+        seenCallIds.has(call.id)
+        || seenToolNames.has(call.name)
+        || batchCallIds.has(call.id)
+        || batchToolNames.has(call.name)
+      ) {
         throw new FixedTraceToolLoopBoundaryError('duplicate_tool_call');
       }
       const entry = registered.get(call.name);
@@ -234,6 +241,8 @@ export async function executeFixedTraceToolLoop(
       if (!entry.validate(call.input)) {
         throw new FixedTraceToolLoopBoundaryError('tool_input_invalid');
       }
+      batchCallIds.add(call.id);
+      batchToolNames.add(call.name);
     }
 
     const results = [];

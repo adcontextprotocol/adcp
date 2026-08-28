@@ -223,6 +223,44 @@ describe('executeFixedTraceToolLoop', () => {
     expect(create).toHaveBeenCalledOnce();
   });
 
+  it('rejects duplicate mutation names within one provider response before execution', async () => {
+    const duplicateMutationTrace = structuredClone(trace('knowledge-task-model'));
+    duplicateMutationTrace.toolFixtures = [
+      {
+        name: 'confirm_send_invoice',
+        effect: 'mutation',
+        resultStatus: 'ok',
+        result: 'Synthetic simulation: invoice sent.',
+      },
+      {
+        name: 'get_doc',
+        effect: 'read',
+        resultStatus: 'ok',
+        result: 'Synthetic document.',
+      },
+    ];
+    duplicateMutationTrace.expectation.mutationAuthorization = 'confirmed';
+    const create = vi.fn().mockResolvedValue(anthropicResponse([
+      {
+        type: 'tool_use', id: 'tool_1', name: 'confirm_send_invoice', input: { invoice_id: 'synthetic' },
+      },
+      {
+        type: 'tool_use', id: 'tool_2', name: 'confirm_send_invoice', input: { invoice_id: 'synthetic' },
+      },
+    ], 'tool_use', 'msg_1'));
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create } },
+    } as AnthropicMessagesTransport);
+
+    await expect(executeFixedTraceToolLoop(
+      provider,
+      request('claude-test'),
+      duplicateMutationTrace,
+      [tool('confirm_send_invoice', ['invoice_id']), tool('get_doc')],
+    )).rejects.toEqual(new FixedTraceToolLoopBoundaryError('duplicate_tool_call'));
+    expect(create).toHaveBeenCalledOnce();
+  });
+
   it('requires an exact one-to-one fixture and schema registry', async () => {
     const provider = new AnthropicModelProvider('unused', {
       beta: { messages: { create: vi.fn() } },
