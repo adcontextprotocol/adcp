@@ -49,7 +49,7 @@ class ScriptedJudgeProvider implements ModelProvider {
 
   constructor(
     readonly id: ModelProviderId,
-    private readonly output: string,
+    private readonly output: string | string[],
     private readonly finishReason: 'stop' | 'length' = 'stop',
   ) {}
 
@@ -70,17 +70,18 @@ class ScriptedJudgeProvider implements ModelProvider {
     const prepared = this.prepare(request);
     await options.beforeDispatch?.(prepared);
     this.dispatches++;
+    const outputs = Array.isArray(this.output) ? this.output : [this.output];
     const response = {
       provider: this.id,
       model: request.model,
       id: `${this.id}-judge-response`,
-      content: [{ type: 'text' as const, text: this.output }],
+      content: outputs.map((text) => ({ type: 'text' as const, text })),
       finishReason: this.finishReason,
       providerFinishReason: this.finishReason,
       usage: { inputTokens: 100, outputTokens: 20 },
     };
     yield { type: 'response_start', provider: this.id, model: request.model, id: response.id };
-    yield { type: 'text_delta', index: 0, text: this.output };
+    for (const [index, text] of outputs.entries()) yield { type: 'text_delta', index, text };
     yield { type: 'response_complete', response };
   }
 }
@@ -194,6 +195,18 @@ describe('fixed-trace independent judge', () => {
     expect(result.metadata.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.metadata.responseSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(result.metadata.estimatedCostUsd).toBeCloseTo(0.00014);
+  });
+
+  it('joins a valid verdict split across provider text blocks', async () => {
+    const provider = new ScriptedJudgeProvider('openai', [
+      '{"pass":true,',
+      '"score":3,"reason":"correct"}',
+    ]);
+    await expect(judgeFixedTraceObservation(trace, observation(trace.id), config(provider)))
+      .resolves.toMatchObject({
+        status: 'judged',
+        verdict: { pass: true, score: 3, reason: 'correct' },
+      });
   });
 
   it('rejects inconsistent or truncated judge output', async () => {
