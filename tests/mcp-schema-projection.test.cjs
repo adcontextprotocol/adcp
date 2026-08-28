@@ -222,6 +222,7 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.destination['x-adcp-validation'], undefined);
   assert.deepEqual(projected.required, ['destination']);
   assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
+  assert.equal(projected.properties.mode.type, undefined);
   assert.equal(projected.properties.exactMode.const, 'direct');
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);

@@ -18,6 +18,7 @@ const SORTABLE_DIMENSIONS = [
   "collection",
   "installment",
   "collection_property",
+  "installment_property",
   "placement_property",
 ];
 

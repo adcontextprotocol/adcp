@@ -130,6 +130,10 @@
       "type": "boolean",
       "description": "Whether this product supports collection × property intersection reporting (by_collection_property within by_package)."
     },
+    "supports_installment_property_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports installment × property intersection reporting (by_installment_property within by_package)."
+    },
     "supports_placement_property_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports placement × property intersection reporting (by_placement_property within by_package)."

@@ -452,6 +452,10 @@
           "$ref": "/schemas/core/delivery-breakdown-controls.json",
           "description": "Request delivery at the collection × property intersection. This is the reporting grain that can prove a collection delivered on a particular host service; independent collection and property marginals cannot. Check reporting_capabilities.supports_collection_property_breakdown."
         },
+        "installment_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the installment × property intersection. This is the reporting grain that can prove a specific airing, episode, issue, or programming block delivered on a particular host service; independent installment and property marginals cannot. Check reporting_capabilities.supports_installment_property_breakdown."
+        },
         "placement_property": {
           "$ref": "/schemas/core/delivery-breakdown-controls.json",
           "description": "Request delivery at the placement × property intersection. Use when a placement may span multiple web, app, social, or assistant properties. Check reporting_capabilities.supports_placement_property_breakdown."

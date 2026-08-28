@@ -3,7 +3,8 @@
 ---
 
 Add authority-discriminated placement identity and property, collection,
-installment, collection-by-property, and placement-by-property delivery
+installment, collection-by-property, installment-by-property, and
+placement-by-property delivery
 reporting. The new intersections provide affirmative delivery evidence instead
 of relying on independent marginals, with explicit per-response suppression
 flags. Released-compatible whole-placement echo shapes remain accepted in

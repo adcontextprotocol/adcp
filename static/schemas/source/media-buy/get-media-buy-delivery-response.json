@@ -767,6 +767,27 @@
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_collection_property rows. Sellers MUST return this field whenever by_collection_property is present."
                     },
+                    "by_installment_property": {
+                      "type": "array",
+                      "description": "Delivery at the installment × property intersection. A row is affirmative delivery evidence that the referenced airing, episode, issue, or programming block ran on the referenced property; it is not inferred from collection carriage or independent marginals.",
+                      "items": { "$ref": "/schemas/core/installment-property-delivery-metrics.json" }
+                    },
+                    "by_installment_property_truncated": {
+                      "type": "boolean",
+                      "description": "Whether non-suppressed by_installment_property rows were truncated. Sellers MUST return this flag whenever by_installment_property is present."
+                    },
+                    "by_installment_property_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable by_installment_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_installment_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
+                    },
+                    "by_installment_property_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_installment_property rows. Sellers MUST return this field whenever by_installment_property is present."
+                    },
+                    "by_installment_property_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_installment_property rows. Sellers MUST return this field whenever by_installment_property is present."
+                    },
                     "by_placement_property": {
                       "type": "array",
                       "description": "Delivery at the placement × property intersection. This proves which actual property carried a placement that may span more than one property.",
