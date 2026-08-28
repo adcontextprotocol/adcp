@@ -240,8 +240,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...billing.BILLING_TOOLS,
     ...schema.SCHEMA_TOOLS,
     ...directory.DIRECTORY_TOOLS,
-    ...brand.BRAND_TOOLS,
-    ...brandCanonical.BRAND_CANONICAL_TOOLS,
     ...url.URL_TOOLS,
     ...googleDocs.GOOGLE_DOCS_TOOLS,
   ];

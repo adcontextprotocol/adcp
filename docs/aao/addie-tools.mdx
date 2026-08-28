@@ -322,6 +322,36 @@ List the most-requested brand domains that are not yet in the registry. Shows de
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 
+### `upload_brand_logo`
+
+Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
+
+*Source: `server/src/addie/mcp/brand-tools.ts`*
+
+### `publish_brand_canonical_document`
+
+Generate a Brand Canonical Document (brand.json variant 5) for a sub-brand team. Builds a JSON document with the brand's identity fields (logos/colors/tone/etc.), validates it against the brand.json schema, and returns the document plus the path where it should be hosted (https://{domain}/.well-known/brand.json). Returns validation errors instead of an invalid document. Does NOT upload — the operator hosts the returned JSON themselves.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `add_to_brand_refs`
+
+Append a portfolio_entry pointer to a House Portfolio's brand_refs[]. Either pass the house's brand.json directly (house_brand_json) or have the tool fetch it (house_domain). Enforces the cross-array uniqueness invariants from the spec: a brand_id MUST NOT appear in both brands[] and brand_refs[], and each brand_id/domain MUST be unique within brand_refs[]. Returns the updated brand.json or a clear validation error.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `check_mutual_assertion`
+
+Given a leaf brand's domain, fetch its canonical document and its claimed house's portfolio (following House Redirects on the house side, up to 3 hops, per the Conformance section). Classify the relationship trust into: mutual (both sides reciprocate), leaf_only (leaf claims house, house silent), house_only (house claims leaf, leaf silent — returned by checking the house if a different caller already has it), standalone (no house_domain), or unverifiable (one or both fetches failed). Returns the house's contact.email when present so the caller can pass it into notify_pending_verification on leaf_only edges.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `notify_pending_verification`
+
+Send the SHOULD-level notification email to the house's contact.email when a leaf_only edge is detected. Rate-limited to one notification per {leaf, house} pair per 24 hours, persisted in the brand_assertion_notifications table so concurrent callers can't double-send. Behind a feature flag (BRAND_ASSERTION_EMAIL_ENABLED) — defaults to log-only so operators can review the would-have-sent payload before enabling the live send path.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
 ## agent_testing
 
 Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can't see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.
@@ -1777,30 +1807,6 @@ The user must be signed in and have an active owner or admin role in the selecte
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
-### `publish_brand_canonical_document`
-
-Generate a Brand Canonical Document (brand.json variant 5) for a sub-brand team. Builds a JSON document with the brand's identity fields (logos/colors/tone/etc.), validates it against the brand.json schema, and returns the document plus the path where it should be hosted (https://{domain}/.well-known/brand.json). Returns validation errors instead of an invalid document. Does NOT upload — the operator hosts the returned JSON themselves.
-
-*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
-
-### `add_to_brand_refs`
-
-Append a portfolio_entry pointer to a House Portfolio's brand_refs[]. Either pass the house's brand.json directly (house_brand_json) or have the tool fetch it (house_domain). Enforces the cross-array uniqueness invariants from the spec: a brand_id MUST NOT appear in both brands[] and brand_refs[], and each brand_id/domain MUST be unique within brand_refs[]. Returns the updated brand.json or a clear validation error.
-
-*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
-
-### `check_mutual_assertion`
-
-Given a leaf brand's domain, fetch its canonical document and its claimed house's portfolio (following House Redirects on the house side, up to 3 hops, per the Conformance section). Classify the relationship trust into: mutual (both sides reciprocate), leaf_only (leaf claims house, house silent), house_only (house claims leaf, leaf silent — returned by checking the house if a different caller already has it), standalone (no house_domain), or unverifiable (one or both fetches failed). Returns the house's contact.email when present so the caller can pass it into notify_pending_verification on leaf_only edges.
-
-*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
-
-### `notify_pending_verification`
-
-Send the SHOULD-level notification email to the house's contact.email when a leaf_only edge is detected. Rate-limited to one notification per {leaf, house} pair per 24 hours, persisted in the brand_assertion_notifications table so concurrent callers can't double-send. Behind a feature flag (BRAND_ASSERTION_EMAIL_ENABLED) — defaults to log-only so operators can review the would-have-sent payload before enabling the live send path.
-
-*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
-
 ### `parse_brand_properties`
 
 Preview a smart-paste import for a brand the operator owns. Takes pasted text (a list of domains and app bundles) or a URL whose body should be fetched, and returns the structured property list that would be imported. The user MUST confirm before you call import_brand_properties — show them the parsed list first. Caller's organization must own the brand domain.
@@ -1812,12 +1818,6 @@ Preview a smart-paste import for a brand the operator owns. Takes pasted text (a
 Commit a previewed property import. Takes a property list (typically the output of parse_brand_properties, possibly trimmed by the user) and merges it into the brand manifest by identifier — existing entries are updated in place, new entries are added. ONLY call after the user has explicitly confirmed the list from parse_brand_properties. Caller's organization must own the brand domain.
 
 *Source: `server/src/addie/mcp/brand-property-tools.ts`*
-
-### `upload_brand_logo`
-
-Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
-
-*Source: `server/src/addie/mcp/brand-tools.ts`*
 
 ### `recommend_storyboards`
 

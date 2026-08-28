@@ -364,6 +364,22 @@ describe('Addie tool reference', () => {
     expect(missingDispute).not.toContain('### Property catalog operations');
   });
 
+  it('loads brand canonical guidance only with the complete routed workflow', () => {
+    const directoryTools = getToolsForSets(['directory'], false, false);
+    const complete = buildAddieToolReference({
+      availableToolNames: directoryTools,
+      selectedToolSetNames: ['directory'],
+    });
+    const missingCheck = buildAddieToolReference({
+      availableToolNames: directoryTools.filter(name => name !== 'check_mutual_assertion'),
+      selectedToolSetNames: ['directory'],
+    });
+
+    expect(complete).toContain('### Brand canonical-document operations');
+    expect(complete).toContain('upload_brand_logo');
+    expect(missingCheck).not.toContain('### Brand canonical-document operations');
+  });
+
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
     const stable = buildAddieStableToolReference();
 
