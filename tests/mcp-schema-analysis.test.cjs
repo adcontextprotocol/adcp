@@ -33,9 +33,9 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 17);
-  assert.equal(report.definition_instances, 567);
-  assert.equal(report.unique_definitions, 153);
+  assert.equal(report.tool_count, 18);
+  assert.equal(report.definition_instances, 576);
+  assert.equal(report.unique_definitions, 157);
   assert.equal(report.repeated_definitions, 109);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
@@ -214,7 +214,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 17);
+  assert.equal(report.selection.tools.length, 18);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).
