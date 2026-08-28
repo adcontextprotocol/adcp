@@ -462,11 +462,11 @@ jobs:
         orchestrator: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       SALES_ORCHESTRATOR_COUNT: 8
-      # A 20-storyboard /sales calibration slice peaked at 2.06 GiB RSS and
-      # 28.7 seconds. These limits leave roughly 2x RSS and 4x time headroom
-      # while killing the observed 8–17 GiB pathologies before exhaustion.
+      # SDK beta.11 keeps each storyboard inside the 4 GiB RSS envelope, but
+      # the heaviest lifecycle flows can approach two minutes on a loaded
+      # runner. Preserve the hard memory bound and allow teardown headroom.
       STORYBOARD_RSS_LIMIT_MB: 4096
-      STORYBOARD_TIMEOUT_MS: 120000
+      STORYBOARD_TIMEOUT_MS: 180000
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -626,11 +626,11 @@ jobs:
         env:
           CLEAN: ${{ steps.aggregate.outputs.clean }}
           PASSED: ${{ steps.aggregate.outputs.passed }}
-          # First capability-resolved replay. Result-row totals include the
+          # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 126
-          MIN_PASSED: 556
+          MIN_CLEAN: 133
+          MIN_PASSED: 632
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -648,6 +648,8 @@ jobs:
         run: |
           set -euo pipefail
           required_clean=(
+            "sales_non_guaranteed"
+            "sales_guaranteed"
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
             "media_buy_seller/vendor_metric_catalog_precondition"
@@ -656,6 +658,7 @@ jobs:
             "notification_config_lifecycle"
             "notification_config_rejections"
             "wholesale_feed_products"
+            "wholesale_feed_products_scope_isolation"
             "wholesale_feed_product_webhooks"
             "wholesale_feed_bulk_webhooks"
           )

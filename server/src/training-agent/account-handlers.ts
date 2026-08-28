@@ -23,6 +23,7 @@ import {
   normalizeAccountWebhookUrl,
   proveAccountWebhookControl,
 } from './webhook-challenge.js';
+import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -72,6 +73,12 @@ interface AccountState {
 
 export interface GovernanceAgentEntry {
   url: string;
+  /** Outbound credentials are retained for seller-side execution checks but
+   * are never projected back through sync_governance or list_accounts. */
+  authentication: {
+    schemes: string[];
+    credentials: string;
+  };
 }
 
 interface NotificationConfigInput {
@@ -633,13 +640,33 @@ export function resolveGovernanceAgentsForAccount(
   if (!ref) return [];
   for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
     const account = findAccountByRef(accounts, ref);
-    if (account) return [...account.governanceAgents];
+    if (account) return account.governanceAgents.map(agent => structuredClone(agent));
   }
   if (ref.account_id) {
     const account = findAccountByIdAcrossSessions(ref.account_id, principal);
-    if (account) return [...account.governanceAgents];
+    if (account) return account.governanceAgents.map(agent => structuredClone(agent));
   }
   return [];
+}
+
+/** Resolve the seller's principal-scoped account record to the buyer identity
+ * used for brand.json governance-authority verification. Never trust the
+ * request's inline brand when an account record is available. */
+export function resolveAccountBrandForRef(
+  sessionKey: string,
+  principal: string | undefined,
+  ref: AccountRef | undefined,
+): { domain: string; brand_id?: string; countries?: string[] } | undefined {
+  if (!ref) return undefined;
+  for (const accounts of accountMapsForPrincipal(sessionKey, principal)) {
+    const account = findAccountByRef(accounts, ref);
+    if (account) return structuredClone(account.brand);
+  }
+  if (ref.account_id) {
+    const account = findAccountByIdAcrossSessions(ref.account_id, principal);
+    if (account) return structuredClone(account.brand);
+  }
+  return undefined;
 }
 
 export function seedAccountFixture(
@@ -1541,7 +1568,56 @@ export function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext) {
       });
       continue;
     }
-    const validAgents: GovernanceAgentEntry[] = [{ url: agent.url }];
+    let governanceEndpoint: URL;
+    try {
+      governanceEndpoint = new URL(agent.url);
+    } catch {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{ code: 'INVALID_REQUEST', message: 'governance_agents[].url must be a valid HTTPS URL.' }],
+      });
+      continue;
+    }
+    const governanceHostname = normalizeExternalHostname(governanceEndpoint.hostname);
+    if (
+      governanceEndpoint.protocol !== 'https:'
+      || governanceEndpoint.username !== ''
+      || governanceEndpoint.password !== ''
+      || !governanceHostname
+      || isPrivateHostname(governanceHostname)
+    ) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'governance_agents[].url must be a public HTTPS endpoint without embedded credentials.',
+        }],
+      });
+      continue;
+    }
+    if (
+      agent.authentication.schemes.length !== 1
+      || agent.authentication.schemes[0]?.toLowerCase() !== 'bearer'
+    ) {
+      results.push({
+        account: acctRef,
+        status: 'failed',
+        errors: [{
+          code: 'INVALID_REQUEST',
+          message: 'governance_agents[].authentication.schemes must contain exactly Bearer.',
+        }],
+      });
+      continue;
+    }
+    const validAgents: GovernanceAgentEntry[] = [{
+      url: agent.url,
+      authentication: {
+        schemes: ['Bearer'],
+        credentials: agent.authentication.credentials,
+      },
+    }];
 
     // Replace semantics — overwrite previous governance agents
     acct.governanceAgents = validAgents;

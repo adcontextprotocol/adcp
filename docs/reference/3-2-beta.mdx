@@ -30,10 +30,10 @@ SDK beta remains on beta.5:
 | `3.2.0-beta.6` | Current TypeScript SDK-backed protocol checkpoint for reporting, CTV, canonical display, and request-signing integration | Buyer and seller teams running end-to-end TypeScript SDK integrations |
 | `3.2.0-beta.7` | Previous protocol checkpoint for audience activation and external sources, creative delivery and tracker execution, measured-channel reporting, and expanded conformance coverage | Pinned adopters comparing beta.7 and beta.8 behavior |
 | `3.2.0-beta.8` | Current protocol checkpoint for metric-container subsumption conformance and corrected versioned documentation snapshots | Raw-wire adopters, code-generator maintainers, SDK maintainers, and agent teams validating the signed beta.8 artifact |
-| SDK wave | `@adcp/sdk@14.0.0-beta.8` embeds `3.2.0-beta.6`; Python `adcp==8.0.0b7` remains on `3.2.0-beta.5`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+| SDK wave | `@adcp/sdk@14.0.0-beta.12` embeds `3.2.0-beta.6`; Python `adcp==8.0.0b7` remains on `3.2.0-beta.5`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
 
 Earlier betas remain useful as pinned implementation checkpoints. For
-SDK-backed TypeScript testing, pair SDK beta.8 with protocol beta.6. Python
+SDK-backed TypeScript testing, pair SDK beta.12 with protocol beta.6. Python
 testing remains paired with beta.5 until a Python SDK release explicitly names
 another checkpoint. Test beta.8 from its signed artifact with raw-wire or
 code-generation workflows. Do not combine a newer wire pin with an SDK generated
@@ -62,7 +62,7 @@ The TypeScript SDK has exact beta.6 support. The npm
 `latest` tag remains on SDK 13, so opt into the preview explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.8
+npm install @adcp/sdk@14.0.0-beta.12
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
@@ -142,7 +142,7 @@ in place.
 ## Current beta.8 checkpoint
 
 Protocol beta.1 through beta.8 are published. No SDK release names exact beta.8
-support yet. TypeScript SDK beta.8 embeds the exact beta.6 bundle, while Python
+support yet. TypeScript SDK beta.12 embeds the exact beta.6 bundle, while Python
 SDK beta.7 embeds the exact beta.5 bundle. Before treating a test result as
 beta.8 protocol evidence, confirm that:
 

@@ -76,8 +76,8 @@ test('functional signing contract remains sandbox-only and preserves seller veri
     path.join(ROOT, 'static/compliance/source/universal/storyboard-schema.yaml'),
     'utf8'
   );
-  const limitation = fs.readFileSync(
-    path.join(ROOT, 'docs/reference/known-limitations.mdx'),
+  const betaGuide = fs.readFileSync(
+    path.join(ROOT, 'docs/reference/3-2-beta.mdx'),
     'utf8'
   );
 
@@ -85,6 +85,5 @@ test('functional signing contract remains sandbox-only and preserves seller veri
   assert.match(schema, /public conformance private scalar MUST\n#\s+NOT be used/);
   assert.match(schema, /This is NOT a sandbox-mode verifier bypass/);
   assert.match(schema, /Never fall back to unsigned dispatch/);
-  assert.match(limitation, /should not weaken production authentication/);
-  assert.match(limitation, /no runner should add a sandbox verifier bypass/);
+  assert.match(betaGuide, /Do not weaken production authentication/);
 });

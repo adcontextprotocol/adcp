@@ -33,6 +33,7 @@ import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 import { PUBLISHERS } from '../publishers.js';
+import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -793,14 +794,18 @@ function projectTenantCapabilities(
         ...account,
         supported_account_currency_modes: ['fixed', 'per_media_buy'],
       };
-      const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
+      const governanceTasks: Record<string, Array<{
+        task: string;
+        modes: Array<'signed_context' | 'online_execution_check'>;
+      }>> = {
         sales: supportsGetProductsRejected(servedVersion)
           ? [
               { task: 'buy_products', modes: ['signed_context'] },
               { task: 'accept_proposal', modes: ['signed_context'] },
               { task: 'control_media_buy', modes: ['signed_context'] },
+              { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
             ]
-          : [{ task: 'create_media_buy', modes: ['signed_context'] }],
+          : [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }],
         signals: [{ task: 'activate_signal', modes: ['signed_context'] }],
         brand: [{ task: 'acquire_rights', modes: ['signed_context'] }],
         creative: [{ task: 'build_creative', modes: ['signed_context'] }],
@@ -854,6 +859,12 @@ function projectTenantCapabilities(
       if (!experimentalFeatures.includes('measurement.core')) {
         experimentalFeatures.push('measurement.core');
       }
+      if (
+        supportsGetProductsRejected(servedVersion)
+        && !experimentalFeatures.includes('media_buy.audience_activation')
+      ) {
+        experimentalFeatures.push('media_buy.audience_activation');
+      }
       structured.experimental_features = experimentalFeatures;
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy
@@ -902,6 +913,16 @@ function projectTenantCapabilities(
           ),
           ...salesProjection.features,
         },
+        ...(supportsGetProductsRejected(servedVersion) && {
+          audience_targeting: {
+            ...(
+              mediaBuy.audience_targeting && typeof mediaBuy.audience_targeting === 'object'
+                ? mediaBuy.audience_targeting as Record<string, unknown>
+                : {}
+            ),
+            supported_activation_methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS),
+          },
+        }),
       };
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;
