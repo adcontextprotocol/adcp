@@ -10,6 +10,7 @@
     { "$ref": "/schemas/core/protocol-envelope.json" }
   ],
   "properties": {
+    "status": { "type": "string", "const": "completed", "description": "Receipt batches complete synchronously with one result per submitted receipt." },
     "results": {
       "type": "array",
       "items": {
@@ -63,6 +64,6 @@
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
-  "required": ["results"],
+  "required": ["status", "results"],
   "additionalProperties": true
 }
