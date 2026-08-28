@@ -427,6 +427,12 @@ export const ROUTING_RULES = {
         "test_out_modules",
         "start_certification_exam",
         "complete_certification_exam",
+        "check_credentials",
+        "checkpoint_teaching_progress",
+        "get_build_phase_instructions",
+        "save_learner_feedback",
+        "set_my_name",
+        "find_membership_products",
       ],
       description:
         "AdCP Academy — learning modules, exercises, placement assessment, and exams",

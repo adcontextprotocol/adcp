@@ -300,6 +300,35 @@ describe('Addie tool reference', () => {
     expect(withoutGithubList).not.toContain('### GitHub roadmap research');
   });
 
+  it('loads certification safety guidance only with the complete routed workflow', () => {
+    const certificationTools = getToolsForSets(['certification'], false, false);
+    const certification = buildAddieToolReference({
+      availableToolNames: certificationTools,
+      selectedToolSetNames: ['certification'],
+    });
+    const activeSession = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['certification', 'knowledge'], false, false),
+      selectedToolSetNames: ['certification', 'knowledge'],
+    });
+    const missingCheckpoint = buildAddieToolReference({
+      availableToolNames: certificationTools.filter(name => name !== 'checkpoint_teaching_progress'),
+      selectedToolSetNames: ['certification'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(certification).toContain('## AdCP Academy');
+    expect(certification).toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(certification).toContain('ALWAYS call checkpoint_teaching_progress');
+    expect(certification).toContain('BUILD PROJECT ERROR COACHING');
+    expect(activeSession).toContain('## AdCP Academy');
+    expect(activeSession).toContain('### Knowledge search operations');
+    expect(missingCheckpoint).not.toContain('## AdCP Academy');
+    expect(knowledge).not.toContain('## AdCP Academy');
+  });
+
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
     const stable = buildAddieStableToolReference();
 
@@ -312,6 +341,8 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Member account and organization self-service');
     expect(stable).not.toContain('### GitHub roadmap research');
     expect(stable).not.toContain('### Slack file handling');
+    expect(stable).not.toContain('## AdCP Academy');
+    expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {

@@ -1360,6 +1360,44 @@ Finalize a specialist capstone. If the learner has demonstrated mastery (interna
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `checkpoint_teaching_progress`
+
+Save a snapshot of teaching progress for the current module. Required before calling complete_certification_module or complete_certification_exam. Call at these points: (a) after finishing each key concept group from the lesson plan, (b) before transitioning from teaching to assessment, (c) after the capstone lab phase before the exam phase, (d) if the learner needs to leave. IMPORTANT: On the first checkpoint, always include learner_background. Before completion, include demonstrations_verified with the criterion IDs the learner has met.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `get_build_phase_instructions`
+
+Get the exact instructions for a build project phase transition. You MUST call this tool when transitioning to the Build, Validate, or Extend phase of B4, C4, or D4. The tool returns the specific commands and URLs the learner needs — present them exactly as returned, do not rewrite or summarize. This ensures every learner gets the same validated workflow.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `save_learner_feedback`
+
+Save learner feedback after completing a certification module. Call this when the learner shares thoughts about the experience — what was confusing, what worked well, suggestions for improvement.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `set_my_name`
+
+Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `find_membership_products`
+
+Find available membership products for a potential member.
+Use this when someone asks about joining, membership pricing, or wants to become a member.
+You should ask about their company type and approximate revenue to find the right product.
+
+*Source: `server/src/addie/mcp/billing-tools.ts`*
+
 ### `call_adcp_task`
 
 Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.
@@ -1710,36 +1748,6 @@ Commit a previewed property import. Takes a property list (typically the output 
 Fetch and promote a logo file for a brand in the registry. The upload queues for moderator review (community contribution) and, when approved, receives an AAO-hosted public /assets/brands URL suitable for brand.json. Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
-
-### `check_credentials`
-
-Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `checkpoint_teaching_progress`
-
-Save a snapshot of teaching progress for the current module. Required before calling complete_certification_module or complete_certification_exam. Call at these points: (a) after finishing each key concept group from the lesson plan, (b) before transitioning from teaching to assessment, (c) after the capstone lab phase before the exam phase, (d) if the learner needs to leave. IMPORTANT: On the first checkpoint, always include learner_background. Before completion, include demonstrations_verified with the criterion IDs the learner has met.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `get_build_phase_instructions`
-
-Get the exact instructions for a build project phase transition. You MUST call this tool when transitioning to the Build, Validate, or Extend phase of B4, C4, or D4. The tool returns the specific commands and URLs the learner needs — present them exactly as returned, do not rewrite or summarize. This ensures every learner gets the same validated workflow.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `save_learner_feedback`
-
-Save learner feedback after completing a certification module. Call this when the learner shares thoughts about the experience — what was confusing, what worked well, suggestions for improvement.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `set_my_name`
-
-Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `recommend_storyboards`
 
