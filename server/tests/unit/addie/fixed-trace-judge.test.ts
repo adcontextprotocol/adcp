@@ -28,7 +28,7 @@ import type {
 
 const CAPABILITIES: ModelProviderCapabilities = {
   streaming: false,
-  structuredOutput: false,
+  structuredOutput: true,
   reasoning: true,
   reasoningEfforts: ['provider_default', 'none', 'low'],
   customTools: false,
@@ -171,6 +171,14 @@ describe('fixed-trace independent judge', () => {
     expect(serialized).not.toContain('Official overview: buyers and sellers exchange typed tasks.');
     expect(serialized).toContain('candidate_answer');
     expect(request.requestMetadata).toEqual({ purpose: 'fixed_trace_blinded_judge', trace_id: trace.id });
+    expect(request.outputSchema).toMatchObject({
+      name: 'fixed_trace_judge_verdict',
+      strict: true,
+      schema: {
+        required: ['pass', 'score', 'reason'],
+        additionalProperties: false,
+      },
+    });
   });
 
   it('accepts a strict, internally consistent verdict with complete provenance', async () => {
