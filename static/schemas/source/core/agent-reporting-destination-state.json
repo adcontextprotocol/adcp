@@ -17,7 +17,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 255,
-      "description": "Seller-issued opaque reference bound to the stable authenticated principal and destination_id. Possession does not authorize access, and sellers MUST NOT resolve it across callers."
+      "description": "Seller-issued opaque immutable destination-generation reference bound to the stable authenticated principal and destination_id. Exact replays preserve it; a proof-bound coordinate or delivery-contract change creates a new reference. Possession does not authorize account access, and sellers MUST NOT resolve it across callers."
     },
     "state": {
       "type": "string",

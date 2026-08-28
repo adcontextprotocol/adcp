@@ -153,6 +153,10 @@ describe('sync_agent_configuration contract', () => {
 
     const request = readSchema('/schemas/protocol/sync-agent-configuration-request.json');
     assert.match(request['x-adcp-validation'].atomic_sections, /uniqueness/);
+
+    const destination = readSchema('/schemas/core/agent-reporting-destination.json');
+    assert.match(destination['x-adcp-validation'].replacement, /new destination_ref/);
+    assert.match(destination['x-adcp-validation'].replacement, /old references remain immutable/);
   });
 
   it('returns full credential-free state on success', () => {
