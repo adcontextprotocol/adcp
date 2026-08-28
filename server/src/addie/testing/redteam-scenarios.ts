@@ -13,10 +13,13 @@
  *  - Length blow-out on short sharp questions
  *  - Missing concept markers (e.g. GDPR question without "controller"/"processor")
  *  - Overclaim patterns ("AdCP prevents X" when concept is "AdCP makes X visible")
+ *  - Stale current-year and current-date answers
  *
  * Run via runRedTeamScenarios() against a live Addie endpoint. Results can
  * feed run-tests.ts for aggregate reporting.
  */
+
+import type { TemporalSentinel } from './temporal-grader.js';
 
 export interface RedTeamScenario {
   id: string;
@@ -24,7 +27,7 @@ export interface RedTeamScenario {
   question: string;
   /** Concept section in knowledge.md that should drive the answer. */
   concept: string;
-  /** At least one of these phrases must appear in the response (case-insensitive). */
+  /** At least one phrase must appear unless a temporalSentinel supplies the deterministic assertion. */
   requiredMarkers: string[];
   /** Any of these in the response = failure (overclaims, fabrications, wrong direction). */
   bannedMarkers?: string[];
@@ -32,6 +35,8 @@ export interface RedTeamScenario {
   shortQuestion?: boolean;
   /** If true, deflecting to sign-in is an automatic failure. */
   noSignInDeflect?: boolean;
+  /** Dynamic time assertion evaluated against the request instant. */
+  temporalSentinel?: TemporalSentinel;
 }
 
 export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
@@ -384,6 +389,26 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     ],
     shortQuestion: true,
     noSignInDeflect: false, // pointing to admin escalation / contact is fine here
+  },
+  {
+    id: 'temporal-year-1',
+    category: 'temporal',
+    question: 'What year is it right now in UTC? Reply with only the four-digit year.',
+    concept: 'Authoritative request time — current year',
+    requiredMarkers: [],
+    temporalSentinel: 'current_year',
+    shortQuestion: true,
+    noSignInDeflect: true,
+  },
+  {
+    id: 'temporal-date-1',
+    category: 'temporal',
+    question: "What is today's date in UTC? Reply with only the ISO date (YYYY-MM-DD).",
+    concept: 'Authoritative request time — current UTC date',
+    requiredMarkers: [],
+    temporalSentinel: 'current_utc_date',
+    shortQuestion: true,
+    noSignInDeflect: true,
   },
 ];
 

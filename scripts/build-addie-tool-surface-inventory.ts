@@ -12,6 +12,14 @@ import {
   mergeAddieToolDefinitions,
 } from '../server/src/addie/tool-wire-shape.js';
 import { assembleAddieSystemPrompt } from '../server/src/addie/prompt-assembly.js';
+import { buildAddieToolReference } from '../server/src/addie/prompts.js';
+import {
+  ADMIN_CHANNEL_WG_SLUG,
+  selectSlackToolSets,
+  SYSTEM_CHANNEL_TOOL_SETS,
+  type SlackToolSource,
+  type SystemChannelRole,
+} from '../server/src/addie/slack-tool-selection.js';
 
 interface BudgetFile {
   schema_version: 4;
@@ -42,6 +50,8 @@ interface Profile {
   maximum_provider_tool_wire_bytes: number;
   maximum_provider_tool_wire_sha256: string;
   wire_schema_bytes: number;
+  tool_reference_bytes: number;
+  tool_reference_sha256: string;
   overridden_tool_count: number;
   conflicting_override_count: number;
   conflicting_override_names: string[];
@@ -59,6 +69,7 @@ const OUTPUT_FILE = path.join(
 const BUDGET_FILE = path.join(REPO_ROOT, 'scripts/addie-tool-surface-budget.json');
 const REGISTRATION_SOURCES = [
   'server/src/addie/claude-client.ts',
+  'server/src/addie/prompts.ts',
   'server/src/addie/tool-wire-shape.ts',
   'server/src/addie/prompt-assembly.ts',
   'server/src/addie/register-baseline-tools.ts',
@@ -129,6 +140,10 @@ function profile(input: {
   const wire = buildAddieWireTools(merged);
   const orderedNames = merged.map((tool) => tool.name);
   const renderedWire = JSON.stringify(wire);
+  const toolReference = buildAddieToolReference({
+    availableToolNames: orderedNames,
+    selectedToolSetNames: input.selectedToolSets,
+  });
   const providerTools = buildAddieProviderTools((input.providerToolCount ?? 0) > 0);
   const renderedProviderTools = JSON.stringify(providerTools);
   return {
@@ -144,6 +159,8 @@ function profile(input: {
     maximum_provider_tool_wire_bytes: Buffer.byteLength(renderedProviderTools, 'utf8'),
     maximum_provider_tool_wire_sha256: sha256(renderedProviderTools),
     wire_schema_bytes: Buffer.byteLength(renderedWire, 'utf8'),
+    tool_reference_bytes: Buffer.byteLength(toolReference, 'utf8'),
+    tool_reference_sha256: sha256(toolReference),
     overridden_tool_count: overriddenNames.size,
     conflicting_override_count: conflictingNames.size,
     conflicting_override_names: [...conflictingNames].sort(),
@@ -261,23 +278,35 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   const memberRequest = buildRequest(false, false);
   const adminRequest = buildRequest(true, false);
   const publicRequest = buildRequest(false, true);
-  const surfaces = [
-    { audience: 'member_dm', isAdmin: false, isPublic: false, forceAdmin: false, available: memberRequest },
-    { audience: 'admin_dm', isAdmin: true, isPublic: false, forceAdmin: true, available: adminRequest },
-    { audience: 'private_channel_member', isAdmin: false, isPublic: false, forceAdmin: false, available: memberRequest },
-    { audience: 'private_channel_admin', isAdmin: true, isPublic: false, forceAdmin: false, available: adminRequest },
-    { audience: 'admin_working_group', isAdmin: true, isPublic: false, forceAdmin: true, available: adminRequest },
-    { audience: 'public_channel_member', isAdmin: false, isPublic: true, forceAdmin: false, available: publicRequest },
-    { audience: 'public_channel_admin', isAdmin: true, isPublic: true, forceAdmin: false, available: buildRequest(true, true) },
+  const surfaces: Array<{
+    audience: string;
+    source: SlackToolSource;
+    isAdmin: boolean;
+    isPublic: boolean;
+    workingGroupSlug?: string;
+    available: AddieTool[];
+  }> = [
+    { audience: 'member_dm', source: 'dm', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'admin_dm', source: 'dm', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'private_channel_member', source: 'channel', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'private_channel_admin', source: 'channel', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'admin_working_group', source: 'channel', isAdmin: true, isPublic: false, workingGroupSlug: ADMIN_CHANNEL_WG_SLUG, available: adminRequest },
+    { audience: 'public_channel_member', source: 'channel', isAdmin: false, isPublic: true, available: publicRequest },
+    { audience: 'public_channel_admin', source: 'channel', isAdmin: true, isPublic: true, available: buildRequest(true, true) },
   ];
   const profiles: Profile[] = [];
 
   for (const surface of surfaces) {
     for (const [setName, set] of Object.entries(toolSets.TOOL_SETS)) {
+      if (set.routerVisible === false) continue;
       if (!surface.isAdmin && set.adminOnly) continue;
-      const selectedSets = surface.forceAdmin
-        ? [...new Set([setName, 'admin'])]
-        : [setName];
+      const selectedSets = selectSlackToolSets({
+        routerSelectedSets: [setName],
+        routerAvailable: true,
+        source: surface.source,
+        isAdmin: surface.isAdmin,
+        workingGroupSlug: surface.workingGroupSlug,
+      });
       const allowed = new Set(toolSets.getToolsForSets(
         selectedSets,
         surface.isAdmin,
@@ -305,10 +334,18 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       }));
     }
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
+      .filter(([, set]) => set.routerVisible !== false)
       .filter(([, set]) => surface.isAdmin || !set.adminOnly)
       .map(([name]) => name);
+    const selectedAllValidSets = selectSlackToolSets({
+      routerSelectedSets: allValidSets,
+      routerAvailable: true,
+      source: surface.source,
+      isAdmin: surface.isAdmin,
+      workingGroupSlug: surface.workingGroupSlug,
+    });
     const allAllowed = new Set(toolSets.getToolsForSets(
-      allValidSets,
+      selectedAllValidSets,
       surface.isAdmin,
       surface.isPublic,
     ));
@@ -317,7 +354,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       runtime: 'slack_bolt',
       audience: surface.audience,
       route: 'all_valid_sets_maximum',
-      selectedToolSets: allValidSets,
+      selectedToolSets: selectedAllValidSets,
       globalTools,
       requestTools: surface.available.filter((tool) => allAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -329,26 +366,99 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         'nonstreaming_web_search',
       ],
     }));
-    const certificationSets = ['certification', 'knowledge'];
-    const certificationAllowed = new Set(toolSets.getToolsForSets(
-      certificationSets,
+    const fallbackSets = selectSlackToolSets({
+      routerAvailable: false,
+      source: surface.source,
+      isAdmin: surface.isAdmin,
+      workingGroupSlug: surface.workingGroupSlug,
+    });
+    const fallbackAllowed = new Set(toolSets.getToolsForSets(
+      fallbackSets,
       surface.isAdmin,
       surface.isPublic,
     ));
     profiles.push(profile({
-      id: `slack_bolt:${surface.audience}:certification_session`,
+      id: `slack_bolt:${surface.audience}:router_unavailable`,
       runtime: 'slack_bolt',
       audience: surface.audience,
-      route: 'certification_session',
-      selectedToolSets: certificationSets,
+      route: 'router_unavailable',
+      selectedToolSets: fallbackSets,
       globalTools,
-      requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+      requestTools: surface.available.filter((tool) => fallbackAllowed.has(tool.name)),
       providerToolCount: 1,
-      conditionalMaximums: [
-        'certification_context_overrides_router_and_admin_auto_add',
-        'google_docs_configured',
-        'nonstreaming_web_search',
-      ],
+      conditionalMaximums: ['router_unavailable', 'google_docs_configured', 'nonstreaming_web_search'],
+    }));
+
+    if (surface.source === 'dm') {
+      const certificationSets = selectSlackToolSets({
+        routerSelectedSets: ['admin'],
+        routerAvailable: true,
+        source: surface.source,
+        isAdmin: surface.isAdmin,
+        hasActiveCertification: true,
+      });
+      const certificationAllowed = new Set(toolSets.getToolsForSets(
+        certificationSets,
+        surface.isAdmin,
+        surface.isPublic,
+      ));
+      profiles.push(profile({
+        id: `slack_bolt:${surface.audience}:certification_session`,
+        runtime: 'slack_bolt',
+        audience: surface.audience,
+        route: 'certification_session',
+        selectedToolSets: certificationSets,
+        globalTools,
+        requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+        providerToolCount: 1,
+        conditionalMaximums: [
+          'active_certification_overrides_router_admin_and_fallback',
+          'google_docs_configured',
+          'nonstreaming_web_search',
+        ],
+      }));
+    }
+  }
+
+  const legacyAdminAllowed = new Set(toolSets.getToolsForSets(['admin'], true, false));
+  profiles.push(profile({
+    id: 'slack_bolt:admin_dm:legacy_admin_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'admin_dm',
+    route: 'legacy_admin_compatibility',
+    selectedToolSets: ['admin'],
+    globalTools,
+    requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_admin_domain_split',
+      'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
+  for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
+    const allValidSets = Object.entries(toolSets.TOOL_SETS)
+      .filter(([, set]) => set.routerVisible !== false)
+      .map(([name]) => name);
+    const selectedSets = selectSlackToolSets({
+      routerSelectedSets: allValidSets,
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+      systemRole,
+    });
+    const allowed = new Set(toolSets.getToolsForSets(selectedSets, true, false));
+    profiles.push(profile({
+      id: `slack_bolt:system_channel_admin:${systemRole}:all_valid_sets_maximum`,
+      runtime: 'slack_bolt',
+      audience: 'system_channel_admin',
+      route: `system_role_${systemRole}_all_valid_sets_maximum`,
+      selectedToolSets: selectedSets,
+      globalTools,
+      requestTools: adminRequest.filter((tool) => allowed.has(tool.name)),
+      providerToolCount: 1,
+      conditionalMaximums: ['server_configured_system_channel', 'router_returns_all_valid_tool_sets', 'google_docs_configured', 'nonstreaming_web_search'],
     }));
   }
   profiles.push(
@@ -384,7 +494,6 @@ function buildLegacyProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>):
   } = defs;
   const globalTools = [
     ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...admin.ADMIN_TOOLS,
     ...directory.DIRECTORY_TOOLS,
     ...schema.SCHEMA_TOOLS,
     ...brand.BRAND_TOOLS,
@@ -694,6 +803,36 @@ function surfaceMaximums(profiles: Profile[]): Record<string, SurfaceMaximum> {
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)));
 }
 
+const CERTIFICATION_WIRE_REQUIREMENTS = [
+  'start_certification_module',
+  'complete_certification_module',
+  'check_credentials',
+  'checkpoint_teaching_progress',
+  'get_build_phase_instructions',
+  'save_learner_feedback',
+  'set_my_name',
+  'find_membership_products',
+  'call_adcp_task',
+] as const;
+
+function assertCertificationWireContract(profiles: Profile[]): void {
+  const certificationProfiles = profiles.filter((entry) =>
+    entry.selected_tool_sets?.includes('certification'));
+  if (certificationProfiles.length === 0) {
+    throw new Error('Addie tool inventory has no certification profiles');
+  }
+
+  const errors = certificationProfiles.flatMap((entry) => {
+    const available = new Set(entry.ordered_tool_names);
+    return CERTIFICATION_WIRE_REQUIREMENTS
+      .filter((name) => !available.has(name))
+      .map((name) => `${entry.id} is missing ${name}`);
+  });
+  if (errors.length > 0) {
+    throw new Error(`Certification wire contract failed:\n- ${errors.join('\n- ')}`);
+  }
+}
+
 function loadBudget(): BudgetFile | null {
   if (!fs.existsSync(BUDGET_FILE)) return null;
   const parsed = JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8')) as BudgetFile;
@@ -771,10 +910,13 @@ async function buildSnapshot() {
     ...buildAuxiliaryProfiles(defs),
     buildBoundedReplayProfile(defs),
   ].sort((left, right) => left.id.localeCompare(right.id));
+  assertCertificationWireContract(profiles);
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,
-    ...Object.values(defs.toolSets.TOOL_SETS).flatMap((set) => set.tools),
+    ...Object.values(defs.toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false)
+      .flatMap((set) => set.tools),
   ]);
   const runtimeNames = new Set(profiles.flatMap((entry) => entry.ordered_tool_names));
   const routedSlackRuntimeNames = new Set(profiles
@@ -794,7 +936,14 @@ async function buildSnapshot() {
   const { loadResponseStyle, loadRules } = await import('../server/src/addie/rules/index.js');
   const rules = loadRules();
   const responseStyle = loadResponseStyle();
-  const systemPrompt = assembleAddieSystemPrompt(rules, ADDIE_TOOL_REFERENCE, responseStyle);
+  const maximumPromptProfile = profiles.reduce((maximum, entry) =>
+    entry.tool_reference_bytes > maximum.tool_reference_bytes ? entry : maximum,
+  );
+  const maximumToolReference = buildAddieToolReference({
+    availableToolNames: maximumPromptProfile.ordered_tool_names,
+    selectedToolSetNames: maximumPromptProfile.selected_tool_sets,
+  });
+  const systemPrompt = assembleAddieSystemPrompt(rules, maximumToolReference, responseStyle);
   const catalogTokens = new Set<string>(ADDIE_TOOL_NAMES);
   const runtimeToolsMissingFromCatalog = [...runtimeNames]
     .filter((name) => !catalogTokens.has(name))
@@ -808,6 +957,7 @@ async function buildSnapshot() {
     measurement: {
       scope: 'Declared maximum runtime profiles. Conditional integrations and permissions are treated as enabled; actual requests can be smaller.',
       wire_shape: 'Exact ordered Anthropic custom-tool JSON after global/request last-value deduplication and final ephemeral cache breakpoint.',
+      prompt_shape: 'Each profile records the request-scoped tool reference built from its exact ordered tool names and selected capability sets; top-level prompt bytes are the largest measured production profile.',
       provider_tools: 'Provider-native web search is counted separately and is unavailable on the streaming path.',
       registration_guard: 'Registration-source hashes force review when runtime assembly changes; the shared wire projector prevents measurement drift.',
     },
@@ -820,7 +970,10 @@ async function buildSnapshot() {
       sha256(fs.readFileSync(path.join(REPO_ROOT, relativePath), 'utf8')),
     ])),
     routed: {
-      tool_set_count: Object.keys(defs.toolSets.TOOL_SETS).length,
+      tool_set_count: Object.values(defs.toolSets.TOOL_SETS)
+        .filter((set) => set.routerVisible !== false).length,
+      compatibility_tool_set_count: Object.values(defs.toolSets.TOOL_SETS)
+        .filter((set) => set.routerVisible === false).length,
       unique_tool_count: routedNames.size,
       always_available_tool_count: defs.toolSets.ALWAYS_AVAILABLE_TOOLS.length,
       always_available_admin_tool_count: defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS.length,
@@ -835,7 +988,8 @@ async function buildSnapshot() {
     },
     prompt: {
       rules_bytes: Buffer.byteLength(rules, 'utf8'),
-      tool_reference_bytes: Buffer.byteLength(ADDIE_TOOL_REFERENCE, 'utf8'),
+      tool_reference_bytes: Buffer.byteLength(maximumToolReference, 'utf8'),
+      complete_offline_tool_reference_bytes: Buffer.byteLength(ADDIE_TOOL_REFERENCE, 'utf8'),
       response_style_bytes: Buffer.byteLength(responseStyle, 'utf8'),
       system_prompt_bytes: Buffer.byteLength(systemPrompt, 'utf8'),
       system_prompt_sha256: sha256(systemPrompt),

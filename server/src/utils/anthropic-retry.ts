@@ -7,6 +7,10 @@
 
 import { APIError, APIConnectionError } from '@anthropic-ai/sdk';
 import { logger } from '../logger.js';
+import {
+  classifyProviderFailure,
+  getProviderRetryAfterSeconds,
+} from '../addie/model-providers/provider-errors.js';
 
 /**
  * Error thrown when all retry attempts have been exhausted
@@ -18,6 +22,8 @@ export class RetriesExhaustedError extends Error {
   readonly attempts: number;
   /** User-friendly reason for the failure */
   readonly reason: string;
+  /** Provider-supplied recovery delay, normalized to whole seconds. */
+  readonly retryAfterSeconds?: number;
 
   constructor(cause: unknown, attempts: number) {
     const errorMsg = cause instanceof Error ? cause.message : String(cause);
@@ -31,6 +37,7 @@ export class RetriesExhaustedError extends Error {
     this.cause = cause;
     this.attempts = attempts;
     this.reason = reason;
+    this.retryAfterSeconds = getProviderRetryAfterSeconds(cause);
   }
 }
 
@@ -146,6 +153,11 @@ export function isRetryableError(error: unknown): boolean {
     }
   }
 
+  const category = classifyProviderFailure('anthropic', error).category;
+  if (category === 'rate_limited' || category === 'overloaded' || category === 'timeout' || category === 'unavailable') {
+    return true;
+  }
+
   return false;
 }
 
@@ -206,19 +218,35 @@ export async function withRetry<T>(
       }
 
       const delayMs = calculateDelay(attempt, finalConfig);
+      const retryAfterSeconds = getProviderRetryAfterSeconds(error);
+      const providerDelayMs = retryAfterSeconds === undefined ? 0 : retryAfterSeconds * 1000;
+      if (providerDelayMs > finalConfig.maxDelayMs) {
+        logger.warn(
+          {
+            attempt,
+            maxRetries: finalConfig.maxRetries,
+            retryAfterSeconds,
+            operation: operationName,
+          },
+          'Anthropic API: Retry-After exceeds request retry budget; deferring recovery',
+        );
+        throw new RetriesExhaustedError(error, attempt);
+      }
+      const scheduledDelayMs = Math.max(delayMs, providerDelayMs);
 
       logger.warn(
         {
           attempt,
           maxRetries: finalConfig.maxRetries,
-          delayMs: Math.round(delayMs),
+          delayMs: Math.round(scheduledDelayMs),
+          retryAfterSeconds,
           error: error instanceof Error ? error.message : String(error),
           operation: operationName,
         },
         `Anthropic API: Retryable error, waiting before retry ${attempt}/${finalConfig.maxRetries}`
       );
 
-      await sleep(delayMs);
+      await sleep(scheduledDelayMs);
     }
   }
 
@@ -278,19 +306,35 @@ export async function* withStreamRetry<T>(
       }
 
       const delayMs = calculateDelay(attempt, finalConfig);
+      const retryAfterSeconds = getProviderRetryAfterSeconds(error);
+      const providerDelayMs = retryAfterSeconds === undefined ? 0 : retryAfterSeconds * 1000;
+      if (providerDelayMs > finalConfig.maxDelayMs) {
+        logger.warn(
+          {
+            attempt,
+            maxRetries: finalConfig.maxRetries,
+            retryAfterSeconds,
+            operation: operationName,
+          },
+          'Anthropic API Stream: Retry-After exceeds request retry budget; deferring recovery',
+        );
+        throw new RetriesExhaustedError(error, attempt);
+      }
+      const scheduledDelayMs = Math.max(delayMs, providerDelayMs);
 
       logger.warn(
         {
           attempt,
           maxRetries: finalConfig.maxRetries,
-          delayMs: Math.round(delayMs),
+          delayMs: Math.round(scheduledDelayMs),
+          retryAfterSeconds,
           error: error instanceof Error ? error.message : String(error),
           operation: operationName,
         },
         `Anthropic API Stream: Retryable error, waiting before retry ${attempt}/${finalConfig.maxRetries}`
       );
 
-      await sleep(delayMs);
+      await sleep(scheduledDelayMs);
     }
   }
 

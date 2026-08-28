@@ -557,6 +557,76 @@ describe('Addie chat conversation object authorization', () => {
     expect(mocks.processMessageStream).toHaveBeenCalledOnce();
   });
 
+  it('delivers a done-only provider recovery response once on the streaming path', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield {
+        type: 'done',
+        response: {
+          ...successfulModelResponse('The AI service is temporarily unavailable. Please try again shortly.'),
+          flagged: true,
+          flag_reason: 'provider_unavailable:overloaded',
+        },
+      };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Stream my conversation',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text.match(/event: text/g)).toHaveLength(1);
+    expect(response.text).toContain('The AI service is temporarily unavailable. Please try again shortly.');
+    expect(response.text).toContain('event: done');
+  });
+
+  it('appends provider recovery copy after partial streamed text', async () => {
+    mocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread_attacker',
+      channel: 'web',
+      external_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      user_type: 'workos',
+      user_id: 'user_attacker',
+    });
+    const recoveryText = 'The AI service is temporarily unavailable. Some requested actions may already have completed.';
+    mocks.processMessageStream.mockImplementation(async function* () {
+      yield { type: 'text', text: 'Partial provider response.' };
+      yield {
+        type: 'done',
+        response: {
+          ...successfulModelResponse(recoveryText),
+          flagged: true,
+          flag_reason: 'provider_unavailable:overloaded',
+        },
+      };
+    });
+
+    const response = await request(mountChatRouter())
+      .post('/stream')
+      .send({
+        message: 'Stream my conversation',
+        conversation_id: '9f3e25b7-fc57-4ad9-bb32-0d5ecdb41489',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.text.match(/event: text/g)).toHaveLength(2);
+    expect(response.text).toContain('Partial provider response.');
+    expect(response.text).toContain(recoveryText);
+    expect(mocks.addMessage).toHaveBeenCalledWith(expect.objectContaining({
+      role: 'assistant',
+      content: expect.stringContaining(recoveryText),
+    }));
+  });
+
   it('replays a completed client request without duplicating messages, tools, or model work', async () => {
     mocks.getThreadByExternalId.mockResolvedValue({
       thread_id: 'thread_attacker',

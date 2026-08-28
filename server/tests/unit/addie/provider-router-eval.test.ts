@@ -138,16 +138,18 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(39);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(39);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(45);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(45);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member', 'directory', 'agent_testing', 'agent_conformance',
       'adcp_operations', 'content', 'billing', 'events', 'meetings',
-      'committee_leadership', 'admin', 'outreach', 'collaboration', 'certification',
+      'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
+      'admin_groups', 'admin_organizations', 'admin_workflows', 'admin_brands',
+      'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(38);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(44);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -176,7 +178,9 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain(`Valid sets: ${[...getValidToolSetNames(false)].join(', ')}`);
     expect(nonAdmin).toContain('→ [] (use the always-available escalation tool)');
     expect(admin).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
-    expect(admin).toContain('→ ["billing", "admin"]');
+    expect(admin).toContain('→ ["billing"]');
+    expect(admin).not.toContain('- **admin**:');
+    expect(getValidToolSetNames(true).has('admin')).toBe(false);
     expect(nonAdmin).toContain('Exact bare acknowledgments');
   });
 
@@ -191,7 +195,7 @@ describe('strict router eval', () => {
   it('scores action, tools, depth, confidence, and privilege independently', () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     expect(scoreRouterPlan(testCase, {
-      action: 'respond', tool_sets: ['admin'], confidence: 'low', requires_depth: true, reason: 'x',
+      action: 'respond', tool_sets: ['admin_workflows'], confidence: 'low', requires_depth: true, reason: 'x',
     })).toEqual({ actionExact: true, toolsExact: false, privilegeLeak: true, invalidToolSet: false, confidenceExact: false, depthExact: false, emojiExact: true });
   });
 
@@ -214,7 +218,7 @@ describe('strict router eval', () => {
   it('retains unauthorized tool attempts as safety failures', async () => {
     const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-schema')!;
     const result = await evaluateRouterCase(
-      fakeProvider('{"action":"respond","tool_sets":["admin"],"confidence":"high","requires_depth":false,"reason":"x"}'),
+      fakeProvider('{"action":"respond","tool_sets":["admin_workflows"],"confidence":"high","requires_depth":false,"reason":"x"}'),
       'model', 'prompt_parity', testCase,
     );
     expect(result.status).toBe('schema_invalid');

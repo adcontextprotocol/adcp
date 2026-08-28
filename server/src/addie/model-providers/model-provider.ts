@@ -105,6 +105,8 @@ export interface ModelToolCallContent {
 export interface ModelToolResultContent {
   type: 'tool_result';
   toolCallId: string;
+  /** Required by providers that correlate results by both call ID and name. */
+  toolName?: string;
   content: string | Array<ModelTextContent | ModelImageContent | ModelDocumentContent>;
   isError?: boolean;
 }
@@ -248,6 +250,13 @@ export interface PreparedModelInvocation {
 
 export interface ModelRespondOptions {
   signal?: AbortSignal;
+  /** Request the provider's streaming transport while retaining normalized events. */
+  stream?: boolean;
+  /**
+   * Observability-only progress signal emitted before terminal validation.
+   * Callers must not expose buffered content or execute tools from this hook.
+   */
+  onStreamProgress?: (event: { type: 'content_delta' }) => void;
   /** Runs immediately before the one SDK dispatch made by this iterator. */
   beforeDispatch?: (prepared: PreparedModelInvocation) => void | Promise<void>;
 }

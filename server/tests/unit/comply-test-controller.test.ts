@@ -5,6 +5,7 @@ import {
   createTrainingAgentServer,
   invalidateCache,
   clearTaskStore,
+  narrowDeliveryMetricObject,
 } from '../../src/training-agent/task-handlers.js';
 import {
   clearSessions,
@@ -2036,6 +2037,115 @@ describe('comply_test_controller', () => {
       expect(totals.clicks).toBe(33);
     });
 
+    it('reconciles vendor metrics by vendor, metric_id, and qualifier', async () => {
+      const vendor = { domain: 'attentionvendor.example' };
+      const sevenDayQualifier = { attribution_window: { interval: 7, unit: 'days' } };
+      const thirtyDayQualifier = { attribution_window: { interval: 30, unit: 'days' } };
+
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        params: {
+          product_id: 'qualified-vendor-product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: ['impressions', 'spend'],
+              vendor_metrics: [{ vendor, metric_id: 'attributed_attention' }],
+            },
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: 'qualified-vendor-product',
+          pricing_option_id: 'qualified-vendor-product-cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'qualified-vendor-product',
+          pricing_option_id: 'qualified-vendor-product-cpm',
+          budget: 1000,
+          bid_price: 5,
+          committed_metrics: [
+            { scope: 'vendor', vendor, metric_id: 'attributed_attention', qualifier: sevenDayQualifier },
+            { scope: 'vendor', vendor, metric_id: 'attributed_attention', qualifier: thirtyDayQualifier },
+          ],
+        }],
+      });
+      const mediaBuyId = created.media_buy_id as string;
+      expect(mediaBuyId).toBeTruthy();
+
+      const thirtyDayDeferral = {
+        vendor,
+        metric_id: 'attributed_attention',
+        qualifier: thirtyDayQualifier,
+      };
+      const { result: deferred } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          not_yet_measurable_vendor_metrics: [thirtyDayDeferral],
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(deferred.success).toBe(true);
+
+      const readPackage = async () => {
+        const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+          account: ACCOUNT,
+          brand: BRAND,
+          media_buy_ids: [mediaBuyId],
+          end_date: '2099-01-01',
+        });
+        return (
+          result.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>
+        )[0]!.by_package[0]!;
+      };
+
+      const beforeValue = await readPackage();
+      expect(beforeValue.missing_metrics).toEqual([{
+        scope: 'vendor',
+        vendor,
+        metric_id: 'attributed_attention',
+        qualifier: sevenDayQualifier,
+      }]);
+
+      const sevenDayValue = {
+        vendor,
+        metric_id: 'attributed_attention',
+        qualifier: sevenDayQualifier,
+        value: 8.4,
+      };
+      const { result: measured } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          vendor_metric_values: [sevenDayValue],
+          not_yet_measurable_vendor_metrics: [thirtyDayDeferral],
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(measured.success).toBe(true);
+
+      const afterValue = await readPackage();
+      expect(afterValue.vendor_metric_values).toEqual([sevenDayValue]);
+      expect(afterValue.missing_metrics).toEqual([]);
+    });
+
     it('rejects malformed package-scoped vendor inputs without creating delivery state', async () => {
       const mediaBuyId = await createMediaBuy(server);
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
@@ -2109,6 +2219,18 @@ describe('comply_test_controller', () => {
         viewable_impressions: 5920,
         viewable_rate: 0.8,
         viewed_seconds: 4.3,
+        viewed_seconds_percentiles: {
+          p25: 1.2,
+          p50: 2.8,
+          p75: 5.1,
+          p90: 8.4,
+          p95: 11.7,
+        },
+        viewed_seconds_histogram: [
+          { lower_bound_seconds: 0, upper_bound_seconds: 1, impressions: 1200 },
+          { lower_bound_seconds: 1, upper_bound_seconds: 5, impressions: 4100 },
+          { lower_bound_seconds: 5, impressions: 2100 },
+        ],
         standard: 'mrc',
       };
       const reachWindow = {
@@ -2149,6 +2271,392 @@ describe('comply_test_controller', () => {
       expect(totals.frequency).toBe(2.5);
       expect(totals.reach_window).toEqual(reachWindow);
       expect(totals.viewability).toEqual(viewability);
+    });
+
+    it('rejects invalid viewed-seconds distributions before mutating delivery', async () => {
+      const mediaBuyId = await createMediaBuy(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: {
+          media_buy_id: mediaBuyId,
+          impressions: 100,
+          viewability: {
+            measurable_impressions: 100,
+            viewed_seconds: 4.3,
+            viewed_seconds_histogram: [
+              { lower_bound_seconds: 0, upper_bound_seconds: 5, impressions: 50 },
+              { lower_bound_seconds: 4, impressions: 50 },
+            ],
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+      const sessionKey = sessionKeyFromArgs({ account: ACCOUNT }, DEFAULT_CTX.mode, DEFAULT_CTX.userId, DEFAULT_CTX.moduleId);
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it.each([
+      ['partial percentiles', {
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+        viewed_seconds_percentiles: { p25: 1 },
+      }],
+      ['empty histogram', {
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+        viewed_seconds_histogram: [],
+      }],
+      ['negative histogram count', {
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+        viewed_seconds_histogram: [{ lower_bound_seconds: 0, impressions: -1 }],
+      }],
+      ['fractional histogram count', {
+        measurable_impressions: 0.5,
+        viewed_seconds: 4.3,
+        viewed_seconds_histogram: [{ lower_bound_seconds: 0, impressions: 0.5 }],
+      }],
+      ['missing viewed_seconds', {
+        measurable_impressions: 100,
+        viewed_seconds_histogram: [{ lower_bound_seconds: 0, impressions: 100 }],
+      }],
+    ])('rejects structurally invalid viewability: %s', async (_label, viewability) => {
+      const mediaBuyId = await createMediaBuy(server);
+      const { result } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, viewability },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_PARAMS');
+      const sessionKey = sessionKeyFromArgs(
+        { account: ACCOUNT },
+        DEFAULT_CTX.mode,
+        DEFAULT_CTX.userId,
+        DEFAULT_CTX.moduleId,
+      );
+      const session = await getSession(sessionKey);
+      expect(session.complyExtensions.deliverySimulations.has(mediaBuyId)).toBe(false);
+    });
+
+    it('narrows metrics inside automatically emitted creative breakdowns', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        params: {
+          product_id: 'creative-breakdown-product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: ['impressions', 'spend', 'conversions'],
+            },
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: 'creative-breakdown-product',
+          pricing_option_id: 'creative-breakdown-product-cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'creative-breakdown-product',
+          pricing_option_id: 'creative-breakdown-product-cpm',
+          budget: 1000,
+          bid_price: 5,
+        }],
+      });
+      const mediaBuyId = created.media_buy_id as string;
+      const creativeId = await syncCreative(server);
+      const { result: buys } = await simulateCallTool(server, 'get_media_buys', {
+        account: ACCOUNT,
+        brand: BRAND,
+        status_filter: ['pending_creatives'],
+      });
+      const buy = (buys.media_buys as Array<{
+        media_buy_id: string;
+        packages: Array<{ package_id: string }>;
+      }>).find(candidate => candidate.media_buy_id === mediaBuyId);
+      const packageId = buy!.packages[0]!.package_id;
+      await simulateCallTool(server, 'sync_creatives', {
+        account: ACCOUNT,
+        brand: BRAND,
+        creatives: [{ creative_id: creativeId, name: 'Test Creative', format_kind: 'image', assets: {} }],
+        assignments: [{ creative_id: creativeId, package_id: packageId, media_buy_id: mediaBuyId }],
+      });
+
+      const { result: simulated } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 100, clicks: 12, conversions: 8 },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(simulated.success).toBe(true);
+
+      const getCreativeRows = (result: Record<string, unknown>) => (
+        result.media_buy_deliveries as Array<{
+          by_package: Array<{ by_creative: Array<Record<string, unknown>> }>;
+        }>
+      )[0]!.by_package[0]!.by_creative;
+
+      const { result: impressionsOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['impressions'],
+      });
+      const impressionRows = getCreativeRows(impressionsOnly);
+      expect(impressionRows).toHaveLength(1);
+      expect(impressionRows[0]).toMatchObject({
+        creative_id: expect.any(String),
+        impressions: 100,
+        spend: 0,
+      });
+      expect(impressionRows[0]).not.toHaveProperty('conversions');
+
+      const { result: conversionsOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['conversions'],
+      });
+      const conversionRows = getCreativeRows(conversionsOnly);
+      expect(conversionRows).toHaveLength(1);
+      expect(conversionRows[0]).toMatchObject({
+        creative_id: impressionRows[0]!.creative_id,
+        impressions: 100,
+        spend: 0,
+        conversions: 8,
+      });
+    });
+
+    it('narrows metrics inside nested window totals and package rows', () => {
+      const narrowed = narrowDeliveryMetricObject({
+        impressions: 100,
+        spend: 5,
+        clicks: 12,
+        windows: [{
+          start: '2026-08-01T00:00:00Z',
+          end: '2026-08-08T00:00:00Z',
+          totals: { impressions: 60, spend: 3, clicks: 7, conversions: 4 },
+          by_package: [{ package_id: 'pkg-1', impressions: 60, spend: 3, clicks: 7, conversions: 4 }],
+        }],
+      }, new Set(['conversions']));
+
+      expect(narrowed).toEqual({
+        impressions: 100,
+        spend: 5,
+        windows: [{
+          start: '2026-08-01T00:00:00Z',
+          end: '2026-08-08T00:00:00Z',
+          totals: { impressions: 60, spend: 3, conversions: 4 },
+          by_package: [{ package_id: 'pkg-1', impressions: 60, spend: 3, conversions: 4 }],
+        }],
+      });
+    });
+
+    it('returns the full viewability carrier when a numeric leaf is requested', () => {
+      const narrowed = narrowDeliveryMetricObject({
+        impressions: 100,
+        spend: 5,
+        clicks: 12,
+        viewability: {
+          standard: 'iab',
+          measurable_impressions: 90,
+          viewable_impressions: 72,
+          viewable_rate: 0.8,
+          viewed_seconds: 3.5,
+          viewed_seconds_percentiles: { p50: 3.2 },
+        },
+      }, new Set(['viewable_rate']));
+
+      expect(narrowed).toEqual({
+        impressions: 100,
+        spend: 5,
+        viewability: {
+          standard: 'iab',
+          measurable_impressions: 90,
+          viewable_impressions: 72,
+          viewable_rate: 0.8,
+          viewed_seconds: 3.5,
+        },
+      });
+    });
+
+    it('reconciles committed viewed-seconds distributions at package grain', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_product',
+        params: {
+          product_id: 'distribution-product',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            reporting_capabilities: {
+              available_metrics: [
+                'impressions',
+                'viewability',
+                'viewed_seconds_percentiles',
+                'viewed_seconds_histogram',
+              ],
+            },
+          },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: 'distribution-product',
+          pricing_option_id: 'distribution-product-cpm',
+          fixture: { pricing_model: 'cpm', currency: 'USD', floor_price: 5 },
+        },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        start_time: 'asap',
+        end_time: '2099-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'distribution-product',
+          pricing_option_id: 'distribution-product-cpm',
+          budget: 1000,
+          bid_price: 5,
+          committed_metrics: [
+            {
+              scope: 'standard',
+              metric_id: 'viewed_seconds_percentiles',
+              qualifier: { viewability_standard: 'mrc' },
+            },
+            {
+              scope: 'standard',
+              metric_id: 'viewed_seconds_histogram',
+              qualifier: { viewability_standard: 'mrc' },
+            },
+          ],
+        }],
+      });
+      const mediaBuyId = created.media_buy_id as string;
+      expect(mediaBuyId).toBeTruthy();
+
+      const viewability = {
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+        viewed_seconds_percentiles: { p25: 1, p50: 2, p75: 5, p90: 9, p95: 12 },
+        viewed_seconds_histogram: [
+          { lower_bound_seconds: 0, upper_bound_seconds: 1, impressions: 20 },
+          { lower_bound_seconds: 1, upper_bound_seconds: 5, impressions: 55 },
+          { lower_bound_seconds: 5, impressions: 25 },
+        ],
+        standard: 'mrc',
+      };
+      const { result: simulated } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'simulate_delivery',
+        params: { media_buy_id: mediaBuyId, impressions: 100, viewability },
+        account: ACCOUNT,
+        brand: BRAND,
+      });
+      expect(simulated.success).toBe(true);
+
+      const { result: delivery } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+      });
+      const packageDelivery = (
+        delivery.media_buy_deliveries as Array<{ by_package: Array<Record<string, unknown>> }>
+      )[0]!.by_package[0]!;
+      expect(packageDelivery.viewability).toEqual(viewability);
+      expect(packageDelivery.missing_metrics).toEqual([]);
+
+      const { result: histogramOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['viewed_seconds_histogram'],
+      });
+      const histogramDelivery = (
+        histogramOnly.media_buy_deliveries as Array<{
+          totals: Record<string, unknown>;
+          by_package: Array<Record<string, unknown>>;
+        }>
+      )[0]!;
+      const expectedHistogramViewability = {
+        standard: 'mrc',
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+        viewed_seconds_histogram: viewability.viewed_seconds_histogram,
+      };
+      expect(histogramDelivery.totals.viewability).toEqual(expectedHistogramViewability);
+      expect(histogramDelivery.by_package[0]!.viewability).toEqual(expectedHistogramViewability);
+      expect(histogramDelivery.totals).not.toHaveProperty('clicks');
+      expect(histogramDelivery.by_package[0]).not.toHaveProperty('clicks');
+      expect(histogramDelivery.by_package[0]!.missing_metrics).toEqual([]);
+
+      const { result: numericViewabilityOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['viewability'],
+      });
+      const numericViewability = (
+        numericViewabilityOnly.media_buy_deliveries as Array<{
+          by_package: Array<Record<string, unknown>>;
+        }>
+      )[0]!.by_package[0]!.viewability as Record<string, unknown>;
+      expect(numericViewability).toEqual({
+        standard: 'mrc',
+        measurable_impressions: 100,
+        viewed_seconds: 4.3,
+      });
+      expect(numericViewability).not.toHaveProperty('viewed_seconds_percentiles');
+      expect(numericViewability).not.toHaveProperty('viewed_seconds_histogram');
+
+      const { result: impressionsOnly } = await simulateCallTool(server, 'get_media_buy_delivery', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: [mediaBuyId],
+        end_date: '2099-01-01',
+        requested_metrics: ['impressions'],
+      });
+      const impressionsDelivery = (
+        impressionsOnly.media_buy_deliveries as Array<{
+          totals: Record<string, unknown>;
+          by_package: Array<Record<string, unknown>>;
+        }>
+      )[0]!;
+      expect(impressionsDelivery.totals).toEqual({ impressions: 100, spend: 0 });
+      expect(impressionsDelivery.by_package[0]).toMatchObject({
+        impressions: 100,
+        spend: 0,
+        missing_metrics: [],
+      });
+      expect(impressionsDelivery.by_package[0]).not.toHaveProperty('viewability');
+      expect(impressionsDelivery.by_package[0]).not.toHaveProperty('clicks');
     });
 
     it('returns NOT_FOUND for unknown media buy', async () => {

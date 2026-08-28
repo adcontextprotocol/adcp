@@ -7,6 +7,7 @@
 
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { formatUtcTimestamp } from '../tool-temporal.js';
 
 /** Stripe-defined subscription statuses (safe to interpolate into prompts). */
 const KNOWN_SUBSCRIPTION_STATUSES = new Set([
@@ -608,32 +609,30 @@ function buildShareLinks(
   const lines: string[] = [];
   const year = awardedDate.getFullYear();
   const month = awardedDate.getMonth() + 1;
+  let linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
+    + `&name=${encodeURIComponent(credName)}`
+    + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
+    + `&issueYear=${year}&issueMonth=${month}`;
 
   if (certifierPublicId) {
-    const certUrl = `https://credsverse.com/credentials/${certifierPublicId}`;
-    const linkedInUrl = `https://www.linkedin.com/profile/add?startTask=CERTIFICATION_NAME`
-      + `&name=${encodeURIComponent(credName)}`
-      + `&organizationName=${encodeURIComponent('AgenticAdvertising.org')}`
-      + `&issueYear=${year}&issueMonth=${month}`
-      + `&certId=${encodeURIComponent(certifierPublicId)}`
+    const encodedPublicId = encodeURIComponent(certifierPublicId);
+    const certUrl = `https://credsverse.com/credentials/${encodedPublicId}`;
+    linkedInUrl += `&certId=${encodeURIComponent(certifierPublicId)}`
       + `&certUrl=${encodeURIComponent(certUrl)}`;
 
     lines.push(`- [View and share your credential](${certUrl})`);
-    lines.push(`- [Add to LinkedIn profile](${linkedInUrl})`);
   }
 
+  // LinkedIn's certification form remains available without a third-party
+  // credential URL, even though LinkedIn no longer autofills these fields.
+  lines.push(`- [Add to LinkedIn profile](${linkedInUrl})`);
   lines.push('- [View all credentials](/certification.html)');
   return lines;
 }
 
 function formatUtcDate(value: string | null): string {
   if (!value) return 'the published deadline';
-  return new Date(value).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+  return formatUtcTimestamp(value);
 }
 
 /**
@@ -2224,7 +2223,7 @@ export function createCertificationToolHandlers(
         lines.push('## Earned credentials');
         for (const cred of earnedCreds) {
           const uc = userCredentials.find(u => u.credential_id === cred.id);
-          lines.push(`- **${cred.name}** (Level ${cred.tier}) — earned ${uc ? new Date(uc.awarded_at).toLocaleDateString() : ''}`);
+          lines.push(`- **${cred.name}** (Level ${cred.tier}) — earned ${uc ? formatUtcTimestamp(uc.awarded_at) : ''}`);
         }
         lines.push('');
       }
@@ -2463,7 +2462,7 @@ export function createCertificationToolHandlers(
             }
             const active = await certDb.getActiveAttemptForModule(userId, moduleId);
             if (active) {
-              return `You already have an active ${delta.delta_action_label} delta attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the delta assessment.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
+              return `You already have an active ${delta.delta_action_label} delta attempt (started ${formatUtcTimestamp(active.started_at)}). Continue the delta assessment.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
             }
           }
           if (deltaStatus.active && deltaStatus.status === 'full_recertification_required') {
@@ -2536,7 +2535,7 @@ export function createCertificationToolHandlers(
         if (options?.trainingModuleContext) {
           options.trainingModuleContext.moduleId = moduleId;
         }
-        return `You already have an active capstone attempt (started ${new Date(active.started_at).toLocaleDateString()}). Continue the capstone.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
+        return `You already have an active capstone attempt (started ${formatUtcTimestamp(active.started_at)}). Continue the capstone.\n\nAttempt ID: ${active.id}\n\n${buildSageResumeSection()}`;
       }
 
       // Start the module and create an attempt
@@ -3021,7 +3020,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.8 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.12 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3036,7 +3035,7 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-beta.8 test-mcp get_products '{"adcp_version":"3.2-beta.6","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@14.0.0-beta.12 test-mcp get_products '{"adcp_version":"3.2-beta.6","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.

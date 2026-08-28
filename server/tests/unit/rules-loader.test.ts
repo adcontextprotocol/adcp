@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { loadRules, loadResponseStyle, invalidateRulesCache } from '../../src/addie/rules/index.js';
-import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
+import {
+  ADDIE_TOOL_REFERENCE,
+  buildAddieScopedToolReference,
+  buildAddieStableToolReference,
+  buildAddieToolReference,
+} from '../../src/addie/prompts.js';
+import { getToolsForSets } from '../../src/addie/tool-sets.js';
 
 describe('Rules Loader', () => {
   beforeEach(() => {
@@ -117,9 +123,276 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
   });
 
+  it('scopes admin guidance and the authoritative catalog to routed domains', () => {
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_prospects'], true, false),
+      selectedToolSetNames: ['admin_prospects'],
+    });
+
+    expect(reference).toContain('### Admin prospect operations');
+    expect(reference).toContain('- **admin_prospects** *(admin only)*');
+    expect(reference).toContain('query_prospects');
+    expect(reference).not.toContain('### Admin organization operations');
+    expect(reference).not.toContain('- **admin_organizations**');
+    expect(reference).not.toContain('merge_organizations');
+    expect(reference).not.toContain('### Admin workflow operations');
+  });
+
+  it('keeps the cacheable guidance stable while domain instructions vary', () => {
+    const stable = buildAddieStableToolReference();
+    const scoped = buildAddieScopedToolReference({
+      availableToolNames: getToolsForSets(['admin_workflows'], true, false),
+      selectedToolSetNames: ['admin_workflows'],
+    });
+
+    expect(stable).toContain('## Behavioral Guidelines');
+    expect(stable).not.toContain('### Admin workflow operations');
+    expect(stable).not.toContain('## Authoritative custom-tool catalog');
+    expect(scoped).toContain('### Admin workflow operations');
+    expect(scoped).toContain('- **admin_workflows** *(admin only)*');
+  });
+
+  it('loads knowledge guidance only for the routed knowledge domain', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const directory = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+
+    expect(knowledge).toContain('### Knowledge search operations');
+    expect(knowledge).not.toContain('### Member-directory operations');
+    expect(directory).toContain('### Member-directory operations');
+    expect(directory).not.toContain('### Knowledge search operations');
+  });
+
+  it('scopes community and content guidance to their selected sets', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const meetings = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meetings'], false, false),
+      selectedToolSetNames: ['meetings'],
+    });
+
+    expect(member).toContain('### Working-group operations');
+    expect(member).toContain('### Member profile and company-listing operations');
+    expect(member).toContain('### Member content operations');
+    expect(member).not.toContain('### Meeting operations');
+    expect(meetings).toContain('### Meeting operations');
+    expect(meetings).not.toContain('### Member profile and company-listing operations');
+  });
+
+  it('scopes account self-service guidance to member requests', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(member).toContain('### Member account and organization self-service');
+    expect(member).toContain('https://agenticadvertising.org/onboarding');
+    expect(knowledge).not.toContain('### Member account and organization self-service');
+  });
+
+  it('scopes roadmap and file-handling guidance to knowledge requests', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const events = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['events'], false, false),
+      selectedToolSetNames: ['events'],
+    });
+
+    expect(knowledge).toContain('### GitHub roadmap research');
+    expect(knowledge).toContain('### Slack file handling');
+    expect(events).not.toContain('### GitHub roadmap research');
+    expect(events).not.toContain('### Slack file handling');
+  });
+
+  it('scopes protocol and agent-testing guidance to their routed domains', () => {
+    const protocol = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['adcp_operations'], false, false),
+      selectedToolSetNames: ['adcp_operations'],
+    });
+    const testing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_testing'], false, false),
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(protocol).toContain('### AdCP protocol operations');
+    expect(protocol).toContain('### Seller-agent monitoring');
+    expect(protocol).toContain('### Building with AdCP');
+    expect(protocol).not.toContain('### Publisher and agent testing');
+    expect(protocol).not.toContain('### Property-registry operations');
+    expect(testing).toContain('### Publisher and agent testing');
+    expect(testing).toContain('### Property-registry operations');
+    expect(testing).toContain('### Building with AdCP');
+    expect(testing).not.toContain('### AdCP protocol operations');
+    expect(testing).not.toContain('### Seller-agent monitoring');
+  });
+
+  it('scopes brand guidance to directory requests', () => {
+    const directory = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+    const testing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_testing'], false, false),
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(directory).toContain('### Brand-registry operations');
+    expect(directory).not.toContain('### Property-registry operations');
+    expect(testing).not.toContain('### Brand-registry operations');
+  });
+
+  it('requires conditional tools to be present before advertising their workflows', () => {
+    const routedTools = getToolsForSets(['agent_testing'], false, false);
+    const withoutConditionalTools = buildAddieToolReference({
+      availableToolNames: routedTools,
+      selectedToolSetNames: ['agent_testing'],
+    });
+    const withPartialStoryboardTools = buildAddieToolReference({
+      availableToolNames: [...routedTools, 'recommend_storyboards'],
+      selectedToolSetNames: ['agent_testing'],
+    });
+    const withConditionalTools = buildAddieToolReference({
+      availableToolNames: [
+        ...routedTools,
+        'recommend_storyboards',
+        'get_storyboard_detail',
+        'run_storyboard',
+        'run_storyboard_step',
+        'get_adcp_capabilities',
+        'check_property_list',
+        'enhance_property',
+      ],
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(withoutConditionalTools).not.toContain('### Storyboard testing');
+    expect(withoutConditionalTools).not.toContain('### Property-list enrichment');
+    expect(withPartialStoryboardTools).not.toContain('### Storyboard testing');
+    expect(withConditionalTools).toContain('### Storyboard testing');
+    expect(withConditionalTools).toContain('### Property-list enrichment');
+  });
+
+  it('requires exact knowledge tools before advertising conditional guidance', () => {
+    const knowledgeTools = getToolsForSets(['knowledge'], false, false);
+    const withoutSlackFile = buildAddieToolReference({
+      availableToolNames: knowledgeTools.filter(name => name !== 'read_slack_file'),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const withoutGithubList = buildAddieToolReference({
+      availableToolNames: knowledgeTools.filter(name => name !== 'list_github_issues'),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(withoutSlackFile).not.toContain('### Slack file handling');
+    expect(withoutGithubList).not.toContain('### GitHub roadmap research');
+  });
+
+  it('loads certification safety guidance only with the complete routed workflow', () => {
+    const certificationTools = getToolsForSets(['certification'], false, false);
+    const certification = buildAddieToolReference({
+      availableToolNames: certificationTools,
+      selectedToolSetNames: ['certification'],
+    });
+    const activeSession = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['certification', 'knowledge'], false, false),
+      selectedToolSetNames: ['certification', 'knowledge'],
+    });
+    const missingCheckpoint = buildAddieToolReference({
+      availableToolNames: certificationTools.filter(name => name !== 'checkpoint_teaching_progress'),
+      selectedToolSetNames: ['certification'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(certification).toContain('## AdCP Academy');
+    expect(certification).toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(certification).toContain('ALWAYS call checkpoint_teaching_progress');
+    expect(certification).toContain('BUILD PROJECT ERROR COACHING');
+    expect(activeSession).toContain('## AdCP Academy');
+    expect(activeSession).toContain('### Knowledge search operations');
+    expect(missingCheckpoint).not.toContain('## AdCP Academy');
+    expect(knowledge).not.toContain('## AdCP Academy');
+  });
+
+  it('keeps migrated protocol-domain prose out of the stable prompt', () => {
+    const stable = buildAddieStableToolReference();
+
+    expect(stable).not.toContain('### Publisher and agent testing');
+    expect(stable).not.toContain('### AdCP protocol operations');
+    expect(stable).not.toContain('### Seller-agent monitoring');
+    expect(stable).not.toContain('### Brand-registry operations');
+    expect(stable).not.toContain('### Property-registry operations');
+    expect(stable).not.toContain('### Building with AdCP');
+    expect(stable).not.toContain('### Member account and organization self-service');
+    expect(stable).not.toContain('### GitHub roadmap research');
+    expect(stable).not.toContain('### Slack file handling');
+    expect(stable).not.toContain('## AdCP Academy');
+    expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
+  });
+
+  it('does not advertise neighboring domain mutations in scoped guidance', () => {
+    const member = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+    const events = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['events'], false, false),
+      selectedToolSetNames: ['events'],
+    });
+    const content = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['content'], false, false),
+      selectedToolSetNames: ['content'],
+    });
+
+    expect(member).not.toContain('add_committee_document:');
+    expect(member).not.toContain('get_member_engagement:');
+    expect(events).not.toContain('create_event:');
+    expect(events).not.toContain('manage_event_registrations:');
+    expect(content).not.toContain('attach_content_asset:');
+    expect(content).toContain('### Editorial content operations');
+  });
+
+  it('omits selected-domain guidance when no domain tool reached the wire', () => {
+    const scoped = buildAddieScopedToolReference({
+      availableToolNames: ['search_docs'],
+      selectedToolSetNames: ['admin_workflows'],
+    });
+
+    expect(scoped).not.toContain('### Admin workflow operations');
+    expect(scoped).not.toContain('- **admin_workflows**');
+  });
+
+  it('lists only tool names present on the request wire surface', () => {
+    const reference = buildAddieToolReference({
+      availableToolNames: ['search_docs', 'get_doc', 'not_a_registered_tool'],
+      selectedToolSetNames: ['knowledge'],
+    });
+    const catalog = reference.slice(reference.indexOf('## Authoritative custom-tool catalog (request-scoped)'));
+
+    expect(catalog).toContain('- **knowledge** — search_docs, get_doc');
+    expect(catalog).not.toContain('search_repos');
+    expect(catalog).not.toContain('not_a_registered_tool');
+    expect(catalog).not.toContain('- **admin_prospects**');
+  });
+
   it('response-style.md lands at the END of the assembled system prompt', () => {
-    // Mirror the concat in claude-client.ts:getSystemPrompt — base rules,
-    // tool reference, then response-style.md. Style instructions need to
+    // Mirror the production ordering — base rules, tool reference, then
+    // response-style.md. Style instructions need to
     // be the LAST section the model reads. The prior ordering (style
     // before tool reference) was contradicted by the rules/index.ts
     // comment claiming style was last; the prompt-variant eval confirmed

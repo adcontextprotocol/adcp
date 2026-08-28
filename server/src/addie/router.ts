@@ -42,6 +42,10 @@ import {
 } from "./model-providers/model-provider.js";
 import { AnthropicRouterProvider } from "./model-providers/anthropic-router-provider.js";
 import {
+  ProviderCircuitOpenError,
+  ProviderHealthController,
+} from "./model-providers/provider-health.js";
+import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
   requiresPrecision as checkPrecision,
@@ -423,6 +427,12 @@ export const ROUTING_RULES = {
         "test_out_modules",
         "start_certification_exam",
         "complete_certification_exam",
+        "check_credentials",
+        "checkpoint_teaching_progress",
+        "get_build_phase_instructions",
+        "save_learner_feedback",
+        "set_my_name",
+        "find_membership_products",
       ],
       description:
         "AdCP Academy — learning modules, exercises, placement assessment, and exams",
@@ -515,9 +525,9 @@ The user has NOT linked their Slack account to AgenticAdvertising.org.
   if (isAAOAdmin) {
     conditionalRules += `
 The user is an ADMIN.
-- They have access to the "admin" tool set for system operations
+- They have access to bounded admin domain sets for system operations
 - Be more direct and technical in responses
-- In DMs and admin channels (e.g., #aao-admin), ALWAYS include "admin" in tool_sets.`;
+- Select only the admin domains needed for this request. Do not add an admin domain merely because the user is an admin or the conversation is in an admin channel.`;
   } else {
     conditionalRules += `
 The user is NOT an admin.
@@ -600,17 +610,21 @@ ${
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 ${isAAOAdmin
-    ? '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing", "admin"]'
+    ? '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → ["billing"]'
     : '- Billing, invoices, payment links, resending invoices, Stripe customer relinks/customer ID updates → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
-- Invite someone to an event, create/update events, manage registrations → ["events", "admin"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
-- Listing all members with payment/product/invoice status → ["admin"]
-- Task management, marking tasks done, checking tasks, reminders, logging conversations → ["admin"]
-- Escalations, pending requests, user role changes, merging orgs → ["admin"]
+${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → ["events", "admin_events"]
+- Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
+- Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
+- Listing all members with payment/product/invoice status, organization domains, roles, profiles, or duplicate organizations → ["admin_organizations"]
+- Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
+- Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
-- Adding/removing committee or working group leaders (admin action) → ["admin"]
-- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin"]
+${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing group memberships, chapters, or gatherings (admin action) → ["admin_groups"]
+- Brand-logo review, registry gaps, community mirrors, ownership transfers, or orphaned brands → ["admin_brands"]
+- Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
+- Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
 - General questions needing no tools → []
 
@@ -993,11 +1007,17 @@ function queueRouterObserver(
  */
 export class AddieRouter {
   private readonly provider: ModelProvider;
+  private readonly providerHealth: ProviderHealthController;
 
-  constructor(apiKey: string, provider?: ModelProvider) {
+  constructor(
+    apiKey: string,
+    provider?: ModelProvider,
+    providerHealth: ProviderHealthController = new ProviderHealthController(),
+  ) {
     this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
       maxRetries: 2,
     });
+    this.providerHealth = providerHealth;
   }
 
   /**
@@ -1015,6 +1035,8 @@ export class AddieRouter {
     let primaryInvocation: PreparedModelInvocation | null = null;
 
     try {
+      const availability = this.providerHealth.acquire(this.provider.id, 'router');
+      if (!availability.allowed) throw new ProviderCircuitOpenError(availability);
       const response = await collectModelResponse(
         this.provider.respond(canonicalRequest, {
           // This callback is deliberately assignment-only. Shadow evidence can
@@ -1025,6 +1047,7 @@ export class AddieRouter {
         }),
         this.provider.id,
       );
+      this.providerHealth.recordSuccess(this.provider.id, 'router');
 
       const text = extractRouterResponseText(response.content);
 
@@ -1115,6 +1138,9 @@ export class AddieRouter {
 
       return plan;
     } catch (error) {
+      if (!(error instanceof ProviderCircuitOpenError)) {
+        this.providerHealth.recordFailure(this.provider.id, 'router', error);
+      }
       const category = classifyRouterError(error);
       logger.error(
         { category },
@@ -1188,10 +1214,9 @@ export class AddieRouter {
     const eventAttendeePattern =
       /who(?:'s|\s+is)\s+(coming\s+to|going\s+to\s+(?:the|cannes|ces|dmexco)|registered\s+for|attending|signed\s+up\s+for)|attendee\s+list|guest\s+list|who\s+will\s+be\s+(?:at\s+the|there\s+(?:at|for)|coming\s+to)/i;
     if (eventAttendeePattern.test(text)) {
-      const toolSets = ctx.isAAOAdmin ? ["events", "admin"] : ["events"];
       return {
         action: "respond",
-        tool_sets: toolSets,
+        tool_sets: ["events"],
         confidence: "high",
         reason: "Event attendee query",
         decision_method: "quick_match",
@@ -1201,12 +1226,24 @@ export class AddieRouter {
 
     // Admin engagement/analytics queries - route to admin tools
     if (ctx.isAAOAdmin) {
+      const adminOutreachPattern = /outreach\s+stats|action\s+items/i;
+      if (adminOutreachPattern.test(text)) {
+        return {
+          action: "respond",
+          tool_sets: ["outreach"],
+          confidence: "high",
+          reason: "Admin outreach query",
+          decision_method: "quick_match",
+          latency_ms: Date.now() - startTime,
+        };
+      }
+
       const adminAnalyticsPattern =
-        /engagement\s+(score|users|members|ranking|top|analytics|stats)|most\s+engaged|top\s+contributors|lifecycle\s+stage|who\s+to\s+invite|engagement\s+analytics|outreach\s+stats|action\s+items/i;
+        /engagement\s+(score|users|members|ranking|top|analytics|stats)|most\s+engaged|top\s+contributors|lifecycle\s+stage|who\s+to\s+invite|engagement\s+analytics/i;
       if (adminAnalyticsPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin"],
+          tool_sets: ["admin_workflows"],
           confidence: "high",
           reason: "Admin engagement/analytics query",
           decision_method: "quick_match",
@@ -1220,7 +1257,7 @@ export class AddieRouter {
       if (adminTaskPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin"],
+          tool_sets: ["admin_workflows"],
           confidence: "high",
           reason: "Admin task management",
           decision_method: "quick_match",
@@ -1234,7 +1271,7 @@ export class AddieRouter {
       if (outreachLogPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["admin"],
+          tool_sets: ["admin_workflows"],
           confidence: "high",
           reason: "Admin outreach logging",
           decision_method: "quick_match",

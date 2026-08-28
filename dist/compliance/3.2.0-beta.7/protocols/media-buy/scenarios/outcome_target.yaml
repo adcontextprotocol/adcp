@@ -1,0 +1,240 @@
+id: media_buy_seller/outcome_target
+version: "1.0.0"
+title: "Seller solves for budget from a structured outcome target"
+category: media_buy_seller
+summary: "Verifies criteria.outcome_target reverse forecasting: a metric or event goal plus desired volume answered with total_budget_guidance on proposals and a forecast whose points carry the goal's key in metrics."
+track: media_buy
+required_tools:
+  - request_proposals
+
+requires_capability:
+  path: media_buy.outcome_target
+  equals: true
+
+narrative: |
+  Forward planning fixes dates and budget and asks for a forecast. Reverse
+  forecasting inverts the question: "I need 10,000 clicks — what does my budget
+  need to be?" Sellers declaring `media_buy.outcome_target` parse the compact
+  goal in `criteria.outcome_target` — a delivery metric in the same
+  forecastable-metric vocabulary forecast points report, or a conversion event
+  in the event-type vocabulary — and solve for budget.
+
+  The answer contract this scenario grades: every returned proposal carries
+  `total_budget_guidance` (currency plus at least a recommended figure) and a
+  forecast whose points carry the goal's metric or event key in `metrics`,
+  with `forecast_range_unit` `clicks` structuring a clicks-goal curve and
+  `conversions` structuring an event-goal curve. Because the goal vocabulary
+  equals the forecast-metrics vocabulary, every permitted goal has a defined
+  answer — there is no goal a conformant seller can accept and then answer
+  with nothing.
+
+  An outcome_target is a planning input, not a delivery guarantee: obligations
+  arise only at proposal finalization, and the guidance band is indicative in
+  exactly the way draft pricing is.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_briefs
+    - generates_proposals
+  examples:
+    - "Full-service publisher with a planning engine"
+    - "Retail media network quoting budgets against conversion goals"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity and operator credentials. The runner
+    seeds one product with fixed pricing so the seller's reverse forecast has
+    a deterministic rate card to plan against.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outcome_target_video"
+      name: "Outcome Target Planning Video"
+      description: "Compliance fixture: fixed-price video inventory for reverse-forecast planning."
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_options:
+        - format_option_id: "outcome_target_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "outcome_target_video"
+      pricing_option_id: "outcome_target_fixed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 40.0
+
+phases:
+  - id: setup
+    title: "Account setup"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_setup_sync_accounts"
+          context:
+            correlation_id: "outcome_target--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+
+  - id: metric_goal
+    title: "Solve for budget from a clicks goal"
+    depends_on: [setup]
+    narrative: |
+      The buyer states the outcome — 10,000 clicks — and the seller answers
+      with budget guidance and a clicks-structured forecast whose points carry
+      the goal's metric key.
+    steps:
+      - id: request_clicks_goal
+        title: "Request proposals for a 10,000-click target"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        expected: |
+          Return outcome proposed with at least one proposal carrying:
+          - total_budget_guidance with currency and a recommended figure
+          - forecast with forecast_range_unit "clicks" whose points carry
+            metrics.clicks
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_metric_goal_request_clicks_goal"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "Drive qualified traffic to the Trail Pro 3000 launch page using the seeded video placement."
+          criteria:
+            product_ids: ["outcome_target_video"]
+            outcome_target:
+              goal:
+                kind: "metric"
+                metric: "clicks"
+              volume: 10000
+          context:
+            correlation_id: "outcome_target--request_clicks_goal"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller returns at least one proposal"
+          - check: field_present
+            path: "proposals[0].total_budget_guidance.recommended"
+            description: "The seller solved for budget: a recommended figure answers the outcome target"
+          - check: field_present
+            path: "proposals[0].total_budget_guidance.currency"
+            description: "Budget guidance declares its currency"
+          - check: field_value
+            path: "proposals[0].forecast.forecast_range_unit"
+            value: "clicks"
+            description: "A clicks goal is answered with a clicks-structured outcome curve"
+          - check: field_present
+            path: "proposals[0].forecast.points[0].metrics.clicks.mid"
+            description: "Forecast points carry the goal's metric key — the vocabulary contract that makes every goal answerable"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target--request_clicks_goal"
+            description: "Context correlation_id returned unchanged"
+
+  - id: event_goal
+    title: "Solve for budget from a conversion-event goal"
+    depends_on: [setup]
+    narrative: |
+      The buyer states a conversion outcome — 500 purchases — and the seller
+      answers with budget guidance and a conversions-structured forecast whose
+      points carry the event-type key.
+    steps:
+      - id: request_purchase_goal
+        title: "Request proposals for a 500-purchase target"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        expected: |
+          Return outcome proposed with at least one proposal carrying:
+          - total_budget_guidance with currency and a recommended figure
+          - forecast with forecast_range_unit "conversions" whose points carry
+            metrics.purchase
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_outcome_target_event_goal_request_purchase_goal"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brief: "Drive Trail Pro 3000 purchases from the seeded video placement."
+          criteria:
+            product_ids: ["outcome_target_video"]
+            outcome_target:
+              goal:
+                kind: "event"
+                event_type: "purchase"
+              volume: 500
+          context:
+            correlation_id: "outcome_target--request_purchase_goal"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json schema"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller returns at least one proposal"
+          - check: field_present
+            path: "proposals[0].total_budget_guidance.recommended"
+            description: "The seller solved for budget against the event goal"
+          - check: field_value
+            path: "proposals[0].forecast.forecast_range_unit"
+            value: "conversions"
+            description: "An event goal is answered with a conversions-structured outcome curve"
+          - check: field_present
+            path: "proposals[0].forecast.points[0].metrics.purchase.mid"
+            description: "Forecast points carry the goal's event-type key"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "outcome_target--request_purchase_goal"
+            description: "Context correlation_id returned unchanged"

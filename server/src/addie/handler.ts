@@ -22,6 +22,7 @@ import {
   generateInteractionId,
 } from './security.js';
 import { SlackDatabase } from '../db/slack-db.js';
+import { recordProactiveEvent } from '../db/addie-account-link-correlation-db.js';
 import {
   initializeKnowledgeSearch,
   isKnowledgeReady,
@@ -125,6 +126,7 @@ import { matchRuleIdFromMessage } from './home/builders/rules/prompt-rules.js';
 import { recordPromptsShown, recordPromptClicked } from '../db/addie-prompt-telemetry-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getMemberContext, formatMemberContextForPrompt, type MemberContext } from './member-context.js';
+import { buildAuthoritativeTemporalContext } from './temporal-context.js';
 import { checkForSensitiveTopics } from './sensitive-topics.js';
 import * as relationshipDb from '../db/relationship-db.js';
 import { loadRelationshipContext, formatContextForPrompt } from './services/relationship-context.js';
@@ -201,14 +203,8 @@ export async function initializeAddie(): Promise<void> {
   // Billing tools are registered per-request in createUserScopedTools
   // to allow filtering them out in channel mentions (prevents enrollment pitching)
 
-  // Register admin tools (available to admin users only - enforced via instructions)
-  const adminHandlers = createAdminToolHandlers();
-  for (const tool of ADMIN_TOOLS) {
-    const handler = adminHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
+  // Admin definitions and handlers are request-scoped after verified admin
+  // authorization. Never register principal-scoped tools on the shared client.
 
   // Register directory tools (lookup members, agents, publishers)
   const directoryHandlers = createDirectoryToolHandlers();
@@ -312,6 +308,7 @@ async function buildRequestContext(
   try {
     const memberContext = await getMemberContext(userId);
     const memberContextText = formatMemberContextForPrompt(memberContext);
+    const temporalContextText = buildAuthoritativeTemporalContext(memberContext);
 
     // Load cross-surface relationship context
     let relationshipPrompt = '';
@@ -327,7 +324,7 @@ async function buildRequestContext(
       logger.warn({ error, userId }, 'Addie: Failed to load relationship context, continuing without it');
     }
 
-    const sections = [memberContextText, relationshipPrompt].filter(Boolean);
+    const sections = [temporalContextText, memberContextText, relationshipPrompt].filter(Boolean);
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
@@ -335,7 +332,11 @@ async function buildRequestContext(
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie: Failed to get member context, continuing without it');
-    return { requestContext: '', memberContext: null, personId: null };
+    return {
+      requestContext: buildAuthoritativeTemporalContext(),
+      memberContext: null,
+      personId: null,
+    };
   }
 }
 
@@ -1017,34 +1018,26 @@ async function setAssistantStatus(channelId: string, status: string): Promise<vo
  */
 export async function sendAccountLinkedMessage(
   slackUserId: string,
-  userName?: string
+  _userName?: string
 ): Promise<boolean> {
-  if (!initialized || !addieDb) {
-    logger.warn('Addie: Not initialized, cannot send account linked message');
-    return false;
-  }
-
-  // Find the user's most recent Addie thread (within 30 minutes)
-  const recentThread = await addieDb.getUserRecentThread(slackUserId, 30);
-  if (!recentThread) {
-    logger.debug({ slackUserId }, 'Addie: No recent thread found for account linked message');
-    return false;
-  }
-
-  // Build a personalized message
-  const greeting = userName ? `Thanks for linking your account, ${userName}!` : 'Thanks for linking your account!';
-  const message = `${greeting} 🎉\n\nI can now see your profile and help you get more involved with AgenticAdvertising.org. What would you like to do next?`;
-
-  // Send the message
   try {
-    await sendChannelMessage(recentThread.channel_id, {
-      text: message,
-      thread_ts: recentThread.thread_ts,
+    await recordProactiveEvent({
+      eventType: 'account_linked',
+      surface: 'slack',
+      initiatingUserId: slackUserId,
+      deliveryStatus: 'skipped',
+      reasonCode: 'legacy_origin_unavailable',
     });
-    logger.info({ slackUserId, channelId: recentThread.channel_id }, 'Addie: Sent account linked message');
-    return true;
   } catch (error) {
-    logger.error({ error, slackUserId }, 'Addie: Failed to send account linked message');
-    return false;
+    logger.error({
+      error,
+      slackUserId,
+      reasonCode: 'proactive_event_persistence_failed',
+    }, 'Addie: Failed to persist skipped legacy account-link event');
   }
+  logger.warn({
+    slackUserId,
+    reasonCode: 'legacy_origin_unavailable',
+  }, 'Addie: Skipped legacy account-link delivery without a safe origin');
+  return false;
 }

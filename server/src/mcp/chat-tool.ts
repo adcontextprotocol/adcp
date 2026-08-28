@@ -33,6 +33,7 @@ import {
   createMemberToolHandlers,
 } from '../addie/mcp/member-tools.js';
 import { createLogger } from '../logger.js';
+import { buildAuthoritativeTemporalContext } from '../addie/temporal-context.js';
 import type { AddieTool } from '../addie/types.js';
 import type { MCPAuthContext } from './auth.js';
 
@@ -275,7 +276,11 @@ export async function handleChatTool(
       threadContext,
       undefined, // No request-specific tools for anonymous
       undefined, // No rules override
-      { maxIterations: 5, ...costOption }, // Lower iteration limit for anonymous users
+      {
+        maxIterations: 5,
+        requestContext: buildAuthoritativeTemporalContext(),
+        ...costOption,
+      }, // Lower iteration limit for anonymous users
     );
 
     const result: ChatResponse = {

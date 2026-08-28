@@ -21,6 +21,11 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import * as meetingService from '../../services/meeting-service.js';
 import * as zoom from '../../integrations/zoom.js';
 import * as calendar from '../../integrations/google-calendar.js';
+import {
+  formatZonedTimestamp,
+  isValidIanaTimeZone,
+  parseZonedTimestamp,
+} from '../tool-temporal.js';
 
 const logger = createLogger('addie-meeting-tools');
 
@@ -47,92 +52,6 @@ export async function canScheduleMeetings(slackUserId: string): Promise<boolean>
   return false;
 }
 
-/**
- * Format date for display
- */
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
-
-/**
- * Format time for display
- */
-function formatTime(date: Date, timezone = 'America/New_York'): string {
-  return date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: timezone,
-    timeZoneName: 'short',
-  });
-}
-
-/**
- * Get the current time as an ISO string in a specific timezone (for comparison).
- * Returns format like "2026-01-15T09:30:00"
- */
-function getNowInTimezone(timezone: string): string {
-  // 'sv-SE' locale gives us ISO-like format: "2026-01-15 09:30:00"
-  return new Date().toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
-}
-
-/**
- * Parse a datetime string (without timezone) as if it were in the specified timezone.
- * Returns a Date object representing the correct UTC moment.
- *
- * For example, "2026-01-15T13:00:00" with timezone "America/New_York" returns
- * a Date representing 18:00 UTC (since 1 PM ET = 6 PM UTC in January).
- */
-function parseDateInTimezone(isoString: string, timezone: string): Date {
-  // Remove any existing timezone suffix
-  const cleanString = isoString.replace(/Z|[+-]\d{2}(:\d{2})?$/, '').substring(0, 19);
-
-  // Parse the components from the string
-  const [datePart, timePart] = cleanString.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const timeParts = timePart.split(':');
-  const hour = parseInt(timeParts[0], 10);
-  const minute = parseInt(timeParts[1] || '0', 10);
-  const second = parseInt(timeParts[2] || '0', 10);
-
-  // Create a reference date in the target timezone to find the offset
-  // We use a trick: create UTC date, format it in target TZ, compare to find offset
-  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
-
-  // Format this UTC time in both UTC and target timezone
-  const utcFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: 'UTC' }).replace(' ', 'T');
-  const tzFormatted = utcGuess.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
-
-  // Parse both to find the offset in milliseconds
-  const utcMs = new Date(utcFormatted + 'Z').getTime();
-  const tzMs = new Date(tzFormatted + 'Z').getTime();
-  const offsetMs = tzMs - utcMs;
-
-  // Adjust our UTC guess by the offset to get the correct UTC time
-  return new Date(utcGuess.getTime() - offsetMs);
-}
-
-/**
- * Check if a datetime string (without timezone) represents a future time
- * in the specified timezone.
- */
-function isFutureTimeInTimezone(isoString: string, timezone: string): boolean {
-  // If the string has timezone info, convert to the target timezone for comparison
-  if (/Z|[+-]\d{2}:\d{2}$/.test(isoString)) {
-    const date = new Date(isoString);
-    const dateInTz = date.toLocaleString('sv-SE', { timeZone: timezone }).replace(' ', 'T');
-    return dateInTz > getNowInTimezone(timezone);
-  }
-
-  // No timezone info - treat the string as already being in the target timezone
-  // Just compare strings directly (ISO format is lexicographically sortable)
-  const normalizedInput = isoString.substring(0, 19); // Take just "YYYY-MM-DDTHH:MM:SS"
-  return normalizedInput > getNowInTimezone(timezone);
-}
 
 /**
  * Format recurrence rule for display
@@ -171,38 +90,6 @@ function formatRecurrence(rule: RecurrenceRule): string {
 }
 
 /**
- * Parse natural language date/time
- * Handles formats like "next Tuesday at 3pm ET", "January 15 at 2pm PT"
- */
-function parseDateTime(input: string, defaultTimezone = 'America/New_York'): { date: Date; timezone: string } | null {
-  // This is a simplified parser - in production, use a library like chrono-node
-  const now = new Date();
-
-  // Try ISO format first
-  const isoDate = new Date(input);
-  if (!isNaN(isoDate.getTime())) {
-    return { date: isoDate, timezone: defaultTimezone };
-  }
-
-  // Extract timezone
-  let timezone = defaultTimezone;
-  const tzMatch = input.match(/\b(ET|EST|EDT|PT|PST|PDT|CT|CST|CDT|MT|MST|MDT)\b/i);
-  if (tzMatch) {
-    const tzMap: Record<string, string> = {
-      ET: 'America/New_York', EST: 'America/New_York', EDT: 'America/New_York',
-      PT: 'America/Los_Angeles', PST: 'America/Los_Angeles', PDT: 'America/Los_Angeles',
-      CT: 'America/Chicago', CST: 'America/Chicago', CDT: 'America/Chicago',
-      MT: 'America/Denver', MST: 'America/Denver', MDT: 'America/Denver',
-    };
-    timezone = tzMap[tzMatch[1].toUpperCase()] || defaultTimezone;
-  }
-
-  // Try to parse common formats
-  // For now, require ISO format or defer to Claude's interpretation
-  return null;
-}
-
-/**
  * Meeting tool definitions
  */
 export const MEETING_TOOLS: AddieTool[] = [
@@ -217,10 +104,10 @@ If the user is in a channel associated with a working group, you can omit workin
 
 For recurring meetings, use the recurrence parameter with freq, interval, count, and byDay.
 
-Required: title, start_time (ISO format without timezone suffix - use timezone parameter for that)
+Required: title, start_time (RFC 3339 with an explicit offset)
 Optional: working_group_slug (auto-detected from channel), description, agenda, duration_minutes, timezone, topic_slugs, recurrence
 
-IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix. For example, if user says "2pm ET", use "2026-01-15T14:00:00" (not "2026-01-15T14:00:00Z"). The timezone parameter (default: America/New_York) specifies what timezone the start_time is in.
+IMPORTANT: The numeric offset in start_time must agree with timezone at that instant. For example, 2pm New York in January is "2026-01-15T14:00:00-05:00" with timezone "America/New_York". This prevents daylight-saving and server-timezone ambiguity.
 
 Example prompts this handles:
 - "Schedule a technical working group call for next Tuesday at 2pm ET"
@@ -248,7 +135,8 @@ Example prompts this handles:
         },
         start_time: {
           type: 'string',
-          description: 'Start time in ISO 8601 format WITHOUT timezone suffix. The time should be in the timezone specified by the timezone parameter (default ET). Example: "2026-01-15T14:00:00" for 2pm. Do NOT add "Z" or timezone offsets - the timezone parameter handles that.',
+          format: 'date-time',
+          description: 'RFC 3339 start with explicit offset matching timezone, e.g. "2026-01-15T14:00:00-05:00".',
         },
         duration_minutes: {
           type: 'number',
@@ -256,7 +144,7 @@ Example prompts this handles:
         },
         timezone: {
           type: 'string',
-          description: 'Timezone (default: America/New_York). Examples: America/Los_Angeles, America/Chicago',
+          description: 'IANA timezone for display/recurrence; defaults to member timezone, then America/New_York.',
         },
         topic_slugs: {
           type: 'array',
@@ -410,7 +298,7 @@ Example prompts this handles:
 
 This will update the meeting in the database, Zoom (if configured), and Google Calendar.
 
-IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z suffix (same as schedule_meeting).`,
+IMPORTANT: start_time must be RFC 3339 with an explicit offset that agrees with the IANA timezone.`,
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -432,7 +320,8 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
         },
         start_time: {
           type: 'string',
-          description: 'New start time in ISO 8601 format WITHOUT timezone suffix (e.g., "2026-01-15T14:00:00" for 2pm). Use timezone parameter to specify the timezone.',
+          format: 'date-time',
+          description: 'RFC 3339 start with explicit offset matching timezone, e.g. "2026-01-15T14:00:00-05:00".',
         },
         duration_minutes: {
           type: 'number',
@@ -440,7 +329,7 @@ IMPORTANT: For start_time, provide the time in the user's timezone WITHOUT a Z s
         },
         timezone: {
           type: 'string',
-          description: 'Timezone for start_time (default: America/New_York)',
+          description: 'IANA timezone for start_time. Defaults to the meeting timezone.',
         },
       },
       required: ['meeting_id'],
@@ -589,7 +478,7 @@ export function createMeetingToolHandlers(
 
     const title = input.title as string;
     const startTimeStr = input.start_time as string;
-    const timezone = (input.timezone as string) || 'America/New_York';
+    const timezone = (input.timezone as string) || memberContext?.timezone || 'America/New_York';
     const recurrenceInput = input.recurrence as { freq: string; interval?: number; by_day?: string[]; count?: number } | undefined;
 
     // Find working group
@@ -618,17 +507,14 @@ export function createMeetingToolHandlers(
       }
     }
 
-    // Parse start time in the specified timezone
-    // This ensures "2026-01-15T13:00:00" with timezone "America/New_York"
-    // creates a Date representing 1 PM ET (18:00 UTC), not 1 PM UTC
-    const startTime = parseDateInTimezone(startTimeStr, timezone);
-    if (isNaN(startTime.getTime())) {
-      return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T14:00:00").`;
+    const parsedStartTime = parseZonedTimestamp(startTimeStr, timezone);
+    if (!parsedStartTime.ok) {
+      return `❌ Invalid start_time: ${parsedStartTime.error}.`;
     }
+    const startTime = parsedStartTime.date;
 
-    // Check if meeting is in the future (comparing in the specified timezone)
-    if (!isFutureTimeInTimezone(startTimeStr, timezone)) {
-      return `❌ Meeting time must be in the future. Current time in ${timezone}: ${formatTime(new Date(), timezone)}`;
+    if (startTime.getTime() <= Date.now()) {
+      return `❌ Meeting time must be in the future. Current instant: ${new Date().toISOString()}.`;
     }
 
     const durationMinutes = (input.duration_minutes as number) || 60;
@@ -726,7 +612,7 @@ export function createMeetingToolHandlers(
         if (seriesResult.meetings.length > 0) {
           response += `**Scheduled ${seriesResult.meetings.length} meeting${seriesResult.meetings.length > 1 ? 's' : ''}:**\n`;
           for (const meeting of seriesResult.meetings.slice(0, 5)) {
-            response += `• ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, timezone)}`;
+            response += `• ${formatZonedTimestamp(meeting.start_time, timezone)}`;
             if (meeting.zoom_join_url) {
               response += ` - [Zoom](${meeting.zoom_join_url})`;
             }
@@ -792,7 +678,7 @@ export function createMeetingToolHandlers(
 
       let response = `✅ Scheduled: **${title}**\n\n`;
       response += `**Working Group:** ${workingGroup.name}\n`;
-      response += `**When:** ${formatDate(startTime)} at ${formatTime(startTime, timezone)}\n`;
+      response += `**When:** ${formatZonedTimestamp(startTime, timezone)}\n`;
       response += `**Duration:** ${durationMinutes} minutes\n`;
 
       if (result.meeting.zoom_join_url) {
@@ -879,7 +765,7 @@ export function createMeetingToolHandlers(
     for (const meeting of meetings) {
       response += `📅 **${meeting.title}**\n`;
       response += `   ID: ${meeting.id}\n`;
-      response += `   ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, meeting.timezone)}\n`;
+      response += `   ${formatZonedTimestamp(meeting.start_time, meeting.timezone)}\n`;
       if (!groupName) {
         response += `   Group: ${meeting.working_group_name}\n`;
       }
@@ -924,7 +810,7 @@ export function createMeetingToolHandlers(
       }[meeting.rsvp_status] || '📅';
 
       response += `${statusEmoji} **${meeting.title}**\n`;
-      response += `   ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, meeting.timezone)}\n`;
+      response += `   ${formatZonedTimestamp(meeting.start_time, meeting.timezone)}\n`;
       response += `   Group: ${meeting.working_group_name}\n`;
       if (meeting.zoom_join_url) {
         response += `   🔗 ${meeting.zoom_join_url}\n`;
@@ -960,7 +846,7 @@ export function createMeetingToolHandlers(
     let response = `## ${meeting.title}\n\n`;
     response += `**Working Group:** ${meeting.working_group_name}\n`;
     response += `**Status:** ${meeting.status}\n`;
-    response += `**When:** ${formatDate(meeting.start_time)} at ${formatTime(meeting.start_time, meeting.timezone)}\n`;
+    response += `**When:** ${formatZonedTimestamp(meeting.start_time, meeting.timezone)}\n`;
 
     if (meeting.description) {
       response += `\n**Description:**\n${meeting.description}\n`;
@@ -1181,9 +1067,13 @@ export function createMeetingToolHandlers(
       : 60;
 
     if (startTimeStr) {
-      const startTime = parseDateInTimezone(startTimeStr, timezone);
-      if (isNaN(startTime.getTime())) {
-        return `❌ Invalid start time format. Please use ISO 8601 format (e.g., "2026-01-15T14:00:00").`;
+      const parsedStartTime = parseZonedTimestamp(startTimeStr, timezone);
+      if (!parsedStartTime.ok) {
+        return `❌ Invalid start_time: ${parsedStartTime.error}.`;
+      }
+      const startTime = parsedStartTime.date;
+      if (startTime.getTime() <= Date.now()) {
+        return `❌ Meeting time must be in the future. Current instant: ${new Date().toISOString()}.`;
       }
       updates.start_time = startTime;
       updates.timezone = timezone;
@@ -1191,11 +1081,18 @@ export function createMeetingToolHandlers(
       const duration = durationMinutes || currentDuration;
       updates.end_time = new Date(startTime.getTime() + duration * 60 * 1000);
 
-      changes.push(`Time → ${formatDate(startTime)} at ${formatTime(startTime, timezone)}`);
+      changes.push(`Time → ${formatZonedTimestamp(startTime, timezone)}`);
     } else if (durationMinutes && meeting.start_time) {
       // Just updating duration, keep existing start time
       updates.end_time = new Date(meeting.start_time.getTime() + durationMinutes * 60 * 1000);
       changes.push(`Duration → ${durationMinutes} minutes`);
+    }
+    if (input.timezone && !startTimeStr) {
+      if (!isValidIanaTimeZone(timezone)) {
+        return `❌ Invalid timezone: "${timezone}" is not a valid IANA timezone.`;
+      }
+      updates.timezone = timezone;
+      changes.push(`Time zone → ${timezone}`);
     }
 
     if (changes.length === 0) {
@@ -1211,10 +1108,10 @@ export function createMeetingToolHandlers(
 
       const errors: string[] = [];
 
-      // Update Zoom meeting if time changed and Zoom meeting exists
-      if (updates.start_time && meeting.zoom_meeting_id && zoom.isZoomConfigured()) {
+      // Keep both the instant and its display timezone aligned in Zoom.
+      if ((updates.start_time || updates.timezone) && meeting.zoom_meeting_id && zoom.isZoomConfigured()) {
         try {
-          const startTime = updates.start_time as Date;
+          const startTime = (updates.start_time as Date | undefined) ?? meeting.start_time;
           await zoom.updateMeeting(meeting.zoom_meeting_id, {
             start_time: startTime.toISOString(),
             duration: durationMinutes || currentDuration,

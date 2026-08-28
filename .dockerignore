@@ -17,6 +17,12 @@ dist/docs/*
 !dist/docs/3.1.19/**
 !dist/docs/3.2.0-beta.5
 !dist/docs/3.2.0-beta.5/**
+!dist/docs/3.2.0-beta.6
+!dist/docs/3.2.0-beta.6/**
+!dist/docs/3.2.0-beta.7
+!dist/docs/3.2.0-beta.7/**
+!dist/docs/3.2.0-beta.8
+!dist/docs/3.2.0-beta.8/**
 !dist/schemas
 dist/schemas/latest
 dist/schemas/v*

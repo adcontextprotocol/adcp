@@ -1,0 +1,262 @@
+id: media_buy_seller/expired_proposal_execution
+version: "1.0.0"
+title: "Seller rejects execution after a proposal hold expires"
+category: media_buy_seller
+summary: "Verifies that an expired committed proposal returns PROPOSAL_EXPIRED instead of creating a MediaBuy."
+track: media_buy
+introduced_in: "3.2"
+
+requires:
+  - controller
+
+requires_capability:
+  path: compliance_testing.scenarios
+  contains: compact_product_lifecycle_probe
+
+required_tools:
+  - request_proposals
+  - refine_proposals
+  - accept_proposal
+  - comply_test_controller
+
+narrative: |
+  Finalization creates a committed proposal whose expires_at is the inventory
+  hold deadline. The sandbox controller advances that proposal past its hold
+  deadline without sleeping. A later acceptance attempt must fail with
+  PROPOSAL_EXPIRED and must not create a MediaBuy. The advertised controller
+  probe makes positive setup deterministic and performs strict post-deadline
+  expiry using the proposal's stored expires_at value.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - generates_proposals
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: "The seller advertises compact_product_lifecycle_probe and exposes the compact proposal lifecycle; create_media_buy is probed only when exposed."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "proposal_expiry_video"
+      delivery_type: "non_guaranteed"
+      channels: ["olv"]
+      format_options:
+        - format_option_id: "proposal_expiry_video_30s"
+          format_kind: "video_hosted"
+          params:
+            duration_ms_exact: 30000
+  pricing_options:
+    - product_id: "proposal_expiry_video"
+      pricing_option_id: "proposal_expiry_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 17
+
+phases:
+  - id: prepare_lifecycle
+    title: "Prepare deterministic compact lifecycle behavior"
+    steps:
+      - id: prepare_expiry_product
+        title: "Prepare the seeded product"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "prepare"
+            product_id: "proposal_expiry_video"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller prepares deterministic behavior"
+          - check: field_value
+            path: "simulated.prepared"
+            value: true
+            description: "The product is prepared for lifecycle testing"
+          - check: field_value
+            path: "simulated.product_id"
+            value: "proposal_expiry_video"
+            description: "The controller prepared the seeded product"
+
+  - id: create_hold
+    title: "Create an inventory-backed proposal"
+    depends_on: [prepare_lifecycle]
+    steps:
+      - id: request_expiry_candidate
+        title: "Request a draft proposal"
+        task: request_proposals
+        schema_ref: "media-buy/request-proposals-request.json"
+        response_schema_ref: "media-buy/request-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/request_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#expired_proposal_execution_request"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          brief: "Plan a $50,000 online-video campaign from January 1 through March 31, 2099."
+          criteria:
+            product_ids: ["proposal_expiry_video"]
+        context_outputs:
+          - name: expiry_draft_id
+            path: "proposals[0].proposal_id"
+        validations:
+          - check: response_schema
+            description: "Response matches request-proposals-response.json"
+          - check: field_value
+            path: "outcome"
+            value: "proposed"
+            description: "The seller creates a draft"
+
+      - id: finalize_expiry_candidate
+        title: "Finalize the draft"
+        task: refine_proposals
+        schema_ref: "media-buy/refine-proposals-request.json"
+        response_schema_ref: "media-buy/refine-proposals-response.json"
+        doc_ref: "/media-buy/task-reference/refine_proposals"
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#expired_proposal_execution_finalize"
+          refinements:
+            - proposal_id: "$context.expiry_draft_id"
+              action: "finalize"
+        context_outputs:
+          - name: expiring_committed_id
+            path: "results[0].proposal.proposal_id"
+          - name: expiring_committed_digest
+            path: "results[0].proposal.terms_digest"
+          - name: expiring_budget_amount
+            path: "results[0].proposal.commercial_terms.total_budget.amount"
+          - name: expiring_budget_currency
+            path: "results[0].proposal.commercial_terms.total_budget.currency"
+          - name: expiring_start_time
+            path: "results[0].proposal.commercial_terms.start_time"
+          - name: expiring_end_time
+            path: "results[0].proposal.commercial_terms.end_time"
+        validations:
+          - check: response_schema
+            description: "Response matches refine-proposals-response.json"
+          - check: field_value
+            path: "results[0].outcome"
+            value: "finalized"
+            description: "The seller creates a committed proposal"
+          - check: field_present
+            path: "results[0].proposal.expires_at"
+            description: "The committed proposal exposes its hold deadline"
+
+  - id: expire_hold
+    title: "Advance beyond the hold deadline"
+    depends_on: [create_hold]
+    steps:
+      - id: expire_committed_proposal
+        title: "Expire the committed proposal in sandbox time"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/by-layer/L3/comply-test-controller"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          scenario: "compact_product_lifecycle_probe"
+          params:
+            operation: "expire_proposal"
+            proposal_id: "$context.expiring_committed_id"
+        validations:
+          - check: response_schema
+            description: "Controller response matches the canonical schema"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "The controller advances the proposal beyond expires_at"
+          - check: field_value
+            path: "simulated.expiry_processed"
+            value: true
+            description: "The controller processes the hold lapse"
+          - check: field_equals_context
+            path: "simulated.proposal_id"
+            context_key: "expiring_committed_id"
+            description: "The controller expires the exact committed proposal"
+          - check: field_present
+            path: "simulated.target_time"
+            description: "The controller reports the applied post-deadline time"
+
+  - id: reject_expired_acceptance
+    title: "Reject proposal acceptance after expiry"
+    depends_on: [expire_hold]
+    steps:
+      - id: accept_expired_proposal
+        title: "Attempt to accept the expired hold"
+        task: accept_proposal
+        schema_ref: "media-buy/accept-proposal-request.json"
+        response_schema_ref: "media-buy/accept-proposal-response.json"
+        doc_ref: "/media-buy/task-reference/accept_proposal"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#expired_proposal_execution_accept"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          proposal_id: "$context.expiring_committed_id"
+          proposal_terms_digest: "$context.expiring_committed_digest"
+        validations:
+          - check: error_code
+            value: "PROPOSAL_EXPIRED"
+            description: "The expired hold cannot create a MediaBuy"
+
+      - id: create_buy_from_expired_proposal
+        title: "Reject compatibility-facade execution after expiry"
+        task: create_media_buy
+        requires_tool: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#expired_proposal_execution_create"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          brand:
+            domain: "acmeoutdoor.example"
+          proposal_id: "$context.expiring_committed_id"
+          total_budget:
+            amount: "$context.expiring_budget_amount"
+            currency: "$context.expiring_budget_currency"
+          start_time: "$context.expiring_start_time"
+          end_time: "$context.expiring_end_time"
+        validations:
+          - check: error_code
+            value: "PROPOSAL_EXPIRED"
+            description: "The compatibility facade preserves precise expiry semantics"

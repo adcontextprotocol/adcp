@@ -117,7 +117,7 @@ describe('docs-indexer', () => {
     it('uses an explicit version for legacy unversioned IDs', () => {
       const doc = getDocById('media-buy/task-reference/get_products', { version: '3.2-beta' });
       expect(doc?.id).toBe('doc:3.2-beta:media-buy/task-reference/get_products');
-      expect(doc?.sourceUrl).toContain('/dist/docs/3.2.0-beta.5/');
+      expect(doc?.sourceUrl).toContain('/dist/docs/3.2.0-beta.8/');
     });
 
     it('rejects a canonical versioned ID when the explicit version does not match', () => {
@@ -140,7 +140,7 @@ describe('docs-indexer', () => {
       const versions = getSupportedDocsVersions();
       expect(versions.map(({ version, artifactVersion }) => ({ version, artifactVersion }))).toEqual([
         { version: '3.1', artifactVersion: '3.1.19' },
-        { version: '3.2-beta', artifactVersion: '3.2.0-beta.5' },
+        { version: '3.2-beta', artifactVersion: '3.2.0-beta.8' },
         { version: '3.0', artifactVersion: '3.0.26' },
         { version: '2.5', artifactVersion: '2.5.3' },
       ]);
@@ -155,7 +155,7 @@ describe('docs-indexer', () => {
     it('returns protocol results only from the requested version', () => {
       const snapshots = new Map([
         ['3.1', '3.1.19'],
-        ['3.2-beta', '3.2.0-beta.5'],
+        ['3.2-beta', '3.2.0-beta.8'],
         ['3.0', '3.0.26'],
         ['2.5', '2.5.3'],
       ]);
@@ -182,7 +182,7 @@ describe('docs-indexer', () => {
     it('returns headings only from the requested protocol version', () => {
       const snapshots = new Map([
         ['3.1', '3.1.19'],
-        ['3.2-beta', '3.2.0-beta.5'],
+        ['3.2-beta', '3.2.0-beta.8'],
         ['3.0', '3.0.26'],
         ['2.5', '2.5.3'],
       ]);
@@ -249,12 +249,12 @@ describe('docs-indexer', () => {
       expect(stableResults).toContain('No documentation found in AdCP 3.1 (snapshot 3.1.19)');
 
       const results = await search!({ query: 'ACCOUNT_REQUIRED', version: '3.2-beta' });
-      expect(results).toContain('Searching AdCP 3.2-beta (snapshot 3.2.0-beta.5)');
-      expect(results).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.5)');
+      expect(results).toContain('Searching AdCP 3.2-beta (snapshot 3.2.0-beta.8)');
+      expect(results).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.8)');
       expect(results).toContain('ACCOUNT_REQUIRED');
 
       const detail = await getDoc!({ doc_id: 'schema:3.2-beta:enums/error-code' });
-      expect(detail).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.5)');
+      expect(detail).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.8)');
       expect(detail).toContain('ACCOUNT_REQUIRED');
     });
 
