@@ -7,6 +7,10 @@ import {
   type FixedTraceRunnerConfig,
 } from '../../../src/addie/eval/fixed-trace-runner.js';
 import {
+  BudgetedFixedTraceProvider,
+  FixedTraceBudget,
+} from '../../../src/addie/eval/fixed-trace-budget.js';
+import {
   FIXED_TRACE_SUITE,
   gradeFixedTrace,
   type FixedTraceCase,
@@ -37,7 +41,7 @@ const CAPABILITIES: ModelProviderCapabilities = {
 
 class ScriptedProvider implements ModelProvider {
   readonly id = 'anthropic' as const;
-  readonly capabilities = CAPABILITIES;
+  readonly capabilities: ModelProviderCapabilities;
   readonly prepare = vi.fn((request: ModelRequest): PreparedModelInvocation => ({
     provider: this.id,
     model: request.model,
@@ -47,7 +51,12 @@ class ScriptedProvider implements ModelProvider {
   }));
   readonly respondCalls: ModelRequest[] = [];
 
-  constructor(private readonly script: Array<ModelResponse | Error>) {}
+  constructor(
+    private readonly script: Array<ModelResponse | Error>,
+    capabilities: ModelProviderCapabilities = CAPABILITIES,
+  ) {
+    this.capabilities = capabilities;
+  }
 
   async *respond(
     request: ModelRequest,
@@ -236,6 +245,54 @@ describe('fixed trace artifact runner', () => {
     });
     expect(generation.respondCalls).toHaveLength(0);
     expect(gradeFixedTrace(selectedTrace, observation).deterministicPass).toBe(true);
+  });
+
+  it('omits provider-default reasoning from adapters without reasoning support', async () => {
+    const router = new ScriptedProvider([routeResponse('ignore')], {
+      ...CAPABILITIES,
+      reasoning: false,
+      reasoningEfforts: [],
+    });
+    const generation = new ScriptedProvider([]);
+    const selectedTrace = trace('surface-channel-chatter');
+    const runConfig = config(router, generation);
+    runConfig.router.reasoningEffort = 'provider_default';
+
+    await runFixedTraceCase(selectedTrace, runConfig);
+
+    expect(router.respondCalls[0].reasoning).toBeUndefined();
+  });
+
+  it('records budget admission refusal as not dispatched', async () => {
+    const delegate = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const budget = new FixedTraceBudget(0.000001);
+    const router = new BudgetedFixedTraceProvider(delegate, budget, {
+      inputUsdPerMillionTokens: 1,
+      outputUsdPerMillionTokens: 5,
+      source: 'Synthetic test pricing.',
+    });
+    const generation = new ScriptedProvider([]);
+
+    const observation = await runFixedTraceCase(
+      trace('knowledge-task-model'),
+      config(router, generation),
+    );
+
+    expect(observation).toMatchObject({
+      terminalStage: 'router',
+      terminalStatus: 'not_dispatched_budget',
+      output: '',
+      flagged: true,
+      metadata: {
+        router: {
+          source: 'local',
+          dispatched: false,
+          estimatedCostUsd: 0,
+        },
+      },
+    });
+    expect(delegate.respondCalls).toHaveLength(0);
+    expect(gradeFixedTrace(trace('knowledge-task-model'), observation).metadataPass).toBe(true);
   });
 
   it('attributes malformed router output to the router and preserves its cost', async () => {

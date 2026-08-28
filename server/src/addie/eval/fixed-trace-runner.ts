@@ -28,6 +28,7 @@ import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
 } from './fixed-trace-tool-loop.js';
+import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
   FIXED_TRACE_SUITE_VERSION,
@@ -133,6 +134,10 @@ function estimateCostUsd(usage: ModelUsage, pricing: FixedTracePricing): number 
     usage.inputTokens * pricing.inputUsdPerMillionTokens
     + usage.outputTokens * pricing.outputUsdPerMillionTokens
   ) / 1_000_000;
+}
+
+function reasoningRequest(effort: ModelReasoningEffort): Pick<ModelRequest, 'reasoning'> | Record<string, never> {
+  return effort === 'provider_default' ? {} : { reasoning: { effort } };
 }
 
 function modelResolution(
@@ -306,7 +311,7 @@ export function buildFixedTraceGenerationRequest(
     ],
     messages: messagesForTrace(trace),
     tools: [],
-    reasoning: { effort: config.reasoningEffort },
+    ...reasoningRequest(config.reasoningEffort),
     maxOutputTokens: config.maxOutputTokens,
     requestMetadata: {
       purpose: 'fixed_trace_generation',
@@ -369,7 +374,7 @@ async function executeRouter(
       isThread: (trace.request.threadContext?.length ?? 0) > 0,
       threadMessages: trace.request.threadContext?.map((entry) => `${entry.user}: ${entry.text}`),
     }, config.model),
-    reasoning: { effort: config.reasoningEffort },
+    ...reasoningRequest(config.reasoningEffort),
     maxOutputTokens: config.maxOutputTokens,
     requestMetadata: { purpose: 'fixed_trace_router', trace_id: trace.id },
   };
@@ -407,14 +412,20 @@ async function executeRouter(
     } catch {
       return { request, response, plan: null, output, status: 'malformed', metadata };
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
     const state = { invocations, dispatched, latencyMs: Date.now() - startedAt };
+    const status = error instanceof FixedTraceBudgetAdmissionError
+      ? 'not_dispatched_budget'
+      : timedOut && dispatched
+        ? 'timeout_after_dispatch'
+        : 'provider_error';
     return {
       request,
       response: null,
       plan: null,
-      output: fallbackOutput(timedOut && dispatched ? 'timeout_after_dispatch' : 'provider_error'),
-      status: timedOut && dispatched ? 'timeout_after_dispatch' : 'provider_error',
+      output: fallbackOutput(status),
+      status,
       metadata: localStageMetadata(request, config, state),
     };
   } finally {
@@ -545,7 +556,10 @@ export async function runFixedTraceCase(
       tools: result.tools.map(({ sequence: _sequence, ...tool }) => tool),
     };
   } catch (error) {
-    const terminalStatus = error instanceof FixedTraceToolLoopBoundaryError
+    if (error instanceof FixedTraceBudgetAdmissionError) invocations.push(error.prepared);
+    const terminalStatus = error instanceof FixedTraceBudgetAdmissionError
+      ? 'not_dispatched_budget'
+      : error instanceof FixedTraceToolLoopBoundaryError
       ? 'malformed'
       : timedOut && dispatched
         ? 'timeout_after_dispatch'
