@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { ModelFinishReason, ModelProviderId, ModelUsage } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v1';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v2';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -120,6 +120,8 @@ export interface FixedTraceRunMetadata {
 export interface FixedTraceObservation {
   traceId: string;
   metadata: FixedTraceRunMetadata;
+  /** Stage that made the terminal decision or surfaced the terminal failure. */
+  terminalStage: 'surface' | 'router' | 'generation';
   terminalStatus: FixedTraceTerminalStatus;
   finishReason: ModelFinishReason | null;
   output: string;
@@ -524,15 +526,43 @@ export function gradeFixedTrace(
   if (observation.terminalStatus === 'complete' && observation.finishReason !== 'stop') failures.push('finish_reason_mismatch');
   if (observation.terminalStatus === 'truncated' && observation.finishReason !== 'length') failures.push('finish_reason_mismatch');
   if (observation.terminalStatus === 'refusal' && observation.finishReason !== 'refusal') failures.push('finish_reason_mismatch');
-  if (['ignored', 'reacted'].includes(observation.terminalStatus) && observation.metadata.generation.source !== 'not_run') {
-    failures.push('generation_stage_mismatch');
-  }
-  if (['complete', 'truncated', 'refusal', 'empty'].includes(observation.terminalStatus) && observation.metadata.generation.source !== 'provider') {
-    failures.push('generation_stage_mismatch');
+
+  const failureStatuses: ReadonlyArray<FixedTraceTerminalStatus> = [
+    'malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget',
+  ];
+  if (observation.terminalStage === 'surface') {
+    if (
+      !['ignored', 'reacted'].includes(observation.terminalStatus)
+      || observation.metadata.generation.source !== 'not_run'
+      || observation.route === null
+    ) failures.push('terminal_stage_mismatch');
+  } else if (observation.terminalStage === 'router') {
+    if (
+      ![...failureStatuses, 'refusal', 'truncated', 'empty'].includes(observation.terminalStatus)
+      || observation.metadata.generation.source !== 'not_run'
+      || observation.route !== null
+    ) failures.push('terminal_stage_mismatch');
+  } else if (
+    ['ignored', 'reacted'].includes(observation.terminalStatus)
+    || observation.metadata.generation.source === 'not_run'
+    || observation.route?.action !== 'respond'
+  ) failures.push('terminal_stage_mismatch');
+
+  if (failureStatuses.includes(observation.terminalStatus)) {
+    const failedStage = observation.terminalStage === 'router'
+      ? observation.metadata.router
+      : observation.terminalStage === 'generation'
+        ? observation.metadata.generation
+        : null;
+    if (
+      failedStage === null
+      || (observation.terminalStatus !== 'malformed' && failedStage.source !== 'local')
+    ) failures.push('failure_stage_mismatch');
   }
   if (
-    ['malformed', 'provider_error', 'timeout_after_dispatch', 'not_dispatched_budget'].includes(observation.terminalStatus)
-    && observation.metadata.generation.source !== 'local'
+    observation.terminalStage === 'generation'
+    && ['complete', 'truncated', 'refusal', 'empty'].includes(observation.terminalStatus)
+    && observation.metadata.generation.source !== 'provider'
   ) failures.push('generation_stage_mismatch');
 
   const metadataPass = provenanceFailures.length === 0;
@@ -598,6 +628,7 @@ export function summarizeFixedTraceRun(
       || candidate.gitDirty !== runContract.gitDirty
       || candidate.addieCodeVersion !== runContract.addieCodeVersion
       || candidate.promptConfigVersion !== runContract.promptConfigVersion
+      || candidate.toolSchemaSha256 !== runContract.toolSchemaSha256
     ) throw new Error('Mixed fixed trace run metadata');
   }
   for (const stageName of ['router', 'generation'] as const) {
