@@ -35,7 +35,7 @@ import type {
   ComplyBudgetSimulation,
   SeededProductAvailability,
 } from './types.js';
-import { supportsGetProductsRejected } from './types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected } from './types.js';
 import {
   findSessionsMatching,
   findSessionMatching,
@@ -46,7 +46,11 @@ import {
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
+  emitAccountChangeRecordedWebhook,
+  expireAccountChangeCursors,
   getAccountNotificationSubscribers,
+  recordAccountChange,
+  resolveAccountIdForRef,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
@@ -56,8 +60,17 @@ import {
   syntheticAccountIdFromRef,
   type CanonicalAccountRef,
 } from './account-scope.js';
-import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
+import {
+  verifyGovernanceToken as inspectGovernanceTokenForTraining,
+  mintRevokedDemoToken,
+  mintWrongAudDemoToken,
+} from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import {
+  getSharedAccountCreative,
+  removeSharedAccountCreative,
+  upsertSharedAccountCreative,
+} from './shared-account-resources.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
@@ -817,6 +830,8 @@ function createStore(
   principal?: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
   controllerAccount?: NaturalAccountIdentity,
+  controllerAccountRef?: AccountRef,
+  controllerAccountId?: string,
 ): TestControllerStore {
   return {
     async forceAudienceStatus(audienceId, status, reason) {
@@ -875,7 +890,8 @@ function createStore(
     },
 
     async forceCreativeStatus(creativeId, status, rejectionReason) {
-      const creative = session.creatives.get(creativeId);
+      const creative = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       if (!creative) {
         const priorTerminalState = session.complyExtensions.forcedCreativeTerminalStates.get(creativeId);
         if (priorTerminalState) {
@@ -903,6 +919,24 @@ function createStore(
         session.complyExtensions.forcedCreativeTerminalStates.delete(creativeId);
       }
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
+      const accountId = creative.accountId
+        ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: accountId,
+            resource_id: creativeId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: ['/status'],
+          repair: { task: 'list_creatives' },
+          reason: lifecycleReasonCode(prev, status),
+          summary: `Connected training platform changed creative status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
@@ -966,6 +1000,24 @@ function createStore(
         action: `status_forced_to_${status}`,
         summary: `Comply test controller forced status to ${status}`,
       });
+
+      const accountId = resolveAccountIdForRef(sessionKey, principal, mb.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'media_buy',
+            account_id: accountId,
+            resource_id: mediaBuyId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          resource_revision: mb.revision,
+          changed_paths: ['/status'],
+          repair: { task: 'get_media_buys' },
+          summary: `Connected training platform changed media buy status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
 
       return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} transitioned from ${prev} to ${status}` };
     },
@@ -1195,7 +1247,8 @@ function createStore(
     async seedCreative(creativeId, fixture) {
       const fx = (fixture ?? {}) as Record<string, unknown>;
       enforceMapCap(session.creatives, creativeId, 'creatives');
-      const existing = session.creatives.get(creativeId);
+      const existing = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       const now = new Date().toISOString();
       const fixtureFormatId = fx.format_id as CreativeState['formatId'];
       const formatKind = (fx.format_kind as string | undefined)
@@ -1209,8 +1262,11 @@ function createStore(
         ?? (fixtureFormatId || existing?.formatId ? undefined : 'image');
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = fixtureFormatId ?? existing?.formatId;
-      session.creatives.set(creativeId, {
+      const storedCreative: CreativeState = {
         creativeId,
+        ...(controllerAccountId && { accountId: controllerAccountId }),
+        ...(controllerAccountRef && { accountRef: controllerAccountRef }),
+        controllerSeeded: true,
         ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,
@@ -1219,7 +1275,26 @@ function createStore(
         syncedAt: existing?.syncedAt ?? now,
         manifest: (fx.manifest as CreativeState['manifest']) ?? existing?.manifest,
         pricingOptionId: (fx.pricing_option_id as string | undefined) ?? existing?.pricingOptionId,
-      });
+      };
+      session.creatives.set(creativeId, storedCreative);
+      if (controllerAccountId) {
+        upsertSharedAccountCreative(controllerAccountId, storedCreative);
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: controllerAccountId,
+            resource_id: creativeId,
+          },
+          action: existing ? 'updated' : 'created',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: existing ? ['/name', '/status', '/manifest'] : undefined,
+          repair: { task: 'list_creatives' },
+          summary: existing
+            ? 'Connected training platform updated a creative.'
+            : 'Connected training platform added a creative.',
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
     },
 
     async seedPlan(planId, fixture) {
@@ -1333,6 +1408,7 @@ function createStore(
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
+  'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_get_products_arm',
   'force_get_signals_arm',
@@ -1498,9 +1574,12 @@ async function handleCompactLifecycleProbe(
 }
 
 function localScenariosFor(ctx: TrainingContext): string[] {
-  return ctx.storyboardCompat?.version === '3.0'
+  const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
     : [...LOCAL_SCENARIOS];
+  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')
+    ? scenarios
+    : scenarios.filter(s => s !== 'expire_account_change_cursor');
 }
 
 /**
@@ -1518,7 +1597,10 @@ function localScenariosFor(ctx: TrainingContext): string[] {
  * params: { token?, mode?: 'verify'|'revoked_demo'|'wrong_aud_demo',
  *           tamper?: 'signature'|'sub'|<anything-else> }
  */
-async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
+// This is a sandbox teaching fixture, not an authorization guard for the
+// controller route. Name it accordingly so static analysis does not mistake
+// scenario dispatch for a user-controlled permission check.
+async function handleInspectGovernanceTokenFixture(rawArgs: Record<string, unknown>): Promise<object> {
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
   const mode = typeof params.mode === 'string' ? params.mode : 'verify';
   let token = typeof params.token === 'string' ? params.token : undefined;
@@ -1539,7 +1621,7 @@ async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Pr
   }
   const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
   if (tamper) token = tamperGovernanceToken(token, tamper);
-  const result = await verifyGovernanceToken(token);
+  const result = await inspectGovernanceTokenForTraining(token);
   return {
     success: true,
     verdict: result.verdict,
@@ -1818,6 +1900,37 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     const completionScope = ctx.taskRegistryScope ?? controllerTaskRegistryScope(sessionArgs, ctx);
     return handleForceTaskCompletion(completionScope, rawArgs);
   }
+  if (scenario === 'expire_account_change_cursor') {
+    if (!supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'expire_account_change_cursor requires AdCP 3.2 or later',
+      };
+    }
+    if (!args.account) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'expire_account_change_cursor requires account',
+      };
+    }
+    const expired = expireAccountChangeCursors(ctx.principal, args.account);
+    if (!expired) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: 'The requested account is not visible to this principal',
+      };
+    }
+    return {
+      success: true,
+      previous_state: 'current',
+      current_state: 'authorization_scope_changed',
+      account_id: expired.accountId,
+      message: 'Previously issued account change cursors now require snapshot rebootstrap.',
+    };
+  }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};
     return {
@@ -1828,7 +1941,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
   if (scenario === 'verify_governance_token') {
-    return handleVerifyGovernanceToken(rawArgs);
+    return handleInspectGovernanceTokenFixture(rawArgs);
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
@@ -2028,12 +2141,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     }
   }
 
+  const controllerAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, args.account)
+    ?? opaqueAccountId;
   const store = createStore(
     session,
     sessionKey,
     ctx.principal,
     ctx.storyboardCompat,
     sandboxControllerIdentity(args.account),
+    args.account,
+    controllerAccountId,
   );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
@@ -2489,7 +2606,10 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       error_detail: 'creative_id is required',
     };
   }
-  const creative = session.creatives.get(creativeId);
+  const accountRef = rawArgs.account as AccountRef | undefined;
+  const accountId = resolveAccountIdForRef(sessionKey, principal, accountRef);
+  const creative = session.creatives.get(creativeId)
+    ?? getSharedAccountCreative(accountId, creativeId);
   if (!creative) {
     return {
       success: false,
@@ -2524,6 +2644,7 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
 
   if (purgeKind === 'hard') {
     session.creatives.delete(creativeId);
+    removeSharedAccountCreative(accountId, creativeId);
     session.complyExtensions.provenanceAuditObservations.delete(creativeId);
   } else {
     creative.purge = {
@@ -2531,6 +2652,26 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       at: purgedAt,
       reasonCode,
     };
+  }
+  if (accountId) {
+    const change = recordAccountChange(principal, {
+      resource: {
+        type: 'creative',
+        account_id: accountId,
+        resource_id: creativeId,
+      },
+      action: 'purged',
+      origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+      changed_paths: ['/purge'],
+      repair: {
+        task: 'list_creatives',
+        available: purgeKind !== 'hard',
+        ...(purgeKind === 'hard' && { unavailable_reason: 'purged' }),
+      },
+      reason: reasonCode,
+      summary: `Connected training platform ${purgeKind}-purged a creative.`,
+    });
+    await emitAccountChangeRecordedWebhook(principal, change);
   }
   await emitCreativePurged(sessionKey, principal, creative, purgeKind, reasonCode, purgedAt, reasonDetail);
 

@@ -27,7 +27,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -190,15 +190,23 @@ function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; k
   };
 }
 
-function salesComplyScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
-  return storyboardCompat?.version === '3.0'
-    ? [...SALES_THREE_ZERO_COMPLY_SCENARIOS]
+function salesComplyScenarios(
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  servedVersion?: string,
+): string[] {
+  if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
+  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
     : [...SALES_CURRENT_SCENARIOS];
 }
 
-function salesCapabilityScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
-  return storyboardCompat?.version === '3.0'
-    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+function salesCapabilityScenarios(
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  servedVersion?: string,
+): string[] {
+  if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
+  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
     : [...SALES_CURRENT_SCENARIOS];
 }
 
@@ -480,6 +488,7 @@ async function tryHandleLocalComplyScenario(
     || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
+    && rawArgs.scenario !== 'expire_account_change_cursor'
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
@@ -493,6 +502,7 @@ async function tryHandleLocalComplyScenario(
     isThreeZeroCompat
     && (
       rawArgs.scenario === 'seed_measurement_catalog'
+      || rawArgs.scenario === 'expire_account_change_cursor'
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
@@ -533,7 +543,7 @@ async function tryHandleLocalComplyScenario(
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
-          scenarios: salesComplyScenarios(storyboardCompat),
+          scenarios: salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
         }
       : await handleComplyTestController(handlerArgs, {
           ...localContext,
@@ -958,10 +968,29 @@ function projectTenantCapabilities(
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
       };
+      if (supportsAccountChangeFeed(servedVersion)) {
+        const account = structured.account && typeof structured.account === 'object'
+          ? structured.account
+          : {};
+        structured.account = {
+          ...account,
+          change_feed: {
+            supported: true,
+            read_task: 'list_account_changes',
+            registration_task: 'sync_accounts',
+            event_type: 'account.change_recorded',
+            retention_days: 90,
+            // The reference seller claims only the family whose AdCP writes,
+            // controller-side creates/updates, status changes, purges, and
+            // shared-account reads are all instrumented end to end.
+            resource_types: ['creative'],
+          },
+        };
+      }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
         : {};
-      const capabilityScenarios = salesCapabilityScenarios(storyboardCompat);
+      const capabilityScenarios = salesCapabilityScenarios(storyboardCompat, servedVersion);
       const existingCapabilityScenarios = Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
         ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
         : [];

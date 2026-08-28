@@ -273,6 +273,24 @@ Indicator and assignment subscriptions are prospective: activation or reactivati
 
 Before relying on durable account lifecycle webhooks, read `get_adcp_capabilities.account.notifications`. Sellers that declare `supported: true` accept `account.status_changed` registrations here, name `sync_accounts` as the registration task, and name [`list_accounts`](/docs/accounts/tasks/list_accounts) as the repair read. Sellers that omit the capability or declare `supported: false` MUST reject `account.status_changed` registrations instead of silently storing a subscriber that will never fire.
 
+### Account change feed notifications
+
+`account.change_recorded` is the generic wake-up for the optional durable
+[`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed. It
+covers committed material changes from every origin within the seller's
+advertised resource coverage, including seller surfaces, connected platforms,
+seller automation, and other authorized principals. Before accepting this
+event type, the seller MUST advertise
+`get_adcp_capabilities.account.change_feed.supported: true`.
+
+Each feed record produces one logical fire for every active subscriber that
+requested `account.change_recorded`. The fire's `notification_id` equals the
+record's `change_id`. The payload is only an invalidation: receivers drain from
+their own persisted cursor and then invoke the record's repair task. Its
+optional `through_cursor` is a target watermark, never a checkpoint to install
+without reading intervening pages. Existing specialized notifications may
+overlap this generic fire.
+
 For these event types, "wholesale feed" means the seller's buyable wholesale product and signals feeds returned by [`get_products`](/docs/media-buy/task-reference/get_products) or [`get_signals`](/docs/signals/tasks/get_signals); it is not the buyer-provided feeds managed by [`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs).
 
 Permitted in **both** provisioning and settings-update modes. Declarative semantics:
@@ -289,7 +307,7 @@ Each entry has:
 
 - `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
 - `url` — HTTPS endpoint URL. Sellers MUST complete an endpoint activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active.
-- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.assignment_changed`, `indicators.changed`, `creative.purged`, `account.status_changed`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) or [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
+- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.assignment_changed`, `indicators.changed`, `creative.purged`, `account.status_changed`, `account.change_recorded`, `product.created`, `product.updated`, `product.priced`, `product.removed`, `signal.created`, `signal.updated`, `signal.priced`, `signal.removed`, `wholesale_feed.bulk_change`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`, `impairment`) or agent-anchored type (`capabilities.changed`) as a per-account validation failure with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) or [`VALIDATION_ERROR`](/docs/building/verification/compliance-catalog#error-code-validation-error) in `accounts[].errors[]`, and `error.field` MUST point at the invalid `event_types` entry.
 - `product_payload_view` — `canonical` for a [`list_products`](/docs/media-buy/task-reference/list_products) mirror or `legacy` for the 3.x `get_products` shape. Omission defaults to `legacy`; valid only when a product event is selected.
 - `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. When present, the same signed-registration downgrade-resistance rules as `push_notification_config.authentication` apply. Credentials are write-only — sellers omit them on reads.
 - `active` (default `true`) — set `false` to pause a subscriber without removing the registration. Sellers MAY skip only the outbound proof challenge while `active: false`; they MUST still enforce HTTPS parsing, hostname normalization, and reserved-range rejection on write. Paused subscribers MUST NOT receive fires until reactivated. Reactivation MUST repeat full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof.

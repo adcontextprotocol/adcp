@@ -44,6 +44,20 @@ export function supportsGetProductsRejected(servedVersion: string | undefined): 
   return qualifier === 'beta' && prerelease >= 2;
 }
 
+/** Account change feed is a 3.2+ surface and must not leak into 3.1
+ * negotiation. The reference implementation remains process-local until the
+ * server SDK durable store lands, so production must not advertise it. Tests
+ * and local training runs retain the scenario. */
+export function supportsAccountChangeFeed(servedVersion: string | undefined): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)/);
+  if (!match) return false;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  return major > 3 || (major === 3 && minor >= 2);
+}
+
 /** AccountReference from SDK — identifies an account on create_media_buy */
 type AccountReference = CreateMediaBuyRequest['account'];
 
@@ -749,6 +763,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
+  /** Internal marker for sandbox fixtures injected by comply_test_controller. */
+  controllerSeeded?: boolean;
   /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
   formatId?: FormatID;
   formatKind?: string;
