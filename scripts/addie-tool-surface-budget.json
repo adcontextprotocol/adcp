@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "d9ea013c87e988ab08847de36b710e601dec4d9f80b8aaeb5666b2ca86d3025a",
-  "profile_contract_sha256": "85c7ea54f09473c146eb7d1ccb6649459b4f7eb7079f96cb6dace1dc2de8f3d6",
+  "profile_ids_sha256": "e5573f7b621aca6815b5514adc8b96fc440498bf100e636a89503c0ce01f368a",
+  "profile_contract_sha256": "bc0be60b13e960ba9b64ec585075cce13e95f2a2202c0bc2bf8465fdf729d93e",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -27,7 +27,7 @@
     }
   },
   "maximums": {
-    "routed_unique_tools": 202,
+    "routed_unique_tools": 213,
     "runtime_unique_tools": 249,
     "runtime_tools_not_declared_to_router": 18,
     "routed_tools_missing_runtime_definition": 0,

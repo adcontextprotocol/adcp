@@ -90,6 +90,40 @@ describe('getToolsForSets', () => {
     });
   });
 
+  describe('Sponsored Intelligence workflow', () => {
+    it('exposes the complete SI host surface only when its domain is selected', () => {
+      const siTools = [
+        'get_si_availability',
+        'list_si_agents',
+        'connect_to_si_agent',
+        'send_to_si_agent',
+        'end_si_session',
+        'get_si_session_status',
+      ];
+
+      expect(getToolsForSets(['sponsored_intelligence'], false, false)).toEqual(
+        expect.arrayContaining(siTools),
+      );
+      expect(getToolsForSets(['knowledge'], false, false)).not.toEqual(
+        expect.arrayContaining(siTools),
+      );
+    });
+  });
+
+  describe('property catalog workflow', () => {
+    it('routes the complete audit, enrichment, catalog, and dispute surface', () => {
+      expect(getToolsForSets(['agent_testing'], false, false)).toEqual(
+        expect.arrayContaining([
+          'check_property_list',
+          'enhance_property',
+          'resolve_catalog',
+          'browse_catalog',
+          'dispute_catalog_entry',
+        ]),
+      );
+    });
+  });
+
   describe('public channel filtering', () => {
     it('excludes get_account_link from always-available tools in public channels', () => {
       const tools = getToolsForSets([], false, true);

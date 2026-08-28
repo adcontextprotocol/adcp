@@ -185,7 +185,11 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { resolveSlackDirectoryContext, type SlackDirectoryAudience } from './directory-access.js';
-import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import {
+  SI_HOST_TOOLS,
+  createSiHostToolHandlers,
+  hasCachedSiSession,
+} from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
 import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
@@ -760,7 +764,6 @@ async function buildCurrentChannelCostOptions(
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
-let setSiContext: (memberContext: MemberContext | null, threadExternalId: string) => void = () => {};
 let initialized = false;
 
 /**
@@ -800,7 +803,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize thread context store
   threadContextStore = new DatabaseThreadContextStore(addieDb);
 
-  // Register shared baseline tools (knowledge, billing, schema, directory, brand, property)
+  // Register shared baseline tools (knowledge, billing, schema, directory, brand)
   // Shared with web chat handler via register-baseline-tools.ts
   await registerBaselineTools(claudeClient);
 
@@ -826,31 +829,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     }
     logger.info('Addie: Google Docs tools registered');
   }
-
-  // Register SI host tools (Sponsored Intelligence protocol)
-  // These enable Addy to connect users with AAO member brand agents
-  // Note: We need to pass context providers that will be called per-request
-  // For now, we register with placeholder getters - actual context comes from handleUserMessage
-  let currentMemberContext: MemberContext | null = null;
-  let currentThreadExternalId: string = '';
-
-  const siHostHandlers = createSiHostToolHandlers(
-    () => currentMemberContext,
-    () => currentThreadExternalId
-  );
-  for (const tool of SI_HOST_TOOLS) {
-    const handler = siHostHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
-  logger.info('Addie: SI host tools registered');
-
-  // Export setters for SI context (called from handleUserMessage)
-  setSiContext = (memberContext: MemberContext | null, threadExternalId: string) => {
-    currentMemberContext = memberContext;
-    currentThreadExternalId = threadExternalId;
-  };
 
   // Create the Assistant
   const assistant = new Assistant({
@@ -1170,7 +1148,7 @@ async function buildRequestContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId: string,
-  threadId?: string,
+  threadId: string,
   threadContext?: ThreadContext | null,
   directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
@@ -1189,6 +1167,18 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Bind SI identity and session state to this request. The former global
+  // getters could be overwritten by another concurrent Slack request before
+  // a tool call executed, and also kept the SI surface on every provider wire.
+  const siHostHandlers = createSiHostToolHandlers(
+    () => memberContext,
+    () => threadId,
+  );
+  allTools.push(...SI_HOST_TOOLS);
+  for (const [name, handler] of siHostHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Shadow the globally registered anonymous directory handlers with a
   // caller-scoped view. API-access members may discover members_only agents;
@@ -1535,6 +1525,7 @@ async function selectRoutedToolsForSlackResponse(
       workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
       systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
       hasActiveCertification: options?.hasActiveCertification,
+      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
     });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
@@ -1578,6 +1569,7 @@ async function selectRoutedToolsForSlackResponse(
     workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
     systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
     hasActiveCertification: options?.hasActiveCertification,
+    hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -1866,9 +1858,6 @@ async function handleUserMessage({
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
-
-  // Set SI context for SI host tools (allows them to access member context and thread ID)
-  setSiContext(memberContext, externalId);
 
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
@@ -3498,6 +3487,8 @@ export async function buildChannelResponseInvocation(input: {
     isAdmin: userIsAdmin,
     workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
     systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasSponsoredIntelligenceContext:
+      hasCachedSiSession(threadId) || (siRetrievalResult?.agents.length ?? 0) > 0,
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(

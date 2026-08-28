@@ -299,6 +299,11 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "save_property",
       "list_properties",
       "list_missing_properties",
+      "check_property_list",
+      "enhance_property",
+      "resolve_catalog",
+      "browse_catalog",
+      "dispute_catalog_entry",
     ],
   },
 
@@ -323,6 +328,20 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "list_saved_agents",
       "remove_saved_agent",
       "setup_test_agent",
+    ],
+  },
+
+  sponsored_intelligence: {
+    name: "sponsored_intelligence",
+    description:
+      "Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation",
+    tools: [
+      "get_si_availability",
+      "list_si_agents",
+      "connect_to_si_agent",
+      "send_to_si_agent",
+      "end_si_session",
+      "get_si_session_status",
     ],
   },
 

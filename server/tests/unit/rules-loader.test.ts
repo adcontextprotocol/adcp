@@ -254,7 +254,7 @@ describe('Addie tool reference', () => {
     expect(testing).not.toContain('### Brand-registry operations');
   });
 
-  it('requires conditional tools to be present before advertising their workflows', () => {
+  it('requires optional storyboard tools before advertising that workflow', () => {
     const routedTools = getToolsForSets(['agent_testing'], false, false);
     const withoutConditionalTools = buildAddieToolReference({
       availableToolNames: routedTools,
@@ -272,14 +272,12 @@ describe('Addie tool reference', () => {
         'run_storyboard',
         'run_storyboard_step',
         'get_adcp_capabilities',
-        'check_property_list',
-        'enhance_property',
       ],
       selectedToolSetNames: ['agent_testing'],
     });
 
     expect(withoutConditionalTools).not.toContain('### Storyboard testing');
-    expect(withoutConditionalTools).not.toContain('### Property-list enrichment');
+    expect(withoutConditionalTools).toContain('### Property-list enrichment');
     expect(withPartialStoryboardTools).not.toContain('### Storyboard testing');
     expect(withConditionalTools).toContain('### Storyboard testing');
     expect(withConditionalTools).toContain('### Property-list enrichment');
@@ -329,6 +327,43 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('## AdCP Academy');
   });
 
+  it('loads Sponsored Intelligence relay guidance only with the complete routed workflow', () => {
+    const siTools = getToolsForSets(['sponsored_intelligence'], false, false);
+    const sponsoredIntelligence = buildAddieToolReference({
+      availableToolNames: siTools,
+      selectedToolSetNames: ['sponsored_intelligence'],
+    });
+    const missingRelay = buildAddieToolReference({
+      availableToolNames: siTools.filter(name => name !== 'send_to_si_agent'),
+      selectedToolSetNames: ['sponsored_intelligence'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(sponsoredIntelligence).toContain('### Sponsored Intelligence conversations');
+    expect(sponsoredIntelligence).toContain('use send_to_si_agent for every user message');
+    expect(missingRelay).not.toContain('### Sponsored Intelligence conversations');
+    expect(knowledge).not.toContain('### Sponsored Intelligence conversations');
+  });
+
+  it('loads property catalog guidance only with the complete routed workflow', () => {
+    const propertyTools = getToolsForSets(['agent_testing'], false, false);
+    const complete = buildAddieToolReference({
+      availableToolNames: propertyTools,
+      selectedToolSetNames: ['agent_testing'],
+    });
+    const missingDispute = buildAddieToolReference({
+      availableToolNames: propertyTools.filter(name => name !== 'dispute_catalog_entry'),
+      selectedToolSetNames: ['agent_testing'],
+    });
+
+    expect(complete).toContain('### Property-list enrichment');
+    expect(complete).toContain('### Property catalog operations');
+    expect(missingDispute).not.toContain('### Property catalog operations');
+  });
+
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
     const stable = buildAddieStableToolReference();
 
@@ -343,6 +378,8 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Slack file handling');
     expect(stable).not.toContain('## AdCP Academy');
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(stable).not.toContain('### Sponsored Intelligence conversations');
+    expect(stable).not.toContain('send_to_si_agent for EVERY user message');
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {

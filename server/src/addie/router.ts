@@ -309,6 +309,25 @@ export const ROUTING_RULES = {
       description:
         "Find member organizations who can help with specific needs - searching for vendors, partners, consultants",
     },
+    sponsored_intelligence_agent: {
+      patterns: [
+        "si agent",
+        "brand agent",
+        "connect to a brand",
+        "talk to a brand",
+        "continue brand conversation",
+      ],
+      tools: [
+        "get_si_availability",
+        "list_si_agents",
+        "connect_to_si_agent",
+        "send_to_si_agent",
+        "end_si_session",
+        "get_si_session_status",
+      ],
+      description:
+        "Discover, connect to, and converse with Sponsored Intelligence brand agents",
+    },
     community_directory: {
       patterns: [
         "community directory",
@@ -605,8 +624,9 @@ ${
 - Questions about AdCP, protocols, implementation → ["knowledge"]
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Testing/validating AdCP agent implementations → ["agent_testing"]
+- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
+- Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Content workflows, GitHub issues, proposals → ["content"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 ${isAAOAdmin

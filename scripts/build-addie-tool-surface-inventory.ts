@@ -242,14 +242,13 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...directory.DIRECTORY_TOOLS,
     ...brand.BRAND_TOOLS,
     ...brandCanonical.BRAND_CANONICAL_TOOLS,
-    ...property.PROPERTY_TOOLS,
     ...url.URL_TOOLS,
     ...googleDocs.GOOGLE_DOCS_TOOLS,
-    ...siHost.SI_HOST_TOOLS,
   ];
   const slackKnowledge = knowledge.KNOWLEDGE_TOOLS.filter(knowledge.isSlackKnowledgeTool);
   const buildRequest = (isAdmin: boolean, isPublic: boolean): AddieTool[] => [
     ...member.MEMBER_TOOLS,
+    ...siHost.SI_HOST_TOOLS,
     ...directory.DIRECTORY_TOOLS,
     ...slackKnowledge,
     ...illustration.ILLUSTRATION_TOOLS,

@@ -19,7 +19,10 @@ vi.mock('../../src/addie/services/si-agent-service.js', () => ({
   },
 }));
 
-import { createSiHostToolHandlers } from '../../src/addie/mcp/si-host-tools.js';
+import {
+  createSiHostToolHandlers,
+  hasCachedSiSession,
+} from '../../src/addie/mcp/si-host-tools.js';
 
 function member(index = 1) {
   return {
@@ -64,6 +67,7 @@ describe('SI host privacy and output boundaries', () => {
     }));
 
     expect(result.identity_shared).toBe(false);
+    expect(hasCachedSiSession('thread-private-consent-test')).toBe(true);
     expect(mocks.initiateSession).toHaveBeenCalledWith(expect.objectContaining({
       identity: {
         consent_granted: false,
