@@ -7,11 +7,18 @@
   "properties": {
     "installment_id": {
       "type": "string",
-      "description": "Unique identifier for this installment within the collection"
+      "description": "Unique identifier for this installment within the collection",
+      "x-entity": "installment"
+    },
+    "collection_ref": {
+      "$ref": "/schemas/core/collection-ref.json",
+      "description": "Canonical parent collection identity. Products spanning multiple collections or publisher namespaces MUST use this field."
     },
     "collection_id": {
       "type": "string",
-      "description": "Parent collection reference. Required when the product spans multiple collections. Maps to a collection_id declared in one of the publishers' adagents.json files referenced by the product's collection selectors."
+      "description": "Deprecated publisher-domain-free parent collection shorthand. Use collection_ref. It is unambiguous only when the enclosing product addresses one publisher namespace.",
+      "deprecated": true,
+      "x-entity": "collection"
     },
     "name": {
       "type": "string",
@@ -84,7 +91,8 @@
       "properties": {
         "installment_id": {
           "type": "string",
-          "description": "The source installment this content is derived from"
+          "description": "The source installment this content is derived from",
+          "x-entity": "installment"
         },
         "type": {
           "$ref": "/schemas/enums/derivative-type.json",

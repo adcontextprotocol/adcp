@@ -2490,6 +2490,7 @@ describe('comply_test_controller', () => {
       expect(impressionRows).toHaveLength(1);
       expect(impressionRows[0]).toMatchObject({
         creative_id: expect.any(String),
+        creative_name: 'Test Creative',
         impressions: 100,
         spend: 0,
       });
