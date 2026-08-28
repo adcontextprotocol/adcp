@@ -82,6 +82,7 @@ import {
 import { getProviderRetryAfterSeconds } from './model-providers/provider-errors.js';
 import {
   buildAddieWireTools,
+  buildModelToolDefinitions,
   mergeAddieToolDefinitions,
 } from './tool-wire-shape.js';
 import { assembleAddieFallbackPrompt } from './prompt-assembly.js';
@@ -437,21 +438,6 @@ function appendModelInputAttachments(
   }
   currentTurn.content.push(...attachmentContent);
   return nextMessages;
-}
-
-function buildModelToolDefinitions(tools: readonly AddieTool[]): ModelToolDefinition[] {
-  const definitions: ModelToolDefinition[] = tools.map((tool): ModelToolDefinition => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.input_schema as ModelToolDefinition['inputSchema'],
-  }));
-  if (definitions.length > 0) {
-    definitions[definitions.length - 1] = {
-      ...definitions[definitions.length - 1],
-      cacheHint: 'ephemeral',
-    };
-  }
-  return definitions;
 }
 
 /**

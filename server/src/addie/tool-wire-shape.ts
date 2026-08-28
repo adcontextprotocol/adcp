@@ -1,4 +1,5 @@
 import type { AddieTool } from './types.js';
+import type { ModelToolDefinition } from './model-providers/model-provider.js';
 
 export interface AddieWireTool {
   name: string;
@@ -38,6 +39,24 @@ export function buildAddieWireTools(tools: readonly AddieTool[]): AddieWireTool[
     };
   }
   return wireTools;
+}
+
+/** Project canonical Addie definitions to the provider-neutral model shape. */
+export function buildModelToolDefinitions(
+  tools: readonly AddieTool[],
+): ModelToolDefinition[] {
+  const definitions: ModelToolDefinition[] = tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.input_schema as ModelToolDefinition['inputSchema'],
+  }));
+  if (definitions.length > 0) {
+    definitions[definitions.length - 1] = {
+      ...definitions[definitions.length - 1],
+      cacheHint: 'ephemeral',
+    };
+  }
+  return definitions;
 }
 
 /** Project request-local provider tools through the same production seam. */
