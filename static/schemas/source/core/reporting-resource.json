@@ -21,9 +21,7 @@
     {
       "if": { "properties": { "kind": { "const": "manifest" } }, "required": ["kind"] },
       "then": { "required": ["manifest_version", "manifest_sha256"] }
-    }
-  ],
-  "allOf": [
+    },
     {
       "if": { "properties": { "immutability": { "const": "native_version" } }, "required": ["immutability"] },
       "then": { "required": ["native_version_ref"] }

@@ -168,11 +168,12 @@ describe('managed reporting status contract', () => {
   let validateSchedule;
   let validateRevision;
   let validateManifest;
+  let validateResource;
   let validateReceiptRequest;
   let validateReceiptResponse;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateReceiptRequest, validateReceiptResponse] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -187,6 +188,7 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-schedule.json'),
       compile('/schemas/core/reporting-revision.json'),
       compile('/schemas/core/reporting-file-manifest.json'),
+      compile('/schemas/core/reporting-resource.json'),
       compile('/schemas/media-buy/sync-reporting-receipts-request.json'),
       compile('/schemas/media-buy/sync-reporting-receipts-response.json'),
     ]);
@@ -232,6 +234,18 @@ describe('managed reporting status contract', () => {
     assert.equal(validateManifest(manifest), true, JSON.stringify(validateManifest.errors));
     delete manifest.files[0].sha256;
     assert.equal(validateManifest(manifest), false);
+
+    const resource = {
+      resource_ref: 'resource-manifest-20260827',
+      kind: 'manifest',
+      location: 'reports/2026-08-27/manifest.json',
+      immutability: 'immutable_location',
+      expires_at: '2026-09-28T04:00:16Z',
+    };
+    assert.equal(validateResource(resource), false);
+    resource.manifest_version = '1.0';
+    resource.manifest_sha256 = 'd'.repeat(64);
+    assert.equal(validateResource(resource), true, JSON.stringify(validateResource.errors));
   });
 
   it('records an authenticated consumer receipt instead of treating availability as agreement', () => {
