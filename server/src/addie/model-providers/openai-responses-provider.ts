@@ -90,6 +90,15 @@ function parseToolInput(value: string, name: string): JsonObject {
   return parsed as JsonObject;
 }
 
+function toolResultOutput(content: Extract<ModelMessageContent, { type: 'tool_result' }>): string {
+  const output = typeof content.content === 'string'
+    ? content.content
+    : textOnly(content.content, `tool result ${content.toolCallId}`);
+  return content.isError
+    ? `[Tool execution error]\n${output || 'No error details provided.'}`
+    : output;
+}
+
 function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
   const input: ResponseInputItem[] = [];
   for (const message of messages) {
@@ -117,9 +126,7 @@ function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
         input.push({
           type: 'function_call_output',
           call_id: content.toolCallId,
-          output: typeof content.content === 'string'
-            ? content.content
-            : textOnly(content.content, `tool result ${content.toolCallId}`),
+          output: toolResultOutput(content),
         });
       } else {
         throw new Error(`OpenAI adapter does not support ${content.type} in a ${message.role} message`);

@@ -189,6 +189,27 @@ describe('OpenAIResponsesProvider', () => {
     });
   });
 
+  it('marks failed tool results explicitly in Responses continuation output', () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    const prepared = provider.prepare(request(OPENAI_ROUTER_MODEL, {
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Find the task model.' }] },
+        { role: 'assistant', content: [{
+          type: 'tool_call', id: 'call_1', name: 'search_docs', input: { query: 'task model' },
+        }] },
+        { role: 'user', content: [{
+          type: 'tool_result', toolCallId: 'call_1', toolName: 'search_docs', content: '', isError: true,
+        }] },
+      ],
+    }));
+
+    expect(prepared.providerRequest.input).toEqual([
+      { type: 'message', role: 'user', content: 'Find the task model.' },
+      { type: 'function_call', call_id: 'call_1', name: 'search_docs', arguments: '{"query":"task model"}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '[Tool execution error]\nNo error details provided.' },
+    ]);
+  });
+
   it('normalizes and emits function calls through the shared event boundary', async () => {
     const create = vi.fn().mockResolvedValue(openAIResponse({
       output: [{
