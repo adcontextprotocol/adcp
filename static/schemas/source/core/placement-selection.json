@@ -18,21 +18,13 @@
         },
         "placement_refs": {
           "type": "array",
-          "description": "Complete required placement set. A reference normally identifies a mode targetable placement. It MAY identify a mode included placement only when the set exactly equals the product's complete fixed included set, which is an inherent match rather than independent selection. Legacy publisher refs use {publisher_domain, placement_id}; authority-discriminated 3.2 identities use placement-identity.json so seller-inline inventory is selected by {seller_agent, placement_id}.",
+          "description": "Complete required placement set. A reference normally identifies a mode targetable placement. It MAY identify a mode included placement only when the set exactly equals the product's complete fixed included set, which is an inherent match rather than independent selection. Legacy publisher refs use {publisher_domain, placement_id}; authority-discriminated 3.2 identities use placement-identity.json so seller-inline inventory is selected by {seller_agent, placement_id}. An item that exactly matches placement-identity uses that canonical identity; otherwise a released-compatible item with publisher_domain and placement_id uses legacy product-context matching, and tolerated product metadata such as kind, name, or mode has no selection effect.",
           "items": {
             "anyOf": [
               {
                 "allOf": [
                   { "$ref": "/schemas/core/placement-ref.json" },
-                  { "required": ["publisher_domain"] },
-                  {
-                    "not": {
-                      "anyOf": [
-                        { "required": ["kind"] },
-                        { "required": ["seller_agent"] }
-                      ]
-                    }
-                  }
+                  { "required": ["publisher_domain"] }
                 ]
               },
               {

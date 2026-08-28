@@ -103,7 +103,7 @@
     },
     "placement_refs": {
       "type": "array",
-      "description": "Optional structured product-context placement references where this uploaded creative should run when uploading via create_media_buy or update_media_buy. New senders SHOULD include publisher_domain for publisher-catalog placements. If omitted, creative runs on all buyer-targetable placements. If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and receivers MUST ignore `placement_ids`. Only used during upload to media buy - not stored in creative library.",
+      "description": "Optional structured product-context placement references where this uploaded creative should run when uploading via create_media_buy or update_media_buy. These items always use placement-ref product-context semantics, even when tolerated additional members make an item resemble placement-identity. Receivers match only against the target package's committed placement set; kind and seller_agent are non-authoritative for routing and MUST NOT expand or reinterpret that set. A receiver MUST reject a ref when the enclosing product and committed set do not yield one unambiguous match. New senders SHOULD include publisher_domain for publisher-catalog placements. If omitted, creative runs on all buyer-targetable placements. If both `placement_refs` and legacy `placement_ids` are present, `placement_refs` wins and receivers MUST ignore `placement_ids`. Only used during upload to media buy - not stored in creative library.",
       "items": {
         "$ref": "/schemas/core/placement-ref.json"
       },

@@ -109,6 +109,14 @@ describe("delivery reporting sort contract", () => {
         dimensionSchema.properties.sort_direction.$ref,
         "/schemas/enums/sort-direction.json"
       );
+      assert.match(
+        dimensionSchema.properties.sort_by.description,
+        /Rows lacking a value for the applied sort metric order last regardless of direction/
+      );
+      assert.match(
+        dimensionSchema.properties.sort_direction.description,
+        /MUST apply the requested direction.*no availability fallback/
+      );
     });
   }
 

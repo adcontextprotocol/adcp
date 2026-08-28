@@ -702,7 +702,7 @@
                     },
                     "by_property_suppressed": {
                       "type": "boolean",
-                      "description": "Whether rows below the declared property_breakdown_min_impressions floor were omitted. Sellers MUST return this flag whenever by_property is present."
+                      "description": "Whether one or more otherwise reportable by_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
                     },
                     "by_property_sorted_by": {
                       "$ref": "/schemas/enums/sort-metric.json",
@@ -757,7 +757,7 @@
                     },
                     "by_collection_property_suppressed": {
                       "type": "boolean",
-                      "description": "Whether rows below the declared property_breakdown_min_impressions floor were omitted. Sellers MUST return this flag whenever by_collection_property is present."
+                      "description": "Whether one or more otherwise reportable by_collection_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_collection_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
                     },
                     "by_collection_property_sorted_by": {
                       "$ref": "/schemas/enums/sort-metric.json",
@@ -778,7 +778,7 @@
                     },
                     "by_placement_property_suppressed": {
                       "type": "boolean",
-                      "description": "Whether rows below the declared property_breakdown_min_impressions floor were omitted. Sellers MUST return this flag whenever by_placement_property is present."
+                      "description": "Whether one or more otherwise reportable by_placement_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_placement_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
                     },
                     "by_placement_property_sorted_by": {
                       "$ref": "/schemas/enums/sort-metric.json",

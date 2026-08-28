@@ -489,6 +489,10 @@ set, a product with any included placement does not declare selectable placement
 overlay support; sellers expose a separate selectable product when needed.
 `creative_assignments[].placement_refs` only route different creatives across
 placements already selected for the package; they do not purchase inventory.
+These refs retain product-context matching even when forward-compatible fields
+make them resemble a canonical placement identity: `kind` and `seller_agent`
+cannot expand or reinterpret the committed set, and the seller rejects any ref
+that does not resolve to one unambiguous placement within that set.
 
 Signal-targeting filter example:
 

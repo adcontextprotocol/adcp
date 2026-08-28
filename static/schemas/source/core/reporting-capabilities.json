@@ -118,11 +118,6 @@
       "type": "boolean",
       "description": "Whether this product supports property breakdowns in delivery reporting (by_property within by_package)."
     },
-    "property_breakdown_min_impressions": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Minimum impressions required for a property-grain row to be returned in by_property, by_collection_property, or by_placement_property. Sellers MUST populate this when any such floor is in effect; absence means no property-grain suppression floor."
-    },
     "supports_collection_breakdown": {
       "type": "boolean",
       "description": "Whether this product supports collection breakdowns in delivery reporting (by_collection within by_package)."

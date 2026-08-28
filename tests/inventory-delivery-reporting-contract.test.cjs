@@ -36,6 +36,7 @@ describe("canonical inventory delivery reporting", () => {
   let validatePlacementIdentity;
   let validateCanonicalPlacement;
   let validatePlacementSelection;
+  let validateCreativeAssignment;
   let validatePlacementRow;
   let validatePropertyRow;
   let validateCollectionRow;
@@ -54,6 +55,7 @@ describe("canonical inventory delivery reporting", () => {
       validatePlacementIdentity,
       validateCanonicalPlacement,
       validatePlacementSelection,
+      validateCreativeAssignment,
       validatePlacementRow,
       validatePropertyRow,
       validateCollectionRow,
@@ -67,6 +69,7 @@ describe("canonical inventory delivery reporting", () => {
       compile(readSchema("/schemas/core/placement-identity.json")),
       compile(readSchema("/schemas/core/canonical-placement.json")),
       compile(readSchema("/schemas/core/placement-selection.json")),
+      compile(readSchema("/schemas/core/creative-assignment.json")),
       compile(extension.properties.by_placement.items),
       compile(extension.properties.by_property.items),
       compile(extension.properties.by_collection.items),
@@ -154,6 +157,58 @@ describe("canonical inventory delivery reporting", () => {
       mode: "selected",
       placement_refs: [{ kind: "seller_inline", placement_id: "pre_roll" }],
     }), false);
+    for (const releasedCompatibleProductEntry of [
+      {
+        kind: "publisher_ref",
+        publisher_domain: "publisher.example",
+        placement_id: "pre_roll",
+        name: "Pre-roll",
+        mode: "targetable",
+      },
+      {
+        kind: "seller_inline",
+        publisher_domain: "publisher.example",
+        placement_id: "pre_roll",
+        name: "Pre-roll",
+        mode: "targetable",
+      },
+    ]) {
+      assert.equal(validatePlacementSelection({
+        mode: "selected",
+        placement_refs: [releasedCompatibleProductEntry],
+      }), true, JSON.stringify(validatePlacementSelection.errors));
+    }
+  });
+
+  it("keeps creative placement routing product-contextual", () => {
+    for (const placementRef of [
+      {
+        kind: "seller_inline",
+        seller_agent: { agent_url: "https://seller.example/adcp" },
+        placement_id: "pre_roll",
+      },
+      {
+        kind: "publisher_ref",
+        publisher_domain: "publisher.example",
+        placement_id: "pre_roll",
+        name: "Pre-roll",
+        mode: "targetable",
+      },
+    ]) {
+      assert.equal(validateCreativeAssignment({
+        creative_id: "creative_1",
+        placement_refs: [placementRef],
+      }), true, JSON.stringify(validateCreativeAssignment.errors));
+    }
+    for (const uri of [
+      "/schemas/core/creative-assignment.json",
+      "/schemas/core/creative-asset.json",
+    ]) {
+      const description = readSchema(uri).properties.placement_refs.description;
+      assert.match(description, /product-context semantics/);
+      assert.match(description, /kind and seller_agent are non-authoritative/);
+      assert.match(description, /MUST reject.*one unambiguous match/);
+    }
   });
 
   it("adds self-contained placement identity without invalidating legacy rows", () => {
@@ -247,8 +302,7 @@ describe("canonical inventory delivery reporting", () => {
       ]) {
         assert.equal(properties[capability].type, "boolean", `${uri} ${capability}`);
       }
-      assert.equal(properties.property_breakdown_min_impressions.type, "integer", uri);
-      assert.equal(properties.property_breakdown_min_impressions.minimum, 1, uri);
+      assert.equal(properties.property_breakdown_min_impressions, undefined, uri);
     }
   });
 
@@ -258,7 +312,18 @@ describe("canonical inventory delivery reporting", () => {
       .find(schema => schema.properties).properties;
     for (const dimension of ["property", "collection_property", "placement_property"]) {
       assert.equal(properties[`by_${dimension}_suppressed`].type, "boolean", dimension);
+      assert.match(
+        properties[`by_${dimension}_suppressed`].description,
+        /privacy, policy, or measurement thresholds/
+      );
+      assert.match(
+        properties[`by_${dimension}_suppressed`].description,
+        /Both suppression and truncation may be true/
+      );
       assert.match(properties[`by_${dimension}_truncated`].description, /non-suppressed/);
     }
+    const request = readSchema("/schemas/media-buy/get-media-buy-delivery-request.json");
+    assert.match(request.properties.reporting_dimensions.description, /requested dimension that the product declares supported/);
+    assert.match(request.properties.reporting_dimensions.description, /corresponding array \(possibly empty\)/);
   });
 });
