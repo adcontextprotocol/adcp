@@ -205,12 +205,16 @@ test("accepted compact proposal is controlled and read back without legacy mutat
       task: "control_media_buy",
       action: "decrease_budget",
       mode: "self_serve",
+      change_term_id: "change_decrease_budget",
     }
   );
 
   assert.equal(control.sample_request.media_buy_id, "$context.accepted_media_buy_id");
   assert.equal(control.sample_request.revision, "$context.accepted_media_buy_revision");
-  assert.equal(control.sample_request.daily_budget_cap, 100);
+  assert.deepEqual(control.sample_request.total_budget, {
+    amount: 750,
+    currency: "USD",
+  });
   assert.match(control.sample_request.idempotency_key, /^\$generate:uuid_v4#/);
   assert.equal(
     validation(control, "field_equals_context", "media_buy_status")?.context_key,
@@ -248,8 +252,8 @@ test("accepted compact proposal is controlled and read back without legacy mutat
     "proposal_controlled_revision"
   );
   assert.equal(
-    validation(readback, "field_value", "media_buys[0].daily_budget_cap")?.value,
-    100
+    validation(readback, "field_value", "media_buys[0].total_budget")?.value,
+    750
   );
   assert.equal(
     validation(readback, "field_equals_context", "media_buys[0].accepted_proposal_id")

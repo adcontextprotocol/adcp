@@ -35,6 +35,10 @@ import {
   type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
+import {
+  withSellerManagedIdempotencyReplay,
+  withSellerManagedTaskReplay,
+} from '../seller-managed-control-jobs.js';
 import { getPool } from '../../db/client.js';
 import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { getWebhookSigningMaterial } from '../webhooks.js';
@@ -47,7 +51,7 @@ import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
@@ -187,14 +191,15 @@ function pickStateStore(): AdcpStateStore {
 }
 
 function buildDefaultServerOptions(
-  storyboardCompat?: TrainingContext['storyboardCompat'],
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  taskRegistry: TaskRegistry,
 ): CreateAdcpServerFromPlatformOptions {
   const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.6',
-    idempotency: getSdkIdempotencyStore(),
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
     // task handoffs always use the durable framework emitter configured above.
@@ -276,14 +281,14 @@ export function createRegistryHolder(options: {
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
+        const signalsTaskRegistry = pickTaskRegistry('signals');
+        const salesTaskRegistry = withSellerManagedTaskReplay(pickTaskRegistry('sales'));
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
         const tCreate = Date.now();
-        const signalsTaskRegistry = pickTaskRegistry('signals');
-        const salesTaskRegistry = pickTaskRegistry('sales');
         const configs = [
           { id: 'signals', taskRegistry: signalsTaskRegistry, cfg: buildSignalsTenantConfig(hostBase, options, signalsTaskRegistry) },
           { id: 'sales', taskRegistry: salesTaskRegistry, cfg: buildSalesTenantConfig(hostBase, options, salesTaskRegistry) },

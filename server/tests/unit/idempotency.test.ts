@@ -26,6 +26,7 @@ import {
   payloadHash,
   scopedPrincipal,
   getIdempotencyStore,
+  getSdkIdempotencyStore,
   clearIdempotencyCache,
 } from '../../src/training-agent/idempotency.js';
 
@@ -184,6 +185,33 @@ describe('idempotency facade', () => {
       const p1 = scopedPrincipal('workos:org_abc', 'b:x.example');
       const p2 = scopedPrincipal('workos:org_abcdef', '');
       expect(p1).not.toBe(p2);
+    });
+  });
+
+  it('replays control_media_buy across replacement transport sessions', async () => {
+    const store = getSdkIdempotencyStore();
+    const base = ['@adcp/sdk-idempotency/v2', 'control_media_buy'] as const;
+    const first = await store.check({
+      principal: 'buyer-principal',
+      key: 'seller-control-session-replay-01',
+      payload: [...base, ['session-a', null, 'account-1'], 'request-hash'],
+    });
+    expect(first.kind).toBe('miss');
+    if (first.kind !== 'miss') return;
+    await store.save({
+      principal: 'buyer-principal',
+      key: 'seller-control-session-replay-01',
+      payloadHash: first.payloadHash,
+      claimToken: first.claimToken,
+      response: { status: 'submitted', task_id: 'smc_session_replay' },
+    });
+    await expect(store.check({
+      principal: 'buyer-principal',
+      key: 'seller-control-session-replay-01',
+      payload: [...base, ['session-b', null, 'account-1'], 'request-hash'],
+    })).resolves.toMatchObject({
+      kind: 'replay',
+      response: { status: 'submitted', task_id: 'smc_session_replay' },
     });
   });
 });

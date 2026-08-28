@@ -292,7 +292,7 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   const baselines = [
     ['signals', 45, 80],
     ['sales', 133, 632],
-    ['governance', 47, 157],
+    ['governance', 47, 161],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
     ['brand', 45, 116],

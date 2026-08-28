@@ -641,6 +641,13 @@ export async function getSession(key: string, controllerFixtureSessionKey?: stri
   return session;
 }
 
+/** Return an already-authoritatively-loaded session for synchronous policy
+ * checks. Security-sensitive callers must not interpret a missing cache entry
+ * as an empty durable record. */
+export function getCachedSession(key: string): SessionState | undefined {
+  return requestCtx.getStore()?.sessions.get(key);
+}
+
 
 const MAX_DOMAIN_LEN = 253; // RFC 1035 max hostname length
 const MAX_ACCOUNT_ID_LEN = 128;
@@ -676,6 +683,24 @@ function canonicalOpenKey(scope: string, preferred?: string): string {
   const candidate = preferred ?? `open:${scope}`;
   if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
   return `open:h:${createHash('sha256').update(scope).digest('hex')}`;
+}
+
+const trustedSessionPartitionHint = Symbol('trustedSessionPartitionHint');
+
+/** Attach a framework-derived storage hint without changing the AccountRef the
+ * business layer receives. The WeakMap prevents callers from forging the hint
+ * through wire input and avoids persisting transport-only partition metadata. */
+export function registerSharedPublicBrandPartition<T extends object>(
+  args: T,
+  brandDomain: string,
+): T {
+  Object.defineProperty(args, trustedSessionPartitionHint, {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: { sharedPublicBrandDomain: brandDomain.toLowerCase() },
+  });
+  return args;
 }
 
 /** Derive a session key from the request context.
@@ -721,9 +746,18 @@ export function sessionKeyFromArgs(
     try {
       const canonical = canonicalizeAccountRef(account);
       const scope = accountScopeFromRef(account);
+      // The symbol is framework-owned, cannot be forged by JSON input, and is
+      // intentionally enumerable so the ordinary handler argument spreads
+      // retain it until storage partitioning occurs.
+      const partitionHint = (args as typeof args & {
+        [trustedSessionPartitionHint]?: { sharedPublicBrandDomain: string };
+      })[trustedSessionPartitionHint];
       if (principal) return principalScopedOpenKey(principal, scope);
       if (canonical.kind === 'account_id') {
         return canonicalOpenKey(scope);
+      }
+      if (partitionHint?.sharedPublicBrandDomain === canonical.brand.domain.toLowerCase()) {
+        return canonicalOpenKey(scope, `open:${canonical.brand.domain.toLowerCase()}`);
       }
       if (
         canonical.brand.brand_id === undefined

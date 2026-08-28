@@ -26,10 +26,16 @@ fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
 SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
 SDK_GENERATED_SCHEMA_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs"
+SDK_PROPOSAL_VERIFICATION_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.js"
+SDK_PROPOSAL_VERIFICATION_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.mjs"
 
-restore_sdk_generated_schema() {
+restore_sdk_overlays() {
   local file backup
-  for file in "${SDK_GENERATED_SCHEMA_FILE}" "${SDK_GENERATED_SCHEMA_MJS_FILE}"; do
+  for file in \
+    "${SDK_GENERATED_SCHEMA_FILE}" \
+    "${SDK_GENERATED_SCHEMA_MJS_FILE}" \
+    "${SDK_PROPOSAL_VERIFICATION_FILE}" \
+    "${SDK_PROPOSAL_VERIFICATION_MJS_FILE}"; do
     backup="${file}.adcp-overlay-backup"
     if [ -f "${backup}" ]; then
       cp "${backup}" "${file}"
@@ -224,8 +230,8 @@ if [ -n "${SCHEMA_ROOT}" ]; then
   export ADCP_SCHEMA_ROOT="${SCHEMA_ROOT}"
 fi
 
-restore_sdk_generated_schema
-trap restore_sdk_generated_schema EXIT
+restore_sdk_overlays
+trap restore_sdk_overlays EXIT
 if [ "${OVERLAY}" -eq 1 ]; then
   # Mirror CI's overlay step before running tenants: copies in-repo
   # compliance source onto the SDK's bundled cache so the runner grades
@@ -260,7 +266,7 @@ else
     # clean-result-row and passing-step regression floors.
     "signals:45:80"
     "sales:133:632"
-    "governance:47:157"
+    "governance:47:161"
     "creative:49:209"
     "creative-builder:50:184"
     "brand:45:116"
@@ -291,6 +297,12 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/declined_proposal_refinement:6:0"
   "media_buy_seller/declined_proposal_execution:8:0"
   "media_buy_seller/expired_proposal_execution:8:0"
+  "media_buy_seller/change_rights_state_projection:8:0"
+  "media_buy_seller/acceptance_policy_discovery:3:0"
+  "media_buy_seller/governance_agent_binding_acceptance:5:0"
+)
+REQUIRED_EXACT_CURRENT_GOVERNANCE=(
+  "governance/failed_outcome_audit_persistence:4:0"
 )
 REQUIRED_CLEAN_CURRENT_SIGNALS=(
   "wholesale_feed_signals"
@@ -435,6 +447,21 @@ for entry in "${TENANTS[@]}"; do
       fi
     done
     for requirement in "${REQUIRED_EXACT_CURRENT_SALES[@]}"; do
+      storyboard_id="${requirement%%:*}"
+      counts="${requirement#*:}"
+      expected_passed="${counts%%:*}"
+      expected_skipped="${counts##*:}"
+      if storyboard_executed_exactly "${storyboard_id}" "${expected_passed}" "${expected_skipped}" "${log}"; then
+        echo "  ✓ required-exact ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+      else
+        status="✗"
+        failed_floor="${failed_floor:+${failed_floor}; }required-exact ${storyboard_id} did not pass ${expected_passed} steps with ${expected_skipped} skips"
+      fi
+    done
+  fi
+
+  if [ "${FLOOR_SET}" = "current" ] && [ "${tenant}" = "governance" ]; then
+    for requirement in "${REQUIRED_EXACT_CURRENT_GOVERNANCE[@]}"; do
       storyboard_id="${requirement%%:*}"
       counts="${requirement#*:}"
       expected_passed="${counts%%:*}"

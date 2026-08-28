@@ -517,6 +517,9 @@
         "type": "string"
       }
     },
+    "acceptance_policy_profile_ids": {
+      "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
+    },
     "trusted_match": {
       "type": "object",
       "description": "Trusted Match Protocol capabilities for this product. When present, the product supports real-time contextual and/or identity matching via TMP. Buyers use this to determine what response types the publisher can accept and whether brands can be selected dynamically at match time.",

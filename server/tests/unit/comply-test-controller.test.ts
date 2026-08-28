@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import { z } from 'zod';
 import {
   createTrainingAgentServer,
@@ -25,6 +29,24 @@ const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 const ACCOUNT = { brand: { domain: 'comply-test.example.com' }, operator: 'comply-tester', sandbox: true };
 const CONTROLLER_ACCOUNT = { ...ACCOUNT, operator: ACCOUNT.brand.domain };
 const BRAND = { domain: 'comply-test.example.com', name: 'Comply Test Brand' };
+const RELEASED_31_SCHEMA_ROOT = join(process.cwd(), 'dist/schemas/3.1.19');
+
+async function validateReleased31Schema(data: unknown, relativePath: string): Promise<string[]> {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    loadSchema: async (uri: string) => {
+      const prefix = '/schemas/3.1.19/';
+      if (!uri.startsWith(prefix)) throw new Error(`Cannot load released 3.1 schema: ${uri}`);
+      return JSON.parse(readFileSync(join(RELEASED_31_SCHEMA_ROOT, uri.slice(prefix.length)), 'utf8'));
+    },
+  });
+  addFormats(ajv);
+  const schema = JSON.parse(readFileSync(join(RELEASED_31_SCHEMA_ROOT, relativePath), 'utf8'));
+  const validate = await ajv.compileAsync(schema);
+  if (validate(data)) return [];
+  return (validate.errors ?? []).map(error => `${error.instancePath || '(root)'} ${error.message}`);
+}
 
 function withIdempotencyKey(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   if (!MUTATING_TOOLS.has(toolName)) return args;
@@ -221,7 +243,7 @@ describe('comply_test_controller', () => {
       ]));
       // Catch silent drift in either direction (entries removed, or new ones
       // not yet documented in this assertion).
-      expect(scenarios.length).toBe(27);
+      expect(scenarios.length).toBe(28);
       // Dedup invariant — see the list_scenarios response merge in the wrapper.
       expect(new Set(scenarios).size).toBe(scenarios.length);
     });
@@ -884,6 +906,558 @@ describe('comply_test_controller', () => {
       });
     });
 
+    it('projects accepted change terms by state and adapts their identity across protocol versions', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          creative_id: 'proposal_bound_creative',
+          fixture: { status: 'approved', format_id: { id: 'display_300x250' } },
+        },
+      });
+      const { result: seeded, isError } = await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'proposal_bound_change_rights',
+          fixture: {
+            status: 'active',
+            currency: 'USD',
+            total_budget: 10000,
+            start_time: '2026-01-01T00:00:00Z',
+            end_time: '2099-12-31T23:59:59Z',
+            packages: [{
+              package_id: 'proposal_bound_package',
+              product_id: 'proposal_bound_product',
+              pricing_option_id: 'proposal_bound_pricing',
+              budget: 10000,
+              creative_assignments: ['proposal_bound_creative'],
+            }],
+            product_allowed_actions: [{
+              action: 'update_targeting',
+              modes: ['self_serve'],
+              allowed_statuses: ['active'],
+            }],
+            available_actions: [{ action: 'update_targeting', mode: 'self_serve' }],
+            accepted_proposal: {
+              proposal_id: 'accepted_change_rights_proposal',
+              proposal_kind: 'new_media_buy',
+              proposal_status: 'accepted',
+              accepted_at: '2026-01-01T00:00:00Z',
+              media_buy_id: 'proposal_bound_change_rights',
+              name: 'Proposal-bound change rights',
+              commercial_terms: {
+                brand: { domain: 'comply-test.example.com' },
+                purchases: [],
+                start_time: '2026-01-01T00:00:00Z',
+                end_time: '2099-12-31T23:59:59Z',
+                total_budget: { amount: 10000, currency: 'USD' },
+                change_terms: [
+                  {
+                    term_id: 'pause_active',
+                    action: 'pause',
+                    service_mode: 'self_serve',
+                    allowed_statuses: ['active'],
+                  },
+                  {
+                    term_id: 'resume_paused',
+                    action: 'resume',
+                    service_mode: 'self_serve',
+                    allowed_statuses: ['paused'],
+                  },
+                  {
+                    term_id: 'increase_active',
+                    action: 'increase_budget',
+                    service_mode: 'seller_managed',
+                    allowed_statuses: ['active'],
+                    processing_sla: { response_max: 'PT30M', completion_max: 'PT24H' },
+                    constraints: { kind: 'budget', max_delta_percent: 20 },
+                    terms_ref: 'https://seller.example/terms/budget-increase',
+                  },
+                  {
+                    term_id: 'decrease_paused',
+                    action: 'decrease_budget',
+                    service_mode: 'self_serve',
+                    allowed_statuses: ['paused'],
+                  },
+                  {
+                    term_id: 'extend_active',
+                    action: 'extend_flight',
+                    service_mode: 'self_serve',
+                    allowed_statuses: ['active'],
+                  },
+                  {
+                    term_id: 'rename_when_account_good',
+                    action: 'update_name',
+                    service_mode: 'self_serve',
+                    allowed_statuses: ['active'],
+                    conditions: ['account_in_good_standing'],
+                  },
+                ],
+              },
+              terms_digest: 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            },
+          },
+        },
+      });
+      expect(isError).toBeFalsy();
+      expect(seeded.success).toBe(true);
+
+      const { result: active32 } = await simulateCallTool(server, 'get_media_buys', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['proposal_bound_change_rights'],
+      });
+      const activeBuy32 = (active32 as any).media_buys?.[0];
+      expect(activeBuy32.available_actions).toEqual([
+        { task: 'control_media_buy', action: 'pause', mode: 'self_serve', change_term_id: 'pause_active' },
+        {
+          task: 'control_media_buy',
+          action: 'increase_budget',
+          mode: 'seller_managed',
+          sla: { response_max: 'PT30M', completion_max: 'PT24H' },
+          change_term_id: 'increase_active',
+        },
+        { task: 'refine_proposals', action: 'extend_flight', mode: 'self_serve', change_term_id: 'extend_active' },
+      ]);
+      expect(activeBuy32.accepted_proposal.commercial_terms.change_terms).toHaveLength(6);
+
+      const { result: active31 } = await simulateCallTool(server, 'get_media_buys', {
+        adcp_version: '3.1',
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_ids: ['proposal_bound_change_rights'],
+      });
+      expect((active31 as any).media_buys?.[0]?.available_actions, JSON.stringify(active31)).toEqual([
+        { action: 'pause', mode: 'self_serve', terms_ref: 'pause_active' },
+        {
+          action: 'increase_budget',
+          mode: 'requires_approval',
+          sla: { response_max: 'PT30M', completion_max: 'PT24H' },
+          terms_ref: 'increase_active',
+        },
+        { action: 'extend_flight', mode: 'self_serve', terms_ref: 'extend_active' },
+      ]);
+
+      const legacyRejection = await simulateCallTool(server, 'update_media_buy', {
+        adcp_version: '3.1',
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        packages: [{ package_id: 'proposal_bound_package', budget: 11000 }],
+      });
+      const legacyError = (legacyRejection.result as any).errors?.[0] ?? legacyRejection.result;
+      expect(legacyError).toMatchObject({
+        code: 'ACTION_NOT_ALLOWED',
+        details: {
+          attempted_action: 'increase_budget',
+          reason: 'mode_mismatch',
+          currently_available_actions: [
+            { action: 'pause', mode: 'self_serve', terms_ref: 'pause_active' },
+            { action: 'increase_budget', mode: 'requires_approval', terms_ref: 'increase_active' },
+            { action: 'extend_flight', mode: 'self_serve', terms_ref: 'extend_active' },
+          ],
+        },
+      });
+      const released31Errors = await validateReleased31Schema(
+        legacyError.details,
+        'error-details/action-not-allowed.json',
+      );
+      expect(released31Errors, released31Errors.join('; ')).toEqual([]);
+
+      const sellerManaged = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        total_budget: { amount: 11000, currency: 'USD' },
+      });
+      expect(sellerManaged.isError).toBe(true);
+      expect(sellerManaged.result).toMatchObject({
+        code: 'ACTION_NOT_ALLOWED',
+        details: {
+          attempted_action: 'increase_budget',
+          reason: 'mode_mismatch',
+        },
+      });
+
+      const unevaluatedCondition = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        name: 'Must not be applied',
+      });
+      expect(unevaluatedCondition.isError).toBe(true);
+      expect(unevaluatedCondition.result).toMatchObject({
+        code: 'ACTION_NOT_ALLOWED',
+        details: {
+          attempted_action: 'update_name',
+          reason: 'condition_unresolved',
+        },
+      });
+
+      const packageCeiling = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        total_budget: { amount: 11000, currency: 'USD' },
+        packages: [{
+          package_id: 'proposal_bound_package',
+          targeting_overlay: { geo_countries: ['US'] },
+        }],
+      });
+      expect(packageCeiling.isError).toBe(true);
+      expect(packageCeiling.result).toMatchObject({
+        code: 'ACTION_NOT_ALLOWED',
+        details: {
+          attempted_action: 'update_targeting',
+          reason: 'not_supported_on_buy',
+        },
+      });
+
+      const { result: paused } = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'proposal_bound_change_rights',
+        revision: activeBuy32.revision,
+        paused: true,
+      });
+      expect(paused).toMatchObject({
+        status: 'completed',
+        media_buy_status: 'paused',
+        available_actions: [{
+          action: 'resume',
+          change_term_id: 'resume_paused',
+        }, {
+          action: 'decrease_budget',
+          change_term_id: 'decrease_paused',
+        }],
+      });
+
+      const { result: pausedRead } = await simulateCallTool(server, 'get_media_buys', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_ids: ['proposal_bound_change_rights'],
+      });
+      expect((pausedRead as any).media_buys?.[0]?.available_actions).toEqual([
+        { task: 'control_media_buy', action: 'resume', mode: 'self_serve', change_term_id: 'resume_paused' },
+        { task: 'control_media_buy', action: 'decrease_budget', mode: 'self_serve', change_term_id: 'decrease_paused' },
+      ]);
+      expect((pausedRead as any).media_buys?.[0]?.accepted_proposal.commercial_terms.change_terms)
+        .toEqual(activeBuy32.accepted_proposal.commercial_terms.change_terms);
+    });
+
+    it('executes self-serve budget rights inside typed bounds and requotes outside them', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_creative',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          creative_id: 'bounded_budget_creative',
+          fixture: { status: 'approved', format_id: { id: 'display_300x250' } },
+        },
+      });
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'bounded_self_serve_budget',
+          fixture: {
+            status: 'active',
+            currency: 'USD',
+            total_budget: 10000,
+            start_time: '2026-01-01T00:00:00Z',
+            end_time: '2099-12-31T23:59:59Z',
+            packages: [{
+              package_id: 'bounded_budget_package',
+              product_id: 'bounded_budget_product',
+              pricing_option_id: 'bounded_budget_pricing',
+              budget: 10000,
+              creative_assignments: ['bounded_budget_creative'],
+            }],
+            accepted_proposal: {
+              proposal_id: 'bounded_budget_proposal',
+              proposal_kind: 'new_media_buy',
+              proposal_status: 'accepted',
+              accepted_at: '2026-01-01T00:00:00Z',
+              media_buy_id: 'bounded_self_serve_budget',
+              name: 'Bounded budget right',
+              commercial_terms: {
+                brand: { domain: 'comply-test.example.com' },
+                purchases: [{
+                  product_id: 'bounded_budget_product',
+                  pricing_option_id: 'bounded_budget_pricing',
+                  pricing: {
+                    pricing_option_id: 'bounded_budget_pricing',
+                    pricing_model: 'cpm',
+                    currency: 'USD',
+                    fixed_price: 10,
+                  },
+                  budget: 10000,
+                  start_time: '2026-01-01T00:00:00Z',
+                  end_time: '2099-12-31T23:59:59Z',
+                }],
+                start_time: '2026-01-01T00:00:00Z',
+                end_time: '2099-12-31T23:59:59Z',
+                total_budget: { amount: 10000, currency: 'USD' },
+                change_terms: [{
+                  term_id: 'increase_up_to_twenty_percent',
+                  action: 'increase_budget',
+                  service_mode: 'self_serve',
+                  allowed_statuses: ['active'],
+                  constraints: { kind: 'budget', max_delta_percent: 20 },
+                }],
+              },
+              terms_digest: 'sha256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+            },
+          },
+        },
+      });
+
+      const { result: before } = await simulateCallTool(server, 'get_media_buys', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_ids: ['bounded_self_serve_budget'],
+      });
+      const buy = (before as any).media_buys[0];
+      expect(buy.available_actions).toEqual([{
+        task: 'control_media_buy',
+        action: 'increase_budget',
+        mode: 'self_serve',
+        change_term_id: 'increase_up_to_twenty_percent',
+      }]);
+
+      const { result: increased, isError: increaseError } = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'bounded_self_serve_budget',
+        revision: buy.revision,
+        total_budget: { amount: 11500, currency: 'USD' },
+      });
+      expect(increaseError, JSON.stringify(increased)).toBeFalsy();
+      expect(increased).toMatchObject({
+        status: 'completed',
+        media_buy_id: 'bounded_self_serve_budget',
+      });
+
+      const requote = await simulateCallTool(server, 'control_media_buy', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_id: 'bounded_self_serve_budget',
+        revision: increased.revision,
+        total_budget: { amount: 14000, currency: 'USD' },
+      });
+      expect(requote.isError).toBe(true);
+      expect(requote.result).toMatchObject({
+        code: 'REQUOTE_REQUIRED',
+        details: {
+          envelope_field: 'total_budget.amount',
+          change_term_id: 'increase_up_to_twenty_percent',
+          constraint: 'max_delta_percent',
+        },
+      });
+
+      const untypedCommercialUpdates = [
+        { field: 'measurement_terms', value: { billing_measurement: { measurement_window: 'post_sivt' } } },
+        { field: 'performance_standards', value: [{ metric: 'viewability', threshold: 0.7 }] },
+        { field: 'audience_evidence_requirements', value: { minimum_confidence: 0.9 } },
+        { field: 'audience_evidence_pins', value: [{ evidence_id: 'evidence_pin_1' }] },
+        { field: 'agency_estimate_number', value: 'AE-UNNEGOTIATED-1' },
+      ];
+      for (const { field, value } of untypedCommercialUpdates) {
+        const rejected = await simulateCallTool(server, 'update_media_buy', {
+          adcp_version: '3.2-beta.6',
+          account: ACCOUNT,
+          brand: BRAND,
+          media_buy_id: 'bounded_self_serve_budget',
+          revision: increased.revision,
+          packages: [{ package_id: 'bounded_budget_package', [field]: value }],
+        });
+        const error = (rejected.result as any).errors?.[0] ?? rejected.result;
+        expect(error).toMatchObject({
+          code: 'REQUOTE_REQUIRED',
+          field: `packages[0].${field}`,
+          details: {
+            envelope_field: `packages[0].${field}`,
+            constraint: 'no_typed_change_action',
+          },
+        });
+      }
+
+      const session = await getSession(sessionKeyFromArgs({ account: ACCOUNT }, 'open'));
+      const unchangedBuy = session.mediaBuys.get('bounded_self_serve_budget');
+      const unchangedPackage = unchangedBuy?.packages.find(pkg => pkg.packageId === 'bounded_budget_package');
+      expect(unchangedBuy?.revision).toBe(increased.revision);
+      expect(unchangedPackage).toBeDefined();
+      for (const field of [
+        'measurementTerms',
+        'performanceStandards',
+        'audienceEvidenceRequirements',
+        'audienceEvidencePins',
+        'agencyEstimateNumber',
+      ]) {
+        expect(Object.hasOwn(unchangedPackage!, field)).toBe(false);
+      }
+    });
+
+    it('does not synthesize resume beyond accepted change terms', async () => {
+      await simulateCallTool(server, 'comply_test_controller', {
+        scenario: 'seed_media_buy',
+        account: ACCOUNT,
+        brand: BRAND,
+        params: {
+          media_buy_id: 'paused_without_resume_term',
+          fixture: {
+            status: 'paused',
+            currency: 'USD',
+            start_time: '2026-01-01T00:00:00Z',
+            end_time: '2099-12-31T23:59:59Z',
+            accepted_proposal: {
+              proposal_id: 'paused_without_resume_proposal',
+              proposal_kind: 'new_media_buy',
+              proposal_status: 'accepted',
+              accepted_at: '2026-01-01T00:00:00Z',
+              media_buy_id: 'paused_without_resume_term',
+              name: 'No implicit resume',
+              commercial_terms: {
+                brand: { domain: 'comply-test.example.com' },
+                purchases: [],
+                start_time: '2026-01-01T00:00:00Z',
+                end_time: '2099-12-31T23:59:59Z',
+                total_budget: { amount: 1000, currency: 'USD' },
+                change_terms: [{
+                  term_id: 'decrease_only',
+                  action: 'decrease_budget',
+                  service_mode: 'self_serve',
+                  allowed_statuses: ['paused'],
+                }],
+              },
+              terms_digest: 'sha256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC',
+            },
+          },
+        },
+      });
+
+      const { result } = await simulateCallTool(server, 'get_media_buys', {
+        adcp_version: '3.2-beta.6',
+        account: ACCOUNT,
+        media_buy_ids: ['paused_without_resume_term'],
+      });
+      expect((result as any).media_buys[0].available_actions).toEqual([{
+        task: 'control_media_buy',
+        action: 'decrease_budget',
+        mode: 'self_serve',
+        change_term_id: 'decrease_only',
+      }]);
+    });
+
+    it('fails closed on every non-budget accepted constraint family before mutation', async () => {
+      const cases = [
+        {
+          id: 'bounded_flight_change',
+          term: {
+            term_id: 'bounded_extension',
+            action: 'extend_flight',
+            service_mode: 'self_serve',
+            allowed_statuses: ['active'],
+            constraints: { kind: 'flight', max_change: { interval: 1, unit: 'days' } },
+          },
+          tool: 'update_media_buy',
+          request: { end_time: '2099-12-31T23:59:59Z' },
+          constraint: 'max_change',
+        },
+        {
+          id: 'bounded_package_addition',
+          term: {
+            term_id: 'one_package_max',
+            action: 'add_packages',
+            service_mode: 'self_serve',
+            allowed_statuses: ['active'],
+            constraints: { kind: 'package_count', max_additions: 1 },
+          },
+          tool: 'update_media_buy',
+          request: {
+            new_packages: [
+              { product_id: 'new_product_1', pricing_option_id: 'price_1', budget: 100 },
+              { product_id: 'new_product_2', pricing_option_id: 'price_2', budget: 100 },
+            ],
+          },
+          constraint: 'max_additions',
+        },
+        {
+          id: 'pause_requires_notice',
+          term: {
+            term_id: 'scheduled_pause_only',
+            action: 'pause',
+            service_mode: 'self_serve',
+            allowed_statuses: ['active'],
+            constraints: { kind: 'effective_timing', minimum_notice: { interval: 1, unit: 'hours' } },
+          },
+          tool: 'control_media_buy',
+          request: { paused: true },
+          constraint: 'minimum_notice',
+        },
+      ] as const;
+
+      for (const testCase of cases) {
+        await simulateCallTool(server, 'comply_test_controller', {
+          scenario: 'seed_media_buy',
+          account: ACCOUNT,
+          brand: BRAND,
+          params: {
+            media_buy_id: testCase.id,
+            fixture: {
+              status: 'active',
+              currency: 'USD',
+              total_budget: 1000,
+              start_time: '2026-01-01T00:00:00Z',
+              end_time: '2099-01-01T00:00:00Z',
+              accepted_proposal: {
+                proposal_id: `${testCase.id}_proposal`,
+                proposal_kind: 'new_media_buy',
+                proposal_status: 'accepted',
+                accepted_at: '2026-01-01T00:00:00Z',
+                media_buy_id: testCase.id,
+                name: testCase.id,
+                commercial_terms: {
+                  brand: { domain: 'comply-test.example.com' },
+                  purchases: [],
+                  start_time: '2026-01-01T00:00:00Z',
+                  end_time: '2099-01-01T00:00:00Z',
+                  total_budget: { amount: 1000, currency: 'USD' },
+                  change_terms: [testCase.term],
+                },
+                terms_digest: 'sha256:DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
+              },
+            },
+          },
+        });
+
+        const attempt = await simulateCallTool(server, testCase.tool, {
+          adcp_version: testCase.tool === 'control_media_buy' ? '3.2-beta.6' : '3.1',
+          account: ACCOUNT,
+          media_buy_id: testCase.id,
+          revision: 1,
+          ...testCase.request,
+        });
+        const error = (attempt.result as any).errors?.[0] ?? attempt.result;
+        expect(error, `${testCase.id}: ${JSON.stringify(attempt.result)}`).toMatchObject({
+          code: 'REQUOTE_REQUIRED',
+          details: {
+            change_term_id: testCase.term.term_id,
+            constraint: testCase.constraint,
+          },
+        });
+      }
+    });
+
     it('seed_* requires params (per spec allOf clause)', async () => {
       const { result } = await simulateCallTool(server, 'comply_test_controller', {
         scenario: 'seed_creative',
@@ -1338,11 +1912,19 @@ describe('comply_test_controller', () => {
         ],
       });
       expect((created as any).errors).toBeUndefined();
-      expect(created.available_actions).toEqual([{
-        task: 'control_media_buy',
-        action: 'increase_budget',
-        mode: 'self_serve',
-      }]);
+      expect(created.available_actions).toEqual([]);
+
+      const aggregateRejected = await simulateCallTool(server, 'update_media_buy', {
+        account: ACCOUNT,
+        brand: BRAND,
+        media_buy_id: 'mixed_allowed_actions_buy',
+        total_budget: { amount: 22000, currency: 'USD' },
+      });
+      expect((aggregateRejected.result as any).errors?.[0]?.code).toBe('ACTION_NOT_ALLOWED');
+      expect((aggregateRejected.result as any).errors?.[0]?.details).toMatchObject({
+        attempted_action: 'increase_budget',
+        reason: 'not_supported_on_product',
+      });
 
       const packages = (created as any).packages as Array<{ package_id: string }>;
       const { result: rejected } = await simulateCallTool(server, 'update_media_buy', {

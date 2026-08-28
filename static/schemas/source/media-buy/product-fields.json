@@ -37,6 +37,7 @@
       "catalog_match",
       "list_applications",
       "brief_relevance",
+      "acceptance_policy_profile_ids",
       "expires_at",
       "allowed_actions"
     ]

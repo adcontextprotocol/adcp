@@ -1,0 +1,57 @@
+{
+  "policy_id": "amazon_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "Amazon Ads Political Advertising Acceptance",
+  "description": "Amazon Ads prohibition on political campaigns, candidates, parties, elections, and public-issue advocacy.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2026-06-25",
+  "source_url": "https://advertising.amazon.com/help/GZS8A5XCFQJTS88N",
+  "source_name": "Amazon Ads",
+  "issuer": { "domain": "amazon.com", "name": "Amazon" },
+  "acceptance_profile": {
+    "profile_id": "amazon_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:81b80b7edb40508c97daf2f74493f2e2cb391e4a2025bf50b9a1bc6331d215b9",
+    "policy_refs": [{ "policy_id": "amazon_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:5c7dbfca6637dcc5c7d52c03534cfe929d6c21b5c71491be5e08693448cc4aa4" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "delivery"],
+      "all_jurisdictions": true
+    },
+    "description": "Reusable coarse profile of Amazon Ads' public political-advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "amazon_political_prohibited",
+        "effective_at": "2026-06-25T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation", "political_merchandise"],
+        "applies_to": ["account", "media_buy", "creative", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["amazon_political_advertising_acceptance"],
+        "description": "Political campaigns, candidates, parties, elections, public-issue advocacy, and political merchandise are not accepted."
+      }
+    ]
+  },
+  "policy": "Advertising for political campaigns, candidates, political parties, elections, and public issues intended to influence political outcomes is prohibited under the operator's advertising acceptance policies. Product eligibility does not override the prohibition when the advertisement or promoted merchandise is political.",
+  "guidance": "Represent political-advertising facets as prohibited unless a more specific current issuer rule establishes an exception. Evaluate both creative message and promoted product or merchandise.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A seller advertises an ordinary consumer product with no political messaging or political merchandising.",
+        "explanation": "The advertisement is outside the political prohibition."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An advertiser promotes merchandise designed to support a political candidate.",
+        "explanation": "Political campaign advertising and political products are prohibited."
+      }
+    ]
+  }
+}

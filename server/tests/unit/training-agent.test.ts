@@ -24,6 +24,7 @@ import {
 import {
   createTrainingAgentServer,
   executeTrainingAgentTool,
+  handleGetAdcpCapabilities,
   handleBuildCreative,
   handleListTransformers,
   handleControlMediaBuy,
@@ -38,6 +39,9 @@ import {
   resolveServedAdcpVersionForTool,
   trainingCatalogLegacyResolver,
   creativeProjectionAdapters,
+  TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
+  TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
+  TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -63,7 +67,10 @@ function futureFlight(): { start_time: string; end_time: string } {
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
-import type { TrainingContext } from '../../src/training-agent/types.js';
+import {
+  supportsSellerGovernanceDiscovery,
+  type TrainingContext,
+} from '../../src/training-agent/types.js';
 import {
   HUMAN_REVIEW_CATEGORIES,
   HUMAN_REVIEW_POLICY_IDS,
@@ -3035,7 +3042,7 @@ describe('validate_input handler', () => {
     const validateResult = validateResponse.structuredContent as Record<string, unknown>;
 
     expect(validateResponse.isError).not.toBe(true);
-    expect(validateResult.adcp_version).toBe('3.1-rc.15');
+    expect(validateResult.adcp_version).toBe('3.1');
 
     const lifecycleResponse = await handler({
       method: 'tools/call',
@@ -3044,7 +3051,7 @@ describe('validate_input handler', () => {
     const lifecycleResult = lifecycleResponse.structuredContent as Record<string, unknown>;
 
     expect(lifecycleResponse.isError).toBe(true);
-    expect(lifecycleResult.adcp_version).toBe('3.1-rc.15');
+    expect(lifecycleResult.adcp_version).toBe('3.1');
     expect(lifecycleResult.adcp_error).toMatchObject({
       code: 'INVALID_REQUEST',
       message: 'Unknown tool: list_products',
@@ -15592,7 +15599,7 @@ describe('get_signals handler', () => {
 
 describe('activate_signal handler', () => {
   const account = { brand: { domain: 'signal-test.example' }, operator: 'signal-test.example' };
-  const governanceAgentUrl = 'https://governance.signal-test.example/mcp';
+  const governanceAgentUrl = 'https://governance.example/mcp';
 
   async function syncGovernedAccount(server: ReturnType<typeof createTrainingAgentServer>) {
     await simulateCallTool(server, 'sync_accounts', {
@@ -16110,7 +16117,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -16129,6 +16136,33 @@ describe('get_adcp_capabilities handler', () => {
       lifecycle_tools: expect.arrayContaining(['refine_proposals']),
       proposal_refinement: { supported_dimensions: [] },
     });
+  });
+
+  it('advertises a served acceptance-policy catalog with an exact byte digest', async () => {
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.2-beta.7',
+    });
+    const discovery = (result.media_buy as Record<string, any>).acceptance_policy_discovery;
+    expect(discovery).toMatchObject({
+      catalog_url: expect.stringMatching(new RegExp(`${TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`)),
+      catalog_digest: TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
+      default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
+    });
+
+    const bytes = readFileSync(new URL(
+      '../../../static/registry/acceptance-policy-catalog.json',
+      import.meta.url,
+    ));
+    expect(`sha256:${createHash('sha256').update(bytes).digest('hex')}`).toBe(discovery.catalog_digest);
+    const catalog = JSON.parse(bytes.toString('utf8')) as { registry_profiles: Array<{ profile_id: string }> };
+    expect(catalog.registry_profiles.map(profile => profile.profile_id)).toContain(
+      TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
+    );
+    expect(catalog.registry_profiles.map(profile => profile.profile_id)).toContain(
+      'google_political_advertising_acceptance',
+    );
   });
 
   it('advertises wholesale feed versioning, modes, and webhooks', async () => {
@@ -16199,6 +16233,7 @@ describe('get_adcp_capabilities handler', () => {
     expect(result.wholesale_feed_versioning).toBeUndefined();
     expect(result.wholesale_feed_webhooks).toBeUndefined();
     expect((result.media_buy as Record<string, unknown>).buying_modes).not.toContain('wholesale');
+    expect((result.media_buy as Record<string, unknown>).acceptance_policy_discovery).toBeUndefined();
     expect(result.signals).toBeUndefined();
   });
 
@@ -16264,9 +16299,10 @@ describe('get_adcp_capabilities handler', () => {
   });
 
   it('advertises the governed commitment tasks the training seller enforces', async () => {
-    const server = createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'sales' });
-    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {
-      adcp_version: CURRENT_ADCP_VERSION,
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: '3.2-beta.7',
     });
 
     expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
@@ -16276,20 +16312,34 @@ describe('get_adcp_capabilities handler', () => {
         { task: 'control_media_buy', modes: ['signed_context'] },
         { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
       ],
+      accepted_governance_agents: {
+        any_of: [
+          { kind: 'agent_url', agent_url: 'https://governance.example/mcp' },
+          { kind: 'agent_url', agent_url: 'https://test-agent.adcontextprotocol.org/' },
+          { kind: 'agent_url', agent_url: 'https://governance.pinnacle-agency.example/' },
+        ],
+      },
     });
     expect(result.experimental_features).toContain('governance.campaign');
   });
 
   it('scopes governance enforcement claims to the receiving tenant', async () => {
-    const signals = await simulateCallTool(
-      createTrainingAgentServer({ ...DEFAULT_CTX, tenantId: 'signals' }),
-      'get_adcp_capabilities',
-      {},
-    );
-    expect((signals.result.adcp as Record<string, any>).governance_enforcement).toEqual({
-      tasks: [{ task: 'activate_signal', modes: ['signed_context'] }],
+    const signals = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'signals',
+      servedAdcpVersion: '3.2-beta.7',
     });
-    expect(signals.result.experimental_features).toContain('governance.campaign');
+    expect((signals.adcp as Record<string, any>).governance_enforcement).toEqual({
+      tasks: [{ task: 'activate_signal', modes: ['signed_context'] }],
+      accepted_governance_agents: {
+        any_of: [
+          { kind: 'agent_url', agent_url: 'https://governance.example/mcp' },
+          { kind: 'agent_url', agent_url: 'https://test-agent.adcontextprotocol.org/' },
+          { kind: 'agent_url', agent_url: 'https://governance.pinnacle-agency.example/' },
+        ],
+      },
+    });
+    expect(signals.experimental_features).toContain('governance.campaign');
 
     const legacy = await simulateCallTool(
       createTrainingAgentServer(DEFAULT_CTX),
@@ -16297,6 +16347,34 @@ describe('get_adcp_capabilities handler', () => {
       {},
     );
     expect((legacy.result.adcp as Record<string, any>).governance_enforcement).toBeUndefined();
+  });
+
+  it('projects ratified seller-governance discovery from the beta.6 checkpoint', async () => {
+    expect(supportsSellerGovernanceDiscovery('3.2-beta.5')).toBe(false);
+    expect(supportsSellerGovernanceDiscovery('3.2-beta.6')).toBe(true);
+    expect(supportsSellerGovernanceDiscovery('3.2-beta.7')).toBe(true);
+    expect(supportsSellerGovernanceDiscovery('3.2')).toBe(true);
+
+    const result = await handleGetAdcpCapabilities({}, {
+      ...DEFAULT_CTX,
+      tenantId: 'sales',
+      servedAdcpVersion: CURRENT_ADCP_VERSION,
+    });
+    expect((result.adcp as Record<string, any>).governance_enforcement).toEqual({
+      tasks: [
+        { task: 'buy_products', modes: ['signed_context'] },
+        { task: 'accept_proposal', modes: ['signed_context'] },
+        { task: 'control_media_buy', modes: ['signed_context'] },
+        { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
+      ],
+      accepted_governance_agents: expect.objectContaining({ any_of: expect.any(Array) }),
+    });
+    expect((result.media_buy as Record<string, unknown>).acceptance_policy_discovery).toEqual(
+      expect.objectContaining({
+        catalog_digest: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+        default_profile_ids: ['meta_political_advertising_acceptance'],
+      }),
+    );
   });
 
   it('advertises the compliance test controller scenarios it implements', async () => {
@@ -16434,9 +16512,9 @@ describe('get_adcp_capabilities handler', () => {
     ]);
 
     expect(either.isError).not.toBe(true);
-    expect(either.result.adcp_version).toBe('3.1-rc.15');
+    expect(either.result.adcp_version).toBe('3.1');
     expect(forbidden.isError).not.toBe(true);
-    expect(forbidden.result.adcp_version).toBe('3.1-rc.15');
+    expect(forbidden.result.adcp_version).toBe('3.1');
   });
 });
 
@@ -17063,7 +17141,7 @@ describe('MCP Tasks protocol', () => {
       buying_mode: 'wholesale',
     });
 
-    expect(response.adcp_version).toBe('3.0');
+    expect(response.adcp_version).toBe('3.1');
     expect(response.task).toBeDefined();
     const task = response.task as Record<string, unknown>;
     expect(task.taskId).toBeDefined();
@@ -17099,7 +17177,7 @@ describe('MCP Tasks protocol', () => {
       adcp_version: '3.1',
       adcp_major_version: 3,
     });
-    expect(getResponse.adcp_version).toBe('3.0');
+    expect(getResponse.adcp_version).toBe('3.1');
     expect(getResponse.taskId).toBe(taskId);
     expect(getResponse.status).toBe('completed');
   });
@@ -17115,7 +17193,7 @@ describe('MCP Tasks protocol', () => {
       adcp_version: '3.1',
       adcp_major_version: 3,
     });
-    expect(result.adcp_version).toBe('3.0');
+    expect(result.adcp_version).toBe('3.1');
     const parsed = result.structuredContent as Record<string, unknown> | undefined;
     expect(parsed).toBeDefined();
     expect(Array.isArray(parsed!.products)).toBe(true);
@@ -17137,7 +17215,7 @@ describe('MCP Tasks protocol', () => {
       adcp_version: '3.1',
       adcp_major_version: 3,
     });
-    expect(listResponse.adcp_version).toBe('3.0');
+    expect(listResponse.adcp_version).toBe('3.1');
     const tasks = listResponse.tasks as Array<Record<string, unknown>>;
     expect(tasks.length).toBe(2);
   });
@@ -17163,7 +17241,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -17211,7 +17289,7 @@ describe('MCP Tasks protocol', () => {
     ).rejects.toMatchObject({
       code: -32602,
       data: {
-        adcp_version: '3.0',
+        adcp_version: '3.1',
       },
     });
   });
@@ -21468,7 +21546,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
+      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
     });
   });
 
@@ -21489,7 +21567,7 @@ describe('AdCP protocol compliance', () => {
   it('echoes exact supported pre-release adcp_version pins', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
 
-    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15']) {
+    for (const adcpVersion of ['3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1']) {
       const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
         adcp_version: adcpVersion,
         adcp_major_version: 3,
@@ -21503,7 +21581,7 @@ describe('AdCP protocol compliance', () => {
     }
   });
 
-  it('downshifts same-major release pins and echoes the served release', async () => {
+  it('serves the stable 3.1 release pin and echoes the served release', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { parsed, isError } = await simulateCallToolRaw(server, 'get_products', {
       adcp_version: '3.1',
@@ -21513,7 +21591,7 @@ describe('AdCP protocol compliance', () => {
     });
 
     expect(isError).toBeFalsy();
-    expect(parsed.adcp_version).toBe('3.0');
+    expect(parsed.adcp_version).toBe('3.1');
     expect(Array.isArray(parsed.products)).toBe(true);
   });
 
@@ -21533,7 +21611,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
         supported_majors: [3],
       },
     });
@@ -21554,7 +21632,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', CURRENT_ADCP_VERSION],
+        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
         supported_majors: [3],
       },
     });
@@ -21568,7 +21646,7 @@ describe('AdCP protocol compliance', () => {
     });
 
     expect(isError).toBe(true);
-    expect(parsed.adcp_version).toBe('3.0');
+    expect(parsed.adcp_version).toBe('3.1');
     expect(parsed.adcp_error).toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
@@ -21603,7 +21681,7 @@ describe('AdCP protocol compliance', () => {
     });
 
     expect(isError).toBeFalsy();
-    expect(parsed.adcp_version).toBe('3.0');
+    expect(parsed.adcp_version).toBe('3.1');
     expect((parsed.errors as Array<Record<string, unknown>>)[0]).toMatchObject({ code: 'NOT_CANCELLABLE' });
   });
 
@@ -21625,10 +21703,10 @@ describe('AdCP protocol compliance', () => {
     const second = await simulateCallToolRaw(server, 'create_media_buy', args);
 
     expect(first.isError).toBeFalsy();
-    expect(first.parsed.adcp_version).toBe('3.0');
+    expect(first.parsed.adcp_version).toBe('3.1');
     expect(second.isError).toBeFalsy();
     expect(second.parsed.replayed).toBe(true);
-    expect(second.parsed.adcp_version).toBe('3.0');
+    expect(second.parsed.adcp_version).toBe('3.1');
   });
 
   it('persists typed and extension fields in package targeting', async () => {

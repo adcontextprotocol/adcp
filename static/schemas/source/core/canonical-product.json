@@ -80,6 +80,9 @@
       "items": { "$ref": "/schemas/core/canonical-product-action.json" },
       "uniqueItems": true
     },
+    "acceptance_policy_profile_ids": {
+      "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
+    },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["product_id", "name"],

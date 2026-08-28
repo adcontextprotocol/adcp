@@ -423,6 +423,10 @@
                   "$ref": "/schemas/enums/outcome-type.json",
                   "description": "Outcome type (present for outcome entries)."
                 },
+                "error": {
+                  "$ref": "/schemas/governance/reported-outcome-error.json",
+                  "description": "Buyer-attributed error retained from a failed report_plan_outcome call. This is a copy or classification supplied by the reporter, not authenticated seller evidence."
+                },
                 "outcome_id": {
                   "type": "string",
                   "description": "Source completed outcome (present for adjustment entries).",

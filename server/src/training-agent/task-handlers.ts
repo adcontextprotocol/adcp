@@ -50,7 +50,7 @@ import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
-import { supportsGetProductsRejected, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
+import { supportsGetProductsRejected, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability } from './types.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -2824,8 +2824,13 @@ function productForThreeZeroStoryboardCompat(product: Product): Product {
 
 function productForServedAdcpVersion(product: Product, servedAdcpVersion: string | undefined): Product {
   if (supportsGetProductsRejected(servedAdcpVersion)) return product;
-  const { audience_activation: _audienceActivation, ...rest } = product as Product & {
+  const {
+    audience_activation: _audienceActivation,
+    overlay_support: _overlaySupport,
+    ...rest
+  } = product as Product & {
     audience_activation?: unknown;
+    overlay_support?: unknown;
   };
   return rest as Product;
 }
@@ -2898,6 +2903,7 @@ import {
   ACCOUNT_REF_SCHEMA,
   ACCOUNT_TOOLS,
   SUPPORTED_BILLINGS,
+  TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
   handleListAccounts,
   emitAccountChangeRecordedWebhook,
   recordAccountChange,
@@ -2961,9 +2967,38 @@ import {
 } from './source-schema.js';
 
 const SUPPORTED_MAJOR_VERSIONS = [3] as const;
-const SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'] as const;
-const DEFAULT_ADCP_VERSION = '3.0';
-const CURRENT_ADCP_VERSION = '3.2-beta.6';
+const SUPPORTED_RELEASE_VERSIONS = TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS;
+const DEFAULT_ADCP_VERSION = TRAINING_AGENT_DEFAULT_ADCP_VERSION;
+export const TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH = '/registry/acceptance-policy-catalog.json';
+export const TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST = 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a';
+export const TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE = 'meta_political_advertising_acceptance';
+const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
+
+export interface AcceptancePolicyDiscoveryCapability {
+  catalog_url: string;
+  catalog_digest: string;
+  default_profile_ids: string[];
+}
+
+/** Build the single acceptance-discovery declaration shared by direct and
+ * tenant-routed capability responses. */
+export function acceptancePolicyDiscoveryCapability(
+  servedVersion: string | undefined,
+  tenantId: TrainingContext['tenantId'],
+): AcceptancePolicyDiscoveryCapability | undefined {
+  if ((tenantId !== 'sales' && tenantId != null) || !supportsSellerGovernanceDiscovery(servedVersion)) {
+    return undefined;
+  }
+  const canonicalBase = getCanonicalBase();
+  const catalogBase = canonicalBase.startsWith('https://')
+    ? canonicalBase
+    : 'https://test-agent.adcontextprotocol.org';
+  return {
+    catalog_url: `${catalogBase}${TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH}`,
+    catalog_digest: TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
+    default_profile_ids: [TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE],
+  };
+}
 const THREE_ZERO_COMPLIANCE_SCENARIOS = [
   'force_creative_status',
   'force_account_status',
@@ -2979,6 +3014,7 @@ interface ParsedAdcpReleaseVersion {
   raw: string;
   major: number;
   minor: number;
+  patch: number;
   prerelease?: string;
 }
 
@@ -3000,19 +3036,21 @@ const TASK_PROTOCOL_METHODS = ['tasks/get', 'tasks/result', 'tasks/list', 'tasks
 
 function parseAdcpReleaseVersion(value: unknown): ParsedAdcpReleaseVersion | undefined {
   if (typeof value !== 'string') return undefined;
-  const match = value.match(/^(\d+)\.(\d+)(?:-([A-Za-z0-9.-]+))?$/);
+  const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-([A-Za-z0-9.-]+))?$/);
   if (!match) return undefined;
   return {
     raw: value,
     major: Number.parseInt(match[1], 10),
     minor: Number.parseInt(match[2], 10),
-    ...(match[3] && { prerelease: match[3] }),
+    patch: match[3] ? Number.parseInt(match[3], 10) : 0,
+    ...(match[4] && { prerelease: match[4] }),
   };
 }
 
 function compareAdcpReleaseVersions(left: ParsedAdcpReleaseVersion, right: ParsedAdcpReleaseVersion): number {
   if (left.major !== right.major) return left.major - right.major;
   if (left.minor !== right.minor) return left.minor - right.minor;
+  if (left.patch !== right.patch) return left.patch - right.patch;
   if (left.prerelease === right.prerelease) return 0;
   if (!left.prerelease) return 1;
   if (!right.prerelease) return -1;
@@ -4447,6 +4485,7 @@ function normalizeProductAllowedActions(product: Product | undefined): MediaBuyP
     const modes = src.modes.filter((mode): mode is MediaBuyAvailableActionState['mode'] =>
       mode === 'self_serve'
       || mode === 'conditional_self_serve'
+      || mode === 'seller_managed'
       || mode === 'requires_approval',
     );
     if (modes.length === 0) continue;
@@ -4465,6 +4504,7 @@ function normalizeProductAllowedActions(product: Product | undefined): MediaBuyP
           ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
         },
       }),
+      ...(isRecord(src.constraints) && { constraints: structuredClone(src.constraints) }),
       ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
     });
     seen.add(src.action);
@@ -4476,16 +4516,29 @@ function deriveProductAllowedActionsForPackages(
   packages: PackageState[],
   productMap: Map<string, Product>,
 ): MediaBuyProductAllowedActionState[] | undefined {
-  const actions: MediaBuyProductAllowedActionState[] = [];
-  const seen = new Set<string>();
-  for (const pkg of packages) {
-    for (const action of normalizeProductAllowedActions(productMap.get(pkg.productId))) {
-      if (seen.has(action.action)) continue;
-      actions.push(action);
-      seen.add(action.action);
-    }
-  }
-  return actions.length ? actions : undefined;
+  const activePackages = packages.filter(pkg => !pkg.canceled);
+  if (activePackages.length === 0) return undefined;
+  const hasProductDeclaration = activePackages.some(pkg => {
+    const product = productMap.get(pkg.productId) as unknown as { allowed_actions?: unknown } | undefined;
+    return Array.isArray(product?.allowed_actions);
+  });
+  if (!hasProductDeclaration) return undefined;
+
+  // Buy-level available_actions authorize aggregate mutations. A right on one
+  // package's product must not be promoted into authority over sibling
+  // packages, so only identical declarations shared by every active package
+  // survive this projection. Package-scoped requests are checked against their
+  // own product independently in rejectUnavailableAction.
+  const [first, ...rest] = activePackages.map(pkg =>
+    normalizeProductAllowedActions(productMap.get(pkg.productId))
+  );
+  const actions = (first ?? []).filter(candidate => rest.every(packageActions => {
+    const matching = packageActions.find(action => action.action === candidate.action);
+    return matching !== undefined && isDeepStrictEqual(matching, candidate);
+  }));
+  // An empty intersection is still an explicit buy-level ceiling. Returning
+  // undefined here would fall back to legacy unrestricted behavior.
+  return actions;
 }
 
 function deriveAvailableActionsFromProductAllowedActions(
@@ -4504,40 +4557,80 @@ function deriveAvailableActionsFromProductAllowedActions(
     })));
 }
 
+function deriveAvailableActionsFromAcceptedChangeTerms(
+  mb: MediaBuyState,
+  status: string,
+  servedAdcpVersion?: string,
+): MediaBuyAvailableActionState[] | undefined {
+  const commercialTerms = mb.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
+  if (!commercialTerms || !Object.hasOwn(commercialTerms, 'change_terms')) return undefined;
+  const rawTerms = commercialTerms.change_terms;
+  if (!Array.isArray(rawTerms)) return [];
+
+  const useChangeTermId = supportsLifecycleSplitCompatibility(servedAdcpVersion);
+  const seen = new Set<string>();
+  const resolved: MediaBuyAvailableActionState[] = [];
+  for (const rawTerm of rawTerms) {
+    if (!isRecord(rawTerm)) continue;
+    const action = typeof rawTerm.action === 'string' ? rawTerm.action : undefined;
+    const termId = typeof rawTerm.term_id === 'string' ? rawTerm.term_id : undefined;
+    const mode = rawTerm.service_mode;
+    if (!action || !termId || seen.has(action)) continue;
+    if (
+      mode !== 'self_serve'
+      && mode !== 'conditional_self_serve'
+      && mode !== 'seller_managed'
+      && mode !== 'requires_approval'
+    ) continue;
+    const allowedStatuses = Array.isArray(rawTerm.allowed_statuses)
+      ? rawTerm.allowed_statuses.filter((value): value is string => typeof value === 'string')
+      : undefined;
+    if (allowedStatuses ? !allowedStatuses.includes(status) : !NON_TERMINAL_MEDIA_BUY_STATUSES.has(status)) continue;
+    // Opaque conditions are stable identifiers, not executable instructions.
+    // The reference seller has no seller-owned condition resolver, so it must
+    // fail closed and omit the action from current availability rather than
+    // treating an unevaluated condition as satisfied.
+    if (Array.isArray(rawTerm.conditions) && rawTerm.conditions.length > 0) continue;
+    const processingSla = isRecord(rawTerm.processing_sla) ? rawTerm.processing_sla : undefined;
+    resolved.push({
+      ...(useChangeTermId && { task: canonicalTaskForMediaBuyAction(action) }),
+      action,
+      mode: !useChangeTermId && mode === 'seller_managed' ? 'requires_approval' : mode,
+      ...(processingSla && {
+        sla: {
+          ...(typeof processingSla.response_max === 'string' && { response_max: processingSla.response_max }),
+          ...(typeof processingSla.completion_max === 'string' && { completion_max: processingSla.completion_max }),
+        },
+      }),
+      ...(useChangeTermId ? { change_term_id: termId } : { terms_ref: termId }),
+    });
+    seen.add(action);
+  }
+  return resolved;
+}
+
 function availableActionsForMediaBuy(mb: MediaBuyState, status: string, servedAdcpVersion?: string): MediaBuyAvailableActionState[] {
+  const changeTermDerived = deriveAvailableActionsFromAcceptedChangeTerms(mb, status, servedAdcpVersion);
   const productDerived = deriveAvailableActionsFromProductAllowedActions(mb.productAllowedActions, status);
-  const actions = productDerived !== undefined
+  const actions = changeTermDerived !== undefined
+    ? changeTermDerived
+    : productDerived !== undefined
     ? productDerived
     : availableActionsForStatus(status, mb.availableActions, servedAdcpVersion);
   const canonical = actions
     .filter(action => action.action !== 'update_name' || supportsLifecycleSplitCompatibility(servedAdcpVersion))
     .map(action => ({
       ...action,
-      task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
+      ...(supportsLifecycleSplitCompatibility(servedAdcpVersion) && {
+        task: action.task ?? canonicalTaskForMediaBuyAction(action.action),
+      }),
     }));
-  if (!hasLatentMediaBuyPause(mb, status) || canonical.some(action => action.action === 'resume')) return canonical;
+  if (
+    changeTermDerived !== undefined
+    || !hasLatentMediaBuyPause(mb, status)
+    || canonical.some(action => action.action === 'resume')
+  ) return canonical;
   return [{ task: 'control_media_buy', action: 'resume', mode: 'self_serve' }, ...canonical];
-}
-
-function compactAvailableActions(
-  mediaBuy: MediaBuyState,
-  status: string,
-  servedAdcpVersion?: string,
-): Array<MediaBuyAvailableActionState & { task: 'control_media_buy' }> {
-  const compactControlActions = new Set([
-    'pause', 'resume', 'cancel', 'update_name', 'increase_budget', 'decrease_budget',
-    'reallocate_budget', 'update_budget_allocation', 'update_targeting',
-    'update_pacing', 'update_bidding', 'update_frequency_caps',
-    'update_catalog_assignments', 'update_keywords', 'update_optimization_goals',
-    'update_impression_goal', 'update_spend_target', 'update_reporting_webhook',
-    'remove_packages',
-  ]);
-  return availableActionsForMediaBuy(mediaBuy, status, servedAdcpVersion)
-    .filter(action => compactControlActions.has(action.action))
-    .map(action => ({
-      ...action,
-      task: 'control_media_buy' as const,
-    }));
 }
 
 function canonicalTaskForMediaBuyAction(action: string): MediaBuyAvailableActionState['task'] {
@@ -4582,7 +4675,61 @@ interface AttemptedMediaBuyActionEntry {
   packageId?: string;
 }
 
-function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): AttemptedMediaBuyActionEntry[] {
+interface MediaBuyMutationRequest extends ToolArgs {
+  media_buy_id: string;
+  revision?: number;
+  name?: string;
+  paused?: boolean;
+  canceled?: boolean;
+  start_time?: unknown;
+  end_time?: string;
+  packages?: unknown[];
+  new_packages?: unknown[];
+  context?: unknown;
+}
+
+interface MediaBuyActionRejection {
+  [key: string]: unknown;
+  errors: TaskError[];
+  context?: unknown;
+}
+
+interface SellerManagedControlAuthorization {
+  kind: 'seller_managed_control';
+  actions: string[];
+}
+
+export type SellerManagedControlExecution =
+  | { kind: 'defer' }
+  | {
+      kind: 'execute';
+      taskId: string;
+      mediaBuyId: string;
+      expectedRevision: number;
+      actions: readonly string[];
+    };
+
+const SELLER_MANAGED_CONTROL_TASK_REQUIRED: unique symbol = Symbol('seller-managed-control-task-required');
+
+export interface SellerManagedControlTaskRequired extends Record<string, unknown> {
+  [SELLER_MANAGED_CONTROL_TASK_REQUIRED]: true;
+  mediaBuyId: string;
+  expectedRevision: number;
+  actions: string[];
+}
+
+export function isSellerManagedControlTaskRequired(value: unknown): value is SellerManagedControlTaskRequired {
+  return isRecord(value)
+    && (value as SellerManagedControlTaskRequired)[SELLER_MANAGED_CONTROL_TASK_REQUIRED] === true;
+}
+
+function isSellerManagedControlAuthorization(
+  value: MediaBuyActionRejection | SellerManagedControlAuthorization | null,
+): value is SellerManagedControlAuthorization {
+  return value?.kind === 'seller_managed_control';
+}
+
+function actionsForUpdateRequest(mb: MediaBuyState, req: MediaBuyMutationRequest): AttemptedMediaBuyActionEntry[] {
   const actions: AttemptedMediaBuyActionEntry[] = [];
   const seen = new Set<string>();
   const addAction = (action: AttemptedMediaBuyAction, packageId?: string) => {
@@ -4652,7 +4799,8 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
     let totalBefore = 0;
     let totalAfter = 0;
     let sawBudget = false;
-    for (const update of req.packages as PackageUpdateExt[]) {
+    for (const rawUpdate of req.packages) {
+      const update = rawUpdate as PackageUpdateExt;
       const pkgId = update.package_id || '';
       const pkg = mb.packages.find(p => p.packageId === pkgId);
       if (!pkg) continue;
@@ -4710,6 +4858,14 @@ function actionsForUpdateRequest(mb: MediaBuyState, req: UpdateMediaBuyArgs): At
       if (update.creatives) addAction('replace_creative', pkgId);
     }
     if (sawBudget && totalAfter === totalBefore && seenHasAction(seen, 'increase_budget') && seenHasAction(seen, 'decrease_budget')) {
+      // A zero-sum package redistribution is one reallocation exercise, not
+      // separate exercises of package increase and decrease rights.
+      for (let index = actions.length - 1; index >= 0; index--) {
+        const attempt = actions[index]!;
+        if (attempt.packageId && (attempt.action === 'increase_budget' || attempt.action === 'decrease_budget')) {
+          actions.splice(index, 1);
+        }
+      }
       addAction('reallocate_budget');
     }
   }
@@ -4745,20 +4901,88 @@ function legacyUpdateChangesCommercialEnvelope(req: UpdateMediaBuyArgs): boolean
     .some(field => !['package_id', 'paused', 'creative_assignments', 'creatives'].includes(field))));
 }
 
+const UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS = [
+  'invoice_recipient',
+  'purchase_order_ref',
+  'agency_estimate_number',
+] as const;
+
+const UNTYPED_ACCEPTED_CHANGE_PACKAGE_FIELDS = [
+  'measurement_terms',
+  'performance_standards',
+  'audience_evidence_requirements',
+  'audience_evidence_pins',
+  'agency_estimate_number',
+] as const;
+
+/**
+ * Fields which change commercial terms but have no canonical change action.
+ * Once change_terms is present it is the complete post-acceptance authority
+ * ceiling, so these fields must be renegotiated instead of hitchhiking on an
+ * unrelated typed right.
+ */
+function untypedAcceptedChangeEnvelopeField(req: MediaBuyMutationRequest): string | undefined {
+  const root = req as unknown as Record<string, unknown>;
+  const rootField = UNTYPED_ACCEPTED_CHANGE_ROOT_FIELDS.find(field => Object.hasOwn(root, field));
+  if (rootField) return rootField;
+
+  for (const [index, rawPackage] of (req.packages ?? []).entries()) {
+    if (!isRecord(rawPackage) || rawPackage.canceled === true) continue;
+    const packageField = UNTYPED_ACCEPTED_CHANGE_PACKAGE_FIELDS.find(field => Object.hasOwn(rawPackage, field));
+    if (packageField) return `packages[${index}].${packageField}`;
+  }
+  return undefined;
+}
+
+function acceptedEnvelopeRequiresRequote(field: string, context?: unknown): MediaBuyActionRejection {
+  return {
+    errors: [{
+      code: 'REQUOTE_REQUIRED',
+      message: `The requested ${field} changes commercial terms without a negotiated typed change right.`,
+      field,
+      recovery: 'correctable',
+      details: {
+        envelope_field: field,
+        constraint: 'no_typed_change_action',
+      },
+    }],
+    ...(context !== undefined && { context }),
+  };
+}
+
+type ActionNotAllowedReason =
+  | 'wrong_status'
+  | 'not_supported_on_product'
+  | 'not_supported_on_buy'
+  | 'mode_mismatch'
+  | 'condition_unresolved';
+
 function actionNotAllowedError(
   attemptedAction: string,
-  reason: 'wrong_status' | 'not_supported_on_product' | 'not_supported_on_buy' | 'mode_mismatch',
+  reason: ActionNotAllowedReason,
   availableActions: MediaBuyAvailableActionState[],
   context?: unknown,
-): { errors: TaskError[]; context?: unknown } {
+  servedAdcpVersion?: string,
+): MediaBuyActionRejection {
+  // condition_unresolved is a 3.2 discriminator. Released 3.1 schemas are
+  // closed over their four historical values, so project the same fail-closed
+  // outcome as unavailable on this buy for legacy callers.
+  const projectedReason = reason === 'condition_unresolved'
+    && !supportsLifecycleSplitCompatibility(servedAdcpVersion)
+    ? 'not_supported_on_buy'
+    : reason;
   return {
     errors: [{
       code: 'ACTION_NOT_ALLOWED',
       message: `Action ${attemptedAction} is not available through direct update_media_buy`,
-      recovery: reason === 'wrong_status' || reason === 'mode_mismatch' ? 'correctable' : 'terminal',
+      recovery: projectedReason === 'wrong_status'
+        || projectedReason === 'mode_mismatch'
+        || projectedReason === 'condition_unresolved'
+        ? 'correctable'
+        : 'terminal',
       details: {
         attempted_action: attemptedAction,
-        reason,
+        reason: projectedReason,
         currently_available_actions: availableActions,
       },
     }],
@@ -4768,15 +4992,50 @@ function actionNotAllowedError(
 
 function rejectUnavailableAction(
   mb: MediaBuyState,
-  req: UpdateMediaBuyArgs,
+  req: MediaBuyMutationRequest,
   status: string,
   productMap: Map<string, Product>,
-): { errors: TaskError[]; context?: unknown } | null {
-  if (!mb.productAllowedActions && !mb.availableActions) return null;
+  servedAdcpVersion?: string,
+): MediaBuyActionRejection | null;
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  status: string,
+  productMap: Map<string, Product>,
+  servedAdcpVersion: string | undefined,
+  sellerManagedExecution: SellerManagedControlExecution,
+): MediaBuyActionRejection | SellerManagedControlAuthorization | null;
+function rejectUnavailableAction(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  status: string,
+  productMap: Map<string, Product>,
+  servedAdcpVersion?: string,
+  sellerManagedExecution?: SellerManagedControlExecution,
+): MediaBuyActionRejection | SellerManagedControlAuthorization | null {
+  const acceptedCommercialTerms = mb.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
+  const hasAcceptedChangeTerms = acceptedCommercialTerms !== undefined
+    && Object.hasOwn(acceptedCommercialTerms, 'change_terms');
+  const acceptedChangeTerms = hasAcceptedChangeTerms
+    ? Array.isArray(acceptedCommercialTerms.change_terms)
+      ? acceptedCommercialTerms.change_terms.filter(isRecord)
+      : []
+    : undefined;
+  if (!mb.productAllowedActions && !mb.availableActions && acceptedChangeTerms === undefined) return null;
 
-  const availableActions = availableActionsForMediaBuy(mb, status);
+  const untypedEnvelopeField = acceptedChangeTerms === undefined
+    ? undefined
+    : untypedAcceptedChangeEnvelopeField(req);
+  if (untypedEnvelopeField) return acceptedEnvelopeRequiresRequote(untypedEnvelopeField, req.context);
+
+  const availableActions = availableActionsForMediaBuy(mb, status, servedAdcpVersion);
+  let deferredModeMismatch: MediaBuyActionRejection | null = null;
+  const sellerManagedActions: string[] = [];
   for (const attempt of actionsForUpdateRequest(mb, req)) {
-    const packageAllowedActions = attempt.packageId
+    // Once accepted change_terms exist they are the complete authority
+    // ceiling, including package-scoped mutations. Product declarations are
+    // discovery hints and must never widen an accepted proposal.
+    const packageAllowedActions = acceptedChangeTerms === undefined && attempt.packageId
       ? normalizeProductAllowedActions(productMap.get(mb.packages.find(pkg => pkg.packageId === attempt.packageId)?.productId ?? ''))
       : undefined;
     const scopedAvailableActions = packageAllowedActions
@@ -4785,21 +5044,253 @@ function rejectUnavailableAction(
     const advertised = new Map(scopedAvailableActions.map(entry => [entry.action, entry]));
     const entry = advertised.get(attempt.action);
     if (!entry) {
+      const negotiatedTerm = acceptedChangeTerms?.find(term => term.action === attempt.action);
       const productAction = packageAllowedActions
         ? packageAllowedActions.find(action => action.action === attempt.action)
         : mb.productAllowedActions?.find(action => action.action === attempt.action);
-      const reason = productAction
-        ? 'wrong_status'
-        : packageAllowedActions || mb.productAllowedActions
-          ? 'not_supported_on_product'
-          : 'not_supported_on_buy';
-      return actionNotAllowedError(attempt.action, reason, availableActions, req.context);
+      const allowedStatuses = negotiatedTerm && Array.isArray(negotiatedTerm.allowed_statuses)
+        ? negotiatedTerm.allowed_statuses.filter((value): value is string => typeof value === 'string')
+        : undefined;
+      const conditionUnresolved = negotiatedTerm !== undefined
+        && Array.isArray(negotiatedTerm.conditions)
+        && negotiatedTerm.conditions.length > 0
+        && (allowedStatuses ? allowedStatuses.includes(status) : NON_TERMINAL_MEDIA_BUY_STATUSES.has(status));
+      const reason = conditionUnresolved
+        ? 'condition_unresolved'
+        : negotiatedTerm
+          ? 'wrong_status'
+          : acceptedChangeTerms !== undefined
+            ? 'not_supported_on_buy'
+            : productAction
+              ? 'wrong_status'
+              : packageAllowedActions || mb.productAllowedActions
+                ? 'not_supported_on_product'
+                : 'not_supported_on_buy';
+      return actionNotAllowedError(attempt.action, reason, availableActions, req.context, servedAdcpVersion);
+    }
+    const negotiatedTerm = acceptedChangeTerms?.find(term => (
+      term.action === attempt.action
+      && (entry.change_term_id === undefined || term.term_id === entry.change_term_id)
+    ));
+    if (negotiatedTerm) {
+      const constraintRejection = enforceAcceptedChangeConstraint(mb, req, attempt, negotiatedTerm);
+      if (constraintRejection) return constraintRejection;
+    }
+    if (entry.mode === 'seller_managed') {
+      if (sellerManagedExecution?.kind === 'defer') {
+        sellerManagedActions.push(attempt.action);
+        continue;
+      }
+      if (
+        sellerManagedExecution?.kind === 'execute'
+        && sellerManagedExecution.mediaBuyId === mb.mediaBuyId
+        && sellerManagedExecution.expectedRevision === req.revision
+        && sellerManagedExecution.actions.includes(attempt.action)
+      ) {
+        // Only the framework-owned task closure can supply this execution
+        // capability. The captured media-buy id, revision, and authorized
+        // action set bind execution to the exact request that was queued.
+        continue;
+      }
+      deferredModeMismatch ??= actionNotAllowedError(
+        attempt.action,
+        'mode_mismatch',
+        availableActions,
+        req.context,
+        servedAdcpVersion,
+      );
+      continue;
     }
     if (entry.mode !== 'self_serve' && entry.mode !== 'conditional_self_serve') {
-      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context);
+      return actionNotAllowedError(attempt.action, 'mode_mismatch', availableActions, req.context, servedAdcpVersion);
     }
   }
+  if (sellerManagedActions.length > 0) {
+    return { kind: 'seller_managed_control', actions: sellerManagedActions };
+  }
+  return deferredModeMismatch;
+}
+
+function durationMilliseconds(value: unknown): number | undefined {
+  if (!isRecord(value) || typeof value.interval !== 'number' || !Number.isInteger(value.interval) || value.interval < 1) {
+    return undefined;
+  }
+  const multiplier = value.unit === 'seconds' ? 1_000
+    : value.unit === 'minutes' ? 60_000
+      : value.unit === 'hours' ? 3_600_000
+        : value.unit === 'days' ? 86_400_000
+          : undefined;
+  return multiplier === undefined ? undefined : value.interval * multiplier;
+}
+
+function acceptedConstraintRejection(
+  term: Record<string, unknown>,
+  field: string,
+  constraint: string,
+): { errors: TaskError[] } {
+  return {
+    errors: [{
+      code: 'REQUOTE_REQUIRED',
+      message: `The requested ${field} exceeds accepted change term ${String(term.term_id)}.`,
+      field,
+      recovery: 'correctable',
+      details: {
+        envelope_field: field,
+        change_term_id: term.term_id,
+        constraint,
+      },
+    }],
+  };
+}
+
+function enforceBudgetConstraint(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  attempt: AttemptedMediaBuyActionEntry,
+  term: Record<string, unknown>,
+  constraints: Record<string, unknown>,
+): { errors: TaskError[] } | null {
+  const values: Array<{ current: number | undefined; requested: number; field: string }> = [];
+  const root = req as unknown as Record<string, unknown>;
+  const currentTotal = mb.totalBudget ?? mb.packages.filter(pkg => !pkg.canceled).reduce((sum, pkg) => sum + pkg.budget, 0);
+  if (!attempt.packageId && isRecord(root.total_budget) && typeof root.total_budget.amount === 'number') {
+    if (root.total_budget.currency !== mb.currency) return acceptedConstraintRejection(term, 'total_budget.currency', 'currency_mismatch');
+    values.push({ current: currentTotal, requested: root.total_budget.amount, field: 'total_budget.amount' });
+  }
+  if (!attempt.packageId && typeof root.daily_budget_cap === 'number') {
+    values.push({ current: mb.dailyBudgetCap, requested: root.daily_budget_cap, field: 'daily_budget_cap' });
+  }
+  const packageUpdates = (req.packages ?? []) as PackageUpdateExt[];
+  for (let index = 0; index < packageUpdates.length; index++) {
+    const update = packageUpdates[index]!;
+    if (attempt.packageId && update.package_id !== attempt.packageId) continue;
+    const pkg = mb.packages.find(candidate => candidate.packageId === update.package_id);
+    if (!pkg) continue;
+    if (typeof update.budget === 'number') {
+      values.push({ current: pkg.budget, requested: update.budget, field: `packages[${index}].budget` });
+    }
+    if (typeof update.daily_budget_cap === 'number') {
+      values.push({ current: pkg.dailyBudgetCap, requested: update.daily_budget_cap, field: `packages[${index}].daily_budget_cap` });
+    }
+    if (attempt.action === 'update_spend_target' && typeof update.min_spend_target === 'number') {
+      values.push({ current: pkg.minSpendTarget, requested: update.min_spend_target, field: `packages[${index}].min_spend_target` });
+    }
+  }
+  if (attempt.action === 'update_budget_allocation' && values.length === 0) {
+    values.push({ current: currentTotal, requested: currentTotal, field: 'budget_allocation' });
+  }
+  if (values.length === 0) return acceptedConstraintRejection(term, attempt.action, 'cannot_preflight');
+
+  for (const value of values) {
+    const moneyFields = ['max_delta_amount', 'min_result_amount', 'max_result_amount'] as const;
+    for (const field of moneyFields) {
+      const money = constraints[field];
+      if (money !== undefined && (!isRecord(money) || money.currency !== mb.currency || typeof money.amount !== 'number')) {
+        return acceptedConstraintRejection(term, value.field, 'cannot_preflight');
+      }
+    }
+    const needsCurrent = constraints.max_delta_amount !== undefined || constraints.max_delta_percent !== undefined;
+    if (needsCurrent && value.current === undefined) return acceptedConstraintRejection(term, value.field, 'cannot_preflight');
+    const delta = value.current === undefined ? 0 : Math.abs(value.requested - value.current);
+    const maxDelta = isRecord(constraints.max_delta_amount) ? constraints.max_delta_amount.amount : undefined;
+    if (typeof maxDelta === 'number' && delta > maxDelta) return acceptedConstraintRejection(term, value.field, 'max_delta_amount');
+    if (typeof constraints.max_delta_percent === 'number' && value.current !== undefined) {
+      const percent = value.current === 0 ? (delta > 0 ? Number.POSITIVE_INFINITY : 0) : delta / value.current * 100;
+      if (percent > constraints.max_delta_percent) return acceptedConstraintRejection(term, value.field, 'max_delta_percent');
+    }
+    const minResult = isRecord(constraints.min_result_amount) ? constraints.min_result_amount.amount : undefined;
+    if (typeof minResult === 'number' && value.requested < minResult) return acceptedConstraintRejection(term, value.field, 'min_result_amount');
+    const maxResult = isRecord(constraints.max_result_amount) ? constraints.max_result_amount.amount : undefined;
+    if (typeof maxResult === 'number' && value.requested > maxResult) return acceptedConstraintRejection(term, value.field, 'max_result_amount');
+  }
   return null;
+}
+
+function enforceAcceptedChangeConstraint(
+  mb: MediaBuyState,
+  req: MediaBuyMutationRequest,
+  attempt: AttemptedMediaBuyActionEntry,
+  term: Record<string, unknown>,
+): { errors: TaskError[] } | null {
+  if (term.constraints === undefined) return null;
+  if (!isRecord(term.constraints) || typeof term.constraints.kind !== 'string') {
+    return acceptedConstraintRejection(term, attempt.action, 'cannot_preflight');
+  }
+  const constraints = term.constraints;
+  if (constraints.kind === 'budget') {
+    if (!['increase_budget', 'decrease_budget', 'reallocate_budget', 'update_budget_allocation', 'update_spend_target'].includes(attempt.action)) {
+      return acceptedConstraintRejection(term, attempt.action, 'constraint_kind_mismatch');
+    }
+    return enforceBudgetConstraint(mb, req, attempt, term, constraints);
+  }
+  if (constraints.kind === 'package_count') {
+    if (!['add_packages', 'remove_packages'].includes(attempt.action)) {
+      return acceptedConstraintRejection(term, attempt.action, 'constraint_kind_mismatch');
+    }
+    const additions = req.new_packages?.length ?? 0;
+    const removals = req.packages?.filter(pkg => isRecord(pkg) && pkg.canceled === true).length ?? 0;
+    const activeCount = mb.packages.filter(pkg => !pkg.canceled).length;
+    const field = attempt.action === 'add_packages' ? 'new_packages' : 'packages';
+    if (typeof constraints.max_additions === 'number' && additions > constraints.max_additions) {
+      return acceptedConstraintRejection(term, field, 'max_additions');
+    }
+    if (typeof constraints.max_removals === 'number' && removals > constraints.max_removals) {
+      return acceptedConstraintRejection(term, field, 'max_removals');
+    }
+    if (typeof constraints.max_result_count === 'number' && activeCount + additions - removals > constraints.max_result_count) {
+      return acceptedConstraintRejection(term, field, 'max_result_count');
+    }
+    return null;
+  }
+  if (constraints.kind === 'flight') {
+    if (!['extend_flight', 'shorten_flight', 'update_flight_dates'].includes(attempt.action)) {
+      return acceptedConstraintRejection(term, attempt.action, 'constraint_kind_mismatch');
+    }
+    const changes: Array<{ current: number; requested: number; field: string }> = [];
+    const rawStart = (req as unknown as Record<string, unknown>).start_time;
+    const start = typeof rawStart === 'string'
+      ? rawStart
+      : isRecord(rawStart) && typeof rawStart.datetime === 'string' ? rawStart.datetime : undefined;
+    if (!attempt.packageId && start) changes.push({ current: Date.parse(mb.startTime), requested: Date.parse(start), field: 'start_time' });
+    if (!attempt.packageId && typeof req.end_time === 'string') changes.push({ current: Date.parse(mb.endTime), requested: Date.parse(req.end_time), field: 'end_time' });
+    for (let index = 0; index < (req.packages?.length ?? 0); index++) {
+      const update = req.packages![index]! as PackageUpdateExt;
+      if (attempt.packageId && update.package_id !== attempt.packageId) continue;
+      const pkg = mb.packages.find(candidate => candidate.packageId === update.package_id);
+      if (!pkg) continue;
+      if (update.start_time) changes.push({ current: Date.parse(pkg.startTime), requested: Date.parse(update.start_time), field: `packages[${index}].start_time` });
+      if (update.end_time) changes.push({ current: Date.parse(pkg.endTime), requested: Date.parse(update.end_time), field: `packages[${index}].end_time` });
+    }
+    if (changes.length === 0 || changes.some(change => !Number.isFinite(change.current) || !Number.isFinite(change.requested))) {
+      return acceptedConstraintRejection(term, attempt.action, 'cannot_preflight');
+    }
+    if (constraints.minimum_notice !== undefined) {
+      // The mutation APIs do not carry a future effective_at, so a positive
+      // notice requirement cannot be proven for an immediate mutation.
+      return acceptedConstraintRejection(term, changes[0]!.field, 'minimum_notice');
+    }
+    const maxChange = constraints.max_change === undefined ? undefined : durationMilliseconds(constraints.max_change);
+    if (constraints.max_change !== undefined && maxChange === undefined) return acceptedConstraintRejection(term, changes[0]!.field, 'cannot_preflight');
+    for (const change of changes) {
+      if (maxChange !== undefined && Math.abs(change.requested - change.current) > maxChange) return acceptedConstraintRejection(term, change.field, 'max_change');
+      const earliest = typeof constraints.earliest_result === 'string' ? Date.parse(constraints.earliest_result) : undefined;
+      const latest = typeof constraints.latest_result === 'string' ? Date.parse(constraints.latest_result) : undefined;
+      if (earliest !== undefined && (!Number.isFinite(earliest) || change.requested < earliest)) return acceptedConstraintRejection(term, change.field, 'earliest_result');
+      if (latest !== undefined && (!Number.isFinite(latest) || change.requested > latest)) return acceptedConstraintRejection(term, change.field, 'latest_result');
+    }
+    return null;
+  }
+  if (constraints.kind === 'effective_timing') {
+    if (!['pause', 'resume', 'cancel'].includes(attempt.action)) return acceptedConstraintRejection(term, attempt.action, 'constraint_kind_mismatch');
+    const now = Date.now();
+    if (constraints.minimum_notice !== undefined) return acceptedConstraintRejection(term, attempt.action, 'minimum_notice');
+    const earliest = typeof constraints.earliest_effective_at === 'string' ? Date.parse(constraints.earliest_effective_at) : undefined;
+    const latest = typeof constraints.latest_effective_at === 'string' ? Date.parse(constraints.latest_effective_at) : undefined;
+    if (earliest !== undefined && (!Number.isFinite(earliest) || now < earliest)) return acceptedConstraintRejection(term, attempt.action, 'earliest_effective_at');
+    if (latest !== undefined && (!Number.isFinite(latest) || now > latest)) return acceptedConstraintRejection(term, attempt.action, 'latest_effective_at');
+    return null;
+  }
+  return acceptedConstraintRejection(term, attempt.action, 'unsupported_constraint_kind');
 }
 
 // ── Cached catalog and formats (built once at first use) ──────────
@@ -5141,11 +5632,7 @@ export function invalidateCache(): void {
  */
 function canonicalizeAgentUrl(url: string): string {
   try {
-    const u = new URL(url);
-    u.hostname = u.hostname.toLowerCase();
-    u.protocol = u.protocol.toLowerCase();
-    const s = u.toString();
-    return s.endsWith('/') ? s.slice(0, -1) : s;
+    return canonicalTargetUri(url);
   } catch {
     return url.replace(/\/$/, '');
   }
@@ -6392,6 +6879,75 @@ function proposalTermsDigest(commercialTerms: Record<string, unknown>): string {
   return `sha256:${createHash('sha256').update(canonicalize(commercialTerms), 'utf8').digest('base64url')}`;
 }
 
+const CHANGE_TERM_MODE_PREFERENCE: MediaBuyAvailableActionState['mode'][] = [
+  'self_serve',
+  'conditional_self_serve',
+  'seller_managed',
+  'requires_approval',
+];
+
+function proposalChangeTermsForPurchases(
+  purchases: readonly { product_id: string }[],
+  products: ReadonlyMap<string, Product>,
+): Record<string, unknown>[] {
+  const selectedProductIds = [...new Set(purchases.map(purchase => purchase.product_id))];
+  const selectedProducts = selectedProductIds
+    .map(productId => products.get(productId))
+    .filter((product): product is Product => product !== undefined);
+  if (selectedProducts.length === 0 || selectedProducts.length !== selectedProductIds.length) return [];
+  const actionSets = selectedProducts.map(product => normalizeProductAllowedActions(product));
+  if (actionSets.some(actions => actions.length === 0)) return [];
+
+  const byProduct = actionSets.map(actions => new Map(actions.map(action => [action.action, action])));
+  const candidateActions = actionSets[0] ?? [];
+  const terms: Record<string, unknown>[] = [];
+  for (const candidate of candidateActions) {
+    const declarations = byProduct.map(actions => actions.get(candidate.action));
+    if (declarations.some(action => action === undefined)) continue;
+    const typedDeclarations = declarations as MediaBuyProductAllowedActionState[];
+    const commonModes = CHANGE_TERM_MODE_PREFERENCE.filter(mode =>
+      typedDeclarations.every(action => action.modes.includes(mode)));
+    const selectedMode = commonModes[0];
+    if (!selectedMode) continue;
+
+    const allowedStatuses = [...NON_TERMINAL_MEDIA_BUY_STATUSES].filter(status =>
+      typedDeclarations.every(action => !action.allowed_statuses?.length || action.allowed_statuses.includes(status)));
+    if (allowedStatuses.length === 0) continue;
+    const firstSla = typedDeclarations[0]!.sla;
+    const sameSla = typedDeclarations.every(action =>
+      action.sla === undefined || firstSla === undefined
+        ? action.sla === firstSla
+        : canonicalize(action.sla) === canonicalize(firstSla));
+    const firstConstraints = typedDeclarations[0]!.constraints;
+    const sameConstraints = typedDeclarations.every(action =>
+      action.constraints === undefined || firstConstraints === undefined
+        ? action.constraints === firstConstraints
+        : canonicalize(action.constraints) === canonicalize(firstConstraints));
+    // A proposal term is the authority ceiling for every selected product.
+    // If product-specific constraints differ, omitting the action is safer
+    // than publishing an apparently unbounded common right.
+    if (!sameConstraints) continue;
+    const sameTermsRef = typedDeclarations.every(action => action.terms_ref === typedDeclarations[0]!.terms_ref);
+    const serviceMode = selectedMode === 'requires_approval' ? 'seller_managed' : selectedMode;
+    terms.push({
+      term_id: `change_${candidate.action}`,
+      action: candidate.action,
+      service_mode: serviceMode,
+      allowed_statuses: allowedStatuses,
+      ...(sameSla && typedDeclarations[0]!.sla && {
+        processing_sla: structuredClone(typedDeclarations[0]!.sla),
+      }),
+      ...(typedDeclarations[0]!.constraints && {
+        constraints: structuredClone(typedDeclarations[0]!.constraints),
+      }),
+      ...(sameTermsRef && typedDeclarations[0]!.terms_ref && {
+        terms_ref: typedDeclarations[0]!.terms_ref,
+      }),
+    });
+  }
+  return terms;
+}
+
 function buildCanonicalCommercialTerms(
   proposal: Proposal,
   products: Map<string, Product>,
@@ -6432,6 +6988,7 @@ function buildCanonicalCommercialTerms(
         && { performance_standards: structuredClone((product as unknown as Record<string, unknown>).performance_standards) }),
     };
   });
+  const changeTerms = proposalChangeTermsForPurchases(purchases, products);
   return {
     brand,
     purchases,
@@ -6440,6 +6997,7 @@ function buildCanonicalCommercialTerms(
     ...(typeof recommendedBudget === 'number' && {
       total_budget: { amount: recommendedBudget, currency },
     }),
+    ...(changeTerms.length > 0 && { change_terms: changeTerms }),
   };
 }
 
@@ -6477,6 +7035,7 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'allowed_actions', 'catalog_types', 'signal_targeting_allowed',
   'signal_targeting_rules', 'max_optimization_goals', 'measurement_terms',
   'performance_standards', 'audience_evidence', 'audience_evidence_selections',
+  'acceptance_policy_profile_ids',
   'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'is_custom', 'overlay_support',
@@ -12354,7 +12913,7 @@ async function handleCreateMediaBuyUnlocked(
   // check_governance first.
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const govCtx = typeof rawGovCtx === 'string' && rawGovCtx ? rawGovCtx : undefined;
-  const governanceAgents = resolveGovernanceAgentsForAccount(
+  const governanceAgents = await resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
     req.account,
@@ -13698,9 +14257,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
         created_at: mb.createdAt,
         updated_at: mb.updatedAt,
         valid_actions: validActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
-        available_actions: mb.acceptedProposal
-          ? compactAvailableActions(mb, status, lifecycleSplitVersionForContext(ctx))
-          : availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
+        available_actions: availableActionsForMediaBuy(mb, status, lifecycleSplitVersionForContext(ctx)),
         currency: mb.currency,
         total_budget: totalBudget,
         ...(mb.dailyBudgetCap !== undefined && { daily_budget_cap: mb.dailyBudgetCap }),
@@ -15345,24 +15902,24 @@ async function handleUpdateMediaBuyUnlocked(
     }
   }
 
-  const actionRejection = options.acceptedProposalExecution
-    ? undefined
-    : rejectUnavailableAction(mb, req, currentStatus, productMap);
-  if (actionRejection) return actionRejection;
-
   // Revision check for optimistic concurrency
   const reqRevision = req.revision;
   if (reqRevision !== undefined && reqRevision !== mb.revision) {
     return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mb.revision}, got ${reqRevision}` }] };
   }
 
+  const actionRejection = options.acceptedProposalExecution || options.operationalControlExecution
+    ? undefined
+    : rejectUnavailableAction(mb, req, currentStatus, productMap, lifecycleSplitVersionForContext(ctx));
+  if (actionRejection) return actionRejection;
+
   // Established update_media_buy made root cancellation dominant over every
   // sibling mutation. Authorize only the cancel action, then commit it before
   // validating fields that the protocol says are ignored.
   if (req.canceled === true) {
-    const cancelRejection = options.acceptedProposalExecution
+    const cancelRejection = options.acceptedProposalExecution || options.operationalControlExecution
       ? undefined
-      : rejectUnavailableAction(mb, req, currentStatus, productMap);
+      : rejectUnavailableAction(mb, req, currentStatus, productMap, lifecycleSplitVersionForContext(ctx));
     if (cancelRejection) return cancelRejection;
 
     const now = new Date().toISOString();
@@ -15529,7 +16086,7 @@ async function handleUpdateMediaBuyUnlocked(
     ? rawGovernanceContext
     : undefined;
   const requiresGovernance = mediaBuyUpdateRequiresGovernance(mb, validationReq, updateDelta);
-  const updateGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const updateGovernanceAgents = await resolveGovernanceAgentsForAccount(
     sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId),
     ctx.principal,
     mb.accountRef,
@@ -16476,7 +17033,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       supported_versions: [...supportedReleaseVersions],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
       ...(governanceEnforcementTasks.length > 0 && {
-        governance_enforcement: { tasks: governanceEnforcementTasks },
+        governance_enforcement: {
+          tasks: governanceEnforcementTasks,
+          ...(supportsSellerGovernanceDiscovery(servedAdcpVersion) && {
+            accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+          }),
+        },
       }),
     },
     supported_protocols: ['media_buy', 'creative', 'governance', 'signals', 'brand'],
@@ -16515,6 +17077,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     }),
     media_buy: {
       buying_modes: wholesaleProfile.productWholesale ? ['brief', 'wholesale', 'refine'] : ['brief', 'refine'],
+      ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
+        acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
+      }),
       ...(supportsGetProductsRejected(servedAdcpVersion) && {
         lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS],
         proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
@@ -16921,7 +17486,7 @@ export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext)
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
   const session = await getSession(sessionKey);
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, req.account);
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, req.account);
   const hasRegisteredGovernanceAgent = registeredGovernanceAgents.length > 0;
 
   if (!segmentId) {
@@ -17302,7 +17867,7 @@ export async function handleBuildCreative(args: ToolArgs, ctx: TrainingContext):
       }],
     });
   }
-  const registeredGovernanceAgents = resolveGovernanceAgentsForAccount(
+  const registeredGovernanceAgents = await resolveGovernanceAgentsForAccount(
     creativeSessionKey(req as unknown as ToolArgs, ctx),
     ctx.principal,
     effectiveAccount as AccountRef | undefined,
@@ -19252,6 +19817,10 @@ export async function handleBuyProducts(
     ...(args.bidding !== undefined && { bidding: args.bidding }),
     ...(args.purchase_order_ref !== undefined && { purchase_order_ref: args.purchase_order_ref }),
     ...(args.agency_estimate_number !== undefined && { agency_estimate_number: args.agency_estimate_number }),
+    ...(() => {
+      const changeTerms = proposalChangeTermsForPurchases(canonicalPurchases, catalog);
+      return changeTerms.length > 0 ? { change_terms: changeTerms } : {};
+    })(),
   } as Record<string, unknown>;
   const acceptedProposal = {
     proposal_id: `proposal_direct_${randomUUID().slice(0, 12)}`,
@@ -19712,12 +20281,13 @@ export async function handleAcceptProposal(
 export async function handleControlMediaBuy(
   args: ControlMediaBuyRequest & ToolArgs,
   ctx: TrainingContext,
+  options: { sellerManagedExecution?: SellerManagedControlExecution } = {},
 ): Promise<Record<string, unknown>> {
   const mutex = await acquireMediaBuyMutationMutex(args, ctx);
   if (!mutex) return mediaBuyMutationConflict();
   try {
     evictSessionFromRequestCache(mutex.sessionScope);
-    const result = await handleControlMediaBuyUnlocked(args, ctx);
+    const result = await handleControlMediaBuyUnlocked(args, ctx, options);
     await flushDirtySessions();
     return result;
   } finally {
@@ -19728,6 +20298,7 @@ export async function handleControlMediaBuy(
 async function handleControlMediaBuyUnlocked(
   args: ControlMediaBuyRequest & ToolArgs,
   ctx: TrainingContext,
+  options: { sellerManagedExecution?: SellerManagedControlExecution } = {},
 ): Promise<Record<string, unknown>> {
   if (Array.isArray(args.packages)) {
     const seenPackageIds = new Set<string>();
@@ -19767,7 +20338,58 @@ async function handleControlMediaBuyUnlocked(
     controllerFixtureSessionKey(args, ctx),
   );
   const mediaBuy = session.mediaBuys.get(args.media_buy_id);
-  if (mediaBuy?.acceptedProposal && args.revision === mediaBuy.revision) {
+  if (mediaBuy) {
+    const execution = options.sellerManagedExecution?.kind === 'execute'
+      ? options.sellerManagedExecution
+      : undefined;
+    const durableReceipt = execution
+      ? mediaBuy.sellerManagedControlReceipts?.find(receipt => (
+          receipt.taskId === execution.taskId
+          && receipt.expectedRevision === execution.expectedRevision
+          && receipt.actions.length === execution.actions.length
+          && receipt.actions.every(action => execution.actions.includes(action))
+        ))
+      : undefined;
+    if (durableReceipt) return structuredClone(durableReceipt.result);
+
+    // Route and lifecycle authorization is part of the accepted change right,
+    // so evaluate it before comparing the request with the original proposal
+    // envelope. Otherwise a negotiated seller-managed increase is
+    // misclassified as REQUOTE_REQUIRED instead of telling the buyer to use
+    // the negotiated proposal/approval route.
+    if (args.revision !== mediaBuy.revision) {
+      return { errors: [{ code: 'CONFLICT', message: `Revision mismatch: expected ${mediaBuy.revision}, got ${args.revision}` }] };
+    }
+    const currentStatus = deriveStatus(mediaBuy, session);
+    const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+    overlaySeededProducts(session, productMap);
+    const servedAdcpVersion = lifecycleSplitVersionForContext(ctx);
+    const actionRejection = options.sellerManagedExecution
+      ? rejectUnavailableAction(
+          mediaBuy,
+          args,
+          currentStatus,
+          productMap,
+          servedAdcpVersion,
+          options.sellerManagedExecution,
+        )
+      : rejectUnavailableAction(mediaBuy, args, currentStatus, productMap, servedAdcpVersion);
+    if (isSellerManagedControlAuthorization(actionRejection)) {
+      return {
+        [SELLER_MANAGED_CONTROL_TASK_REQUIRED]: true,
+        mediaBuyId: mediaBuy.mediaBuyId,
+        expectedRevision: args.revision,
+        actions: actionRejection.actions,
+      } as SellerManagedControlTaskRequired;
+    }
+    if (actionRejection) return actionRejection;
+  }
+  const acceptedCommercialTerms = mediaBuy?.acceptedProposal?.commercial_terms as unknown as Record<string, unknown> | undefined;
+  if (
+    mediaBuy?.acceptedProposal
+    && args.revision === mediaBuy.revision
+    && !(acceptedCommercialTerms && Object.hasOwn(acceptedCommercialTerms, 'change_terms'))
+  ) {
     const acceptedTerms = mediaBuy.acceptedProposal.commercial_terms as unknown as Record<string, unknown>;
     const acceptedTotal = (isRecord(acceptedTerms.total_budget)
       && typeof acceptedTerms.total_budget.amount === 'number'
@@ -19777,7 +20399,11 @@ async function handleControlMediaBuyUnlocked(
       && typeof ((args as unknown as Record<string, unknown>).total_budget as Record<string, unknown>).amount === 'number'
       ? ((args as unknown as Record<string, unknown>).total_budget as Record<string, unknown>).amount as number
       : undefined;
-    if (acceptedTotal !== undefined && requestedTotal !== undefined && requestedTotal > acceptedTotal) {
+    if (
+      acceptedTotal !== undefined
+      && requestedTotal !== undefined
+      && requestedTotal > acceptedTotal
+    ) {
       return { errors: [{
         code: 'REQUOTE_REQUIRED',
         message: 'The requested total budget exceeds the accepted proposal envelope.',
@@ -19811,7 +20437,10 @@ async function handleControlMediaBuyUnlocked(
       const acceptedCap = typeof acceptedTerms.daily_budget_cap === 'number'
         ? acceptedTerms.daily_budget_cap
         : undefined;
-      if (acceptedCap !== undefined && aggregateControl.daily_budget_cap > acceptedCap) {
+      if (
+        acceptedCap !== undefined
+        && aggregateControl.daily_budget_cap > acceptedCap
+      ) {
         return requote('daily_budget_cap', 'The requested daily budget cap exceeds the accepted proposal envelope.');
       }
     }
@@ -19897,7 +20526,10 @@ async function handleControlMediaBuyUnlocked(
         }
       }
       const projectedTotal = [...projectedBudgets.values()].reduce((sum, budget) => sum + budget, 0);
-      if (acceptedTotal !== undefined && projectedTotal > acceptedTotal) {
+      if (
+        acceptedTotal !== undefined
+        && projectedTotal > acceptedTotal
+      ) {
         const changedIndex = requestedPackages.findIndex(pkg => typeof pkg.budget === 'number');
         const envelopeField = changedIndex >= 0 ? `packages[${changedIndex}].budget` : 'packages';
         return { errors: [{
@@ -19923,7 +20555,9 @@ async function handleControlMediaBuyUnlocked(
         const projectedBudget = mediaBuy.packages
           .filter(pkg => !pkg.canceled && productPricingKey(pkg.productId, pkg.pricingOptionId) === matchKey)
           .reduce((sum, pkg) => sum + (projectedBudgets.get(pkg.packageId) ?? 0), 0);
-        if (projectedBudget <= acceptedBudget) continue;
+        if (
+          projectedBudget <= acceptedBudget
+        ) continue;
         const changedIndex = requestedPackages.findIndex(pkg => {
           const state = mediaBuy.packages.find(candidate => candidate.packageId === pkg.package_id);
           return state
@@ -19957,7 +20591,7 @@ async function handleControlMediaBuyUnlocked(
   const affectedPackages = Array.isArray(updateResult.affected_packages)
     ? updateResult.affected_packages.filter(isRecord)
     : [];
-  return {
+  const controlResult = {
     status: 'completed',
     media_buy_id: updateResult.media_buy_id,
     revision: updateResult.revision,
@@ -19967,6 +20601,25 @@ async function handleControlMediaBuyUnlocked(
       .filter((id): id is string => typeof id === 'string'),
     ...(Array.isArray(updateResult.available_actions) && { available_actions: updateResult.available_actions }),
   };
+  const execution = options.sellerManagedExecution?.kind === 'execute'
+    ? options.sellerManagedExecution
+    : undefined;
+  const committedMediaBuy = session.mediaBuys.get(args.media_buy_id);
+  if (committedMediaBuy && execution) {
+    const receipts = committedMediaBuy.sellerManagedControlReceipts ?? [];
+    receipts.push({
+      taskId: execution.taskId,
+      expectedRevision: execution.expectedRevision,
+      actions: [...execution.actions],
+      result: structuredClone(controlResult),
+    });
+    // Do not evict receipts by a fixed count: an older worker may still be
+    // recovering after later revisions have completed. The durable outbox
+    // retains the corresponding terminal row, allowing a future maintenance
+    // pass to prune only receipts whose task outcome is known synchronized.
+    committedMediaBuy.sellerManagedControlReceipts = receipts;
+  }
+  return controlResult;
 }
 
 const HANDLER_MAP: Record<string, ToolHandler> = {

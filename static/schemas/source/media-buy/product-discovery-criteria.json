@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/product-discovery-criteria.json",
   "title": "Product Discovery Criteria",
-  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability for values the buyer will supply later.",
+  "description": "Structured criteria shared by product listing and proposal requests. Offer filters decide which commercial offers may be returned; targeting_overlay constrains deliverable inventory; required_overlay_support requires package-level targeting capability for values the buyer will supply later; acceptance_context supplies facts for advisory seller-policy preflight.",
   "type": "object",
   "properties": {
     "product_ids": {
@@ -27,6 +27,11 @@
     "outcome_target": {
       "allOf": [{ "$ref": "/schemas/media-buy/outcome-target.json" }],
       "x-adcp-schema-uri": "/schemas/media-buy/outcome-target.json"
+    },
+    "acceptance_context": {
+      "$ref": "/schemas/media-buy/acceptance-context.json",
+      "x-adcp-schema-uri": "/schemas/media-buy/acceptance-context.json",
+      "description": "Structured campaign and advertiser facts for coarse acceptance-policy matching. A matching product is not a guarantee of final acceptance."
     },
     "catalog": { "$ref": "/schemas/core/catalog-selection.json" },
     "policy_ids": {
