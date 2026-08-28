@@ -662,7 +662,7 @@ Pass property lists to media buy creation:
 
 ## Caching and Refresh
 
-The [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) response includes caching guidance:
+The [`get_property_list`](/docs/governance/property/tasks/property_lists#get_property_list) response includes caching guidance. When it supplies `resolved_at`, sellers copy that timestamp into product `list_applications` receipts; otherwise the seller timestamps completion of its full snapshot fetch, including all pages:
 
 | Field | Description |
 |-------|-------------|

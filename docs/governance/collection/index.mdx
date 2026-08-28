@@ -95,9 +95,9 @@ Include filters are allowlists, exclude filters are blocklists. When both are pr
 
 <img src="/images/walkthrough/collection-gov-05-seller-matching.png" alt="Split scene — Jordan's governance agent sends the collection list to Priya at StreamHaus, whose inventory lights up showing matched exclusions" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
 
-When Jordan's media buy references the collection list, Priya's sales agent at StreamHaus fetches it, matches entries against StreamHaus's collection inventory, and excludes matched programs from delivery. The matching uses distribution identifiers — StreamHaus declared Gracenote IDs on their collections in `adagents.json`, so the match is automatic.
+When Jordan's product-discovery request references the collection list, Priya's sales agent at StreamHaus fetches it, matches entries against StreamHaus's collection inventory, and excludes matched programs from the inventory represented by each returned product. The matching uses distribution identifiers — StreamHaus declared Gracenote IDs on their collections in `adagents.json`, so the match is automatic.
 
-Priya's agent reports back: 47 of 200 excluded programs are in StreamHaus's library. 12 additional collections caught by the TV-MA filter. The rest aren't programs StreamHaus carries — acknowledged and ignored.
+The seller returns the result with each product: for this product, 59 of the list's 200 resolved entries matched its collection inventory and 141 did not. The product's `list_applications` receipt identifies the list snapshot and evaluation time, while its price and forecast reflect the inventory remaining after those 59 matches were excluded. A different product can report different counts from the same list.
 
 The list is cached for a week (collection metadata changes less frequently than property metadata). When the governance agent re-resolves the list — a new season changes a show's content rating, or Jordan adds programs — sellers receive a webhook and refresh their cache.
 
@@ -107,7 +107,7 @@ Collection lists are referenced in targeting overlays alongside property lists:
 
 ```json
 {
-  "targeting": {
+  "targeting_overlay": {
     "property_list": {
       "agent_url": "https://governance.pinnacleagency.com",
       "list_id": "pl_novamotors_approved_ctv"
@@ -127,9 +127,7 @@ Collection lists are referenced in targeting overlays alongside property lists:
 
 A media buy can reference both simultaneously — "run in these approved shows, but never in these specific programs even if they appear on the approved list." The exclude list always wins on overlap.
 
-<Info>
-**Why two fields for collections but one for properties?** Property lists predate the paired include/exclude pattern now used across other targeting dimensions (geo, audience, device). Collection lists follow the current pattern. A future evolution may add `property_list_exclude` for symmetry.
-</Info>
+Property and collection lists use the same product-response receipt. Matching is a seller claim about one returned product at one point in time, not a report written back to the governance agent.
 
 ## Jordan's three-layer configuration
 
