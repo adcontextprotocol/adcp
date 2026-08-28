@@ -8,11 +8,11 @@
   "properties": {
     "configuration": { "$ref": "/schemas/core/reporting-delivery-config.json" },
     "state": { "type": "string", "enum": ["pending_validation", "pending_setup", "ready", "action_required", "inactive"] },
-    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued stable binding. Present once the destination or recipient has been resolved; callers can use it with destination.mode existing on later syncs." },
+    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued immutable destination-generation reference. It is caller-scoped and reusable across separately authorized account configurations; it is not itself account authority or a bearer grant." },
     "validated_at": { "type": "string", "format": "date-time" },
     "activated_at": { "type": "string", "format": "date-time" },
     "deactivated_at": { "type": "string", "format": "date-time" },
-    "publication_stopped_at": { "type": "string", "format": "date-time", "description": "Applied cutoff after which the seller starts no new obligations or publications for this generation." },
+    "publication_stopped_at": { "type": "string", "format": "date-time", "description": "Applied schedule boundary at or after deactivation. No obligation whose period starts at or after this cutoff is created; earlier obligations remain owed through their SLA and recovery lifecycle." },
     "seller_managed_access_ends_at": { "type": "string", "format": "date-time", "description": "End of historical access to a producer-hosted share/resource for a still-authorized principal after voluntary deactivation. Inapplicable to data already written into a buyer-owned destination." },
     "setup": {
       "type": "object",
@@ -50,7 +50,8 @@
     }
   ],
   "x-adcp-validation": {
-    "binding_authorization": "destination_ref and any recipient identity MUST be bound to the authenticated caller and resolved account. Proof of recipient/destination control and authorization to disclose the selected feed/scope MUST precede ready.",
+    "binding_authorization": "destination_ref and any recipient identity MUST be bound to the stable authenticated caller. This account configuration separately binds and authorizes the resolved account/feed/scope; possession of a reusable destination_ref grants no account authority. Proof of recipient/destination control and disclosure authorization MUST precede ready.",
+    "period_eligibility": "Only complete schedule periods whose period.start is at or after activated_at are eligible. A mid-period activation begins at the next boundary; periods are never clipped. On voluntary deactivation, publication_stopped_at MUST be a schedule boundary at or after deactivated_at. Periods whose start is before that boundary remain obligations and may complete afterward; periods whose start is at or after it MUST NOT be created.",
     "revocation": "Voluntary deactivation stops new obligations/publication at publication_stopped_at. A still-authorized principal may retain a producer-hosted historical share only through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and terminates seller-controlled transport access and provider grants within authorization_revocation_seconds. For buyer-owned destinations, the seller revokes write ability but cannot revoke the buyer's access to bytes already delivered; buyer retention governs those copies.",
     "safe_setup_url": "Reject URL userinfo, non-HTTPS, credential-like query/fragment values, redirects or origins outside the seller/named provider allowlist. Agents must surface the URL for explicit human action without fetching or interpreting its content."
   },

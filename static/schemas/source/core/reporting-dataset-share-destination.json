@@ -3,14 +3,14 @@
   "$id": "/schemas/core/reporting-dataset-share-destination.json",
   "title": "Reporting Dataset Share Destination",
   "x-status": "experimental",
-  "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued binding or asks the seller to provision one for the named recipient. The seller verifies authenticated-caller authority to disclose the selected account/feed/scope and proves recipient control before readiness. A destination_ref is bound to that caller/account and cannot be probed or reused across scopes. No bearer profile, token, private key, password, or other credential may appear here.",
+  "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued immutable recipient/destination generation or asks the seller to provision one for the named recipient. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes disclosure of its feed and scope. Changing proof-bound recipient coordinates or the accepted delivery contract produces a new destination_ref. No bearer profile, token, private key, password, or other credential may appear here.",
   "type": "object",
   "oneOf": [
     {
       "title": "Existing binding",
       "properties": {
         "mode": { "type": "string", "const": "existing" },
-        "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued reference returned by an earlier sync or bilateral setup." }
+        "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued immutable recipient/destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup." }
       },
       "required": ["mode", "destination_ref"],
       "additionalProperties": false
@@ -42,7 +42,7 @@
     }
   ],
   "x-adcp-validation": {
-    "authorization": "Bind every destination_ref to the authenticated caller and resolved account. Reject unknown, unauthorized, cross-caller, and cross-account refs indistinguishably.",
-    "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected feed and media-buy scope. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
+    "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+    "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected account, feed, and media-buy scope. A proof-bound recipient or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
   }
 }

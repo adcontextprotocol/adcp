@@ -145,6 +145,15 @@ provider-native version, manifest and file checksums, or a canonical logical-con
 digest. Billing requires the canonical-digest profile; frequent pacing and analytics
 snapshots may use cheaper native or manifest verification.
 
+Every obligation freezes an explicit `media_buy_ids` denominator at
+`scope_resolved_at`, which equals the period end, including media buys that produced zero rows. For an
+`all_media_buys` configuration, this is every caller-authorized media buy on the
+account whose effective flight overlaps the half-open period and which was known at
+the resolution cutoff. `[]` means definitively no media buys; omission never means
+all, empty, or unknown. A later-created or backdated media buy does not rewrite that
+historical obligation. This prevents current authorization state, deleted provider
+objects, and zero-delivery campaigns from silently changing the denominator.
+
 Per-buy `reporting_webhook` remains the existing low-latency data API. It is not a
 durable materialization in this first managed-ledger version; a short-period pacing
 configuration plus the signed readiness doorbell is the reliable fast path here.
@@ -214,7 +223,15 @@ authenticated entry point and a concrete action. Agents must not fetch, preview,
 interpret it; they surface it for explicit human action. It must use a seller/provider
 origin and never be a bearer URL or contain credentials.
 
-Each configuration represents one independently reconciled feed. `feed_purpose`
+Each configuration represents one independently reconciled feed. The selected
+offering and immutable configuration generation both name the exact
+`report_definition_id`. The offering also pins an immutable
+`report_definition_uri` and SHA-256. Its bundled
+`application/vnd.adcp.reporting-definition+json` document makes metric, grain,
+attribution, action-report-time, timezone/calendar, source/API mapping, query
+parameters, restatement behavior, and finality rules inspectable rather than leaving
+those choices behind an opaque profile label. Official revisions echo the URI and
+digest and select one matching finality policy from that definition. `feed_purpose`
 distinguishes fast `pacing`, `analytics`, and invoice-authoritative `billing` data.
 `reconciliation_mode: delivery_only` ends the protocol guarantee at verified
 availability; `consumer_receipt` additionally requires authenticated consumer
@@ -222,9 +239,32 @@ agreement. Billing configurations use `consumer_receipt`.
 Event-level exposure delivery is deferred until it has a separate privacy and
 authorization contract. `schedule.period_duration`, `schedule.alignment`, and
 `schedule.delivery_sla` determine which period obligations must exist and when they
-become overdue. Install multiple configurations when the buyer needs, for example, a
+become overdue. `billing_cycle` schedules also require an immutable `period_anchor`
+and IANA `period_timezone`; calendar durations use local civil time and its DST rules
+rather than a fixed number of seconds. Month/year boundaries preserve the anchor's
+local day and time, clamp to the target month's last valid day, and are always derived
+from the original anchor. A mid-period activation starts at the next full boundary.
+Deactivation applies a boundary cutoff: already-started periods remain owed, while
+later periods are not created. Install multiple configurations when the buyer needs, for example, a
 15-minute snapshot pacing feed, daily official analytics, and billing-cycle official
 billing data. Billing feeds require official finality.
+
+Capability offerings advertise schedule constraints, not necessarily an
+account-specific billing clock. A billing-cycle offering declares its anchor policy as
+`fixed` or `configurable`. A fixed offering supplies the exact anchor and timezone; a
+configurable offering lets the authorized account configuration supply both. This
+avoids a separate global capability entry for every contract anniversary while still
+making the installed schedule independently reproducible. For a January 31 monthly
+anchor, February clamps to its last civil day and March is derived again from January
+31 rather than drifting from February. DST boundaries retain the configured local
+wall-clock time.
+
+For non-billing schedules, phase is not implicit. `utc` counts intervals from
+`1970-01-01T00:00:00Z`; `account_timezone` counts from local midnight on that date in
+the resolved account timezone. Boundaries are derived directly from that origin and
+the interval ordinal. Nonexistent DST times advance by the gap and ambiguous times use
+the earlier offset, so durations such as `P2D` or `PT7H` produce the same intervals in
+independent implementations.
 
 Supported patterns are:
 
@@ -237,6 +277,14 @@ Supported patterns are:
 
 Orchestration is declared separately as `producer_managed` or `consumer_managed`.
 It does not imply who owns the destination or which platform service writes it.
+
+When `sync_agent_configuration` is supported, its `destination_ref` identifies one
+immutable destination generation owned by the stable authenticated caller and may be
+reused across that caller's separately authorized seller accounts. The account feed
+configuration—not possession of the reference—is the disclosure authorization.
+Changing proof-bound destination or recipient coordinates, accepted formats, access
+mode, or verification contract produces a new reference; retained configurations and
+history continue to resolve the old one.
 
 The experimental capability advertises atomic feed/profile/schema/schedule/finality/
 method offerings, automatic recovery duration, metadata retention, exact-resource
@@ -254,6 +302,19 @@ self-contained bundles using the closed, SDK-bundled JSON Schema 2020-12 dialect
 SDKs install no network resolver and recursively reject every non-fragment `$ref`, all
 `$dynamicRef`/`$recursiveRef` keywords, unknown metaschemas/vocabularies, reference
 cycle, excessive depth/node count, and oversized regex before compilation.
+
+Report definitions use the same authenticated-origin, redirect-free, DNS-pinned,
+bounded-fetch and digest-verification rules. Their canonical JSON is data, not agent
+instructions, and may not contain executable content or external references.
+
+Canonical-digest profiles also include a `canonicalization_uri` and SHA-256 for the
+exact ordering, value-encoding, null, and row-serialization contract. The identifier
+and digest alone are not an executable agreement. The fetched
+`application/vnd.adcp.reporting-canonicalization+json` document follows the bundled
+`reporting-canonicalization-contract.json` schema, selects the closed
+`adcp_jcs_rows_v1` algorithm, and contains cross-language golden vectors. SDKs fetch this contract under the
+same origin, redirect, DNS, byte, time, and content-type controls and verify its bytes
+and golden vectors before computing or accepting a billing digest.
 
 ## Complete reconciliation
 
@@ -275,6 +336,13 @@ closed and retained, every locally expected obligation exists, exactly one curre
 revision meets finality, a verified resource remains readable, all history counts are
 present, and—when configured—the authenticated consumer receipt for that revision is
 accepted.
+
+An `official` revision also states why it is final and when that rule was applied.
+`source_final`, `contractual_cutoff`, and `stabilized` distinguish a provider's
+authoritative close from a versioned commercial cutoff or stabilization rule;
+`finality_policy_id` is bound by the immutable report definition. Social attribution
+feeds therefore do not have to pretend that a platform supplied a final bit it does
+not expose.
 
 `scope.ledger_retained_from` and `scope.coverage_complete` prevent expired history from
 looking complete. Metadata may outlive physical resources; each completed obligation

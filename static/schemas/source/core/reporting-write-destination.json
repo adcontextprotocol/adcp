@@ -3,14 +3,14 @@
   "$id": "/schemas/core/reporting-write-destination.json",
   "title": "Reporting Write Destination",
   "x-status": "experimental",
-  "description": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued binding or asks the seller to validate and bind a provider-native location. The seller verifies authenticated-caller authority for the account/feed/scope and destination control before readiness. A destination_ref is bound to that caller/account and cannot be probed or reused across scopes. Access grants name advertised producer identities; credentials never transit AdCP.",
+  "description": "Storage or warehouse destination for durable reporting. The caller either references an existing seller-issued immutable destination generation or asks the seller to validate and bind a provider-native location. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes its feed and scope. Changing proof-bound coordinates or the accepted delivery contract produces a new destination_ref. Access grants name advertised producer identities; credentials never transit AdCP.",
   "type": "object",
   "oneOf": [
     {
       "title": "Existing binding",
       "properties": {
         "mode": { "type": "string", "const": "existing" },
-        "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued reference returned by an earlier sync or bilateral setup." }
+        "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Seller-issued immutable destination-generation reference returned by sync_agent_configuration, an earlier sync, or bilateral setup." }
       },
       "required": ["mode", "destination_ref"],
       "additionalProperties": false
@@ -28,7 +28,7 @@
     }
   ],
   "x-adcp-validation": {
-    "authorization": "Bind every destination_ref to the authenticated caller and resolved account. Reject unknown, unauthorized, cross-caller, and cross-account refs indistinguishably.",
-    "destination_proof": "Before ready, prove destination control and caller authority for every selected feed and media-buy scope. Revoke grants when the configuration, caller authorization, or account becomes inactive."
+    "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+    "destination_proof": "Before ready, prove destination control and caller authority for every selected account, feed, and media-buy scope. A proof-bound coordinate or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Revoke grants when the configuration, caller authorization, or account becomes inactive."
   }
 }

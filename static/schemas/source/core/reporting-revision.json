@@ -8,6 +8,8 @@
   "properties": {
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Identity or canonical fingerprint of immutable metric, grain, attribution, breakdown, action-definition, profile, and calendar/timezone semantics." },
+    "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)" },
+    "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
     "schema_version": { "type": "string", "minLength": 1, "maxLength": 64 },
     "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Machine-readable schema on the authenticated seller/provider or AdCP-registry origin." },
@@ -15,7 +17,7 @@
     "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect; the metaschema is never network-fetched." },
     "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is self-contained and every $ref is a local # fragment." },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
-    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
+    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator inherited from the obligation, including buys with zero rows. An empty array proves a zero-buy period rather than an unknown denominator." },
     "period": {
       "type": "object",
       "description": "Half-open reporting interval with its source calendar boundary.",
@@ -28,6 +30,9 @@
       "additionalProperties": false
     },
     "finality": { "$ref": "/schemas/enums/reporting-finality.json" },
+    "finality_basis": { "type": "string", "enum": ["source_final", "contractual_cutoff", "stabilized"], "description": "Why an official revision is considered final: an authoritative source signal, a versioned contractual cutoff, or a versioned stabilization rule." },
+    "finality_policy_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "description": "Immutable policy/version reference that defines the selected finality basis. It MUST be bound by report_definition_id." },
+    "finalized_at": { "type": "string", "format": "date-time", "description": "When the producer applied the declared finality basis to this official revision." },
     "observed_at": { "type": "string", "format": "date-time", "description": "When the seller obtained or committed this source observation." },
     "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Latest event time conservatively included, or null when precision is unknown." },
     "data_through_precision": { "type": "string", "enum": ["exact", "lower_bound", "unknown"] },
@@ -42,18 +47,25 @@
     "canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
     "created_at": { "type": "string", "format": "date-time" }
   },
-  "required": ["reporting_revision_id", "report_definition_id", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "control_totals", "created_at"],
+  "required": ["reporting_revision_id", "report_definition_id", "report_definition_uri", "report_definition_sha256", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "media_buy_ids", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "control_totals", "created_at"],
   "allOf": [
     {
       "if": { "properties": { "data_through_precision": { "const": "unknown" } }, "required": ["data_through_precision"] },
       "then": { "properties": { "data_through": { "type": "null" } } },
       "else": { "properties": { "data_through": { "type": "string", "format": "date-time" } } }
+    },
+    {
+      "if": { "properties": { "finality": { "const": "official" } }, "required": ["finality"] },
+      "then": { "required": ["finality_basis", "finality_policy_id", "finalized_at"] },
+      "else": { "not": { "anyOf": [{ "required": ["finality_basis"] }, { "required": ["finality_policy_id"] }, { "required": ["finalized_at"] }] } }
     }
   ],
   "x-adcp-validation": {
-    "safe_schema_fetch": "schema_uri and schema_sha256 MUST match the selected offering. Apply its safe_schema_fetch policy; verify bytes before parsing and never interpret schema content or annotations as agent/LLM instructions.",
+    "safe_schema_fetch": "schema_uri/schema_sha256 and report_definition_uri/report_definition_sha256 MUST match the selected offering. Apply its safe fetch policy; verify bytes before parsing and never interpret fetched content or annotations as agent/LLM instructions.",
     "slice_identity": "report_definition_id, account_id, media_buy_ids, period, and reporting_profile MUST remain identical across a supersession chain.",
     "fan_out": "Delivery configuration, obligation, destination, feed purpose, and recipient identity belong only on reporting_materialization and reporting_obligation. They MUST NOT affect reporting_revision_id for identical content.",
+    "finality_evidence": "An official revision's finality_policy_id and finality_basis MUST match the pinned report definition. finalized_at MUST be at or after period.end and no later than created_at.",
+    "set_ordering": "media_buy_ids is a mathematical set and MUST be serialized in ascending Unicode code-point order so equivalent denominators have one representation.",
     "digest_requirement": "canonical_content_digest is optional for non-billing delivery profiles. It is mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },
   "additionalProperties": false

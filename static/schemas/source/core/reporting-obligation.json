@@ -13,7 +13,8 @@
     "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
-    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true },
+    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown." },
+    "scope_resolved_at": { "type": "string", "format": "date-time", "description": "Instant at which the configured scope was resolved and frozen for this obligation. For all_media_buys, include every caller-authorized account media buy whose effective flight overlaps the half-open period and was known by this cutoff. Later-created or backdated buys do not rewrite this obligation." },
     "period": {
       "type": "object",
       "properties": {
@@ -26,7 +27,7 @@
     },
     "expected_at": { "type": "string", "format": "date-time" },
     "schedule": { "$ref": "/schemas/core/reporting-schedule.json", "description": "Resolved immutable schedule generation that created this obligation." },
-    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved caller/account-bound destination or recipient binding for this obligation." },
+    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Immutable caller-owned destination generation selected by this account-authorized obligation. The account/configuration join—not possession of this reusable reference—authorizes disclosure." },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
     "reconciliation_mode": { "$ref": "/schemas/core/reporting-reconciliation-mode.json" },
     "reconciliation_status": { "type": "string", "enum": ["not_required", "pending", "accepted", "rejected"], "description": "Consumer agreement state for the current required revision. A later superseding revision returns a receipt-required obligation to pending until that revision is accepted." },
@@ -40,7 +41,7 @@
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "resource_retained_until": { "type": "string", "format": "date-time", "description": "Minimum time through which at least one verified materialization for a completed obligation remains readable." }
   },
-  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "schedule", "destination_ref", "required_finality", "reconciliation_mode", "reconciliation_status", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "receipt_count", "accepted_receipt_count", "issues"],
+  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "media_buy_ids", "scope_resolved_at", "period", "expected_at", "schedule", "destination_ref", "required_finality", "reconciliation_mode", "reconciliation_status", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "receipt_count", "accepted_receipt_count", "issues"],
   "allOf": [
     {
       "if": { "properties": { "health": { "enum": ["healthy", "complete"] } }, "required": ["health"] },
@@ -83,6 +84,7 @@
     }
   ],
   "x-adcp-validation": {
+    "scope_resolution": "scope_resolved_at MUST equal period.end. all_media_buys membership is frozen from the caller-authorized AdCP media buys known at that instant whose effective flights overlap [period.start, period.end); explicit configured media_buy_ids are echoed even when they produce zero rows. Provider object deletion does not remove a buy. Later-created or backdated buys do not alter the obligation.",
     "nested_identity": "Every materialization associated with this obligation MUST equal its delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method; its destination-independent revision MUST equal account_id, report_definition_id, reporting_profile, period, and applicable media_buy_ids.",
     "complete_finality": "complete requires a published revision at required_finality and at least one verified readable materialization for that revision through resource_retained_until. consumer_receipt additionally requires an accepted matching receipt for the current revision. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
     "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained revision.",

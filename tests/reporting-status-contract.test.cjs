@@ -37,6 +37,8 @@ function assertSelfContainedReportingSchema(schema) {
 const revision = {
   reporting_revision_id: 'rrv_20260827_a',
   report_definition_id: 'rdef_daily_delivery_v1',
+  report_definition_uri: 'https://schemas.example/reporting-definitions/daily-delivery-v1.json',
+  report_definition_sha256: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
   reporting_profile: 'media_buy_delivery_v1',
   schema_version: '1.0',
   schema_uri: 'https://schemas.example/media-buy-delivery/v1.json',
@@ -63,6 +65,7 @@ const revision = {
     algorithm: 'sha256',
     value: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     canonicalization_id: 'adcp-reporting-rows-v1',
+    canonicalization_uri: 'https://schemas.example/reporting-canonicalization/v1.json',
     canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
   },
   created_at: '2026-08-27T04:00:01Z',
@@ -105,6 +108,9 @@ const officialRevision = {
   ...revision,
   reporting_revision_id: 'rrv_20260827_b',
   finality: 'official',
+  finality_basis: 'contractual_cutoff',
+  finality_policy_id: 'analytics-daily-finality-v1',
+  finalized_at: '2026-08-28T04:00:00Z',
   observed_at: '2026-08-28T04:00:00Z',
   supersedes_reporting_revision_id: revision.reporting_revision_id,
   row_count: 2,
@@ -116,6 +122,7 @@ const officialRevision = {
     algorithm: 'sha256',
     value: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
     canonicalization_id: 'adcp-reporting-rows-v1',
+    canonicalization_uri: 'https://schemas.example/reporting-canonicalization/v1.json',
     canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
   },
   created_at: '2026-08-28T04:00:01Z',
@@ -171,9 +178,12 @@ describe('managed reporting status contract', () => {
   let validateResource;
   let validateReceiptRequest;
   let validateReceiptResponse;
+  let validateCanonicalizationContract;
+  let validateScheduleOffering;
+  let validateReportDefinition;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -191,12 +201,25 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-resource.json'),
       compile('/schemas/media-buy/sync-reporting-receipts-request.json'),
       compile('/schemas/media-buy/sync-reporting-receipts-response.json'),
+      compile('/schemas/core/reporting-canonicalization-contract.json'),
+      compile('/schemas/core/reporting-schedule-offering.json'),
+      compile('/schemas/core/reporting-report-definition.json'),
     ]);
   });
 
   it('keeps canonical revisions destination-independent for multi-destination fan-out', () => {
     assert.equal(validateRevision(revision), true, JSON.stringify(validateRevision.errors));
     assert.equal(validateRevision({ ...revision, destination_ref: 'dest_should_not_be_here' }), false);
+    assert.equal(validateRevision({ ...revision, media_buy_ids: [] }), true, JSON.stringify(validateRevision.errors));
+    const denominatorUnknown = structuredClone(revision);
+    delete denominatorUnknown.media_buy_ids;
+    assert.equal(validateRevision(denominatorUnknown), false);
+
+    assert.equal(validateRevision(officialRevision), true, JSON.stringify(validateRevision.errors));
+    const unexplainedOfficial = structuredClone(officialRevision);
+    delete unexplainedOfficial.finality_basis;
+    assert.equal(validateRevision(unexplainedOfficial), false);
+    assert.equal(validateRevision({ ...revision, finality_basis: 'stabilized' }), false);
 
     for (const [suffix, destinationRef] of [['s3', 'dest_s3'], ['bq', 'dest_bq'], ['dbx', 'dest_databricks']]) {
       const attempt = structuredClone(materialization);
@@ -263,6 +286,8 @@ describe('managed reporting status contract', () => {
       observed_at: '2026-08-27T04:01:00Z',
     };
     assert.equal(validateReceiptRequest({
+      adcp_version: '3.2-beta.8',
+      adcp_major_version: 3,
       account: { account_id: 'acc_123' },
       idempotency_key: 'receipt-batch-20260827-0001',
       receipts: [receipt],
@@ -286,19 +311,23 @@ describe('managed reporting status contract', () => {
       { pattern: 'dataset_share', transport: 'snowflake_secure_sharing', orchestration: 'producer_managed', destination: { mode: 'existing', destination_ref: 'dest_sf' } },
       { pattern: 'warehouse_materialization', transport: 'gam_bigquery_transfer', orchestration: 'consumer_managed', destination: { mode: 'existing', destination_ref: 'dest_bq' } },
     ]) {
-      assert.equal(validateConfig({
+      const configuration = {
         delivery_config_id: `cfg-${method.pattern}`,
         delivery_config_version: 1,
         offering_id: `analytics-${method.pattern}`,
         active: true,
         feed_purpose: 'analytics',
+        report_definition_id: revision.report_definition_id,
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
         required_finality: 'official',
         reconciliation_mode: 'delivery_only',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
         method,
-      }), true, JSON.stringify(validateConfig.errors));
+      };
+      assert.equal(validateConfig(configuration), true, JSON.stringify(validateConfig.errors));
+      delete configuration.report_definition_id;
+      assert.equal(validateConfig(configuration), false);
     }
   });
 
@@ -313,6 +342,7 @@ describe('managed reporting status contract', () => {
           offering_id: 'analytics-daily-delta',
           active: true,
           feed_purpose: 'analytics',
+          report_definition_id: revision.report_definition_id,
           reporting_profile: 'media_buy_delivery_v1',
           scope: { all_media_buys: true },
           required_finality: 'official',
@@ -350,6 +380,7 @@ describe('managed reporting status contract', () => {
       active: true,
       delivery_config_version: 1,
       offering_id: 'shared-reporting',
+      report_definition_id: revision.report_definition_id,
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
       reconciliation_mode: 'delivery_only',
@@ -363,7 +394,7 @@ describe('managed reporting status contract', () => {
     for (const configuration of [
       { ...base, delivery_config_id: 'pacing-15m', feed_purpose: 'pacing', required_finality: 'snapshot', schedule: { period_duration: 'PT15M', alignment: 'utc', delivery_sla: 'PT5M' } },
       { ...base, delivery_config_id: 'analytics-daily', feed_purpose: 'analytics', required_finality: 'official', schedule: { period_duration: 'P1D', alignment: 'account_timezone', delivery_sla: 'PT4H' } },
-      { ...base, delivery_config_id: 'billing-cycle', feed_purpose: 'billing', required_finality: 'official', reconciliation_mode: 'consumer_receipt', schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' } },
+      { ...base, delivery_config_id: 'billing-cycle', feed_purpose: 'billing', required_finality: 'official', reconciliation_mode: 'consumer_receipt', schedule: { period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' } },
     ]) assert.equal(validateConfig(configuration), true, JSON.stringify(validateConfig.errors));
 
     assert.equal(validateConfig({
@@ -371,7 +402,7 @@ describe('managed reporting status contract', () => {
       delivery_config_id: 'invalid-billing-snapshot',
       feed_purpose: 'billing',
       required_finality: 'snapshot',
-      schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' },
+      schedule: { period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' },
     }), false);
     assert.equal(validateConfig({
       ...base,
@@ -379,7 +410,7 @@ describe('managed reporting status contract', () => {
       feed_purpose: 'billing',
       required_finality: 'official',
       reconciliation_mode: 'delivery_only',
-      schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' },
+      schedule: { period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' },
     }), false);
   });
 
@@ -390,6 +421,7 @@ describe('managed reporting status contract', () => {
       offering_id: 'analytics-daily-delta',
       active: true,
       feed_purpose: 'analytics',
+      report_definition_id: revision.report_definition_id,
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
       required_finality: 'official',
@@ -439,10 +471,64 @@ describe('managed reporting status contract', () => {
     }
     assert.equal(validateSchedule({ period_duration: 'PT5M', alignment: 'utc', delivery_sla: 'PT0S' }), true, JSON.stringify(validateSchedule.errors));
     assert.equal(validateSchedule({ period_duration: 'PT5M', alignment: 'utc', delivery_sla: 'PT' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', delivery_sla: 'P1D' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor: '2026-01-15T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' }), true, JSON.stringify(validateSchedule.errors));
+    assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'utc', period_anchor: '2026-01-15T05:00:00Z', delivery_sla: 'PT4H' }), false);
+    assert.equal(validateSchedule({ period_duration: 'P1D', alignment: 'utc', period_timezone: 'America/New_York', delivery_sla: 'PT4H' }), false);
     const field = readSchema('/schemas/account/sync-accounts-request.json')
       .properties.accounts.items.properties.reporting_delivery_configs;
     assert.match(field['x-adcp-validation'].unique_config_generation, /Reject/);
     assert.match(field['x-adcp-validation'].immutable_generation, /identical feed\/profile\/scope/);
+  });
+
+  it('defines an executable canonicalization contract with cross-language vectors', () => {
+    const contract = {
+      contract_version: '1.0',
+      media_type: 'application/vnd.adcp.reporting-canonicalization+json',
+      algorithm: 'adcp_jcs_rows_v1',
+      schema_sha256: revision.schema_sha256,
+      primary_keys: ['media_buy_id', 'date'],
+      golden_vectors: [
+        { name: 'empty', input_rows: [], canonical_utf8_base64: 'W10=', sha256: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945' },
+        { name: 'ordering', input_rows: [{ media_buy_id: 'b', date: '2026-08-26' }, { media_buy_id: 'a', date: '2026-08-26' }], canonical_utf8_base64: 'W3siZGF0ZSI6IjIwMjYtMDgtMjYiLCJtZWRpYV9idXlfaWQiOiJhIn0seyJkYXRlIjoiMjAyNi0wOC0yNiIsIm1lZGlhX2J1eV9pZCI6ImIifV0=', sha256: '54a318008a022606fdf2ad2a717bb9c6665825f717d15dc61369fb17bd5ab1d2' },
+      ],
+    };
+    assert.equal(validateCanonicalizationContract(contract), true, JSON.stringify(validateCanonicalizationContract.errors));
+    assert.match(readSchema('/schemas/core/reporting-canonicalization-contract.json')['x-adcp-validation'].algorithm, /RFC 8785-encode/);
+    assert.match(readSchema('/schemas/core/reporting-canonicalization-contract.json')['x-adcp-validation'].binding, /reproduce every golden vector/);
+  });
+
+  it('separates global schedule constraints from account billing anchors', () => {
+    assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'configurable', delivery_sla: 'P1D' }), true, JSON.stringify(validateScheduleOffering.errors));
+    assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'fixed', period_anchor: '2026-01-31T05:00:00Z', period_timezone: 'America/New_York', delivery_sla: 'P1D' }), true, JSON.stringify(validateScheduleOffering.errors));
+    assert.equal(validateScheduleOffering({ period_duration: 'P1M', alignment: 'billing_cycle', period_anchor_policy: 'fixed', delivery_sla: 'P1D' }), false);
+    assert.match(readSchema('/schemas/core/reporting-schedule.json')['x-adcp-validation'].period_generation, /origin and the interval ordinal/);
+    assert.match(readSchema('/schemas/core/reporting-schedule.json')['x-adcp-validation'].period_generation, /1970-01-01T00:00:00Z as interval zero/);
+    assert.equal(validateSchedule({ period_duration: 'P2D', alignment: 'utc', delivery_sla: 'PT4H' }), true, JSON.stringify(validateSchedule.errors));
+  });
+
+  it('pins inspectable source, restatement, and finality semantics', () => {
+    const definition = {
+      contract_version: '1.0',
+      media_type: 'application/vnd.adcp.reporting-definition+json',
+      report_definition_id: revision.report_definition_id,
+      reporting_profile: revision.reporting_profile,
+      grain: 'media_buy-day',
+      source: {
+        provider: { domain: 'social.example' },
+        system: 'insights',
+        api_version: 'v25.0',
+        query_semantics: { attribution_window: ['7d_click', '1d_view'], action_report_time: 'conversion' },
+      },
+      calendar: { timezone_basis: 'account_timezone' },
+      metrics: [{ name: 'spend', source_expression: 'spend', aggregation: 'sum', unit: 'account_currency' }],
+      dimensions: ['account_id', 'media_buy_id', 'period_start'],
+      restatement_policy: { source_requery_duration: 'P28D', emit_only_on_content_change: true },
+      finality_policies: [{ finality_policy_id: officialRevision.finality_policy_id, basis: 'contractual_cutoff', duration_after_period_end: 'P2D' }],
+    };
+    assert.equal(validateReportDefinition(definition), true, JSON.stringify(validateReportDefinition.errors));
+    assert.match(readSchema('/schemas/core/reporting-report-definition.json')['x-adcp-validation'].binding, /official revision/);
   });
 
   it('returns auditable summary scope and does not allow complete on an open scope', () => {
@@ -549,6 +635,7 @@ describe('managed reporting status contract', () => {
       reporting_profile: revision.reporting_profile,
       account_id: 'acc_123',
       media_buy_ids: ['mb_123'],
+      scope_resolved_at: '2026-08-27T00:00:00Z',
       period: revision.period,
       expected_at: '2026-08-27T04:00:00Z',
       schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -567,6 +654,14 @@ describe('managed reporting status contract', () => {
       resource_retained_until: '2026-09-28T04:00:16Z',
     };
     assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
+    obligation.media_buy_ids = [];
+    assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
+    delete obligation.media_buy_ids;
+    assert.equal(validateObligation(obligation), false);
+    obligation.media_buy_ids = ['mb_123'];
+    delete obligation.scope_resolved_at;
+    assert.equal(validateObligation(obligation), false);
+    obligation.scope_resolved_at = '2026-08-27T00:00:00Z';
     obligation.production_status = 'failed';
     assert.equal(validateObligation(obligation), false);
     obligation.production_status = 'published';
@@ -612,6 +707,7 @@ describe('managed reporting status contract', () => {
         reporting_profile: revision.reporting_profile,
         account_id: 'acc_123',
         media_buy_ids: ['mb_123'],
+        scope_resolved_at: '2026-08-27T00:00:00Z',
         period: revision.period,
         expected_at: '2026-08-27T04:00:00Z',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -713,6 +809,9 @@ describe('managed reporting status contract', () => {
           offerings: [{
             offering_id: 'analytics-daily-delta',
             feed_purpose: 'analytics',
+            report_definition_id: revision.report_definition_id,
+            report_definition_uri: revision.report_definition_uri,
+            report_definition_sha256: revision.report_definition_sha256,
             reporting_profile: {
               id: 'media_buy_delivery_v1',
               version: '1.0',
@@ -723,6 +822,9 @@ describe('managed reporting status contract', () => {
               grain: 'media_buy-day',
               primary_keys: ['account_id', 'media_buy_id', 'period_start'],
               canonicalization_id: 'adcp-reporting-rows-v1',
+              canonicalization_contract_version: '1.0',
+              canonicalization_media_type: 'application/vnd.adcp.reporting-canonicalization+json',
+              canonicalization_uri: 'https://schemas.example/reporting-canonicalization/v1.json',
               canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
             },
             schedule: { period_duration: 'P1D', alignment: 'account_timezone', delivery_sla: 'PT4H' },
@@ -755,6 +857,9 @@ describe('managed reporting status contract', () => {
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://127.0.0.1/admin';
     assert.equal(validateCapabilities(capabilities), false);
     capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.schema_uri = 'https://schemas.example/media-buy-delivery/v1.json';
+    capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.canonicalization_uri = 'https://127.0.0.1/canonicalization.json';
+    assert.equal(validateCapabilities(capabilities), false);
+    capabilities.media_buy.reporting_delivery.offerings[0].reporting_profile.canonicalization_uri = 'https://schemas.example/reporting-canonicalization/v1.json';
     assert.match(readSchema('/schemas/core/reporting-delivery-capabilities.json')['x-adcp-validation'].unique_offerings, /provider, access_mode, format/);
     delete capabilities.webhook_signing;
     assert.equal(validateCapabilities(capabilities), false);
@@ -774,6 +879,7 @@ describe('managed reporting status contract', () => {
     assert.match(requestDescription, /indistinguishable/);
     const stateSchema = readSchema('/schemas/core/reporting-delivery-config-state.json');
     assert.match(stateSchema['x-adcp-validation'].binding_authorization, /authenticated caller/);
+    assert.match(stateSchema['x-adcp-validation'].binding_authorization, /grants no account authority/);
     assert.match(stateSchema['x-adcp-validation'].revocation, /new obligations\/publication/);
     assert.match(stateSchema['x-adcp-validation'].safe_setup_url, /must surface the URL for explicit human action/);
 
@@ -784,6 +890,7 @@ describe('managed reporting status contract', () => {
         offering_id: 'analytics-daily-delta',
         active: true,
         feed_purpose: 'analytics',
+        report_definition_id: revision.report_definition_id,
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
         required_finality: 'official',

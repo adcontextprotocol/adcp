@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-delivery-config.json",
   "title": "Reporting Delivery Configuration",
   "x-status": "experimental",
-  "description": "Desired durable reporting delivery for one account. Entries are owned by (authenticated caller, account) and keyed by (delivery_config_id, delivery_config_version). The generation's feed, profile, scope, finality, schedule, method, and destination are immutable; only lifecycle intent (`active` and `revocation_effective_at`) may change without a new generation. Sellers reject a reused version with different immutable content. sync_accounts replacement semantics apply only to the calling principal's set. Omission leaves that set unchanged; [] deactivates that caller's set and stops new publication without affecting another caller. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "description": "Desired durable reporting delivery for one account. Entries are owned by (authenticated caller, account) and keyed by (delivery_config_id, delivery_config_version). The generation's feed, report definition, profile, scope, finality, schedule, method, and immutable destination generation are fixed; only lifecycle intent (`active` and `revocation_effective_at`) may change without a new generation. Sellers reject a reused version with different immutable content. sync_accounts replacement semantics apply only to the calling principal's set. Omission leaves that set unchanged; [] deactivates that caller's set and stops new publication without affecting another caller. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
   "type": "object",
   "properties": {
     "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Caller-selected stable identifier, unique within the authenticated caller and account." },
@@ -11,6 +11,7 @@
     "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "description": "Atomic reporting offering advertised by the seller that binds feed, profile, schedule, finality, and delivery support." },
     "active": { "type": "boolean", "default": true, "description": "Whether new reporting obligations should use this configuration. Inactive configurations remain visible for historical resolution." },
     "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Operational use of this independently reconciled feed. pacing is the fast snapshot path; billing is invoice-authoritative. Event-level exposure is intentionally deferred until a privacy and authorization contract exists." },
+    "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Exact immutable semantic definition selected from the offering. This makes the expected obligation identity independently derivable and prevents attribution, timezone, source-mapping, or restatement-policy drift behind a profile label." },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "description": "Versioned semantic profile for the aggregate report, such as media_buy_delivery_v1. It MUST match the selected offering." },
     "scope": {
       "type": "object",
@@ -29,7 +30,7 @@
     "method": { "$ref": "/schemas/core/reporting-delivery-method.json" },
     "revocation_effective_at": { "type": "string", "format": "date-time", "description": "Optional requested cutoff for deactivation. No new publication may begin after the applied cutoff; historical access is limited to the contracted recovery window." }
   },
-  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "reporting_profile", "scope", "required_finality", "reconciliation_mode", "schedule", "method"],
+  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "report_definition_id", "reporting_profile", "scope", "required_finality", "reconciliation_mode", "schedule", "method"],
   "allOf": [
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
