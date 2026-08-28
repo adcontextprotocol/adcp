@@ -324,11 +324,34 @@ describe('AnthropicModelProvider request translation', () => {
     }]);
   });
 
-  it('fails closed on structured output instead of silently dropping it', () => {
+  it('maps structured output to the Anthropic JSON schema envelope', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
-    expect(() => provider.prepare(request({
-      outputSchema: { name: 'answer', schema: { type: 'object' }, strict: true },
-    }))).toThrow(UnsupportedModelCapabilityError);
+    expect(provider.prepare(request({
+      outputSchema: {
+        name: 'answer',
+        schema: {
+          type: 'object',
+          properties: { answer: { type: 'string' } },
+          required: ['answer'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+      reasoning: { effort: 'medium' },
+    })).providerRequest).toMatchObject({
+      output_config: {
+        effort: 'medium',
+        format: {
+          type: 'json_schema',
+          schema: {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
   });
 });
 

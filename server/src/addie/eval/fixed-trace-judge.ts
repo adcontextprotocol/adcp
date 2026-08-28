@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { collectModelResponse } from '../model-providers/events.js';
 import type {
+  JsonObject,
   ModelProvider,
   ModelProviderId,
   ModelReasoningEffort,
@@ -23,6 +24,19 @@ export const FIXED_TRACE_MIN_INDEPENDENT_JUDGES = 2;
 
 const MAX_JUDGE_INPUT_BYTES = 24 * 1024;
 const MAX_JUDGE_OUTPUT_BYTES = 8 * 1024;
+const FIXED_TRACE_JUDGE_VERDICT_SCHEMA: Readonly<JsonObject> = Object.freeze({
+  type: 'object',
+  properties: {
+    pass: { type: 'boolean' },
+    score: { type: 'integer', enum: [1, 2, 3, 4] },
+    reason: {
+      type: 'string',
+      enum: ['correct', 'incomplete', 'unsupported', 'unsafe', 'off_topic'],
+    },
+  },
+  required: ['pass', 'score', 'reason'],
+  additionalProperties: false,
+});
 
 export interface FixedTraceJudgeConfig {
   provider: ModelProvider;
@@ -192,6 +206,12 @@ export function buildFixedTraceJudgeRequest(
       }],
     }],
     tools: [],
+    outputSchema: {
+      name: 'fixed_trace_judge_verdict',
+      description: 'A blinded fixed-trace answer-quality verdict.',
+      schema: FIXED_TRACE_JUDGE_VERDICT_SCHEMA,
+      strict: true,
+    },
     maxOutputTokens: config.maxOutputTokens,
     requestMetadata: { purpose: 'fixed_trace_blinded_judge', trace_id: trace.id },
     ...(config.reasoningEffort === 'provider_default'
