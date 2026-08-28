@@ -33,6 +33,18 @@ import {
   fixedTraceSuiteSha256,
   summarizeFixedTraceRun,
 } from '../../src/addie/eval/fixed-trace-suite.js';
+import {
+  FIXED_TRACE_JUDGE_PROMPT_VERSION,
+  FIXED_TRACE_MIN_INDEPENDENT_JUDGES,
+  runIndependentFixedTraceJudges,
+  summarizeFixedTraceJudges,
+  type FixedTraceJudgeConfig,
+} from '../../src/addie/eval/fixed-trace-judge.js';
+import {
+  FIXED_TRACE_ROLLOUT_POLICY_VERSION,
+  FIXED_TRACE_ROLLOUT_THRESHOLDS,
+  evaluateFixedTraceRollout,
+} from '../../src/addie/eval/fixed-trace-rollout.js';
 import { AnthropicRouterProvider } from '../../src/addie/model-providers/anthropic-router-provider.js';
 import { AnthropicModelProvider } from '../../src/addie/model-providers/anthropic-provider.js';
 import type {
@@ -61,6 +73,7 @@ interface ProviderPlan {
   name: ProviderName;
   router: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
   generation: Omit<FixedTraceProviderStageConfig, 'provider'> & { provider: ModelProvider };
+  judge: FixedTraceJudgeConfig;
 }
 
 const TOOL_NAMES = new Set([
@@ -112,7 +125,9 @@ function sourceBundle(): { sha256: string; files: string[] } {
   const files = [...new Set([
     ...trackedFiles,
     'server/src/addie/eval/fixed-trace-budget.ts',
+    'server/src/addie/eval/fixed-trace-judge.ts',
     'server/src/addie/eval/fixed-trace-runner.ts',
+    'server/src/addie/eval/fixed-trace-rollout.ts',
     'server/tests/manual/fixed-trace-provider-eval.ts',
   ])].sort();
   const hash = createHash('sha256');
@@ -175,6 +190,11 @@ function providerPlans(
       undefined,
       { transportMaxRetries: 0 },
     );
+    const budgetedGeneration = new BudgetedFixedTraceProvider(
+      generation,
+      budget,
+      PRICING.anthropicGeneration,
+    );
     plans.push({
       name: 'anthropic',
       router: stage(
@@ -186,22 +206,31 @@ function providerPlans(
         PRICING.anthropicRouter,
       ),
       generation: stage(
-        new BudgetedFixedTraceProvider(generation, budget, PRICING.anthropicGeneration),
+        budgetedGeneration,
         ModelConfig.primary,
         'provider_default',
         900,
         4,
         PRICING.anthropicGeneration,
       ),
+      judge: {
+        provider: budgetedGeneration,
+        model: ModelConfig.primary,
+        reasoningEffort: 'provider_default',
+        maxOutputTokens: 300,
+        timeoutMs: 60_000,
+        pricing: PRICING.anthropicGeneration,
+      },
     });
   }
   if (names.includes('openai')) {
     if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required');
     const provider = new OpenAIResponsesProvider(process.env.OPENAI_API_KEY);
+    const budgetedProvider = new BudgetedFixedTraceProvider(provider, budget, PRICING.openai);
     plans.push({
       name: 'openai',
       router: stage(
-        new BudgetedFixedTraceProvider(provider, budget, PRICING.openai),
+        budgetedProvider,
         OPENAI_ROUTER_MODEL,
         'none',
         300,
@@ -209,22 +238,31 @@ function providerPlans(
         PRICING.openai,
       ),
       generation: stage(
-        new BudgetedFixedTraceProvider(provider, budget, PRICING.openai),
+        budgetedProvider,
         OPENAI_ROUTER_MODEL,
         'none',
         900,
         4,
         PRICING.openai,
       ),
+      judge: {
+        provider: budgetedProvider,
+        model: OPENAI_ROUTER_MODEL,
+        reasoningEffort: 'none',
+        maxOutputTokens: 300,
+        timeoutMs: 60_000,
+        pricing: PRICING.openai,
+      },
     });
   }
   if (names.includes('google')) {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is required');
     const provider = new GoogleGenerateContentProvider(process.env.GEMINI_API_KEY);
+    const budgetedProvider = new BudgetedFixedTraceProvider(provider, budget, PRICING.google);
     plans.push({
       name: 'google',
       router: stage(
-        new BudgetedFixedTraceProvider(provider, budget, PRICING.google),
+        budgetedProvider,
         GOOGLE_ROUTER_MODEL,
         'low',
         1_200,
@@ -232,13 +270,21 @@ function providerPlans(
         PRICING.google,
       ),
       generation: stage(
-        new BudgetedFixedTraceProvider(provider, budget, PRICING.google),
+        budgetedProvider,
         GOOGLE_ROUTER_MODEL,
         'low',
         1_200,
         4,
         PRICING.google,
       ),
+      judge: {
+        provider: budgetedProvider,
+        model: GOOGLE_ROUTER_MODEL,
+        reasoningEffort: 'low',
+        maxOutputTokens: 600,
+        timeoutMs: 60_000,
+        pricing: PRICING.google,
+      },
     });
   }
   return plans;
@@ -250,6 +296,18 @@ if (providerNames.some((name) => !['anthropic', 'openai', 'google'].includes(nam
 }
 if (new Set(providerNames).size !== providerNames.length || providerNames.length === 0) {
   throw new Error('--providers must contain one or more unique providers');
+}
+const judgeProviderNames = (argument('judge-providers') ?? 'anthropic,openai,google').split(',') as ProviderName[];
+if (judgeProviderNames.some((name) => !['anthropic', 'openai', 'google'].includes(name))) {
+  throw new Error('Unknown --judge-providers value');
+}
+if (new Set(judgeProviderNames).size !== judgeProviderNames.length) {
+  throw new Error('--judge-providers must contain unique providers');
+}
+for (const candidate of providerNames) {
+  if (judgeProviderNames.filter((judge) => judge !== candidate).length < FIXED_TRACE_MIN_INDEPENDENT_JUDGES) {
+    throw new Error(`Candidate ${candidate} requires at least two non-candidate --judge-providers`);
+  }
 }
 const softMaxUsd = Number(argument('soft-max-usd'));
 if (!Number.isFinite(softMaxUsd) || softMaxUsd <= 0) {
@@ -271,10 +329,12 @@ const promptConfigVersion = sha256(JSON.stringify({
 const toolDefinitions = canonicalToolDefinitions();
 const toolSchemaSha256 = fixedTraceToolSchemaSha256(toolDefinitions);
 const budget = new FixedTraceBudget(softMaxUsd);
-const plans = providerPlans(providerNames, budget);
+const allProviderNames = [...new Set([...providerNames, ...judgeProviderNames])];
+const allPlans = providerPlans(allProviderNames, budget);
+const plans = providerNames.map((name) => allPlans.find((plan) => plan.name === name)!);
 const runStartedAt = new Date().toISOString();
 const runRootId = `fixed-trace-${runStartedAt}-${randomUUID()}`;
-const runs = [];
+const candidateRuns = [];
 
 for (const plan of plans) {
   const baseConfig: FixedTraceRunnerConfig = {
@@ -298,7 +358,7 @@ for (const plan of plans) {
     observations.push(await runFixedTraceCase(trace, traceConfig, toolSchemaSha256));
   }
   const evaluated = summarizeFixedTraceRun(observations);
-  runs.push({
+  candidateRuns.push({
     provider: plan.name,
     requestedConfig: {
       router: {
@@ -326,9 +386,50 @@ for (const plan of plans) {
   });
 }
 
+const judgedRuns = [];
+for (const run of candidateRuns) {
+  const judgeConfigs = judgeProviderNames
+    .filter((name) => name !== run.provider)
+    .map((name) => allPlans.find((plan) => plan.name === name)!.judge);
+  const judgments = await runIndependentFixedTraceJudges(
+    FIXED_TRACE_SUITE,
+    run.observations,
+    judgeConfigs,
+  );
+  const judgeSummary = summarizeFixedTraceJudges(
+    FIXED_TRACE_SUITE,
+    run.observations,
+    judgments,
+  );
+  judgedRuns.push({
+    ...run,
+    requestedConfig: {
+      ...run.requestedConfig,
+      judges: judgeConfigs.map((judge) => ({
+        provider: judge.provider.id,
+        model: judge.model,
+        reasoningEffort: judge.reasoningEffort,
+        maxOutputTokens: judge.maxOutputTokens,
+        timeoutMs: judge.timeoutMs,
+        maxIterations: 1,
+        transportRetries: 0,
+        samplingMode: 'provider_no_sampling_control',
+        temperature: null,
+        pricing: judge.pricing,
+      })),
+    },
+    judgeSummary,
+    judgments,
+  });
+}
+
 const budgetState = budget.snapshot();
+const runs = judgedRuns.map((run) => ({
+  ...run,
+  rollout: evaluateFixedTraceRollout(run.summary, run.judgeSummary, budgetState),
+}));
 const artifact = {
-  artifactVersion: 'fixed_trace_provider_eval_v1',
+  artifactVersion: 'fixed_trace_provider_eval_v2',
   runRootId,
   runStartedAt,
   runCompletedAt: new Date().toISOString(),
@@ -343,12 +444,17 @@ const artifact = {
   promptConfigVersion,
   toolSchemaSha256,
   requestedProviders: providerNames,
+  requestedJudgeProviders: judgeProviderNames,
+  judgePromptVersion: FIXED_TRACE_JUDGE_PROMPT_VERSION,
+  rolloutPolicyVersion: FIXED_TRACE_ROLLOUT_POLICY_VERSION,
+  rolloutThresholds: FIXED_TRACE_ROLLOUT_THRESHOLDS,
   budget: budgetState,
   budgetNote: 'Soft admission target: exact prepared-request bytes and the full output allowance are reserved before each dispatch. Remote work may continue after a client timeout; any dispatched call without terminal usage marks exposure unknown and blocks every later dispatch.',
-  complete: runs.every((run) => run.summary.complete),
-  comparisonEligible: runs.every((run) => run.summary.comparisonEligible)
+  complete: runs.every((run) => run.summary.complete && run.judgeSummary.complete),
+  comparisonEligible: runs.every((run) => run.summary.comparisonEligible && run.judgeSummary.comparisonEligible)
     && !budgetState.exposureUnknown
     && !budgetState.admissionClosed,
+  rolloutPass: runs.every((run) => run.rollout.pass),
   runs,
 };
 
@@ -358,6 +464,8 @@ console.log(JSON.stringify({
   outputPath,
   runRootId,
   providers: providerNames,
+  judgeProviders: judgeProviderNames,
   comparisonEligible: artifact.comparisonEligible,
+  rolloutPass: artifact.rolloutPass,
   budget: budgetState,
 }, null, 2));
