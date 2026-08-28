@@ -1893,6 +1893,26 @@
             "description": "Response payload for get_media_buy_delivery task"
           }
         },
+        "get-reporting-status": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-reporting-status-request.json",
+            "description": "Request parameters for reconciling managed reporting obligations, revisions, and materializations"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-reporting-status-response.json",
+            "description": "Authoritative reporting ledger status for summary, periods, or one exact revision"
+          }
+        },
+        "sync-reporting-receipts": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-reporting-receipts-request.json",
+            "description": "Submit authenticated consumer reconciliation receipts for durable reporting materializations"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-reporting-receipts-response.json",
+            "description": "Per-receipt durable recording results"
+          }
+        },
         "provide-performance-feedback": {
           "request": {
             "$ref": "/schemas/media-buy/provide-performance-feedback-request.json",

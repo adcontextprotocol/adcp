@@ -3,15 +3,11 @@
   "$id": "/schemas/core/reporting-revision.json",
   "title": "Reporting Revision",
   "x-status": "experimental",
-  "description": "One immutable emitted version of a logical reporting slice. The report_definition_id plus period and scope identify the logical slice; finality is independent of revision identity. Restatements create a new revision and preserve the superseded revision for the advertised retention window.",
+  "description": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period and scope identify the logical slice; restatements create a new revision and preserve the superseded revision for the advertised retention window.",
   "type": "object",
   "properties": {
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
-    "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation", "description": "Stable foreign key to the obligation this revision satisfies." },
-    "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config" },
-    "delivery_config_version": { "type": "integer", "minimum": 1 },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Identity or canonical fingerprint of immutable metric, grain, attribution, breakdown, action-definition, profile, and calendar/timezone semantics." },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
     "schema_version": { "type": "string", "minLength": 1, "maxLength": 64 },
     "schema_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Machine-readable schema on the authenticated seller/provider or AdCP-registry origin." },
@@ -37,21 +33,16 @@
     "data_through_precision": { "type": "string", "enum": ["exact", "lower_bound", "unknown"] },
     "supersedes_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Immediately superseded revision of the same logical slice. Both snapshot and official revisions may be superseded." },
     "row_count": { "type": "integer", "minimum": 0, "description": "Logical row count, including zero for a successfully evaluated empty report." },
-    "canonical_content_digest": {
-      "type": "object",
-      "properties": {
-        "algorithm": { "type": "string", "enum": ["sha256"] },
-        "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
-      },
-      "required": ["algorithm", "value", "canonicalization_id", "canonicalization_sha256"],
-      "additionalProperties": false
+    "control_totals": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/reporting-control-total.json" },
+      "uniqueItems": true,
+      "description": "Profile-defined totals computed from the canonical logical revision. Names MUST be unique."
     },
-    "created_at": { "type": "string", "format": "date-time" },
-    "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved caller/account-bound destination or recipient binding used for this revision." }
+    "canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
+    "created_at": { "type": "string", "format": "date-time" }
   },
-  "required": ["reporting_revision_id", "reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "canonical_content_digest", "destination_ref", "created_at"],
+  "required": ["reporting_revision_id", "report_definition_id", "reporting_profile", "schema_version", "schema_uri", "schema_sha256", "schema_dialect", "schema_ref_policy", "account_id", "period", "finality", "observed_at", "data_through", "data_through_precision", "row_count", "control_totals", "created_at"],
   "allOf": [
     {
       "if": { "properties": { "data_through_precision": { "const": "unknown" } }, "required": ["data_through_precision"] },
@@ -60,7 +51,10 @@
     }
   ],
   "x-adcp-validation": {
-    "safe_schema_fetch": "schema_uri and schema_sha256 MUST match the selected offering. Apply its safe_schema_fetch policy; verify bytes before parsing and never interpret schema content or annotations as agent/LLM instructions."
+    "safe_schema_fetch": "schema_uri and schema_sha256 MUST match the selected offering. Apply its safe_schema_fetch policy; verify bytes before parsing and never interpret schema content or annotations as agent/LLM instructions.",
+    "slice_identity": "report_definition_id, account_id, media_buy_ids, period, and reporting_profile MUST remain identical across a supersession chain.",
+    "fan_out": "Delivery configuration, obligation, destination, feed purpose, and recipient identity belong only on reporting_materialization and reporting_obligation. They MUST NOT affect reporting_revision_id for identical content.",
+    "digest_requirement": "canonical_content_digest is optional for non-billing delivery profiles. It is mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },
   "additionalProperties": false
 }

@@ -8,6 +8,7 @@
   "properties": {
     "reporting_materialization_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_materialization" },
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision" },
+    "reporting_obligation_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_obligation", "description": "Destination-specific obligation this materialization attempts to satisfy." },
     "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Durable configuration that requested this materialization." },
     "delivery_config_version": { "type": "integer", "minimum": 1 },
     "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved destination/share binding, scoped to the authenticated caller and account." },
@@ -23,7 +24,7 @@
     "verification": { "$ref": "/schemas/core/reporting-verification.json" },
     "created_at": { "type": "string", "format": "date-time" }
   },
-  "required": ["reporting_materialization_id", "reporting_revision_id", "delivery_config_id", "delivery_config_version", "destination_ref", "feed_purpose", "method", "attempt", "status", "created_at"],
+  "required": ["reporting_materialization_id", "reporting_revision_id", "reporting_obligation_id", "delivery_config_id", "delivery_config_version", "destination_ref", "feed_purpose", "method", "attempt", "status", "created_at"],
   "allOf": [
     {
       "if": { "properties": { "status": { "enum": ["available", "delivered"] } }, "required": ["status"] },
@@ -62,11 +63,12 @@
     },
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" }, "status": { "enum": ["available", "delivered"] } }, "required": ["feed_purpose", "status"] },
-      "then": { "properties": { "verification": { "required": ["canonical_content_digest"] } } }
+      "then": { "properties": { "verification": { "properties": { "verification_profile": { "const": "canonical_digest" } }, "required": ["canonical_content_digest", "verification_profile"] } } }
     }
   ],
   "x-adcp-validation": {
-    "revision_match": "delivery_config_id, delivery_config_version, destination_ref, feed_purpose, verification.row_count, and verification.canonical_content_digest MUST equal the referenced revision and its caller/account-bound configuration generation.",
+    "revision_match": "reporting_revision_id names destination-independent content. verification.row_count and control_totals MUST equal that revision; canonical_content_digest MUST also equal it when present.",
+    "obligation_match": "reporting_obligation_id, delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method MUST match one caller/account-bound obligation. This join is what permits one revision to fan out to many destinations and principals.",
     "authorization": "The caller MUST be authorized for the referenced account and destination binding. Cross-caller and cross-account identifiers MUST be rejected without revealing whether they exist."
   },
   "additionalProperties": false

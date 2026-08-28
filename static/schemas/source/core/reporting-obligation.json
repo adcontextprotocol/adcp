@@ -28,15 +28,19 @@
     "schedule": { "$ref": "/schemas/core/reporting-schedule.json", "description": "Resolved immutable schedule generation that created this obligation." },
     "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Resolved caller/account-bound destination or recipient binding for this obligation." },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json" },
+    "reconciliation_mode": { "$ref": "/schemas/core/reporting-reconciliation-mode.json" },
+    "reconciliation_status": { "type": "string", "enum": ["not_required", "pending", "accepted", "rejected"], "description": "Consumer agreement state for the current required revision. A later superseding revision returns a receipt-required obligation to pending until that revision is accepted." },
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
     "production_status": { "type": "string", "enum": ["not_due", "pending", "published", "failed"], "description": "Whether any revision has been produced for this obligation. published includes zero-row revisions." },
     "revision_count": { "type": "integer", "minimum": 0, "description": "Number of revision records for this obligation in the consistent ledger snapshot." },
     "materialization_count": { "type": "integer", "minimum": 0, "description": "Number of materialization records for this obligation's revisions in the consistent ledger snapshot." },
     "successful_materialization_count": { "type": "integer", "minimum": 0, "description": "Number of available/delivered verified materializations in the consistent ledger snapshot." },
+    "receipt_count": { "type": "integer", "minimum": 0, "description": "Complete number of authenticated receipts associated with this obligation in the ledger snapshot." },
+    "accepted_receipt_count": { "type": "integer", "minimum": 0, "description": "Number of accepted receipts. At most one current accepted receipt per consumer and revision contributes to reconciliation_status." },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "resource_retained_until": { "type": "string", "format": "date-time", "description": "Minimum time through which at least one verified materialization for a completed obligation remains readable." }
   },
-  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "schedule", "destination_ref", "required_finality", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "issues"],
+  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "period", "expected_at", "schedule", "destination_ref", "required_finality", "reconciliation_mode", "reconciliation_status", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "receipt_count", "accepted_receipt_count", "issues"],
   "allOf": [
     {
       "if": { "properties": { "health": { "enum": ["healthy", "complete"] } }, "required": ["health"] },
@@ -56,6 +60,20 @@
       "then": { "properties": { "revision_count": { "minimum": 1 } } }
     },
     {
+      "if": { "properties": { "reconciliation_mode": { "const": "delivery_only" } }, "required": ["reconciliation_mode"] },
+      "then": { "properties": { "reconciliation_status": { "const": "not_required" } } }
+    },
+    {
+      "if": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" }, "health": { "enum": ["healthy", "complete"] } }, "required": ["reconciliation_mode", "health"] },
+      "then": {
+        "properties": {
+          "reconciliation_status": { "const": "accepted" },
+          "receipt_count": { "minimum": 1 },
+          "accepted_receipt_count": { "minimum": 1 }
+        }
+      }
+    },
+    {
       "if": { "properties": { "health": { "enum": ["delayed", "action_required"] } }, "required": ["health"] },
       "then": { "properties": { "issues": { "minItems": 1 } } }
     },
@@ -65,10 +83,10 @@
     }
   ],
   "x-adcp-validation": {
-    "nested_identity": "Every revision and materialization ledger record associated with this obligation MUST equal its account_id, delivery_config_id, delivery_config_version, destination_ref, report_definition_id, feed_purpose, reporting_profile, period, and applicable media_buy_ids; each materialization reporting_revision_id MUST name an associated revision.",
-    "complete_finality": "complete requires a published revision at required_finality and at least one verified readable materialization for that revision through resource_retained_until. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
+    "nested_identity": "Every materialization associated with this obligation MUST equal its delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method; its destination-independent revision MUST equal account_id, report_definition_id, reporting_profile, period, and applicable media_buy_ids.",
+    "complete_finality": "complete requires a published revision at required_finality and at least one verified readable materialization for that revision through resource_retained_until. consumer_receipt additionally requires an accepted matching receipt for the current revision. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
     "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained revision.",
-    "record_counts": "revision_count, materialization_count, and successful_materialization_count MUST equal the complete associated record totals for this obligation in ledger_snapshot_id, even when records appear on different pages."
+    "record_counts": "revision_count is the number of distinct revisions referenced by this obligation's materializations. revision_count, materialization_count, successful_materialization_count, receipt_count, and accepted_receipt_count MUST equal the complete associated record totals in ledger_snapshot_id, even when records appear on different pages."
   },
   "additionalProperties": false
 }

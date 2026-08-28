@@ -37,7 +37,8 @@
     "get_rights",
     "acquire_rights",
     "update_rights",
-    "sync_agent_notification_configs"
+    "sync_agent_notification_configs",
+    "sync_reporting_receipts"
   ],
   "enumDescriptions": {
     "create_media_buy": "Media-buy domain: Create a new advertising campaign with one or more packages",
@@ -72,7 +73,8 @@
     "get_rights": "Brand domain: Search for licensable rights across a brand agent's roster with pricing",
     "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials",
     "update_rights": "Brand domain: Update an existing rights grant, including its term, impression cap, pricing option, or pause state",
-    "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications"
+    "sync_agent_notification_configs": "Protocol domain: Register agent-level webhook subscribers such as capabilities.changed cache-invalidation notifications",
+    "sync_reporting_receipts": "Media-buy domain: Submit authenticated consumer reconciliation outcomes for reporting materializations"
   },
   "x-task-result-schema-overrides": {
     "media_buy_delivery": "media-buy/media-buy-delivery-webhook-result.json"

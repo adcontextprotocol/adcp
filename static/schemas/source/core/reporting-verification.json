@@ -3,23 +3,20 @@
   "$id": "/schemas/core/reporting-verification.json",
   "title": "Reporting Verification",
   "x-status": "experimental",
-  "description": "Evidence that a materialization represents the intended reporting revision. Logical content digests are only canonical when canonicalization_id identifies the exact row ordering, value encoding, null, and schema rules. Physical object checksums and native commit evidence are method-specific and are not interchangeable with a logical digest.",
+  "description": "Producer evidence for one materialization, with an explicit assurance profile. Native commit and manifest profiles prove a committed destination plus row counts and control totals without claiming full logical-content equality. canonical_digest adds exact logical equality and is required for billing. A separate authenticated consumer receipt records what the consumer actually reconciled.",
   "type": "object",
   "properties": {
     "verified_at": { "type": "string", "format": "date-time", "description": "When the producer completed verification through the claimed consumer/destination path." },
     "verification_path": { "type": "string", "enum": ["producer", "representative_consumer", "destination"], "description": "Path on which verification succeeded. dataset_share readiness requires representative_consumer; delivered warehouse state requires destination." },
+    "verification_profile": { "$ref": "/schemas/core/reporting-verification-profile.json" },
     "row_count": { "type": "integer", "minimum": 0, "description": "Verified row count. Zero explicitly distinguishes an empty committed revision from a missing revision." },
-    "canonical_content_digest": {
-      "type": "object",
-      "properties": {
-        "algorithm": { "type": "string", "enum": ["sha256"] },
-        "value": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
-        "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Versioned AdCP or reporting-profile canonicalization rules used to produce the digest." },
-        "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact canonicalization contract." }
-      },
-      "required": ["algorithm", "value", "canonicalization_id", "canonicalization_sha256"],
-      "additionalProperties": false
+    "control_totals": {
+      "type": "array",
+      "items": { "$ref": "/schemas/core/reporting-control-total.json" },
+      "uniqueItems": true,
+      "description": "Profile-defined totals recomputed through verification_path. Names MUST be unique."
     },
+    "canonical_content_digest": { "$ref": "/schemas/core/reporting-canonical-content-digest.json" },
     "physical_checksums": {
       "type": "array",
       "description": "Method-specific byte/object checksums. Different encodings of the same logical revision normally have different values.",
@@ -37,7 +34,7 @@
     },
     "native_commit_evidence": {
       "type": "object",
-      "description": "Supplementary provider-native immutable version evidence; never sufficient without a recomputed canonical content digest.",
+      "description": "Provider-native immutable version evidence observed through the named consumer or destination path.",
       "properties": {
         "native_version_ref": { "type": "string", "minLength": 1, "maxLength": 512 },
         "observed_through": { "type": "string", "enum": ["representative_consumer", "destination"] }
@@ -46,9 +43,24 @@
       "additionalProperties": false
     }
   },
-  "required": ["verified_at", "verification_path", "row_count", "canonical_content_digest"],
+  "required": ["verified_at", "verification_path", "verification_profile", "row_count", "control_totals"],
+  "allOf": [
+    {
+      "if": { "properties": { "verification_profile": { "const": "native_commit" } }, "required": ["verification_profile"] },
+      "then": { "required": ["native_commit_evidence"] }
+    },
+    {
+      "if": { "properties": { "verification_profile": { "const": "manifest_checksums" } }, "required": ["verification_profile"] },
+      "then": { "required": ["physical_checksums"] }
+    },
+    {
+      "if": { "properties": { "verification_profile": { "const": "canonical_digest" } }, "required": ["verification_profile"] },
+      "then": { "required": ["canonical_content_digest"] }
+    }
+  ],
   "x-adcp-validation": {
-    "consumer_recomputation": "canonical_content_digest MUST be recomputed through verification_path over the exact selected resource before available/delivered or downstream commit; it MUST equal the referenced revision digest and row_count.",
+    "revision_match": "row_count and control_totals MUST equal the referenced revision. canonical_digest additionally requires a digest equal to the revision digest.",
+    "assurance_boundary": "native_commit and manifest_checksums prove committed delivery evidence but MUST NOT be described as cryptographic logical-content equality. That claim requires canonical_digest.",
     "native_version_match": "When native_commit_evidence is present, native_version_ref MUST equal resource.native_version_ref and observed_through MUST match the consumer/destination verification path.",
     "checksum_binding": "Every physical_checksums.object_ref MUST be an object selected by this exact immutable resource/manifest; algorithm and value length MUST agree."
   },

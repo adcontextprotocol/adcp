@@ -76,6 +76,7 @@
     "reporting_obligation",
     "reporting_revision",
     "reporting_materialization",
+    "reporting_receipt",
     "reporting_resource",
     "identity_relying_party"
   ],
@@ -151,6 +152,7 @@
     "reporting_obligation": "One expected report slice and due time. reporting_obligation_id exists before a revision or webhook and is what makes a missing first report observable.",
     "reporting_revision": "One immutable emitted version of a reporting obligation's logical content. reporting_revision_id remains stable across materializations; a restatement receives a new id and points to the immediately superseded revision.",
     "reporting_materialization": "One attempt to expose an exact reporting revision through one delivery path. A retry receives a new reporting_materialization_id while preserving reporting_revision_id.",
+    "reporting_receipt": "One authenticated consumer reconciliation outcome for an exact reporting materialization.",
     "reporting_resource": "One seller-issued secret-free descriptor for an exact reporting materialization, resolved by resource_ref through get_reporting_status. Native platform versions supplement but do not replace this identity.",
     "identity_relying_party": "A verified-identity relying party an entity operates for attestation provenance in TMP Identity Match. `relying_party_id` in brand.json identity_relying_parties[] and trusted-match/identity-match-request.json attestation. Namespaced by the issuer (a vendor BrandRef, `core/brand-ref.json`) — identity is the tuple `(issuer.domain, issuer.brand_id, relying_party_id)`, mirroring vendor_metric's `(vendor.domain, vendor.brand_id, metric_id)`; the same string under a different issuer is a different relying party. The publishing owner (whose brand.json lists it) asserts ownership, and the receiver matches a forwarded attestation's `(issuer, relying_party_id)` against the claimed owner's published list; the issuer's own relying-party registry (e.g. World ID on-chain) is the authoritative root. One entity may operate many relying parties (scope=entity vs scope=property) — not 1:1 with an entity."
   }

@@ -9,6 +9,7 @@
     "supported": { "type": "boolean", "const": true },
     "configuration_task": { "type": "string", "const": "sync_accounts" },
     "status_task": { "type": "string", "const": "get_reporting_status" },
+    "receipt_task": { "type": "string", "const": "sync_reporting_receipts" },
     "readiness_notification": { "type": "string", "const": "reporting.delivery_ready" },
     "offerings": { "type": "array", "items": { "$ref": "/schemas/core/reporting-delivery-offering.json" }, "minItems": 1, "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique." },
     "automated_recovery_window_seconds": { "type": "integer", "minimum": 0, "description": "Maximum late interval during which a due obligation may remain delayed while automated recovery continues before action_required." },
@@ -17,7 +18,7 @@
     "supports_webhook_activity": { "type": "boolean", "default": false },
     "authorization_revocation_seconds": { "type": "integer", "minimum": 0, "description": "Maximum delay after caller/account authorization ends before seller-controlled transport access, provider grants, and write credentials are revoked. It cannot revoke a buyer's access to data already written into a buyer-owned destination." }
   },
-  "required": ["supported", "configuration_task", "status_task", "readiness_notification", "offerings", "automated_recovery_window_seconds", "status_retention_days", "resource_retention_days", "authorization_revocation_seconds"],
+  "required": ["supported", "configuration_task", "status_task", "receipt_task", "readiness_notification", "offerings", "automated_recovery_window_seconds", "status_retention_days", "resource_retention_days", "authorization_revocation_seconds"],
   "x-adcp-validation": { "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, reporting profile, schedule, requested finality, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint." },
   "additionalProperties": false
 }

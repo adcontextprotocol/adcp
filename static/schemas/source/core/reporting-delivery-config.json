@@ -24,12 +24,17 @@
       "additionalProperties": false
     },
     "required_finality": { "$ref": "/schemas/enums/reporting-finality.json", "description": "Finality the durable path must ultimately provide. Snapshot delivery may still precede an official requirement." },
+    "reconciliation_mode": { "$ref": "/schemas/core/reporting-reconciliation-mode.json", "description": "Whether producer-side delivery evidence is sufficient or the selected consumer must submit an authenticated matching receipt. Billing MUST use consumer_receipt." },
     "schedule": { "$ref": "/schemas/core/reporting-schedule.json" },
     "method": { "$ref": "/schemas/core/reporting-delivery-method.json" },
     "revocation_effective_at": { "type": "string", "format": "date-time", "description": "Optional requested cutoff for deactivation. No new publication may begin after the applied cutoff; historical access is limited to the contracted recovery window." }
   },
-  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "reporting_profile", "scope", "required_finality", "schedule", "method"],
+  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "reporting_profile", "scope", "required_finality", "reconciliation_mode", "schedule", "method"],
   "allOf": [
+    {
+      "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
+      "then": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } } }
+    },
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
       "then": { "properties": { "required_finality": { "const": "official" } } }

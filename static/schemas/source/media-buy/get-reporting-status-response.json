@@ -102,42 +102,55 @@
     },
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "periods": { "type": "array", "items": { "$ref": "/schemas/core/reporting-obligation.json" } },
-    "revisions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-revision.json" }, "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, and materializations, avoiding unbounded nested history." },
+    "revisions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-revision.json" }, "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, materializations, and receipts, avoiding unbounded nested history." },
     "pagination": { "$ref": "/schemas/core/pagination-response.json" },
     "revision": { "$ref": "/schemas/core/reporting-revision.json" },
     "materializations": { "type": "array", "items": { "$ref": "/schemas/core/reporting-materialization.json" } },
+    "receipts": { "type": "array", "items": { "$ref": "/schemas/core/reporting-receipt.json" }, "description": "Authenticated caller's durable reconciliation receipts. Receipts from another consumer principal are never disclosed." },
     "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "oneOf": [
     {
+      "title": "Successful lookup",
+      "properties": { "status": { "type": "string", "const": "completed" } },
+      "required": ["status"],
+      "oneOf": [
+        {
       "title": "Summary view",
-      "properties": { "status": { "const": "completed" }, "view": { "const": "summary" } },
+      "properties": { "view": { "type": "string", "const": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "data_through", "obligation_counts", "issues"],
-      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }] }
+      "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
     },
     {
       "title": "Periods view",
-      "properties": { "status": { "const": "completed" }, "view": { "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
-      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "pagination"],
+      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
       "not": { "required": ["revision"] }
     },
     {
       "title": "Revision view",
-      "properties": { "status": { "const": "completed" }, "view": { "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
-      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "pagination"],
+      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "required": ["has_more", "total_count"] } },
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
       "not": { "anyOf": [{ "required": ["scope"] }, { "required": ["health"] }, { "required": ["periods"] }, { "required": ["revisions"] }] }
+        }
+      ]
     },
     {
+      "title": "Failed lookup",
+      "properties": { "status": { "type": "string", "const": "failed" } },
+      "required": ["status"],
+      "oneOf": [
+        {
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {
         "adcp_version": { "type": "string" },
         "adcp_major_version": { "type": "integer" },
-        "status": { "const": "failed" },
+        "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "const": "lookup_unavailable" },
+        "failure_kind": { "type": "string", "const": "lookup_unavailable" },
         "context_id": { "type": "string" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
@@ -176,9 +189,9 @@
       "properties": {
         "adcp_version": { "type": "string" },
         "adcp_major_version": { "type": "integer" },
-        "status": { "const": "failed" },
+        "status": { "type": "string", "const": "failed" },
         "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "const": "operational" },
+        "failure_kind": { "type": "string", "const": "operational" },
         "context_id": { "type": "string" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "type": "string" },
@@ -189,6 +202,8 @@
       },
       "required": ["status", "view", "failure_kind", "errors"],
       "additionalProperties": false
+        }
+      ]
     }
   ],
   "x-adcp-validation": {

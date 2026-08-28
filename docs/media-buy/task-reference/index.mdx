@@ -29,6 +29,7 @@ Complete reference for all AdCP Media Buy tasks. Each task is designed for AI ag
 | [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) | Retrieve media buy status, creative approvals, and delivery snapshots | ~1s | Monitoring |
 | [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) | Retrieve performance and delivery data | ~60s | Reporting |
 | [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) | Check experimental managed-reporting health and repair missed delivery | ~1s | Reporting |
+| [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts) | Record managed-reporting consumer reconciliation | ~1s | Reporting |
 | [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) | Submit performance signals for optimization | ~1s | Optimization |
 | [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) | Configure event sources for conversion tracking | ~1s | Conversion Tracking |
 | [`log_event`](/docs/media-buy/task-reference/log_event) | Send marketing events for attribution | ~1s | Conversion Tracking |
@@ -44,6 +45,7 @@ AdCP tasks fall into four response time categories:
 - [`list_creatives`](/docs/creative/task-reference/list_creatives) - Creative library queries
 - [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) - Media buy status and creative approvals
 - [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) - Managed-reporting health and revision resolution
+- [`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts) - Authenticated reporting reconciliation receipts
 - [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) - Performance signal submission
 - [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) - Event source configuration
 - [`log_event`](/docs/media-buy/task-reference/log_event) - Event ingestion
@@ -110,6 +112,7 @@ Monitor and optimize campaign performance.
 - **[`get_media_buys`](/docs/media-buy/task-reference/get_media_buys)** - Check campaign status, creative approvals, and near-real-time delivery snapshots
 - **[`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)** - Track delivery and performance metrics for reporting
 - **[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)** - Check durable reporting obligations, revisions, and materializations
+- **[`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)** - Record independently verified consumer totals and evidence
 - **[`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback)** - Submit performance signals for publisher optimization
 
 ### Conversion Tracking
@@ -144,6 +147,7 @@ Task names use snake_case and follow verb-first semantics consistently across Me
 - `buy_*` and `accept_*`: Create or change a commercial commitment from versioned terms
 - `control_*`: Apply revision-checked operational changes inside accepted terms
 - `sync_*`: Reconcile external state into seller systems with upsert-like behavior ([`sync_catalogs`](/docs/media-buy/task-reference/sync_catalogs), [`sync_creatives`](/docs/creative/task-reference/sync_creatives), [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources))
+- `sync_reporting_receipts`: Reconcile consumer-observed reporting evidence into the seller's durable ledger
 - `log_*`: Ingest append-only event records ([`log_event`](/docs/media-buy/task-reference/log_event))
 - `provide_*`: Submit optimization or feedback signals ([`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback))
 

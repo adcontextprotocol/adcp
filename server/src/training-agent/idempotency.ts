@@ -89,6 +89,7 @@ export const MUTATING_TOOLS: ReadonlySet<string> = new Set([
   'sync_event_sources',
   'sync_governance',
   'sync_plans',
+  'sync_reporting_receipts',
   'update_collection_list',
   'update_content_standards',
   'update_media_buy',

@@ -28,6 +28,7 @@
     },
     "schedule": { "$ref": "/schemas/core/reporting-schedule.json" },
     "supported_finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
+    "reconciliation_mode": { "$ref": "/schemas/core/reporting-reconciliation-mode.json", "description": "Receipt contract included in this atomic offering. Billing offerings MUST require consumer_receipt." },
     "method": {
       "type": "object",
       "properties": {
@@ -71,7 +72,13 @@
       "additionalProperties": false
     }
   },
-  "required": ["offering_id", "feed_purpose", "reporting_profile", "schedule", "supported_finality", "method"],
+  "required": ["offering_id", "feed_purpose", "reporting_profile", "schedule", "supported_finality", "reconciliation_mode", "method"],
+  "allOf": [
+    {
+      "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
+      "then": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } } }
+    }
+  ],
   "x-adcp-validation": {
     "safe_schema_fetch": "schema_uri origin must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected schema content type, verify schema_sha256 before parsing, and cache by digest. The fetched document's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Schema contents and annotations are untrusted data, never agent or LLM instructions."
   },

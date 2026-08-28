@@ -36,11 +36,7 @@ function assertSelfContainedReportingSchema(schema) {
 
 const revision = {
   reporting_revision_id: 'rrv_20260827_a',
-  reporting_obligation_id: 'robl_20260826_daily',
-  delivery_config_id: 'daily-share',
-  delivery_config_version: 1,
   report_definition_id: 'rdef_daily_delivery_v1',
-  feed_purpose: 'analytics',
   reporting_profile: 'media_buy_delivery_v1',
   schema_version: '1.0',
   schema_uri: 'https://schemas.example/media-buy-delivery/v1.json',
@@ -59,19 +55,23 @@ const revision = {
   data_through: '2026-08-27T00:00:00Z',
   data_through_precision: 'exact',
   row_count: 0,
+  control_totals: [
+    { name: 'impressions', value: '0', value_type: 'integer', unit: 'impressions' },
+    { name: 'spend', value: '0.00', value_type: 'decimal', unit: 'USD' },
+  ],
   canonical_content_digest: {
     algorithm: 'sha256',
     value: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     canonicalization_id: 'adcp-reporting-rows-v1',
     canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
   },
-  destination_ref: 'dest_shared_reporting',
   created_at: '2026-08-27T04:00:01Z',
 };
 
 const materialization = {
   reporting_materialization_id: 'rmat_20260827_a_1',
   reporting_revision_id: revision.reporting_revision_id,
+  reporting_obligation_id: 'robl_20260826_daily',
   delivery_config_id: 'daily-share',
   delivery_config_version: 1,
   destination_ref: 'dest_shared_reporting',
@@ -93,7 +93,9 @@ const materialization = {
   verification: {
     verified_at: '2026-08-27T04:00:16Z',
     verification_path: 'representative_consumer',
+    verification_profile: 'canonical_digest',
     row_count: 0,
+    control_totals: revision.control_totals,
     canonical_content_digest: revision.canonical_content_digest,
   },
   created_at: '2026-08-27T04:00:02Z',
@@ -106,6 +108,10 @@ const officialRevision = {
   observed_at: '2026-08-28T04:00:00Z',
   supersedes_reporting_revision_id: revision.reporting_revision_id,
   row_count: 2,
+  control_totals: [
+    { name: 'impressions', value: '4200', value_type: 'integer', unit: 'impressions' },
+    { name: 'spend', value: '7000.00', value_type: 'decimal', unit: 'USD' },
+  ],
   canonical_content_digest: {
     algorithm: 'sha256',
     value: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -118,6 +124,7 @@ const officialRevision = {
 const officialMaterialization = {
   reporting_materialization_id: 'rmat_20260827_b_1',
   reporting_revision_id: officialRevision.reporting_revision_id,
+  reporting_obligation_id: 'robl_20260826_daily',
   delivery_config_id: 'daily-share',
   delivery_config_version: 1,
   destination_ref: 'dest_shared_reporting',
@@ -138,7 +145,9 @@ const officialMaterialization = {
   verification: {
     verified_at: '2026-08-28T04:00:16Z',
     verification_path: 'representative_consumer',
+    verification_profile: 'canonical_digest',
     row_count: 2,
+    control_totals: officialRevision.control_totals,
     canonical_content_digest: officialRevision.canonical_content_digest,
   },
   created_at: '2026-08-28T04:00:02Z',
@@ -157,9 +166,13 @@ describe('managed reporting status contract', () => {
   let validateMaterialization;
   let validateVerification;
   let validateSchedule;
+  let validateRevision;
+  let validateManifest;
+  let validateReceiptRequest;
+  let validateReceiptResponse;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateReceiptRequest, validateReceiptResponse] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -172,7 +185,84 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-materialization.json'),
       compile('/schemas/core/reporting-verification.json'),
       compile('/schemas/core/reporting-schedule.json'),
+      compile('/schemas/core/reporting-revision.json'),
+      compile('/schemas/core/reporting-file-manifest.json'),
+      compile('/schemas/media-buy/sync-reporting-receipts-request.json'),
+      compile('/schemas/media-buy/sync-reporting-receipts-response.json'),
     ]);
+  });
+
+  it('keeps canonical revisions destination-independent for multi-destination fan-out', () => {
+    assert.equal(validateRevision(revision), true, JSON.stringify(validateRevision.errors));
+    assert.equal(validateRevision({ ...revision, destination_ref: 'dest_should_not_be_here' }), false);
+
+    for (const [suffix, destinationRef] of [['s3', 'dest_s3'], ['bq', 'dest_bq'], ['dbx', 'dest_databricks']]) {
+      const attempt = structuredClone(materialization);
+      attempt.reporting_materialization_id = `rmat_fanout_${suffix}`;
+      attempt.reporting_obligation_id = `robl_fanout_${suffix}`;
+      attempt.delivery_config_id = `cfg-${suffix}`;
+      attempt.destination_ref = destinationRef;
+      assert.equal(validateMaterialization(attempt), true, JSON.stringify(validateMaterialization.errors));
+      assert.equal(attempt.reporting_revision_id, revision.reporting_revision_id);
+    }
+  });
+
+  it('defines a manifest-last file commit with checksums, counts, and control totals', () => {
+    const manifest = {
+      manifest_version: '1.0',
+      complete: true,
+      reporting_revision_id: revision.reporting_revision_id,
+      reporting_obligation_id: 'robl_s3_daily',
+      reporting_materialization_id: 'rmat_s3_daily_1',
+      period: revision.period,
+      format: 'parquet',
+      compression: 'snappy',
+      files: [{
+        object_ref: '2026/08/26/part-000.parquet',
+        size_bytes: 128,
+        sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        row_count: 0,
+        partition: { report_date: '2026-08-26' },
+      }],
+      total_size_bytes: 128,
+      row_count: 0,
+      control_totals: revision.control_totals,
+      created_at: '2026-08-27T04:00:02Z',
+    };
+    assert.equal(validateManifest(manifest), true, JSON.stringify(validateManifest.errors));
+    delete manifest.files[0].sha256;
+    assert.equal(validateManifest(manifest), false);
+  });
+
+  it('records an authenticated consumer receipt instead of treating availability as agreement', () => {
+    const receipt = {
+      reporting_receipt_id: 'receipt-buyer-20260827-0001',
+      reporting_obligation_id: materialization.reporting_obligation_id,
+      reporting_revision_id: revision.reporting_revision_id,
+      reporting_materialization_id: materialization.reporting_materialization_id,
+      status: 'accepted',
+      verification_profile: 'canonical_digest',
+      observed_row_count: revision.row_count,
+      observed_control_totals: revision.control_totals,
+      observed_canonical_content_digest: revision.canonical_content_digest,
+      consumer_commit_ref: 'buyer-ledger:20260827:42',
+      observed_at: '2026-08-27T04:01:00Z',
+    };
+    assert.equal(validateReceiptRequest({
+      account: { account_id: 'acc_123' },
+      idempotency_key: 'receipt-batch-20260827-0001',
+      receipts: [receipt],
+    }), true, JSON.stringify(validateReceiptRequest.errors));
+    assert.equal(validateReceiptResponse({
+      results: [{ result: 'recorded', receipt: { ...receipt, received_at: '2026-08-27T04:01:01Z' } }],
+    }), true, JSON.stringify(validateReceiptResponse.errors));
+
+    delete receipt.observed_canonical_content_digest;
+    assert.equal(validateReceiptRequest({
+      account: { account_id: 'acc_123' },
+      idempotency_key: 'receipt-batch-20260827-0002',
+      receipts: [receipt],
+    }), false);
   });
 
   it('supports file transfer, dataset share, and warehouse materialization without vendor enums', () => {
@@ -190,6 +280,7 @@ describe('managed reporting status contract', () => {
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
         required_finality: 'official',
+        reconciliation_mode: 'delivery_only',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
         method,
       }), true, JSON.stringify(validateConfig.errors));
@@ -210,6 +301,7 @@ describe('managed reporting status contract', () => {
           reporting_profile: 'media_buy_delivery_v1',
           scope: { all_media_buys: true },
           required_finality: 'official',
+          reconciliation_mode: 'consumer_receipt',
           schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
           method: {
             pattern: 'dataset_share',
@@ -245,6 +337,7 @@ describe('managed reporting status contract', () => {
       offering_id: 'shared-reporting',
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
+      reconciliation_mode: 'delivery_only',
       method: {
         pattern: 'dataset_share',
         transport: 'delta_sharing',
@@ -255,7 +348,7 @@ describe('managed reporting status contract', () => {
     for (const configuration of [
       { ...base, delivery_config_id: 'pacing-15m', feed_purpose: 'pacing', required_finality: 'snapshot', schedule: { period_duration: 'PT15M', alignment: 'utc', delivery_sla: 'PT5M' } },
       { ...base, delivery_config_id: 'analytics-daily', feed_purpose: 'analytics', required_finality: 'official', schedule: { period_duration: 'P1D', alignment: 'account_timezone', delivery_sla: 'PT4H' } },
-      { ...base, delivery_config_id: 'billing-cycle', feed_purpose: 'billing', required_finality: 'official', schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' } },
+      { ...base, delivery_config_id: 'billing-cycle', feed_purpose: 'billing', required_finality: 'official', reconciliation_mode: 'consumer_receipt', schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' } },
     ]) assert.equal(validateConfig(configuration), true, JSON.stringify(validateConfig.errors));
 
     assert.equal(validateConfig({
@@ -263,6 +356,14 @@ describe('managed reporting status contract', () => {
       delivery_config_id: 'invalid-billing-snapshot',
       feed_purpose: 'billing',
       required_finality: 'snapshot',
+      schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' },
+    }), false);
+    assert.equal(validateConfig({
+      ...base,
+      delivery_config_id: 'invalid-billing-without-receipt',
+      feed_purpose: 'billing',
+      required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
       schedule: { period_duration: 'P1M', alignment: 'billing_cycle', delivery_sla: 'P1D' },
     }), false);
   });
@@ -277,6 +378,7 @@ describe('managed reporting status contract', () => {
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
       required_finality: 'official',
+      reconciliation_mode: 'consumer_receipt',
       schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
       method: {
         pattern: 'dataset_share',
@@ -380,11 +482,12 @@ describe('managed reporting status contract', () => {
       account_id: 'acc_123',
       revision,
       materializations: [materialization],
+      receipts: [],
       pagination: { has_more: false, total_count: 1 },
     }), true, JSON.stringify(validateResponse.errors));
   });
 
-  it('rejects unverified, mutable, and method-mismatched ready materializations', () => {
+  it('rejects unverified, mutable, and method-mismatched ready materializations while allowing native controls', () => {
     assert.equal(validateVerification({
       verified_at: '2026-08-27T04:00:16Z',
       verification_path: 'representative_consumer',
@@ -413,11 +516,12 @@ describe('managed reporting status contract', () => {
 
     const analyticsWithOpaqueNativeEvidence = structuredClone(materialization);
     delete analyticsWithOpaqueNativeEvidence.verification.canonical_content_digest;
+    analyticsWithOpaqueNativeEvidence.verification.verification_profile = 'native_commit';
     analyticsWithOpaqueNativeEvidence.verification.native_commit_evidence = {
       native_version_ref: 'delta-table-version:1',
       observed_through: 'representative_consumer',
     };
-    assert.equal(validateMaterialization(analyticsWithOpaqueNativeEvidence), false);
+    assert.equal(validateMaterialization(analyticsWithOpaqueNativeEvidence), true, JSON.stringify(validateMaterialization.errors));
   });
 
   it('rejects contradictory complete obligations', () => {
@@ -435,11 +539,15 @@ describe('managed reporting status contract', () => {
       schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
       destination_ref: 'dest_shared_reporting',
       required_finality: 'official',
+      reconciliation_mode: 'delivery_only',
+      reconciliation_status: 'not_required',
       health: 'complete',
       production_status: 'published',
       revision_count: 1,
       materialization_count: 1,
       successful_materialization_count: 1,
+      receipt_count: 0,
+      accepted_receipt_count: 0,
       issues: [],
       resource_retained_until: '2026-09-28T04:00:16Z',
     };
@@ -450,6 +558,15 @@ describe('managed reporting status contract', () => {
     obligation.materialization_count = 0;
     obligation.successful_materialization_count = 0;
     assert.equal(validateObligation(obligation), false);
+    obligation.materialization_count = 1;
+    obligation.successful_materialization_count = 1;
+    obligation.reconciliation_mode = 'consumer_receipt';
+    obligation.reconciliation_status = 'pending';
+    assert.equal(validateObligation(obligation), false);
+    obligation.reconciliation_status = 'accepted';
+    obligation.receipt_count = 1;
+    obligation.accepted_receipt_count = 1;
+    assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
   });
 
   it('returns every retained restatement in the paginated obligation ledger', () => {
@@ -476,7 +593,7 @@ describe('managed reporting status contract', () => {
         delivery_config_id: 'daily-share',
         delivery_config_version: 1,
         report_definition_id: revision.report_definition_id,
-        feed_purpose: revision.feed_purpose,
+        feed_purpose: 'analytics',
         reporting_profile: revision.reporting_profile,
         account_id: 'acc_123',
         media_buy_ids: ['mb_123'],
@@ -485,16 +602,21 @@ describe('managed reporting status contract', () => {
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
         destination_ref: 'dest_shared_reporting',
         required_finality: 'official',
+        reconciliation_mode: 'delivery_only',
+        reconciliation_status: 'not_required',
         health: 'complete',
         production_status: 'published',
         revision_count: 2,
         materialization_count: 2,
         successful_materialization_count: 2,
+        receipt_count: 0,
+        accepted_receipt_count: 0,
         issues: [],
         resource_retained_until: '2026-09-28T04:00:16Z',
       }],
       revisions: [revision, officialRevision],
       materializations: [materialization, officialMaterialization],
+      receipts: [],
       pagination: { has_more: false, total_count: 5 },
     };
     assert.equal(validateResponse(response), true, JSON.stringify(validateResponse.errors));
@@ -571,6 +693,7 @@ describe('managed reporting status contract', () => {
           supported: true,
           configuration_task: 'sync_accounts',
           status_task: 'get_reporting_status',
+          receipt_task: 'sync_reporting_receipts',
           readiness_notification: 'reporting.delivery_ready',
           offerings: [{
             offering_id: 'analytics-daily-delta',
@@ -589,6 +712,7 @@ describe('managed reporting status contract', () => {
             },
             schedule: { period_duration: 'P1D', alignment: 'account_timezone', delivery_sla: 'PT4H' },
             supported_finality: ['snapshot', 'official'],
+            reconciliation_mode: 'delivery_only',
             method: {
               pattern: 'dataset_share',
               transport: 'delta_sharing',
@@ -648,6 +772,7 @@ describe('managed reporting status contract', () => {
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
         required_finality: 'official',
+        reconciliation_mode: 'delivery_only',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
         method: { pattern: 'dataset_share', transport: 'delta_sharing', orchestration: 'producer_managed', destination: { mode: 'existing', destination_ref: 'dest_shared_reporting' } },
       },
