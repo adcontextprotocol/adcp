@@ -3,6 +3,7 @@ import type { AddieTool } from '../../../src/addie/types.js';
 import {
   buildAddieProviderTools,
   buildAddieWireTools,
+  buildModelToolDefinitions,
   mergeAddieToolDefinitions,
 } from '../../../src/addie/tool-wire-shape.js';
 import {
@@ -49,6 +50,22 @@ describe('Addie tool wire shape', () => {
         description: 'beta',
         input_schema: { type: 'object', properties: {} },
         cache_control: { type: 'ephemeral' },
+      },
+    ]);
+  });
+
+  it('projects the same canonical tools to the provider-neutral model shape', () => {
+    expect(buildModelToolDefinitions([tool('alpha'), tool('beta')])).toEqual([
+      {
+        name: 'alpha',
+        description: 'alpha',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'beta',
+        description: 'beta',
+        inputSchema: { type: 'object', properties: {} },
+        cacheHint: 'ephemeral',
       },
     ]);
   });
