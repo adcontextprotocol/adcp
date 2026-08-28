@@ -403,6 +403,9 @@ function tenantMcpHandler(
         && req.body.params.arguments
         && typeof req.body.params.arguments === 'object'
       ) {
+        // Internal scope is derived only from the authenticated credential.
+        // Scrub any caller value even when no buyer agent resolves.
+        delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
         const credential = apiKeyCredential(req, principal);
         const demoToken = principal.startsWith('static:demo:')

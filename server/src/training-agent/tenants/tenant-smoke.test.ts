@@ -3,7 +3,7 @@
  * exposes the tenant key.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
@@ -31,6 +31,7 @@ import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { TrainingCreativeBuilderPlatform } from '../v6-creative-builder-platform.js';
 import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { accountScopeFromRef } from '../account-scope.js';
+import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
@@ -2319,6 +2320,62 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 20000);
+
+  it('does not trust a caller-supplied task owner scope when buyer-agent resolution fails', async () => {
+    const { baseUrl, close } = await bootServer();
+    const token = 'test-token';
+    const resolveSpy = vi.spyOn(trainingBuyerAgentRegistry, 'resolve');
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      await initializeTenant(url, token);
+      const account = {
+        brand: { domain: 'task-owner-forgery.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const taskId = 'task_owner_scope_forgery';
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      expect(payload(await callTenantTool(url, 30, 'comply_test_controller', {
+        account,
+        scenario: 'force_get_signals_arm',
+        params: { arm: 'submitted', task_id: taskId },
+      }, token))).toMatchObject({ success: true });
+      expect(payload(await callTenantTool(url, 31, 'get_signals', {
+        account,
+        discovery_mode: 'brief',
+        signal_spec: 'People researching electric vehicles',
+        pagination: { max_results: 5 },
+      }, token))).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      // Simulate a credential that authenticates but has no registered buyer
+      // agent. The router must remove the forged internal owner before the
+      // comply adapter sees the request.
+      resolveSpy.mockResolvedValueOnce(null);
+      const keyId = createHash('sha256').update(token).digest('hex').slice(0, 32);
+      const attack = payload(await callTenantTool(url, 32, 'comply_test_controller', {
+        account,
+        scenario: 'force_task_completion',
+        params: {
+          task_id: taskId,
+          result: { signals: [], cache_scope: 'public' },
+        },
+        __training_task_owner_scope:
+          `agent:https://training-agent.adcontextprotocol.org/authenticated/${keyId}`,
+      }, token));
+
+      expect(attack).toMatchObject({ success: false, error: 'NOT_FOUND' });
+      expect(payload(await callTenantTool(url, 33, 'get_task_status', {
+        account,
+        task_id: taskId,
+      }, token))).toMatchObject({ status: 'submitted' });
+    } finally {
+      resolveSpy.mockRestore();
+      await close();
+    }
+  }, 30000);
 
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
