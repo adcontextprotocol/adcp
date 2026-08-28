@@ -161,7 +161,7 @@ The `auth_token` is only returned at creation time. Store it — it authorizes s
 
 ## get_collection_list
 
-Retrieve a collection list with resolved collections. Sellers call this to fetch and cache the list.
+Retrieve a collection list with resolved collections. Sellers call this to fetch and cache the list. When the response supplies `resolved_at`, sellers copy it into product `list_applications` receipts; otherwise the seller timestamps completion of its full snapshot fetch, including all pages.
 
 **Request:**
 

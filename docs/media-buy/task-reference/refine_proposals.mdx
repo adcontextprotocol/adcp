@@ -69,6 +69,8 @@ Each present `criteria` field replaces that field from the source proposal; omit
 
 **Response schema:** [`/schemas/3.2.0-beta.0/media-buy/refine-proposals-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.0/media-buy/refine-proposals-response.json)
 
+For `revise`, the seller reevaluates returned products against the revision's effective criteria. When those criteria contain property or collection lists, each affected canonical product carries fresh `list_applications` receipts with new evaluation timestamps and counts. `finalize` changes no commercial terms and does not trigger product reevaluation; a finalize-only response MAY repeat the receipts already bound to the source proposal.
+
 The response contains one ordered `results[]` entry per requested source proposal. Each entry echoes `source_proposal_id`; buyers cross-check by that echo rather than by position alone. Every returned proposal carries `parent_proposal_id` equal to the entry's `source_proposal_id`, so negotiation lineage survives in the proposals themselves:
 
 | Outcome | Proposal field | Meaning |

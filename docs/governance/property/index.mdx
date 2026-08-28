@@ -198,16 +198,18 @@ Once a buyer has a compliant property list, they share it with sellers:
 
 1. **Get a list reference**: The buyer agent exposes the list via `get_property_list`
 2. **Issue an auth token**: The buyer generates a token that authorizes access to the list
-3. **Pass to seller**: Include `property_list_ref` with `auth_token` in product discovery or media buy requests
+3. **Pass to seller**: Include the property-list reference, with `auth_token`, in the request's `targeting_overlay`
 4. **Seller caches locally**: Sellers fetch and cache the resolved list for bid-time decisions
 5. **Webhooks for updates**: When the list changes, sellers are notified to refresh their cache
 
 ```json
 {
-  "property_list_ref": {
-    "agent_url": "https://buyer-agent.example.com",
-    "list_id": "pl_q1_uk_premium",
-    "auth_token": "eyJhbGciOiJIUzI1NiIs..."
+  "targeting_overlay": {
+    "property_list": {
+      "agent_url": "https://buyer-agent.example.com",
+      "list_id": "pl_q1_uk_premium",
+      "auth_token": "eyJhbGciOiJIUzI1NiIs..."
+    }
   }
 }
 ```
@@ -218,15 +220,20 @@ Sellers use this reference in `get_products` to filter available inventory:
 {
   "tool": "get_products",
   "arguments": {
+    "buying_mode": "brief",
     "brief": "UK video inventory for Q1",
-    "property_list_ref": {
-      "agent_url": "https://buyer-agent.example.com",
-      "list_id": "pl_q1_uk_premium",
-      "auth_token": "..."
+    "targeting_overlay": {
+      "property_list": {
+        "agent_url": "https://buyer-agent.example.com",
+        "list_id": "pl_q1_uk_premium",
+        "auth_token": "..."
+      }
     }
   }
 }
 ```
+
+Each returned product carries a `list_applications` receipt for the property list. The receipt identifies the list without echoing its `auth_token`, records the list resolution and seller evaluation timestamps, and reports how many resolved entries matched or did not match that product. Product pricing and forecasts reflect the eligible inventory after the list is applied. Collection lists use the same receipt shape.
 
 ## Relationship to Other Protocols
 
@@ -234,7 +241,7 @@ Sellers use this reference in `get_products` to filter available inventory:
 
 The Media Buy Protocol consumes property lists at multiple stages:
 
-- **Product discovery**: Pass `property_list_ref` to `get_products` to filter inventory to compliant properties
+- **Product discovery**: Pass `targeting_overlay.property_list` to `get_products` to filter inventory to compliant properties
 - **Media buy creation**: Reference property lists to constrain where ads can run
 - **Authorization**: adagents.json validates agent authority to sell
 

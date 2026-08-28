@@ -159,6 +159,106 @@ test("split proposal responses expose brief targeting resolution", async () => {
   assert.equal(typeof validateRefineResponse, "function");
 });
 
+test("product responses expose symmetric property and collection list application receipts", async () => {
+  const [validateReceipt, validateCanonicalProduct] = await Promise.all([
+    compile("/schemas/core/inventory-list-application.json"),
+    compile("/schemas/core/canonical-product.json"),
+  ]);
+  const base = {
+    agent_url: "https://governance.pinnacle.example",
+    resolved_at: "2026-08-24T09:00:00Z",
+    evaluated_at: "2026-08-24T09:00:02Z",
+    summary: { matched: 59, unmatched: 141 },
+  };
+  const propertyReceipt = {
+    ...base,
+    list_type: "property",
+    effect: "include",
+    list_id: "pl_premium_inventory",
+  };
+  const collectionReceipt = {
+    ...base,
+    list_type: "collection",
+    effect: "exclude",
+    list_id: "cl_program_exclusions",
+  };
+
+  for (const listType of ["property", "collection"]) {
+    for (const effect of ["include", "exclude"]) {
+      assert.equal(
+        validateReceipt({
+          ...base,
+          list_type: listType,
+          effect,
+          list_id: `${listType}_${effect}`,
+        }),
+        true,
+        errors(validateReceipt)
+      );
+    }
+  }
+  assert.equal(
+    validateReceipt({ ...collectionReceipt, auth_token: "must-not-echo" }),
+    false,
+    "the closed receipt shape rejects an explicit credential member"
+  );
+  assert.equal(
+    validateReceipt({ ...collectionReceipt, mode: "exclude" }),
+    false,
+    "effect is the only application discriminator"
+  );
+  assert.equal(
+    validateReceipt({ ...collectionReceipt, entries_total: 200 }),
+    false,
+    "counts are represented only by the closed summary partition"
+  );
+  assert.equal(
+    validateCanonicalProduct({
+      product_id: "prod_streaming_video",
+      name: "Streaming video",
+      list_applications: [propertyReceipt, collectionReceipt],
+    }),
+    true,
+    errors(validateCanonicalProduct)
+  );
+
+  const legacyProduct = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "product.json"), "utf8")
+  );
+  const canonicalProduct = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "core", "canonical-product.json"),
+      "utf8"
+    )
+  );
+  for (const schema of [legacyProduct, canonicalProduct]) {
+    assert.equal(
+      schema.properties.list_applications.items.$ref,
+      "/schemas/core/inventory-list-application.json"
+    );
+    assert.match(
+      schema.properties.list_applications.description,
+      /one receipt per application/i
+    );
+    assert.match(schema.properties.list_applications.description, /pre-list/i);
+    assert.match(
+      schema.properties.list_applications.description,
+      /zero matches for any inclusion application make the product ineligible/i
+    );
+  }
+  const receiptSchema = JSON.parse(
+    fs.readFileSync(
+      path.join(SCHEMA_ROOT, "core", "inventory-list-application.json"),
+      "utf8"
+    )
+  );
+  assert.equal(
+    receiptSchema["x-adcp-validation"].verifier_constraints
+      .inclusion_eligibility,
+    "a_product_with_zero_matches_for_any_effective_include_application_is_not_returned"
+  );
+});
+
 test("device-platform exclusion is typed and independently discoverable", async () => {
   const [validateTargeting, validateRequirements, validateSupport] =
     await Promise.all([
