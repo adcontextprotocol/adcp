@@ -23,6 +23,8 @@ export interface SlackToolSetSelectionInput {
   systemRole?: SystemChannelRole | null;
   /** Active certification modules override normal routing only in DMs. */
   hasActiveCertification?: boolean;
+  /** Relevant SI retrievals or an active session make brand-agent tools actionable. */
+  hasSponsoredIntelligenceContext?: boolean;
 }
 
 export function hasActiveCertificationProgress(
@@ -49,6 +51,10 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
 
   if (input.isAdmin && input.systemRole) {
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);
+  }
+
+  if (input.hasSponsoredIntelligenceContext) {
+    appendUnique(selected, ['sponsored_intelligence']);
   }
 
   return selected;

@@ -329,6 +329,27 @@ describe('Addie tool reference', () => {
     expect(knowledge).not.toContain('## AdCP Academy');
   });
 
+  it('loads Sponsored Intelligence relay guidance only with the complete routed workflow', () => {
+    const siTools = getToolsForSets(['sponsored_intelligence'], false, false);
+    const sponsoredIntelligence = buildAddieToolReference({
+      availableToolNames: siTools,
+      selectedToolSetNames: ['sponsored_intelligence'],
+    });
+    const missingRelay = buildAddieToolReference({
+      availableToolNames: siTools.filter(name => name !== 'send_to_si_agent'),
+      selectedToolSetNames: ['sponsored_intelligence'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(sponsoredIntelligence).toContain('### Sponsored Intelligence conversations');
+    expect(sponsoredIntelligence).toContain('use send_to_si_agent for every user message');
+    expect(missingRelay).not.toContain('### Sponsored Intelligence conversations');
+    expect(knowledge).not.toContain('### Sponsored Intelligence conversations');
+  });
+
   it('keeps migrated protocol-domain prose out of the stable prompt', () => {
     const stable = buildAddieStableToolReference();
 
@@ -343,6 +364,8 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('### Slack file handling');
     expect(stable).not.toContain('## AdCP Academy');
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(stable).not.toContain('### Sponsored Intelligence conversations');
+    expect(stable).not.toContain('send_to_si_agent for EVERY user message');
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {

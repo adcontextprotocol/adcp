@@ -326,6 +326,20 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  sponsored_intelligence: {
+    name: "sponsored_intelligence",
+    description:
+      "Discover and connect to member brand agents that support Sponsored Intelligence, check offer availability, and continue or end an active brand-agent conversation",
+    tools: [
+      "get_si_availability",
+      "list_si_agents",
+      "connect_to_si_agent",
+      "send_to_si_agent",
+      "end_si_session",
+      "get_si_session_status",
+    ],
+  },
+
   content: {
     name: "content",
     // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
