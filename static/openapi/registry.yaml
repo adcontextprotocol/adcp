@@ -7615,8 +7615,8 @@ paths:
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
-      summary: Validate product authorization
-      description: Check whether an agent is authorized to sell a product based on its publisher_properties.
+      summary: Validate product property coverage
+      description: Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.
       tags:
         - Authorization Lookups
       requestBody:
@@ -7636,7 +7636,7 @@ paths:
                 - publisher_properties
       responses:
         "200":
-          description: Authorization validation result
+          description: Publisher-property coverage result
           content:
             application/json:
               schema:
@@ -7646,11 +7646,16 @@ paths:
                     type: string
                   authorized:
                     type: boolean
+                  validation_scope:
+                    type: string
+                    enum:
+                      - publisher_properties_only
                   checked_at:
                     type: string
                 required:
                   - agent_url
                   - authorized
+                  - validation_scope
                   - checked_at
                 additionalProperties: {}
   /api/registry/expand/product-identifiers:

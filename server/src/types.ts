@@ -277,6 +277,9 @@ export interface AdAgentsJson {
 export interface AuthorizationScope {
   property_id?: string;
   property_tags?: string[];
+  /** Domain-qualified collection selectors. Prefer this over collection_ids. */
+  collections?: CollectionSelector[];
+  /** Legacy host-publisher collection IDs. */
   collection_ids?: string[];
   placement_ids?: string[];
   placement_tags?: string[];
@@ -296,6 +299,7 @@ export interface AuthorizationResult {
     delegation_type?: string;
     exclusive?: boolean;
     countries?: string[];
+    collections?: CollectionSelector[];
     collection_ids?: string[];
     placement_ids?: string[];
     placement_tags?: string[];

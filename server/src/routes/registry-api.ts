@@ -1957,9 +1957,9 @@ registry.registerPath({
   method: "post",
   path: "/api/registry/validate/product-authorization",
   operationId: "validateProductAuthorization",
-  summary: "Validate product authorization",
+  summary: "Validate product property coverage",
   description:
-    "Check whether an agent is authorized to sell a product based on its publisher_properties.",
+    "Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.",
   tags: ["Authorization Lookups"],
   request: {
     body: {
@@ -1974,7 +1974,7 @@ registry.registerPath({
     },
   },
   responses: {
-    200: { description: "Authorization validation result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), checked_at: z.string() }).passthrough() } } },
+    200: { description: "Publisher-property coverage result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), validation_scope: z.literal("publisher_properties_only"), checked_at: z.string() }).passthrough() } } },
   },
 });
 
@@ -9933,7 +9933,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
-      res.json({ agent_url, ...result, checked_at: new Date().toISOString() });
+      res.json({
+        agent_url,
+        ...result,
+        validation_scope: "publisher_properties_only",
+        checked_at: new Date().toISOString(),
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Product authorization validation failed");
       res.status(500).json({ error: "Product authorization validation failed" });

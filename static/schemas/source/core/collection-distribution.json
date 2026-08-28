@@ -11,7 +11,7 @@
     },
     "property_ids": {
       "type": "array",
-      "description": "Publisher-scoped property IDs from publisher_domain's adagents.json that carry this collection. For owner-sold FAST inventory, these identify the host CTV apps without requiring the host to publish channel-owner placement definitions.",
+      "description": "Publisher-scoped property IDs from publisher_domain's adagents.json that carry this collection. For owner-sold channel inventory, these identify the host apps without requiring the host to publish channel-owner placement definitions.",
       "items": {
         "$ref": "/schemas/core/property-id.json"
       },

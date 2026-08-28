@@ -156,7 +156,19 @@ export const TOOL_DEFINITIONS = [
         collection_ids: {
           type: "array",
           items: { type: "string" },
-          description: "Optional collection IDs to validate collection-scoped authorization",
+          description: "Legacy host-publisher collection IDs to validate collection-scoped authorization",
+        },
+        collections: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              publisher_domain: { type: "string" },
+              collection_ids: { type: "array", items: { type: "string" }, minItems: 1 },
+            },
+            required: ["publisher_domain", "collection_ids"],
+          },
+          description: "Optional domain-qualified collection selectors to validate collection-scoped authorization",
         },
         placement_ids: {
           type: "array",
@@ -834,6 +846,9 @@ export class MCPToolHandler {
         const result = await this.validator.validate(domain, agentUrl, {
           property_id: args?.property_id as string | undefined,
           property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
+          collections: Array.isArray(args?.collections)
+            ? args.collections as Array<{ publisher_domain: string; collection_ids: string[] }>
+            : undefined,
           collection_ids: Array.isArray(args?.collection_ids) ? args.collection_ids as string[] : undefined,
           placement_ids: Array.isArray(args?.placement_ids) ? args.placement_ids as string[] : undefined,
           placement_tags: Array.isArray(args?.placement_tags) ? args.placement_tags as string[] : undefined,

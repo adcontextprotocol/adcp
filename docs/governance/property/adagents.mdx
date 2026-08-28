@@ -729,13 +729,14 @@ The four property-side `authorization_type` patterns above answer **which invent
 
 Use `collections` when authorization should only apply to inventory associated with specific content programs. This is especially useful for CTV, streaming, podcasting, and creator inventory where the same property can carry many collections with different commercial arrangements.
 
-#### Owner-sold FAST channel carriage
+#### Owner-sold channel carriage
 
-Model a FAST or virtual linear channel as a `kind: "channel"` collection declared
-by the channel owner. The host CTV app remains a property. When the owner sells
-its allocated avails, the host attests that supply path by authorizing the
-owner's sales agent for the host property and narrowing the authorization to the
-owner's canonical collection:
+Model a continuously programmed audio or video stream as a `kind: "channel"`
+collection declared by the channel owner. FAST is one carriage and monetization
+model for that stream, not a separate inventory kind. The host app remains a
+property. When the owner sells its allocated avails, the host attests that
+supply path by authorizing the owner's sales agent for the host property and
+narrowing the authorization to the owner's canonical collection:
 
 ```json
 {
@@ -763,6 +764,16 @@ host property and supports discovery. It MUST NOT be treated as sales
 authorization. A verified owner-sold supply path requires the host property
 scope and external collection selector above to match the seller's product;
 missing host authorization fails closed.
+
+When several parties hold sales rights on the same host property, the host uses
+one collection-narrowed `authorized_agents[]` entry per sales path. A technology
+provider does not become a rights-holder merely by operating the path. Software
+behind the owner's endpoint can remain `direct`; when the provider operates the
+sales endpoint on the owner's behalf, the host names that endpoint and marks
+the path `delegated`.
+Internal revenue shares, buyback rights, and backfill priority are not discovery
+or authorization fields. Sellers apply those terms when constructing and
+pricing their products.
 
 ### `placement_ids`
 

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/collection.json",
   "title": "Collection",
-  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for FAST or virtual linear streams. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
+  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
   "type": "object",
   "properties": {
     "collection_id": {

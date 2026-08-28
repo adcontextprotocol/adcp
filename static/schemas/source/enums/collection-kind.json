@@ -10,6 +10,6 @@
     "publication": "Print or newsletter title; installments are issues",
     "event_series": "Live event program; installments are individual event airings",
     "rotation": "DOOH scheduling container; installments are scheduling periods",
-    "channel": "Continuously programmed audio or video stream, including FAST and virtual linear channels; installments are scheduled airings or programming blocks"
+    "channel": "Continuously programmed audio or video stream, regardless of carriage or monetization model; installments are scheduled airings or programming blocks"
   }
 }

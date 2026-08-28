@@ -15,6 +15,7 @@
  */
 
 import type { CatalogPropertyIndex } from './property-index.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ export interface AuthorizationEntry {
   property_tags?: string[];
   placement_ids?: string[];
   placement_tags?: string[];
-  collections?: Array<{ publisher_domain: string; collection_id: string }>;
+  collections?: Array<{ publisher_domain: string; collection_ids: string[] }>;
   countries?: string[];
   delegation_type?: string;
   exclusive?: boolean;
@@ -48,6 +49,8 @@ export interface AuthorizationQuery {
   property_id?: string;
   placement_id?: string;
   placement_tags?: string[];
+  collections?: Array<{ publisher_domain: string; collection_ids: string[] }>;
+  /** Legacy shorthand for a collection owned by the host publisher. */
   collection_id?: string;
   country?: string;
   timestamp?: Date;
@@ -367,10 +370,22 @@ export class AuthorizationIndex {
   private matchesCollection(entry: AuthorizationEntry, query: AuthorizationQuery): boolean {
     // No collection restriction = all collections
     if (!entry.collections || entry.collections.length === 0) return true;
-    // No collection in query = passes
-    if (!query.collection_id) return true;
+    // A constrained entry cannot prove authorization without collection scope.
+    if (!query.collection_id && !query.collections?.length) return false;
 
-    return entry.collections.some(c => c.collection_id === query.collection_id);
+    const requested = query.collections?.length
+      ? query.collections
+      : query.collection_id
+        ? [{ publisher_domain: entry.publisher_domain, collection_ids: [query.collection_id] }]
+        : [];
+
+    return entry.collections.some((authorized) =>
+      requested.some((candidate) =>
+        canonicalizePublisherDomain(authorized.publisher_domain) ===
+          canonicalizePublisherDomain(candidate.publisher_domain) &&
+        authorized.collection_ids.some((collectionId) => candidate.collection_ids.includes(collectionId))
+      )
+    );
   }
 
   private matchesTimeWindow(entry: AuthorizationEntry, query: AuthorizationQuery): boolean {

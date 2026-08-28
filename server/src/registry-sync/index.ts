@@ -270,7 +270,7 @@ export class RegistrySync extends EventEmitter {
             property_tags: payload.property_tags as string[] | undefined,
             placement_ids: payload.placement_ids as string[] | undefined,
             placement_tags: payload.placement_tags as string[] | undefined,
-            collections: payload.collections as Array<{ publisher_domain: string; collection_id: string }> | undefined,
+            collections: this.authorizationCollectionsFromPayload(payload.collections),
             countries: payload.countries as string[] | undefined,
             delegation_type: payload.delegation_type as string | undefined,
             exclusive: payload.exclusive as boolean | undefined,
@@ -313,6 +313,25 @@ export class RegistrySync extends EventEmitter {
         ?? [],
       collection: (payload.collection as Record<string, unknown> | undefined) ?? existing?.collection,
     };
+  }
+
+  private authorizationCollectionsFromPayload(
+    value: unknown,
+  ): Array<{ publisher_domain: string; collection_ids: string[] }> | undefined {
+    if (!Array.isArray(value)) return undefined;
+
+    const selectors = value.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+      const selector = candidate as { publisher_domain?: unknown; collection_ids?: unknown };
+      if (typeof selector.publisher_domain !== 'string' || !Array.isArray(selector.collection_ids)) return [];
+      const collectionIds = selector.collection_ids.filter(
+        (collectionId): collectionId is string => typeof collectionId === 'string' && collectionId.length > 0,
+      );
+      if (collectionIds.length === 0) return [];
+      return [{ publisher_domain: selector.publisher_domain, collection_ids: [...new Set(collectionIds)] }];
+    });
+
+    return selectors.length ? selectors : undefined;
   }
 }
 

@@ -74,10 +74,12 @@ This split gives buyers one recovery rule: follow the accepted terms and current
 revision for control; request a new immutable commercial snapshot for anything
 that changes those terms.
 
-### FAST channels have first-class identity and carriage
+### Programmed channels have first-class identity and carriage
 
-Collections can declare `kind: "channel"` for FAST and virtual linear streams.
-The channel owner remains the canonical collection publisher while
+Collections can declare `kind: "channel"` for continuously programmed audio or
+video streams, including FAST, virtual linear, and syndicated audio channels.
+FAST describes a carriage and monetization model rather than a separate
+inventory kind. The channel owner remains the canonical collection publisher while
 `distribution[].property_ids` identifies each host app carrying it. A generic
 `publisher_channel_id` supplies a host-scoped channel or EPG namespace when no
 platform-specific identifier exists.
@@ -88,7 +90,7 @@ distribution entry is a discovery assertion only. Verified owner-sold carriage
 still requires the host's `adagents.json` to authorize the sales agent for the
 host property, narrowed by the owner's external collection selector. Hosts do
 not need to duplicate the collection or enumerate owner-managed placements.
-See [FAST channels and owner-sold carriage](/docs/media-buy/product-discovery/collections-and-installments#fast-channels-and-owner-sold-carriage).
+See [programmed channels and owner-sold carriage](/docs/media-buy/product-discovery/collections-and-installments#programmed-channels-and-owner-sold-carriage).
 
 ### Canonical creative workflows
 

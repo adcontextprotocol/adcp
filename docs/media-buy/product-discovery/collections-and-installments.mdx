@@ -24,7 +24,7 @@ The collection/installment model maps to familiar concepts across media channels
 |---|---|---|---|
 | Podcast | Program | Episode | "Serial" → "Chapter 1" |
 | Linear TV / CTV | Series | Episode / Airing | "Monday Night Football" → "Week 12" |
-| FAST / virtual linear | Programmed channel | Scheduled airing / programming block | "Acme Retro" → "Tuesday 20:00 movie" |
+| Programmed audio/video channel | Channel stream | Scheduled airing / programming block | "Acme Retro" → "Tuesday 20:00 movie" |
 | Print / Magazine | Publication | Issue | "Vogue Germany" → "May 2026" |
 | Newsletter | Publication | Edition | "Money Stuff" → "Tuesday March 24" |
 | YouTube / Social | Series | Video / Post | "Hot Ones" → "Gordon Ramsay" |
@@ -42,7 +42,7 @@ A collection is a persistent content program that produces installments over tim
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `collection_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference collections via `collections` selectors. Use distribution identifiers for cross-seller matching. |
-| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH), `channel` (FAST or virtual linear stream). Defaults to `series`. |
+| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH), `channel` (continuously programmed audio/video stream). Defaults to `series`. |
 | `name` | string | Yes | Human-readable collection name |
 | `description` | string | No | What the collection is about |
 | `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
@@ -101,13 +101,15 @@ A collection is a persistent content program that produces installments over tim
 }
 ```
 
-## FAST channels and owner-sold carriage
+## Programmed channels and owner-sold carriage
 
-A FAST channel is a `channel` collection, not a property. This preserves the
-three independent inventory axes:
+FAST describes a channel's carriage and monetization model, not a distinct kind
+of inventory. AdCP represents the underlying programmed audio or video stream
+as a `channel` collection. The same structure applies to FAST, virtual linear,
+and syndicated audio channels. This preserves three independent inventory axes:
 
 - the host CTV app is the **property** where the ad runs;
-- the FAST channel is the **collection** whose programming surrounds the ad;
+- the programmed channel is the **collection** whose content surrounds the ad;
 - pre-roll, mid-roll, or another avail is the **placement** within the product.
 
 The channel owner declares the canonical collection in its own `adagents.json`.
@@ -186,6 +188,19 @@ match: the owner asserts carriage on the host property, and the host authorizes
 the seller for that property and collection. Missing host authorization fails
 closed. A host may add `placement_ids` or `placement_tags` when it needs to
 constrain positions, but owner-sold carriage does not require it.
+
+Multiple parties with sales rights do not require a new concurrency primitive.
+The host publishes one `authorized_agents[]` entry per sales path and narrows
+each entry to the relevant collection. A technology provider does not become a
+rights-holder merely by operating the path. If it supplies software behind the
+owner's endpoint, the path may remain `direct`; if it operates the sales
+endpoint on the owner's behalf, the host names that endpoint and marks the path
+`delegated`.
+
+Internal allocation terms such as revenue shares, buyback rights, and backfill
+priority are not discovery or authorization data. Each seller applies those
+terms when constructing and pricing its products; buyers see the resulting
+offer, not how the participating parties divide the proceeds.
 
 ## The installment object
 
@@ -964,7 +979,7 @@ Shows SHOULD include at least one platform-independent identifier when available
 
 </CodeGroup>
 
-Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
+Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `publisher_channel_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
 
 ## Ad inventory
 

@@ -278,7 +278,7 @@ describe('AuthorizationIndex', () => {
   describe('collection scoping', () => {
     it('authorizes matching collection', () => {
       index.addEntry(makeEntry({
-        collections: [{ publisher_domain: 'publisher.example.com', collection_id: 'primetime_drama' }],
+        collections: [{ publisher_domain: 'publisher.example.com', collection_ids: ['primetime_drama'] }],
       }));
       const result = index.check({
         agent_url: 'https://agent.example.com',
@@ -290,7 +290,7 @@ describe('AuthorizationIndex', () => {
 
     it('rejects non-matching collection', () => {
       index.addEntry(makeEntry({
-        collections: [{ publisher_domain: 'publisher.example.com', collection_id: 'primetime_drama' }],
+        collections: [{ publisher_domain: 'publisher.example.com', collection_ids: ['primetime_drama'] }],
       }));
       const result = index.check({
         agent_url: 'https://agent.example.com',
@@ -298,6 +298,35 @@ describe('AuthorizationIndex', () => {
         collection_id: 'kids_animation',
       });
       expect(result.authorized).toBe(false);
+    });
+
+    it('fails closed when collection-constrained authorization is queried without a collection', () => {
+      index.addEntry(makeEntry({
+        collections: [{ publisher_domain: 'publisher.example.com', collection_ids: ['primetime_drama'] }],
+      }));
+      const result = index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+      });
+      expect(result.authorized).toBe(false);
+    });
+
+    it('matches external collections by publisher domain and ID', () => {
+      index.addEntry(makeEntry({
+        collections: [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] }],
+      }));
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] }],
+      }).authorized).toBe(true);
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'different-owner.example', collection_ids: ['retro_news'] }],
+      }).authorized).toBe(false);
     });
 
     it('authorizes all collections when none on entry', () => {
