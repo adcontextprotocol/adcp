@@ -1535,6 +1535,7 @@ async function selectRoutedToolsForSlackResponse(
   isAAOAdmin: boolean;
   unavailableHint: string;
   selectedToolSets: string[];
+  allowedToolNames: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1569,6 +1570,11 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       selectedToolSets: fallbackSets,
+      allowedToolNames: getToolsForSets(
+        fallbackSets,
+        userIsAdmin,
+        threadContext?.viewing_channel_is_private === false,
+      ),
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1635,6 +1641,11 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     selectedToolSets: selectedSets,
+    allowedToolNames: getToolsForSets(
+      selectedSets,
+      userIsAdmin,
+      threadContext?.viewing_channel_is_private === false,
+    ),
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1915,7 +1926,13 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasActiveCertification }
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
@@ -1938,6 +1955,7 @@ async function handleUserMessage({
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2696,6 +2714,7 @@ async function handleAppMention({
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3585,13 +3604,19 @@ export async function buildChannelResponseInvocation(input: {
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
       selectedToolSetNames: selectedToolSets,
+      allowedToolNames: officialDocsProfile
+        ? OFFICIAL_DOCS_ALLOWED_TOOLS
+        : getToolsForSets(
+            selectedToolSets,
+            userIsAdmin,
+            channelContext?.viewing_channel_is_private === false,
+          ),
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
         ? {
             disableServerTools: true,
-            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
             initialToolChoice: { type: 'tool', name: 'search_docs' },
             maxIterations: 4,
           }
@@ -3973,7 +3998,13 @@ async function handleDirectMessage(
     userId,
     thread.thread_id,
     null,
-    { isThread: true, hasActiveCertification },
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -3997,6 +4028,7 @@ async function handleDirectMessage(
         : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4392,6 +4424,7 @@ async function handleActiveThreadReply({
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),

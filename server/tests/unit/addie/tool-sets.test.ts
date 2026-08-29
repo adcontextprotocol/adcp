@@ -208,27 +208,28 @@ describe('getToolsForSets', () => {
     });
   });
 
-  describe('github issue tools always available', () => {
-    it('includes draft_github_issue regardless of routed sets', () => {
-      const tools = getToolsForSets(['knowledge'], false, false);
-      expect(tools).toContain('draft_github_issue');
+  describe('bounded member-facing domains', () => {
+    it.each([
+      ['publishing', 9],
+      ['github', 3],
+      ['illustrations', 1],
+    ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
+      expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
+      expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
     });
 
-    it('includes create_github_issue regardless of routed sets', () => {
-      const tools = getToolsForSets(['knowledge'], false, false);
-      expect(tools).toContain('create_github_issue');
+    it('routes GitHub issue tools without exposing them globally', () => {
+      const routed = getToolsForSets(['github'], false, false);
+      expect(routed).toEqual(expect.arrayContaining([
+        'draft_github_issue',
+        'create_github_issue',
+        'get_github_issue',
+      ]));
+      expect(getToolsForSets(['knowledge'], false, false)).not.toContain('draft_github_issue');
     });
 
-    it('includes github issue tools in public channels', () => {
-      const tools = getToolsForSets([], false, true);
-      expect(tools).toContain('draft_github_issue');
-      expect(tools).toContain('create_github_issue');
-    });
-  });
-
-  describe('content set description does not claim ownership of github issuing', () => {
-    it('omits "draft GitHub issues" from the description', () => {
-      expect(TOOL_SETS.content.description).not.toMatch(/github issue/i);
+    it('cuts the global member surface to six escape hatches', () => {
+      expect(ALWAYS_AVAILABLE_TOOLS).toHaveLength(6);
     });
   });
 
@@ -265,15 +266,14 @@ describe('buildUnavailableSetsHint', () => {
   it('lists an always-available escape-hatch section when sets are unavailable', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
     expect(hint).toContain('Always Available');
-    expect(hint).toContain('draft_github_issue');
-    expect(hint).toContain('create_github_issue');
     expect(hint).toContain('escalate_to_admin');
   });
 
-  it('never describes the content set as owning GitHub issue filing', () => {
+  it('describes GitHub issue filing only in the GitHub domain', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
     const contentSection = hint.match(/- \*\*content\*\*:[^\n]*/)?.[0] ?? '';
     expect(contentSection).not.toMatch(/github issue/i);
+    expect(hint).toMatch(/- \*\*github\*\*:.*GitHub issue/i);
   });
 
   it('never advertises tools that are not actually in ALWAYS_AVAILABLE_TOOLS (drift guard)', () => {

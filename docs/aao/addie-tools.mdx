@@ -619,6 +619,96 @@ Remove a document from a committee. The document will no longer be tracked or di
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
+## publishing
+
+Submit and review member articles or perspectives, read Google Docs supplied for publication, and generate or check published cover illustrations
+
+### `propose_content`
+
+Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_my_content`
+
+Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `list_pending_content`
+
+List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `approve_content`
+
+Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `reject_content`
+
+Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `request_revisions`
+
+Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `read_google_doc`
+
+Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
+
+*Source: `server/src/addie/mcp/google-docs.ts`*
+
+### `check_illustration_status`
+
+Check if a perspective article has an editorial illustration and whether the author can generate one.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `generate_perspective_illustration`
+
+Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+## github
+
+Read a specific GitHub issue or pull request, draft a bug report or feature request, and create a confirmed issue
+
+### `draft_github_issue`
+
+Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool's entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_github_issue`
+
+File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_github_issue`
+
+Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## illustrations
+
+Search the approved illustration library when a user requests a diagram or a substantive explanation would materially benefit from a visual
+
+### `search_image_library`
+
+Search the approved illustration library for images that match a topic or concept. Returns image URLs and alt text that you can include in your response. All searches are logged automatically.
+
+*Source: `server/src/addie/mcp/image-tools.ts`*
+
 ## member_billing
 
 Handle the current member's own billing - find membership pricing, create a payment link, preview and confirm an invoice, or open the organization's billing portal
@@ -1610,84 +1700,6 @@ DO NOT use for:
 Set how often Addie sends proactive messages (tips, reminders, follow-ups). Choose a cadence or opt out entirely.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `search_image_library`
-
-Search the approved illustration library for images that match a topic or concept. Returns image URLs and alt text that you can include in your response. All searches are logged automatically.
-
-*Source: `server/src/addie/mcp/image-tools.ts`*
-
-### `draft_github_issue`
-
-Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool's entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `create_github_issue`
-
-File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `get_github_issue`
-
-Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `propose_content`
-
-Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `get_my_content`
-
-Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `list_pending_content`
-
-List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `approve_content`
-
-Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `reject_content`
-
-Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `request_revisions`
-
-Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `read_google_doc`
-
-Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
-
-*Source: `server/src/addie/mcp/google-docs.ts`*
-
-### `check_illustration_status`
-
-Check if a perspective article has an editorial illustration and whether the author can generate one.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
-
-### `generate_perspective_illustration`
-
-Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
 
 ## Always available (admin)
 

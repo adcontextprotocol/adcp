@@ -39,30 +39,6 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   "capture_learning", // Save insights from conversations
   "web_search", // Built-in Claude tool, always available
   "set_outreach_preference", // Users can always opt out of proactive outreach
-  "search_image_library", // Illustrations to enrich explanations — not topic-dependent
-  "draft_github_issue", // Bug reports & feature requests should always be possible
-  "create_github_issue", // Paired with draft — if a member wants it filed directly, keep it reachable
-  "get_github_issue", // Users paste GitHub links in any conversation; reading should never be routed away
-  // Content submission is a first-class action — a member sharing a draft in
-  // any channel (editorial, admin, DM) should land in pending_review, not an
-  // escalation. Permission gating happens inside the handlers.
-  "propose_content",
-  "get_my_content",
-  "list_pending_content",
-  "approve_content",
-  "reject_content",
-  "request_revisions",
-  // Members routinely share Google Doc links as drafts. Reading the doc is
-  // the precondition for calling propose_content, so it should be available
-  // in any channel regardless of router intent selection. The handler is
-  // gated on GOOGLE_* credentials at registration, so environments without
-  // Google integration don't expose it anyway.
-  "read_google_doc",
-  // Illustration tools — members ask for covers on their own posts from
-  // any channel. Handler gates on author-of-perspective + monthly quota
-  // + tool-call rate limit. #2783.
-  "check_illustration_status",
-  "generate_perspective_illustration",
 ];
 
 /**
@@ -352,17 +328,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: "content",
-    // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
-    // intentionally NOT listed here — neither in the description nor the tools
-    // array. Duplicating it caused Addie to hallucinate "I can't file GitHub
-    // issues" when the router didn't pick `content`.
-    //
-    // NOTE: list_pending_content, approve_content, and reject_content are also
-    // intentionally NOT listed here. They live in ALWAYS_AVAILABLE_TOOLS so
-    // content review is reachable in every conversation. Keeping them here
-    // (and saying "handle content approvals" in the description) caused Sonnet
-    // to hallucinate that approval tools were unavailable when `content` wasn't
-    // selected. See #2998.
     description:
       "Manage content workflows — propose news sources, add or update committee documents (admin actions)",
     tools: [
@@ -371,6 +336,41 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "update_committee_document",
       "delete_committee_document",
     ],
+  },
+
+  publishing: {
+    name: "publishing",
+    description:
+      "Submit and review member articles or perspectives, read Google Docs supplied for publication, and generate or check published cover illustrations",
+    tools: [
+      "propose_content",
+      "get_my_content",
+      "list_pending_content",
+      "approve_content",
+      "reject_content",
+      "request_revisions",
+      "read_google_doc",
+      "check_illustration_status",
+      "generate_perspective_illustration",
+    ],
+  },
+
+  github: {
+    name: "github",
+    description:
+      "Read a specific GitHub issue or pull request, draft a bug report or feature request, and create a confirmed issue",
+    tools: [
+      "draft_github_issue",
+      "create_github_issue",
+      "get_github_issue",
+    ],
+  },
+
+  illustrations: {
+    name: "illustrations",
+    description:
+      "Search the approved illustration library when a user requests a diagram or a substantive explanation would materially benefit from a visual",
+    tools: ["search_image_library"],
   },
 
   member_billing: {
@@ -658,28 +658,15 @@ export function buildUnavailableSetsHint(
     return `- **${setName}**: ${set.description}`;
   });
 
-  // Remind Claude which escape-hatch tools bypass set routing. Without this,
-  // the model sometimes reads an unavailable-set description that overlaps
-  // with an always-available capability (e.g., GitHub issue filing) and
-  // hallucinates that the capability is off. Keep this list tight — only the
-  // tools users explicitly ask for by name.
+  // Remind Claude which escape-hatch tools bypass set routing. Keep this list
+  // tight — only the tools users explicitly ask for by name.
   //
   // NOTE: each key MUST exist in ALWAYS_AVAILABLE_TOOLS. A test enforces this
   // so a renamed/removed tool can't silently rot into a lying hint.
   const ALWAYS_AVAILABLE_BLURBS: Record<string, string> = {
-    draft_github_issue:
-      "filing bugs / feature requests as a pre-filled GitHub link",
-    create_github_issue:
-      "filing an issue directly under the member's GitHub account (if connected)",
-    get_github_issue: "reading a GitHub issue or PR by number or URL",
     escalate_to_admin: "handing the thread to a human admin",
     get_escalation_status:
       "checking the status of an escalation the member filed",
-    propose_content: "submitting a content draft for publication",
-    get_my_content: "viewing the member's own submitted content and proposals",
-    list_pending_content: "listing content items awaiting review",
-    approve_content: "approving a pending content item (admin)",
-    reject_content: "rejecting a pending content item (admin)",
     set_outreach_preference: "opting out of proactive outreach messages",
   };
   const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)

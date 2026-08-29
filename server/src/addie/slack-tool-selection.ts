@@ -42,7 +42,7 @@ function appendUnique(target: string[], values: readonly string[]): void {
 /** Apply server-owned Slack routing rules after the router proposes sets. */
 export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[] {
   if (input.source === 'dm' && input.hasActiveCertification) {
-    return ['certification', 'knowledge'];
+    return ['certification', 'knowledge', 'illustrations'];
   }
 
   const selected = input.routerAvailable
