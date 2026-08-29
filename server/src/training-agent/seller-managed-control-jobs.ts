@@ -3,6 +3,7 @@ import {
   AdcpError,
   type AdcpStructuredError,
   type IdempotencyStore,
+  type ScopedTaskRef,
   type TaskRegistry,
   type TaskRegistryScope,
 } from '@adcp/sdk/server';
@@ -613,38 +614,73 @@ export interface SellerManagedReplayTaskRegistry extends TaskRegistry {
  * replayed; every other collision retains the SDK's fail-closed behavior. */
 export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManagedReplayTaskRegistry {
   const authorizedOwners = new Map<string, string>();
+  const taskRefs = new Map<string, ScopedTaskRef>();
+
+  const aliasedScope = (taskId: string, scope: TaskRegistryScope): TaskRegistryScope => {
+    const taskRef = taskRefs.get(taskId);
+    return taskRef?.accountId === scope.accountId
+      && authorizedOwners.get(taskId) === scope.ownerScope
+      ? taskRef
+      : scope;
+  };
+
   return {
     ...registry,
+    get registryId() {
+      return registry.registryId;
+    },
     async authorizeSellerManagedReplay(opts) {
-      const existing = await registry._getTaskUnsafe(opts.taskId);
+      let taskRef = taskRefs.get(opts.taskId);
+      let existing = taskRef
+        ? await registry.getTask(opts.taskId, taskRef)
+        : null;
+      if (!existing) {
+        const reboundRef: ScopedTaskRef = {
+          taskId: opts.taskId,
+          accountId: opts.accountId,
+          ownerScope: opts.ownerScope,
+          ...(registry.registryId && { registryId: registry.registryId }),
+        };
+        existing = await registry.getTask(opts.taskId, reboundRef);
+        if (existing) taskRef = reboundRef;
+      }
       if (existing && (existing.tool !== 'control_media_buy' || existing.accountId !== opts.accountId)) {
+        throw new Error(`Seller-managed task replay scope mismatch: ${opts.taskId}`);
+      }
+      if (!existing || !taskRef) {
         throw new Error(`Seller-managed task replay scope mismatch: ${opts.taskId}`);
       }
       // Production ownership is atomically rebound in the durable store. The
       // projection is also required for the SDK in-memory registry used by
       // tests and local development, which intentionally exposes no mutation
       // method for task metadata.
+      taskRefs.set(opts.taskId, taskRef);
       authorizedOwners.set(opts.taskId, opts.ownerScope);
     },
     async create(opts) {
       if (opts.overrideTaskId?.startsWith('smc_')) {
-        const existing = await registry._getTaskUnsafe(opts.overrideTaskId);
-        if (existing) {
+        const taskRef = taskRefs.get(opts.overrideTaskId);
+        const existing = taskRef
+          ? await registry.getTask(opts.overrideTaskId, taskRef)
+          : null;
+        if (existing && taskRef) {
           const ownerScope = opts.ownerScope ?? `account:${opts.accountId}`;
           const authorizedOwner = authorizedOwners.get(opts.overrideTaskId);
           if (existing.tool !== opts.tool || existing.accountId !== opts.accountId
             || (existing.ownerScope !== ownerScope && authorizedOwner !== ownerScope)) {
             throw new Error(`Seller-managed task replay scope mismatch: ${opts.overrideTaskId}`);
           }
-          return { taskId: existing.taskId };
+          return { ...taskRef, ownerScope };
         }
       }
-      return await registry.create(opts);
+      const taskRef = await registry.create(opts);
+      if (taskRef.taskId.startsWith('smc_')) taskRefs.set(taskRef.taskId, taskRef);
+      return taskRef;
     },
     async getTask<TResult = unknown>(taskId: string, scope: TaskRegistryScope) {
       const authorizedOwner = authorizedOwners.get(taskId);
       const existing = authorizedOwner === scope.ownerScope
-        ? await registry._getTaskUnsafe<TResult>(taskId)
+        ? await registry.getTask<TResult>(taskId, aliasedScope(taskId, scope))
         : await registry.getTask<TResult>(taskId, scope);
       const ownerScope = authorizedOwners.get(taskId);
       return existing && ownerScope === scope.ownerScope && existing.accountId === scope.accountId
@@ -657,10 +693,33 @@ export function withSellerManagedTaskReplay(registry: TaskRegistry): SellerManag
         const tasks = [...listed.tasks];
         for (const [taskId, ownerScope] of authorizedOwners) {
           if (ownerScope !== opts.ownerScope || tasks.some(task => task.taskId === taskId)) continue;
-          const task = await registry._getTaskUnsafe(taskId);
+          const taskRef = taskRefs.get(taskId);
+          const task = taskRef ? await registry.getTask(taskId, taskRef) : null;
           if (task?.accountId === opts.accountId) tasks.push({ ...task, ownerScope });
         }
         return { tasks };
+      },
+    }),
+    async complete(taskId, scope, result) {
+      return await registry.complete(taskId, aliasedScope(taskId, scope), result);
+    },
+    async fail(taskId, scope, error, result) {
+      return await registry.fail(taskId, aliasedScope(taskId, scope), error, result);
+    },
+    async updateProgress(taskId, scope, progress) {
+      return await registry.updateProgress(taskId, aliasedScope(taskId, scope), progress);
+    },
+    _registerBackground(taskId, scope, completion) {
+      registry._registerBackground(taskId, aliasedScope(taskId, scope), completion);
+    },
+    async awaitTask(taskId, scope) {
+      await registry.awaitTask(taskId, aliasedScope(taskId, scope));
+    },
+    ...(registry.clear && {
+      async clear() {
+        authorizedOwners.clear();
+        taskRefs.clear();
+        await registry.clear!();
       },
     }),
   };

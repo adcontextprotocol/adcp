@@ -56,6 +56,7 @@ import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
 import { taskRegistryNamespaceForTenant } from '../task-registry-scope.js';
+import { ensureTrainingAgentSchemaBundle } from '../schema-compat.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -278,6 +279,7 @@ export function createRegistryHolder(options: {
       if (registry) return registry;
       if (pendingInit) return pendingInit;
       const promise = (async () => {
+        await ensureTrainingAgentSchemaBundle();
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
