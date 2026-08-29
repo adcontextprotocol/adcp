@@ -34,6 +34,21 @@ function assertSelfContainedReportingSchema(schema) {
   visit(schema);
 }
 
+const fullCoverage = {
+  status: 'full',
+  evaluated_at: '2026-08-27T00:00:00Z',
+  media_buy_ids: ['mb_123'],
+  fully_covered_media_buy_ids: ['mb_123'],
+  partially_covered_media_buy_ids: [],
+  unsupported_media_buy_ids: [],
+  unknown_media_buy_ids: [],
+  package_ids: ['pkg_123'],
+  covered_package_ids: ['pkg_123'],
+  unsupported_package_ids: [],
+  unknown_package_ids: [],
+  limitations: [],
+};
+
 const revision = {
   reporting_revision_id: 'rrv_20260827_a',
   report_definition_id: 'rdef_daily_delivery_v1',
@@ -47,6 +62,7 @@ const revision = {
   schema_ref_policy: 'local_fragment_only',
   account_id: 'acc_123',
   media_buy_ids: ['mb_123'],
+  coverage: fullCoverage,
   period: {
     start: '2026-08-26T00:00:00Z',
     end: '2026-08-27T00:00:00Z',
@@ -181,9 +197,11 @@ describe('managed reporting status contract', () => {
   let validateCanonicalizationContract;
   let validateScheduleOffering;
   let validateReportDefinition;
+  let validateCoverage;
+  let validateProductReportingCapabilities;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -204,7 +222,60 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-canonicalization-contract.json'),
       compile('/schemas/core/reporting-schedule-offering.json'),
       compile('/schemas/core/reporting-report-definition.json'),
+      compile('/schemas/core/reporting-coverage.json'),
+      compile('/schemas/core/reporting-capabilities.json'),
     ]);
+  });
+
+  it('declares product-scoped offerings and preserves partial snapshot coverage', () => {
+    assert.equal(validateProductReportingCapabilities({
+      available_reporting_frequencies: ['hourly', 'daily'],
+      expected_delay_minutes: 15,
+      timezone: 'UTC',
+      supports_webhooks: true,
+      reporting_delivery_offering_ids: ['pacing-hourly-s3', 'billing-daily-s3'],
+      available_metrics: ['impressions', 'spend'],
+      date_range_support: 'date_range',
+    }), true, JSON.stringify(validateProductReportingCapabilities.errors));
+
+    const partialCoverage = {
+      status: 'partial',
+      evaluated_at: '2026-08-27T00:00:00Z',
+      media_buy_ids: ['mb_123'],
+      fully_covered_media_buy_ids: [],
+      partially_covered_media_buy_ids: ['mb_123'],
+      unsupported_media_buy_ids: [],
+      unknown_media_buy_ids: [],
+      package_ids: ['pkg_covered', 'pkg_unsupported'],
+      covered_package_ids: ['pkg_covered'],
+      unsupported_package_ids: ['pkg_unsupported'],
+      unknown_package_ids: [],
+      limitations: [{
+        reason: 'offering_unsupported',
+        media_buy_id: 'mb_123',
+        package_ids: ['pkg_unsupported'],
+      }],
+    };
+    assert.equal(validateCoverage(partialCoverage), true, JSON.stringify(validateCoverage.errors));
+
+    const configuration = {
+      delivery_config_id: 'pacing-hourly-s3',
+      delivery_config_version: 1,
+      offering_id: 'pacing-hourly-s3',
+      active: true,
+      feed_purpose: 'pacing',
+      report_definition_id: revision.report_definition_id,
+      reporting_profile: 'media_buy_delivery_v1',
+      scope: { media_buy_ids: ['mb_123'] },
+      coverage_requirement: 'allow_partial',
+      required_finality: 'snapshot',
+      reconciliation_mode: 'delivery_only',
+      schedule: { period_duration: 'PT1H', alignment: 'utc', delivery_sla: 'PT15M' },
+      method: { pattern: 'file_transfer', transport: 's3', orchestration: 'producer_managed', destination: { mode: 'existing', destination_ref: 'dest_s3' }, format: 'parquet' },
+    };
+    assert.equal(validateConfig(configuration), true, JSON.stringify(validateConfig.errors));
+    delete configuration.coverage_requirement;
+    assert.equal(validateConfig(configuration), false);
   });
 
   it('keeps canonical revisions destination-independent for multi-destination fan-out', () => {
@@ -320,6 +391,7 @@ describe('managed reporting status contract', () => {
         report_definition_id: revision.report_definition_id,
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
+        coverage_requirement: 'full',
         required_finality: 'official',
         reconciliation_mode: 'delivery_only',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -345,6 +417,7 @@ describe('managed reporting status contract', () => {
           report_definition_id: revision.report_definition_id,
           reporting_profile: 'media_buy_delivery_v1',
           scope: { all_media_buys: true },
+          coverage_requirement: 'full',
           required_finality: 'official',
           reconciliation_mode: 'consumer_receipt',
           schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -383,6 +456,7 @@ describe('managed reporting status contract', () => {
       report_definition_id: revision.report_definition_id,
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
+      coverage_requirement: 'full',
       reconciliation_mode: 'delivery_only',
       method: {
         pattern: 'dataset_share',
@@ -424,6 +498,7 @@ describe('managed reporting status contract', () => {
       report_definition_id: revision.report_definition_id,
       reporting_profile: 'media_buy_delivery_v1',
       scope: { all_media_buys: true },
+      coverage_requirement: 'full',
       required_finality: 'official',
       reconciliation_mode: 'consumer_receipt',
       schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -550,6 +625,7 @@ describe('managed reporting status contract', () => {
         coverage_complete: true,
       },
       health: 'healthy',
+      coverage: fullCoverage,
       data_through: '2026-08-27T00:00:00Z',
       next_expected_at: '2026-08-28T04:00:00Z',
       obligation_counts: { total: 27, waiting: 1, healthy: 26, delayed: 0, action_required: 0, complete: 0 },
@@ -636,6 +712,7 @@ describe('managed reporting status contract', () => {
       account_id: 'acc_123',
       media_buy_ids: ['mb_123'],
       scope_resolved_at: '2026-08-27T00:00:00Z',
+      coverage: fullCoverage,
       period: revision.period,
       expected_at: '2026-08-27T04:00:00Z',
       schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -708,6 +785,7 @@ describe('managed reporting status contract', () => {
         account_id: 'acc_123',
         media_buy_ids: ['mb_123'],
         scope_resolved_at: '2026-08-27T00:00:00Z',
+        coverage: fullCoverage,
         period: revision.period,
         expected_at: '2026-08-27T04:00:00Z',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -893,6 +971,7 @@ describe('managed reporting status contract', () => {
         report_definition_id: revision.report_definition_id,
         reporting_profile: 'media_buy_delivery_v1',
         scope: { all_media_buys: true },
+        coverage_requirement: 'full',
         required_finality: 'official',
         reconciliation_mode: 'delivery_only',
         schedule: { period_duration: 'P1D', alignment: 'utc', delivery_sla: 'PT4H' },
@@ -902,6 +981,7 @@ describe('managed reporting status contract', () => {
       destination_ref: 'dest_shared_reporting',
       validated_at: '2026-08-27T03:00:00Z',
       activated_at: '2026-08-27T03:00:01Z',
+      current_coverage: { ...fullCoverage, evaluated_at: '2026-08-27T03:00:00Z' },
     };
     assert.equal(validateConfigState(ready), true, JSON.stringify(validateConfigState.errors));
     ready.configuration.active = false;

@@ -19,6 +19,9 @@
     "authorization_revocation_seconds": { "type": "integer", "minimum": 0, "description": "Maximum delay after caller/account authorization ends before seller-controlled transport access, provider grants, and write credentials are revoked. It cannot revoke a buyer's access to data already written into a buyer-owned destination." }
   },
   "required": ["supported", "configuration_task", "status_task", "receipt_task", "readiness_notification", "offerings", "automated_recovery_window_seconds", "status_retention_days", "resource_retention_days", "authorization_revocation_seconds"],
-  "x-adcp-validation": { "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, report_definition_id, reporting profile, schedule, requested finality, reconciliation mode, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint." },
+  "x-adcp-validation": {
+    "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, report_definition_id, reporting profile, schedule, requested finality, reconciliation mode, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint.",
+    "product_applicability": "This seller-wide catalog declares possible atomic combinations, not universal applicability to every product. Product.reporting_capabilities.reporting_delivery_offering_ids declares product/package eligibility; sync_accounts validation applies account-specific constraints; reporting obligations freeze effective media-buy coverage."
+  },
   "additionalProperties": false
 }

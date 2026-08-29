@@ -33,5 +33,5 @@
     "batch_identity": "reporting_receipt_id values MUST be unique within the batch. Every referenced obligation, revision, and materialization MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
     "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

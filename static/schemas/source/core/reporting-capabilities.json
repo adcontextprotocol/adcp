@@ -38,6 +38,18 @@
       "type": "boolean",
       "description": "Whether this product supports webhook-based reporting notifications"
     },
+    "reporting_delivery_offering_ids": {
+      "type": "array",
+      "description": "Product-scoped subset of get_adcp_capabilities.media_buy.reporting_delivery.offerings[].offering_id that packages using this product can satisfy. This binds seller-wide managed-delivery offerings to product/package eligibility. An empty array explicitly declares no managed offering; absence means product-level applicability is unknown and MUST NOT be inferred from the seller-wide list. Account, seat, credential, or provider constraints may narrow support further during sync_accounts validation.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+        "x-entity": "reporting_offering"
+      },
+      "uniqueItems": true
+    },
     "available_metrics": {
       "type": "array",
       "description": "Metrics available in reporting. Impressions and spend are always implicitly included. When a creative format declares reported_metrics, buyers receive the intersection of these product-level metrics and the format's reported_metrics.",

@@ -85,6 +85,7 @@
       "additionalProperties": false
     },
     "health": { "$ref": "/schemas/enums/reporting-health.json" },
+    "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Aggregated effective coverage for the exact selected scope. This remains independent of reporting health and finality so a fresh covered subset cannot look like complete campaign reporting." },
     "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Conservative latest included event time across satisfied obligations in scope, or null when unavailable/unknown." },
     "next_expected_at": { "type": "string", "format": "date-time", "description": "Next obligation due time for an open scope. Omitted for a closed complete scope." },
     "obligation_counts": {
@@ -120,7 +121,7 @@
         {
       "title": "Summary view",
       "properties": { "view": { "type": "string", "const": "summary" } },
-      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "data_through", "obligation_counts", "issues"],
+      "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
       "not": { "anyOf": [{ "required": ["periods"] }, { "required": ["revisions"] }, { "required": ["pagination"] }, { "required": ["revision"] }, { "required": ["materializations"] }, { "required": ["receipts"] }] }
     },
     {
@@ -209,7 +210,8 @@
   "x-adcp-validation": {
     "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, ledger snapshot, revision, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
     "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id and ledger_as_of. A cursor is unusable by another caller or account.",
-    "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary."
+    "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary.",
+    "coverage_aggregation": "Summary coverage is full only when every selected obligation is full. It is partial when the selected scope contains both covered and unsupported/unknown packages, none when nothing is covered and support is known absent, and unknown when nothing is covered and any applicability remains unknown. Delivery health is computed separately. Covered-subset metrics MUST NOT be presented as complete totals for the selected media-buy scope."
   },
   "additionalProperties": true
 }

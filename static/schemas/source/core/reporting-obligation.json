@@ -15,6 +15,7 @@
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
     "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown." },
     "scope_resolved_at": { "type": "string", "format": "date-time", "description": "Instant at which the configured scope was resolved and frozen for this obligation. For all_media_buys, include every caller-authorized account media buy whose effective flight overlaps the half-open period and was known by this cutoff. Later-created or backdated buys do not rewrite this obligation." },
+    "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Immutable effective coverage of the exact selected offering at this period boundary. Delivery health is evaluated separately over the covered denominator." },
     "period": {
       "type": "object",
       "properties": {
@@ -41,7 +42,7 @@
     "issues": { "type": "array", "items": { "$ref": "/schemas/core/reporting-status-issue.json" } },
     "resource_retained_until": { "type": "string", "format": "date-time", "description": "Minimum time through which at least one verified materialization for a completed obligation remains readable." }
   },
-  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "media_buy_ids", "scope_resolved_at", "period", "expected_at", "schedule", "destination_ref", "required_finality", "reconciliation_mode", "reconciliation_status", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "receipt_count", "accepted_receipt_count", "issues"],
+  "required": ["reporting_obligation_id", "delivery_config_id", "delivery_config_version", "report_definition_id", "feed_purpose", "reporting_profile", "account_id", "media_buy_ids", "scope_resolved_at", "coverage", "period", "expected_at", "schedule", "destination_ref", "required_finality", "reconciliation_mode", "reconciliation_status", "health", "production_status", "revision_count", "materialization_count", "successful_materialization_count", "receipt_count", "accepted_receipt_count", "issues"],
   "allOf": [
     {
       "if": { "properties": { "health": { "enum": ["healthy", "complete"] } }, "required": ["health"] },
@@ -85,6 +86,7 @@
   ],
   "x-adcp-validation": {
     "scope_resolution": "scope_resolved_at MUST equal period.end. all_media_buys membership is frozen from the caller-authorized AdCP media buys known at that instant whose effective flights overlap [period.start, period.end); explicit configured media_buy_ids are echoed even when they produce zero rows. Provider object deletion does not remove a buy. Later-created or backdated buys do not alter the obligation.",
+    "coverage_resolution": "coverage.evaluated_at MUST equal scope_resolved_at and coverage.media_buy_ids MUST equal media_buy_ids. A configuration requiring full coverage makes incomplete coverage action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial evaluates delivery health over covered_package_ids but never changes coverage.status or represents covered-subset aggregates as whole-scope totals.",
     "nested_identity": "Every materialization associated with this obligation MUST equal its delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method; its destination-independent revision MUST equal account_id, report_definition_id, reporting_profile, period, and applicable media_buy_ids.",
     "complete_finality": "complete requires a published revision at required_finality and at least one verified readable materialization for that revision through resource_retained_until. consumer_receipt additionally requires an accepted matching receipt for the current revision. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
     "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained revision.",
