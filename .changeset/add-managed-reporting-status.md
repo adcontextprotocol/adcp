@@ -11,4 +11,6 @@ consumer reconciliation through `sync_reporting_receipts`, and the
 `reporting.delivery_ready` notification. Advertise snapshot/official schedules as
 atomic offerings, bind their applicability to products, and preserve explicit
 full/partial/none/unknown package coverage through configuration, revisions, and
-status aggregation.
+status aggregation. Publish portable, byte-exact reconciliation scenarios for SDKs,
+machine-identify required canonicalization vectors, and enforce control-value and
+physical-checksum discriminants in the source schemas.
