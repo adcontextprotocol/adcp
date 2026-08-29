@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { describe, it, before } = require('node:test');
@@ -32,6 +33,65 @@ function assertSelfContainedReportingSchema(schema) {
     for (const child of Object.values(value)) visit(child, depth + 1);
   };
   visit(schema);
+}
+
+function validateGoldenVectorSemantics(contract, canonicalize) {
+  const vectors = [
+    contract.golden_vectors.empty_report,
+    contract.golden_vectors.ordering_encoding,
+    ...(contract.golden_vectors.additional ?? []),
+  ];
+  const names = vectors.map(vector => vector.name);
+  assert.equal(new Set(names).size, names.length, 'golden-vector names must be unique');
+
+  for (const purpose of ['empty_report', 'ordering_encoding']) {
+    assert.equal(
+      vectors.filter(vector => vector.purpose === purpose).length,
+      1,
+      `${purpose} must occur exactly once`,
+    );
+  }
+
+  assert.equal(contract.golden_vectors.empty_report.purpose, 'empty_report');
+  assert.equal(contract.golden_vectors.ordering_encoding.purpose, 'ordering_encoding');
+  assert.ok(
+    (contract.golden_vectors.additional ?? []).every(vector => vector.purpose === 'additional'),
+    'only additional vectors may appear in the additional collection',
+  );
+
+  const orderingVector = contract.golden_vectors.ordering_encoding;
+  const sortedOrderingRows = [...orderingVector.input_rows].sort((left, right) => {
+    const leftKey = Buffer.from(canonicalize(contract.primary_keys.map(key => left[key])));
+    const rightKey = Buffer.from(canonicalize(contract.primary_keys.map(key => right[key])));
+    return Buffer.compare(leftKey, rightKey);
+  });
+  assert.notDeepEqual(
+    orderingVector.input_rows,
+    sortedOrderingRows,
+    'ordering_encoding input rows must not already be in canonical primary-key order',
+  );
+  assert.ok(
+    orderingVector.input_rows.some(row => JSON.stringify(row) !== canonicalize(row)),
+    'ordering_encoding must include an object whose member order differs from JCS order',
+  );
+
+  for (const vector of vectors) {
+    const bytes = Buffer.from(vector.canonical_utf8_base64, 'base64');
+    assert.equal(bytes.toString('base64'), vector.canonical_utf8_base64, `${vector.name} base64 must be canonical`);
+    assert.equal(
+      crypto.createHash('sha256').update(bytes).digest('hex'),
+      vector.sha256,
+      `${vector.name} SHA-256 must match its declared bytes`,
+    );
+
+    const sortedRows = [...vector.input_rows].sort((left, right) => {
+      const leftKey = Buffer.from(canonicalize(contract.primary_keys.map(key => left[key])));
+      const rightKey = Buffer.from(canonicalize(contract.primary_keys.map(key => right[key])));
+      return Buffer.compare(leftKey, rightKey);
+    });
+    const canonicalBytes = Buffer.from(`[${sortedRows.map(row => canonicalize(row)).join(',')}]`);
+    assert.deepEqual(canonicalBytes, bytes, `${vector.name} canonical bytes must match its input rows`);
+  }
 }
 
 const fullCoverage = {
@@ -79,7 +139,7 @@ const revision = {
   ],
   canonical_content_digest: {
     algorithm: 'sha256',
-    value: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    value: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
     canonicalization_id: 'adcp-reporting-rows-v1',
     canonicalization_uri: 'https://schemas.example/reporting-canonicalization/v1.json',
     canonicalization_sha256: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
@@ -199,9 +259,11 @@ describe('managed reporting status contract', () => {
   let validateReportDefinition;
   let validateCoverage;
   let validateProductReportingCapabilities;
+  let validateControlTotal;
+  let canonicalize;
 
   before(async () => {
-    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities] = await Promise.all([
+    [validateConfig, validateRequest, validateResponse, validateWebhook, validateNotificationConfig, validateCapabilities, validateSyncAccounts, validateConfigState, validateObligation, validateMaterialization, validateVerification, validateSchedule, validateRevision, validateManifest, validateResource, validateReceiptRequest, validateReceiptResponse, validateCanonicalizationContract, validateScheduleOffering, validateReportDefinition, validateCoverage, validateProductReportingCapabilities, validateControlTotal] = await Promise.all([
       compile('/schemas/core/reporting-delivery-config.json'),
       compile('/schemas/media-buy/get-reporting-status-request.json'),
       compile('/schemas/media-buy/get-reporting-status-response.json'),
@@ -224,7 +286,9 @@ describe('managed reporting status contract', () => {
       compile('/schemas/core/reporting-report-definition.json'),
       compile('/schemas/core/reporting-coverage.json'),
       compile('/schemas/core/reporting-capabilities.json'),
+      compile('/schemas/core/reporting-control-total.json'),
     ]);
+    canonicalize = (await import('canonicalize')).default;
   });
 
   it('declares product-scoped offerings and preserves partial snapshot coverage', () => {
@@ -564,14 +628,85 @@ describe('managed reporting status contract', () => {
       algorithm: 'adcp_jcs_rows_v1',
       schema_sha256: revision.schema_sha256,
       primary_keys: ['media_buy_id', 'date'],
-      golden_vectors: [
-        { name: 'empty', input_rows: [], canonical_utf8_base64: 'W10=', sha256: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945' },
-        { name: 'ordering', input_rows: [{ media_buy_id: 'b', date: '2026-08-26' }, { media_buy_id: 'a', date: '2026-08-26' }], canonical_utf8_base64: 'W3siZGF0ZSI6IjIwMjYtMDgtMjYiLCJtZWRpYV9idXlfaWQiOiJhIn0seyJkYXRlIjoiMjAyNi0wOC0yNiIsIm1lZGlhX2J1eV9pZCI6ImIifV0=', sha256: '54a318008a022606fdf2ad2a717bb9c6665825f717d15dc61369fb17bd5ab1d2' },
-      ],
+      golden_vectors: {
+        empty_report: { name: 'empty', purpose: 'empty_report', input_rows: [], canonical_utf8_base64: 'W10=', sha256: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945' },
+        ordering_encoding: { name: 'ordering', purpose: 'ordering_encoding', input_rows: [{ media_buy_id: 'b', date: '2026-08-26' }, { media_buy_id: 'a', date: '2026-08-26' }], canonical_utf8_base64: 'W3siZGF0ZSI6IjIwMjYtMDgtMjYiLCJtZWRpYV9idXlfaWQiOiJhIn0seyJkYXRlIjoiMjAyNi0wOC0yNiIsIm1lZGlhX2J1eV9pZCI6ImIifV0=', sha256: '54a318008a022606fdf2ad2a717bb9c6665825f717d15dc61369fb17bd5ab1d2' },
+      },
     };
     assert.equal(validateCanonicalizationContract(contract), true, JSON.stringify(validateCanonicalizationContract.errors));
+    validateGoldenVectorSemantics(contract, canonicalize);
+
+    const ordinaryOnly = structuredClone(contract);
+    ordinaryOnly.golden_vectors = { additional: [
+      { ...ordinaryOnly.golden_vectors.empty_report, purpose: 'additional' },
+      { ...ordinaryOnly.golden_vectors.ordering_encoding, purpose: 'additional' },
+    ] };
+    assert.equal(validateCanonicalizationContract(ordinaryOnly), false);
+
+    const nonEmptyRequiredCase = structuredClone(contract);
+    nonEmptyRequiredCase.golden_vectors.empty_report.input_rows = [{ media_buy_id: 'a', date: '2026-08-26' }];
+    assert.equal(validateCanonicalizationContract(nonEmptyRequiredCase), false);
+
+    const trivialOrderingCase = structuredClone(contract);
+    trivialOrderingCase.golden_vectors.ordering_encoding = {
+      name: 'trivial-ordering',
+      purpose: 'ordering_encoding',
+      input_rows: [],
+      canonical_utf8_base64: 'W10=',
+      sha256: '4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945',
+    };
+    assert.equal(validateCanonicalizationContract(trivialOrderingCase), false);
+
+    const alreadyOrderedCase = structuredClone(contract);
+    alreadyOrderedCase.golden_vectors.ordering_encoding.input_rows.reverse();
+    assert.throws(
+      () => validateGoldenVectorSemantics(alreadyOrderedCase, canonicalize),
+      /must not already be in canonical primary-key order/,
+    );
+
+    const duplicateRequiredPurpose = structuredClone(contract);
+    duplicateRequiredPurpose.golden_vectors.additional = [{
+      ...duplicateRequiredPurpose.golden_vectors.empty_report,
+      name: 'empty-duplicate',
+    }];
+    assert.throws(
+      () => validateGoldenVectorSemantics(duplicateRequiredPurpose, canonicalize),
+      /empty_report must occur exactly once/,
+    );
+
+    const mismatchedDigest = structuredClone(contract);
+    mismatchedDigest.golden_vectors.empty_report.sha256 = '0'.repeat(64);
+    assert.throws(
+      () => validateGoldenVectorSemantics(mismatchedDigest, canonicalize),
+      /SHA-256 must match/,
+    );
     assert.match(readSchema('/schemas/core/reporting-canonicalization-contract.json')['x-adcp-validation'].algorithm, /RFC 8785-encode/);
     assert.match(readSchema('/schemas/core/reporting-canonicalization-contract.json')['x-adcp-validation'].binding, /reproduce every golden vector/);
+  });
+
+  it('enforces control-value types and physical checksum lengths in JSON Schema', () => {
+    assert.equal(validateControlTotal({ name: 'impressions', value: '42', value_type: 'integer' }), true);
+    assert.equal(validateControlTotal({ name: 'spend', value: '42.50', value_type: 'decimal' }), true);
+    assert.equal(validateControlTotal({ name: 'impressions', value: '1.5', value_type: 'integer' }), false);
+
+    const verification = {
+      verified_at: '2026-08-27T04:00:16Z',
+      verification_path: 'producer',
+      verification_profile: 'manifest_checksums',
+      row_count: 2,
+      control_totals: [],
+      physical_checksums: [
+        { object_ref: 'part-000.jsonl', algorithm: 'sha256', value: 'a'.repeat(64) },
+        { object_ref: 'part-000.jsonl', algorithm: 'sha512', value: 'b'.repeat(128) },
+      ],
+    };
+    assert.equal(validateVerification(verification), true, JSON.stringify(validateVerification.errors));
+
+    verification.physical_checksums[0].value = 'a'.repeat(128);
+    assert.equal(validateVerification(verification), false);
+    verification.physical_checksums[0].value = 'a'.repeat(64);
+    verification.physical_checksums[1].value = 'b'.repeat(64);
+    assert.equal(validateVerification(verification), false);
   });
 
   it('separates global schedule constraints from account billing anchors', () => {
