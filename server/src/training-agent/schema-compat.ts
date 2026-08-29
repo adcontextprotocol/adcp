@@ -1,21 +1,34 @@
 import { existsSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION } from './types.js';
 
-const RETAINED_SCHEMA_BUNDLE = '3.2.0-beta.6';
+function canonicalSchemaBundleVersion(version: string): string {
+  const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?((?:-(?:beta|rc)\.\d+)?)$/);
+  if (!match) {
+    throw new Error(`Invalid retained training-agent schema version: ${version}`);
+  }
+  return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
+}
+
+export const RETAINED_SCHEMA_BUNDLE = canonicalSchemaBundleVersion(
+  SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
+);
 
 let registration: Promise<void> | undefined;
 
-function retainedSchemaRoot(): string {
-  // TypeScript executes from server/src during local development and from
-  // dist/server/src after compilation. The committed release bundle lives in
-  // dist/schemas in both cases, so check the corresponding module-relative
-  // location for each layout.
+export function resolveRetainedSchemaRoot(
+  moduleUrl: string = import.meta.url,
+  pathExists: (candidate: string) => boolean = existsSync,
+): string {
+  // TypeScript executes from server/src/training-agent during local
+  // development and from dist/training-agent after compilation. The
+  // committed release bundle lives under dist/schemas in both cases.
   const candidates = [
-    fileURLToPath(new URL(`../../../schemas/${RETAINED_SCHEMA_BUNDLE}/`, import.meta.url)),
-    fileURLToPath(new URL(`../../../dist/schemas/${RETAINED_SCHEMA_BUNDLE}/`, import.meta.url)),
+    fileURLToPath(new URL(`../schemas/${RETAINED_SCHEMA_BUNDLE}/`, moduleUrl)),
+    fileURLToPath(new URL(`../../../dist/schemas/${RETAINED_SCHEMA_BUNDLE}/`, moduleUrl)),
   ];
-  const root = candidates.find(candidate => existsSync(candidate));
+  const root = candidates.find(candidate => pathExists(path.join(candidate, 'index.json')));
   if (!root) {
     throw new Error(
       `Training-agent schema bundle ${RETAINED_SCHEMA_BUNDLE} is missing; checked ${candidates.join(', ')}`,
@@ -34,7 +47,7 @@ function retainedSchemaRoot(): string {
  */
 export function ensureTrainingAgentSchemaBundle(): Promise<void> {
   registration ??= import('@adcp/sdk/testing').then(({ registerExternalSchemaRoot }) => {
-    registerExternalSchemaRoot(SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION, retainedSchemaRoot());
+    registerExternalSchemaRoot(SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION, resolveRetainedSchemaRoot());
   });
   return registration;
 }
