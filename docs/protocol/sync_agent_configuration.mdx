@@ -4,13 +4,13 @@ description: "Synchronize authenticated caller-scoped webhooks and reusable repo
 "og:title": "AdCP — sync_agent_configuration"
 ---
 
-`sync_agent_configuration` establishes durable configuration for the relationship between one authenticated caller and one AdCP agent. It is the buyer-to-seller configuration half of capability negotiation:
+`sync_agent_configuration` establishes durable configuration for the relationship between one authenticated caller and one AdCP seller agent. It is the buyer-to-seller configuration half of capability negotiation:
 
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the agent can support.
 - `sync_agent_configuration` states which supported connection resources this caller wants to use.
 - [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and domain tasks authorize and configure work for particular advertiser accounts.
 
-The task does not accept a buyer-agent URL or identity in its body. Caller identity comes from authenticated transport.
+The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Caller identity comes from authenticated transport.
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
 **Request schema:** [`/schemas/latest/protocol/sync-agent-configuration-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-configuration-request.json)
@@ -20,11 +20,20 @@ The task does not accept a buyer-agent URL or identity in its body. Caller ident
 
 ## Identity and authority
 
-The seller resolves the configuration owner from a stable authenticated principal: for example, a verified signed-request identity, OAuth client subject, API-key subject, or registry identity. Request-body fields, a raw signing key ID, and an access token are not owner identifiers.
+The seller resolves the configuration owner from a stable authenticated principal. That principal can represent either:
+
+- A person acting through an interactive delegated client such as Claude, ChatGPT, or the seller's UI. The authorization-server-issued user subject owns the connection; the client application is actor context, not the owner.
+- An autonomous buyer agent or backend service. Its registered workload, OAuth client-credentials subject, server-side API-key owner, verified signed-request identity, or equivalent machine principal owns the connection.
+
+Therefore, a person using Claude to configure delivery to their S3 bucket does **not** have to register Claude or themselves as a buyer agent. They do have to authenticate as a stable delegated user, authorize the relevant advertiser account separately, and complete the destination's provider-native access or control proof. If an interactive client presents only one shared service identity and does not propagate a stable user delegation, the seller cannot safely create user-owned configuration; the client must first complete an account-linking or delegated-authorization flow.
+
+Request-body fields, a raw signing key ID, an API-key fingerprint, an access token, a session ID, and a bucket URL are not owner identifiers. A verified JWKS key proves which key signed a request; it does not by itself prove authority to act for an advertiser account.
 
 Key rotation or token renewal preserves the configuration only when the seller maps the new credential to the same stable principal. Two principals cannot merge their configurations by claiming the same `connection_id`, URL, or destination. Administrative principal linking occurs through a separately authorized onboarding process.
 
 The response's `connection_id` is a seller-issued audit and routing handle. It is not a credential and does not authorize any advertiser account.
+
+In the normal call sequence, a client reads capabilities first, calls `sync_agent_configuration` when advertised, and then configures or authorizes advertiser accounts. A destination can be registered before account setup, but it cannot receive account data until a later account-scoped feed binding succeeds.
 
 ## Discovery
 
@@ -71,7 +80,7 @@ When `expected_configuration_version` is present, the seller applies a new opera
 
 ## Reusable reporting destinations
 
-A destination is registered once for the caller's connection and can later be referenced from several advertiser accounts for which that caller is independently authorized.
+A destination is registered once for the caller's connection and can later be referenced from several advertiser accounts for which that caller is independently authorized. In the example below, the authenticated principal might be a delegated human user in Claude or an autonomous buyer-agent workload; the request body is identical because identity never comes from the payload.
 
 ```json
 {
