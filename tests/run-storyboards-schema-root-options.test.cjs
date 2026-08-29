@@ -79,7 +79,7 @@ test('storyboard runs use public roots and pin the intended wire surface', () =>
   assert.match(source, /process\.env\.ADCP_SCHEMA_ROOT[\s\S]*schemaRoot:/);
   assert.doesNotMatch(source, /node_modules[\s\S]*@adcp[\s\S]*sdk/);
   assert.doesNotMatch(source, /schemas-data/);
-  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*releasedComplianceVersion === undefined[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
   assert.equal(
     (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
     3,

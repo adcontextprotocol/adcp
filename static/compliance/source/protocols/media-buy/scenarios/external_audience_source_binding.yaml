@@ -6,9 +6,14 @@ category: media_buy_seller
 summary: "Verifies dataset-source ingestion, discovery echo, media-buy targeting, unsupported-rail rejection, and transport immutability."
 track: media_buy
 
-requires_capability:
-  path: experimental_features
-  contains: media_buy.audience_activation
+requires_all_capabilities:
+  - path: experimental_features
+    contains: media_buy.audience_activation
+  - path: media_buy.audience_targeting.supported_activation_methods
+    contains:
+      pattern: dataset_query
+      vendor:
+        domain: data-cloud.example
 
 required_tools:
   - sync_audiences
@@ -25,6 +30,10 @@ narrative: |
   The scenario also verifies two boundaries that prevent silent data loss:
   undeclared source rails are rejected, and an audience cannot switch between
   inline member deltas and an external source without delete-and-recreate.
+
+  Applicability is deliberately bound to the exact dataset_query declaration
+  exercised by the fixture. Advertising another audience-activation rail does
+  not opt a seller into this dataset-specific execution scenario.
 
 agent:
   interaction_model: media_buy_seller

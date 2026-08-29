@@ -124,7 +124,7 @@ const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.
 // unpinned default.
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
-  : releasedComplianceVersion === undefined
+  : isCurrentSourceRun
     ? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 

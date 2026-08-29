@@ -93,6 +93,11 @@ test('resolved proposal lifecycle storyboards are not quarantined', () => {
     /const isCurrentSourceRun =[\s\S]*resolve\('dist\/compliance\/latest'\)/,
     'an explicit dist/compliance/latest root must still use current-source quarantines',
   );
+  assert.match(
+    source,
+    /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*isCurrentSourceRun[\s\S]*TRAINING_AGENT_CURRENT_ADCP_VERSION/,
+    'an explicit dist/compliance/latest root must negotiate the current wire version',
+  );
   assert.match(source, /\?\? \(isCurrentSourceRun/);
 });
 
