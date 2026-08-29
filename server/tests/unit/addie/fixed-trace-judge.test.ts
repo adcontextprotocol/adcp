@@ -13,6 +13,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
+  FIXED_TRACE_SUITE_VERSION,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
@@ -51,6 +52,7 @@ class ScriptedJudgeProvider implements ModelProvider {
     readonly id: ModelProviderId,
     private readonly output: string | string[],
     private readonly finishReason: 'stop' | 'length' = 'stop',
+    private readonly includeProviderState = false,
   ) {}
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -71,17 +73,28 @@ class ScriptedJudgeProvider implements ModelProvider {
     await options.beforeDispatch?.(prepared);
     this.dispatches++;
     const outputs = Array.isArray(this.output) ? this.output : [this.output];
+    const providerState = {
+      type: 'provider_state' as const,
+      provider: this.id,
+      kind: 'thinking',
+    };
     const response = {
       provider: this.id,
       model: request.model,
       id: `${this.id}-judge-response`,
-      content: outputs.map((text) => ({ type: 'text' as const, text })),
+      content: [
+        ...(this.includeProviderState ? [providerState] : []),
+        ...outputs.map((text) => ({ type: 'text' as const, text })),
+      ],
       finishReason: this.finishReason,
       providerFinishReason: this.finishReason,
       usage: { inputTokens: 100, outputTokens: 20 },
     };
     yield { type: 'response_start', provider: this.id, model: request.model, id: response.id };
-    for (const [index, text] of outputs.entries()) yield { type: 'text_delta', index, text };
+    if (this.includeProviderState) yield { type: 'provider_state', index: 0, state: providerState };
+    for (const [index, text] of outputs.entries()) {
+      yield { type: 'text_delta', index: index + (this.includeProviderState ? 1 : 0), text };
+    }
     yield { type: 'response_complete', response };
   }
 }
@@ -117,7 +130,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     traceId,
     metadata: {
       runId: 'candidate-secret-run-id',
-      traceSuiteVersion: 'addie-fixed-traces-v2',
+      traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
       traceSuiteSha256: 'c'.repeat(64),
       sourceBundleSha256: 'd'.repeat(64),
       gitCommit: '0123456789abcdef',
@@ -130,6 +143,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     },
     terminalStage: 'generation',
     terminalStatus: 'complete',
+    boundaryReason: null,
     finishReason: 'stop',
     output: 'AdCP uses typed tasks between buyer and seller agents.',
     flagged: false,
@@ -214,6 +228,20 @@ describe('fixed-trace independent judge', () => {
       .resolves.toMatchObject({
         status: 'judged',
         verdict: { pass: true, score: 3, reason: 'correct' },
+      });
+  });
+
+  it('accepts a verdict accompanied only by authenticated provider thinking state', async () => {
+    const provider = new ScriptedJudgeProvider(
+      'anthropic',
+      '{"pass":true,"score":4,"reason":"correct"}',
+      'stop',
+      true,
+    );
+    await expect(judgeFixedTraceObservation(trace, observation(trace.id, 'openai'), config(provider)))
+      .resolves.toMatchObject({
+        status: 'judged',
+        verdict: { pass: true, score: 4, reason: 'correct' },
       });
   });
 

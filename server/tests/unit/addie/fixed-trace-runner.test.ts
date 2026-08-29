@@ -198,6 +198,7 @@ describe('fixed trace artifact runner', () => {
       traceId: selectedTrace.id,
       terminalStage: 'generation',
       terminalStatus: 'complete',
+      boundaryReason: null,
       finishReason: 'stop',
       output: 'The protocol uses task-based requests.',
       route: { action: 'respond', toolSets: ['knowledge'] },
@@ -362,6 +363,7 @@ describe('fixed trace artifact runner', () => {
     expect(observation).toMatchObject({
       terminalStage: 'generation',
       terminalStatus: 'malformed',
+      boundaryReason: 'unknown_tool_call',
       metadata: {
         generation: {
           source: 'local',

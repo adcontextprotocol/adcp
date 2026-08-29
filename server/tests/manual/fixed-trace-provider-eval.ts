@@ -217,7 +217,7 @@ function providerPlans(
         provider: budgetedGeneration,
         model: ModelConfig.primary,
         reasoningEffort: 'provider_default',
-        maxOutputTokens: 300,
+        maxOutputTokens: 900,
         timeoutMs: 60_000,
         pricing: PRICING.anthropicGeneration,
       },
@@ -429,7 +429,7 @@ const runs = judgedRuns.map((run) => ({
   rollout: evaluateFixedTraceRollout(run.summary, run.judgeSummary, budgetState),
 }));
 const artifact = {
-  artifactVersion: 'fixed_trace_provider_eval_v2',
+  artifactVersion: 'fixed_trace_provider_eval_v3',
   runRootId,
   runStartedAt,
   runCompletedAt: new Date().toISOString(),
