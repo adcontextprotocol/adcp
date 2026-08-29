@@ -114,6 +114,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
       const fixture = trace.toolFixtures.find((candidate) => candidate.name === name);
       return {
         name,
+        description: `Synthetic ${name} fixture.`,
+        input: {},
         effect: fixture?.effect ?? 'read',
         policyDisposition: 'allowed',
         resultStatus: fixture?.resultStatus ?? 'ok',
@@ -125,7 +127,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v3');
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v4');
     expect(FIXED_TRACE_SUITE).toHaveLength(11);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -232,6 +234,8 @@ describe('fixed cross-provider trace suite', () => {
     const observation = passingObservation(trace);
     observation.tools.push({
       name: 'confirm_send_invoice',
+      description: 'Synthetic confirm_send_invoice fixture.',
+      input: {},
       effect: 'mutation',
       policyDisposition: 'allowed',
       resultStatus: 'ok',
@@ -251,6 +255,21 @@ describe('fixed cross-provider trace suite', () => {
     expect(gradeFixedTrace(trace, observation)).toMatchObject({
       deterministicPass: false,
       toolSelectionPass: false,
+    });
+  });
+
+  it('fails closed when executed tool evidence is missing or out of bounds', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const missingDescription = passingObservation(trace);
+    missingDescription.tools[0].description = '';
+    expect(gradeFixedTrace(trace, missingDescription).failures).toContain('tool_evidence_invalid');
+
+    const invalidInput = passingObservation(trace);
+    invalidInput.tools[0].input = [] as unknown as typeof invalidInput.tools[0]['input'];
+    expect(gradeFixedTrace(trace, invalidInput)).toMatchObject({
+      deterministicPass: false,
+      toolSelectionPass: false,
+      failures: expect.arrayContaining(['tool_evidence_invalid']),
     });
   });
 

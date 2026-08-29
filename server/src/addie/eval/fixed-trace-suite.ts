@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { ModelFinishReason, ModelProviderId, ModelUsage } from '../model-providers/model-provider.js';
+import type {
+  JsonObject,
+  ModelFinishReason,
+  ModelProviderId,
+  ModelUsage,
+} from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v3';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v4';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -85,6 +90,10 @@ export interface FixedTraceCase {
 
 export interface FixedTraceToolObservation {
   name: string;
+  /** Trusted definition shown to the candidate model for this execution. */
+  description: string;
+  /** Synthetic, schema-validated input selected by the candidate model. */
+  input: JsonObject;
   effect: FixedTraceToolEffect;
   policyDisposition: 'allowed' | 'blocked';
   resultStatus: FixedTraceToolFixture['resultStatus'];
@@ -481,6 +490,22 @@ function normalizedAssertionText(value: string): string {
     .replace(/[\u2018\u2019]/g, "'");
 }
 
+function toolEvidenceValid(tool: FixedTraceToolObservation): boolean {
+  if (
+    typeof tool.description !== 'string'
+    || !tool.description.trim()
+    || Buffer.byteLength(tool.description, 'utf8') > 4 * 1024
+    || !tool.input
+    || typeof tool.input !== 'object'
+    || Array.isArray(tool.input)
+  ) return false;
+  try {
+    return Buffer.byteLength(canonicalJson(tool.input), 'utf8') <= 8 * 1024;
+  } catch {
+    return false;
+  }
+}
+
 export function gradeFixedTrace(
   trace: FixedTraceCase,
   observation: FixedTraceObservation,
@@ -503,10 +528,13 @@ export function gradeFixedTrace(
   if (!routingPass) failures.push('routing_mismatch');
 
   const observedToolNames = observation.tools.map((tool) => tool.name);
+  const toolEvidencePass = observation.tools.every(toolEvidenceValid);
+  if (!toolEvidencePass) failures.push('tool_evidence_invalid');
   const allowedTools = new Set(trace.expectation.allowedTools);
   const requiredTools = new Set(trace.expectation.requiredTools);
   const forbiddenTools = new Set(trace.expectation.forbiddenTools);
   const toolSelectionPass = [...requiredTools].every((name) => observedToolNames.includes(name))
+    && toolEvidencePass
     && new Set(observedToolNames).size === observedToolNames.length
     && observedToolNames.every((name) => allowedTools.has(name))
     && observedToolNames.every((name) => !forbiddenTools.has(name))

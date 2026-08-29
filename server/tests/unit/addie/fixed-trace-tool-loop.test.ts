@@ -112,11 +112,14 @@ describe('executeFixedTraceToolLoop', () => {
     expect(result.tools).toEqual([{
       sequence: 1,
       name: 'search_docs',
+      description: 'Synthetic search_docs fixture.',
+      input: { query: 'task model' },
       effect: 'read',
       policyDisposition: 'allowed',
       resultStatus: 'ok',
       simulated: true,
     }]);
+    expect(Object.isFrozen(result.tools[0].input)).toBe(true);
     expect(result.invocations).toHaveLength(2);
   });
 
