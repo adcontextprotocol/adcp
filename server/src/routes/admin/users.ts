@@ -17,6 +17,7 @@ import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import { bumpAuthorizationEpochs } from '../../db/authorization-epoch-db.js';
+import { findSupersededMemberships } from '../../db/membership-consolidation-db.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -1393,6 +1394,27 @@ export function createAdminUsersRouter(): Router {
         promoted: true,
         message: 'Promoted (no current primary to demote — invariant repaired).',
       });
+    }
+
+    // Foot-gun gate: promote runs the same consolidation as link-credential.
+    // Memberships whose partner key the incoming credential already holds are
+    // DELETED by it — the outgoing row's role, seat, upstream membership id,
+    // and join provenance are not recoverable, and an unlink cannot put them
+    // back. Require stated intent, matching the `consolidate: true` gate on
+    // the bind path above.
+    if (req.body?.consolidate !== true) {
+      const superseded = await findSupersededMemberships(currentPrimaryId, newPrimaryId);
+      const supersededCount =
+        superseded.organizationIds.length + superseded.workingGroupIds.length;
+      if (supersededCount > 0) {
+        return res.status(409).json({
+          error: 'Promoting would delete memberships',
+          message: `The outgoing primary holds ${supersededCount} membership(s) whose organization or working group the incoming credential already belongs to. Promoting deletes those rows — their role, seat, WorkOS membership id, and join provenance cannot be recovered. Certification progress, credentials, badges, and committee interest are consolidated in the same operation and deduplicated on conflict; they are not enumerated here. Re-submit with \`"consolidate": true\` to confirm this is intended.`,
+          consolidate_confirmation_required: true,
+          superseded_organization_ids: superseded.organizationIds,
+          superseded_working_group_ids: superseded.workingGroupIds,
+        });
+      }
     }
 
     // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary

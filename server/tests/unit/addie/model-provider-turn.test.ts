@@ -12,6 +12,7 @@ import {
   appendModelTurnContinuation,
   EmptyResponseRecoveryState,
   inspectModelTurn,
+  isSideEffectFreeEmptyModelResponse,
   ModelLoopBudget,
   ModelTurnLoopState,
 } from '../../../src/addie/model-providers/model-turn.js';
@@ -211,6 +212,28 @@ describe('EmptyResponseRecoveryState', () => {
   });
 });
 
+describe('isSideEffectFreeEmptyModelResponse', () => {
+  it('uses the canonical stop reason instead of provider diagnostics', () => {
+    const empty = response('stop', [
+      { type: 'provider_state', provider: 'anthropic', kind: 'thinking', value: 'private' },
+      { type: 'text', text: '' },
+    ]);
+    empty.providerFinishReason = 'provider-specific-success-value';
+
+    expect(isSideEffectFreeEmptyModelResponse(empty, '')).toBe(true);
+  });
+
+  it.each([
+    ['visible text', response('stop', [{ type: 'text', text: 'answer' }]), 'answer'],
+    ['refusal', response('refusal'), ''],
+    ['tool call', response('tool_calls', [{
+      type: 'tool_call', id: 'call-1', name: 'lookup', input: {},
+    }]), ''],
+  ])('rejects %s as recovery-safe', (_label, candidate, text) => {
+    expect(isSideEffectFreeEmptyModelResponse(candidate, text)).toBe(false);
+  });
+});
+
 describe('ModelLoopBudget', () => {
   it('issues monotonic iterations up to the configured wall', () => {
     const budget = new ModelLoopBudget(2);
@@ -257,6 +280,50 @@ describe('ModelTurnLoopState', () => {
     loop.startNext();
     loop.acceptResponse(original, { countUsage: false });
     expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('centrally schedules initial and post-tool empty recovery once', () => {
+    const loop = new ModelTurnLoopState(4);
+    const empty = response('stop', []);
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: false,
+    })).toBe('initial');
+    loop.emptyResponseRecovery.resolve();
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: false,
+      postToolEligible: true,
+    })).toBe('post_tool');
+    loop.emptyResponseRecovery.resolve();
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: true,
+    })).toBeNull();
+  });
+
+  it('does not schedule recovery without a remaining turn', () => {
+    const loop = new ModelTurnLoopState(1);
+    const empty = response('stop', []);
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: true,
+    })).toBeNull();
   });
 
   it('discards tool calls returned by a post-tool text-only recovery', () => {

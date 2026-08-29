@@ -45,6 +45,32 @@ export function appendModelTurnContinuation(
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
 
+export interface EmptyResponseRecoveryEligibility {
+  /** Evaluation/replay preserve the first empty terminal exactly. */
+  allowInitial: boolean;
+  /** Delivery-owned evidence that the first turn has not exposed work. */
+  initialEligible: boolean;
+  /** Delivery-owned evidence that a completed tool turn may be resampled. */
+  postToolEligible: boolean;
+}
+
+/**
+ * A successful canonical stop is safe to resample only when it has no visible
+ * answer and every normalized block is side-effect-free. Provider-specific
+ * finish diagnostics must not control orchestration.
+ */
+export function isSideEffectFreeEmptyModelResponse(
+  response: ModelResponse,
+  deliverableText: string,
+): boolean {
+  if (response.finishReason !== 'stop' || deliverableText.trim().length > 0) return false;
+  return response.content.every((content) => (
+    content.type === 'text'
+    || (content.type === 'provider_state'
+      && (content.kind === 'thinking' || content.kind === 'redacted_thinking'))
+  ));
+}
+
 /**
  * State shared by delivery modes while resampling a side-effect-free empty
  * terminal. The original response remains authoritative if the optional
@@ -192,6 +218,29 @@ export class ModelTurnLoopState {
       response: acceptedResponse,
       discardedRecoveryToolCalls,
     });
+  }
+
+  /** Schedule one safe empty-terminal retry from canonical turn state. */
+  scheduleEmptyResponseRecovery(
+    response: ModelResponse,
+    deliverableText: string,
+    eligibility: EmptyResponseRecoveryEligibility,
+  ): EmptyResponseRecoveryKind | null {
+    if (
+      !this.hasRemaining
+      || !isSideEffectFreeEmptyModelResponse(response, deliverableText)
+    ) return null;
+    if (
+      eligibility.allowInitial
+      && eligibility.initialEligible
+      && this.iteration === 1
+      && this.emptyResponseRecovery.schedule('initial', response)
+    ) return 'initial';
+    if (
+      eligibility.postToolEligible
+      && this.emptyResponseRecovery.schedule('post_tool', response)
+    ) return 'post_tool';
+    return null;
   }
 }
 

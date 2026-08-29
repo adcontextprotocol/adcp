@@ -244,10 +244,10 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
   },
-  // Seller-level rollup of metric-optimization capabilities. Honest union
-  // across catalog products (product-factory.ts assigns these by channel mix).
-  // The tenant router projects these fields onto get_adcp_capabilities until
-  // the SDK exposes them directly (adcp-client#1818).
+  // Seller-level rollup of metric-optimization capabilities. The SDK can
+  // derive this from an adopter-supplied static productCatalog (#1818); this
+  // training platform resolves products dynamically, so it declares the
+  // honest union explicitly and the tenant router preserves that declaration.
   supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
   vendor_metric_optimization: {
     supported_targets: ['threshold_rate' as const],
@@ -566,7 +566,9 @@ function throwGetProductsExecutionError(message: string): never {
 /** The DecisioningPlatform contract is canonical even when the outer SDK
  * negotiates a legacy wire. Keep legacy selector echo metadata in our state,
  * but let the SDK reconstruct the 3.0 response from stable canonical refs.
- * Remove this adapter when adcontextprotocol/adcp-client#2497 ships. */
+ * adcontextprotocol/adcp-client#2497 added a raw lifecycle-handler escape
+ * hatch; remove this adapter only after create/update/get media-buy legacy
+ * handlers use that seam. */
 function canonicalMediaBuyPlatformResult<T>(result: T): T {
   const withoutLegacyPackageSelector = (value: unknown): unknown => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;

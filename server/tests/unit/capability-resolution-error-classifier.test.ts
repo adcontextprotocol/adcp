@@ -1,12 +1,9 @@
 /**
  * Unit tests for classifyCapabilityResolutionError and presentCapabilityResolutionError.
  *
- * These tests pin the regex classifier to the exact error strings thrown by
- * `@adcp/sdk`'s `resolveStoryboardsForCapabilities`. If upstream changes
- * the wording (adcontextprotocol/adcp-client#734 tracks moving to typed
- * errors), these tests will fail and force us to update the classifier
- * rather than silently letting config-errors escalate back to generic
- * "system error" paths.
+ * Current SDK errors are classified by CapabilityResolutionError code and
+ * structured fields. The message-shaped cases below preserve compatibility
+ * with serialized results and older SDK releases.
  *
  * Security-relevant invariants (exercised below):
  *   - Regex is anchored at start of message so attacker-crafted strings
@@ -20,12 +17,70 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { CapabilityResolutionError } from '@adcp/sdk/testing';
 import {
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
 } from '../../src/addie/services/compliance-testing.js';
 
 describe('classifyCapabilityResolutionError', () => {
+  it('classifies typed parent-protocol errors without depending on message wording', () => {
+    const err = new CapabilityResolutionError({
+      code: 'specialism_parent_protocol_missing',
+      message: 'wording may change',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+    });
+    expect(classifyCapabilityResolutionError(err)).toEqual({
+      kind: 'specialism_parent_protocol_missing',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+    });
+  });
+
+  it('classifies typed unknown-specialism errors without depending on message wording', () => {
+    const err = new CapabilityResolutionError({
+      code: 'unknown_specialism',
+      message: 'wording may change',
+      specialism: 'made-up-thing',
+    });
+    expect(classifyCapabilityResolutionError(err)).toEqual({
+      kind: 'unknown_specialism',
+      specialism: 'made-up-thing',
+    });
+  });
+
+  it('classifies typed unsupported-version errors while structured fields are pending upstream', () => {
+    const err = new CapabilityResolutionError({
+      code: 'unsupported_adcp_version',
+      message:
+        'Compliance cache version 3.1.0-beta.5 is not supported by this seller. ' +
+        'Seller advertises adcp.supported_versions [3.0, 3.1]. ' +
+        'Install or select a compatible compliance cache instead of relying on major_versions alone.',
+    });
+    expect(classifyCapabilityResolutionError(err)).toEqual({
+      kind: 'unsupported_adcp_version',
+      complianceVersion: '3.1.0-beta.5',
+      supportedVersions: ['3.0', '3.1'],
+    });
+  });
+
+  it('classifies typed protocol spelling near-misses using declared capabilities', () => {
+    const err = new CapabilityResolutionError({
+      code: 'specialism_parent_protocol_missing',
+      message: 'wording may change',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+    });
+    expect(classifyCapabilityResolutionError(err, ['media-buy'])).toEqual({
+      kind: 'unrecognized_supported_protocol',
+      specialism: 'sales-guaranteed',
+      parentProtocol: 'media_buy',
+      declaredProtocol: 'media-buy',
+      expectedProtocol: 'media_buy',
+    });
+  });
+
   it('classifies the parent-protocol-missing message with extracted fields', () => {
     const err = new Error(
       'Agent declared specialism "measurement-verification" (parent protocol: governance) ' +

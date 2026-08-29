@@ -171,29 +171,6 @@ function hashPreparedPayload(
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
 
-/**
- * A successful first turn is safe to resample only when it has no visible
- * answer and every provider block is side-effect-free. Sonnet 5 may return
- * private thinking or allowlisted ritual-only text before an otherwise empty
- * `end_turn`; those bytes must neither block recovery nor reach logs. Persona
- * disclosures may contain semantic refusals, so they are not retryable.
- * Unknown, tool, server-tool, and result blocks remain fail-closed.
- */
-function isSideEffectFreeEmptyModelResponse(
-  response: ModelResponse,
-  visibleText: string,
-): boolean {
-  const deliverableText = stripBannedRituals(visibleText);
-  if (response.providerFinishReason !== 'end_turn' || deliverableText.trim().length > 0) {
-    return false;
-  }
-  return response.content.every((content) => (
-    content.type === 'text'
-    || (content.type === 'provider_state'
-      && (content.kind === 'thinking' || content.kind === 'redacted_thinking'))
-  ));
-}
-
 function boundedModelContentTypes(content: ModelMessageContent[]): string[] {
   return [...new Set(content.map((block) => block.type))].sort();
 }
@@ -1697,31 +1674,23 @@ export class AddieClaudeClient {
         // A provider-successful but wholly empty first sample has no visible
         // output or side effect. Production may safely resample it once; eval
         // and replay preserve the original terminal outcome for integrity.
-        if (
-          operationalExecution
-          && response.providerFinishReason === 'end_turn'
-          && iteration === 1
-          && !modelLoop.emptyResponseRecovery.hasAttempted('initial')
-          && !hasExecutedCustomTool
-          && toolExecutions.length === 0
-          && isSideEffectFreeEmptyModelResponse(response, rawText)
-          && modelLoop.hasRemaining
-        ) {
-          modelLoop.emptyResponseRecovery.schedule('initial', response);
+        const emptyRecovery = modelLoop.scheduleEmptyResponseRecovery(
+          response,
+          stripBannedRituals(rawText),
+          {
+            allowInitial: operationalExecution,
+            initialEligible: !hasExecutedCustomTool && toolExecutions.length === 0,
+            postToolEligible: hasExecutedCustomTool,
+          },
+        );
+        if (emptyRecovery === 'initial') {
           logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
           continue;
         }
         // Anthropic can occasionally return an empty end_turn immediately
         // after a tool result. Resampling the unchanged post-tool turn once is
         // safe because no assistant response has reached the caller yet.
-        if (
-          response.providerFinishReason === 'end_turn'
-          && isSideEffectFreeEmptyModelResponse(response, rawText)
-          && hasExecutedCustomTool
-          && !modelLoop.emptyResponseRecovery.hasAttempted('post_tool')
-          && modelLoop.hasRemaining
-        ) {
-          modelLoop.emptyResponseRecovery.schedule('post_tool', response);
+        if (emptyRecovery === 'post_tool') {
           logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
           continue;
         }
@@ -2381,31 +2350,23 @@ export class AddieClaudeClient {
 
         // Done - no tool use
         if (stopAction === 'complete') {
-          if (
-            operationalExecution
-            && currentResponse.providerFinishReason === 'end_turn'
-            && iteration === 1
-            && !modelLoop.emptyResponseRecovery.hasAttempted('initial')
-            && toolExecutions.length === 0
-            && logicalText.length === 0
-            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
-            && modelLoop.hasRemaining
-          ) {
-            modelLoop.emptyResponseRecovery.schedule('initial', currentResponse);
+          const emptyRecovery = modelLoop.scheduleEmptyResponseRecovery(
+            currentResponse,
+            stripBannedRituals(iterationText),
+            {
+              allowInitial: operationalExecution,
+              initialEligible: toolExecutions.length === 0 && logicalText.length === 0,
+              postToolEligible: toolExecutions.length > 0,
+            },
+          );
+          if (emptyRecovery === 'initial') {
             logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
             continue;
           }
 
           // Logical-turn buffering means no text from this iteration has been
           // emitted, so retrying ritual-only output cannot duplicate text.
-          if (
-            currentResponse.providerFinishReason === 'end_turn'
-            && isSideEffectFreeEmptyModelResponse(currentResponse, iterationText)
-            && toolExecutions.length > 0
-            && !modelLoop.emptyResponseRecovery.hasAttempted('post_tool')
-            && modelLoop.hasRemaining
-          ) {
-            modelLoop.emptyResponseRecovery.schedule('post_tool', currentResponse);
+          if (emptyRecovery === 'post_tool') {
             logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
             continue;
           }
