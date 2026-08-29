@@ -13,6 +13,7 @@ import {
 } from '../../../src/addie/eval/fixed-trace-budget.js';
 import {
   FIXED_TRACE_SUITE,
+  FIXED_TRACE_SUITE_VERSION,
   type FixedTraceModelStageMetadata,
   type FixedTraceObservation,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
@@ -129,7 +130,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     traceId,
     metadata: {
       runId: 'candidate-secret-run-id',
-      traceSuiteVersion: 'addie-fixed-traces-v2',
+      traceSuiteVersion: FIXED_TRACE_SUITE_VERSION,
       traceSuiteSha256: 'c'.repeat(64),
       sourceBundleSha256: 'd'.repeat(64),
       gitCommit: '0123456789abcdef',
@@ -142,6 +143,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     },
     terminalStage: 'generation',
     terminalStatus: 'complete',
+    boundaryReason: null,
     finishReason: 'stop',
     output: 'AdCP uses typed tasks between buyer and seller agents.',
     flagged: false,

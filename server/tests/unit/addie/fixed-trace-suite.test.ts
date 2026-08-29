@@ -105,6 +105,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
     metadata: metadata({ generation }),
     terminalStage: ['ignored', 'reacted'].includes(terminalStatus) ? 'surface' : 'generation',
     terminalStatus,
+    boundaryReason: null,
     finishReason: terminalStatus === 'truncated' ? 'length' : terminalStatus === 'provider_error' ? null : 'stop',
     output: outputMarkers.join(' '),
     flagged: trace.expectation.requireFlagged ?? false,
@@ -124,6 +125,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v3');
     expect(FIXED_TRACE_SUITE).toHaveLength(11);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -179,6 +181,21 @@ describe('fixed cross-provider trace suite', () => {
       ignored: 1,
       truncated: 1,
       provider_error: 1,
+    });
+  });
+
+  it('keeps billing inputs executable and accepts equivalent authoritative UTC date formats', () => {
+    for (const traceId of ['billing-invoice-preview-only', 'billing-invoice-confirmed']) {
+      const billingTrace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === traceId)!;
+      expect(JSON.stringify(billingTrace.request)).toContain('company_membership_annual_synthetic');
+    }
+
+    const dateTrace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'current-utc-date')!;
+    const naturalLanguageDate = passingObservation(dateTrace);
+    naturalLanguageDate.output = 'The current UTC date is August 28, 2026.';
+    expect(gradeFixedTrace(dateTrace, naturalLanguageDate)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
     });
   });
 

@@ -429,7 +429,7 @@ const runs = judgedRuns.map((run) => ({
   rollout: evaluateFixedTraceRollout(run.summary, run.judgeSummary, budgetState),
 }));
 const artifact = {
-  artifactVersion: 'fixed_trace_provider_eval_v2',
+  artifactVersion: 'fixed_trace_provider_eval_v3',
   runRootId,
   runStartedAt,
   runCompletedAt: new Date().toISOString(),
