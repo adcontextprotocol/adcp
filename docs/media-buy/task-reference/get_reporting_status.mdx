@@ -129,6 +129,14 @@ analytics, and pacing independently; a delayed analytics feed cannot silently ta
 hide billing status. A snapshot-required pacing obligation can become `complete` from
 a snapshot revision—`complete` means required finality, not always `official`.
 
+An unfiltered account with no caller-owned reporting configurations returns a valid
+empty scope: `delivery_config_generations`, `feed_purposes`, and `finality` are empty,
+all obligation and record counts are zero, and `data_through` is null. A closed empty
+scope may be `complete`; this is distinct from naming an unknown or unauthorized
+`delivery_config_id`, which uses the indistinguishable unavailable-lookup response.
+This state is reachable after the caller intentionally sends
+`reporting_delivery_configs: []`.
+
 ## Reliability model
 
 The periods view keeps four facts distinct:

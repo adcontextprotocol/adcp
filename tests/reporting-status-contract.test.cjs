@@ -650,6 +650,48 @@ describe('managed reporting status contract', () => {
     assert.equal(validateResponse(response), true, JSON.stringify(validateResponse.errors));
   });
 
+  it('represents an unfiltered account with no reporting configurations as an empty scope', () => {
+    const response = {
+      status: 'completed',
+      view: 'periods',
+      ledger_snapshot_id: 'ledger_empty_001',
+      ledger_as_of: '2026-08-29T12:00:00Z',
+      account_id: 'acc_123',
+      scope: {
+        period_start: '2026-08-01T00:00:00Z',
+        period_end: '2026-08-29T00:00:00Z',
+        scope_closed: true,
+        all_accessible_media_buys: true,
+        delivery_config_generations: [],
+        feed_purposes: [],
+        finality: [],
+        ledger_retained_from: '2026-08-01T00:00:00Z',
+        coverage_complete: true,
+      },
+      health: 'complete',
+      data_through: null,
+      obligation_counts: {
+        total: 0,
+        waiting: 0,
+        healthy: 0,
+        delayed: 0,
+        action_required: 0,
+        complete: 0,
+      },
+      issues: [],
+      periods: [],
+      revisions: [],
+      materializations: [],
+      receipts: [],
+      pagination: { has_more: false, total_count: 0 },
+    };
+    assert.equal(validateResponse(response), true, JSON.stringify(validateResponse.errors));
+    assert.match(
+      readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].empty_scope,
+      /reporting_delivery_configs: \[\]/,
+    );
+  });
+
   it('retains a zero-row revision and consumer-verified native resource evidence', () => {
     assert.equal(validateResponse({
       status: 'completed',

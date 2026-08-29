@@ -68,10 +68,10 @@
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
             "additionalProperties": false
           },
-          "minItems": 1
+          "uniqueItems": true
         },
-        "feed_purposes": { "type": "array", "items": { "type": "string", "enum": ["pacing", "analytics", "billing"] }, "minItems": 1, "uniqueItems": true },
-        "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
+        "feed_purposes": { "type": "array", "items": { "type": "string", "enum": ["pacing", "analytics", "billing"] }, "uniqueItems": true },
+        "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "uniqueItems": true },
         "ledger_retained_from": { "type": "string", "format": "date-time", "description": "Earliest period boundary for which anti-entropy metadata is retained for every selected configuration generation." },
         "coverage_complete": { "type": "boolean", "description": "Whether the requested horizon is fully inside retained ledger coverage. False means health cannot prove completeness for the whole requested horizon." }
       },
@@ -209,6 +209,7 @@
   ],
   "x-adcp-validation": {
     "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, ledger snapshot, revision, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
+    "empty_scope": "After the caller intentionally applies reporting_delivery_configs: [], or before it creates any configuration, an unfiltered account has no caller-owned reporting configuration generations. delivery_config_generations, feed_purposes, and finality MUST all be empty; obligation counts and every periods-view record array MUST be empty; data_through MUST be null. This is a valid vacuously complete closed scope, not an inaccessible-identifier signal. A request naming an unknown or unauthorized delivery_config_id still uses lookup_unavailable.",
     "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id and ledger_as_of. A cursor is unusable by another caller or account.",
     "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary.",
     "coverage_aggregation": "Summary coverage is full only when every selected obligation is full. It is partial when the selected scope contains both covered and unsupported/unknown packages, none when nothing is covered and support is known absent, and unknown when nothing is covered and any applicability remains unknown. Delivery health is computed separately. Covered-subset metrics MUST NOT be presented as complete totals for the selected media-buy scope."
