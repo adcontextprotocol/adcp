@@ -24,9 +24,8 @@ narrative: |
   optional fields are wildcards, vendor identity constrains a match, and a
   product with no audience_activation declaration is excluded rather than
   treated as compatible. This scenario exercises those behavioral rules, not
-  merely the new schema fields. It covers the discovery leg; external dataset
-  or platform-segment binding remains an account-setup concern until the
-  external-source runtime extension lands.
+  merely the new schema fields. The separate external_audience_source_binding
+  scenario exercises the runtime dataset-reference leg through purchase.
 
 agent:
   interaction_model: media_buy_seller

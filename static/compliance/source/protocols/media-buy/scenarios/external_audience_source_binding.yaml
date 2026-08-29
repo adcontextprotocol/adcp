@@ -1,0 +1,298 @@
+id: media_buy_seller/external_audience_source_binding
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Seller binds an external audience source into a targetable audience"
+category: media_buy_seller
+summary: "Verifies dataset-source ingestion, discovery echo, media-buy targeting, unsupported-rail rejection, and transport immutability."
+track: media_buy
+
+requires_capability:
+  path: experimental_features
+  contains: media_buy.audience_activation
+
+required_tools:
+  - sync_audiences
+  - create_media_buy
+  - comply_test_controller
+
+narrative: |
+  External audience activation carries a reference to buyer data while the
+  dataset itself stays on the declared vendor rail. A seller that advertises
+  dataset_query must bind that reference to an audience_id, expose the source
+  and match state through discovery-only sync_audiences, and accept the bound
+  audience in media-buy targeting.
+
+  The scenario also verifies two boundaries that prevent silent data loss:
+  undeclared source rails are rejected, and an audience cannot switch between
+  inline member deltas and an external source without delete-and-recreate.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - audience_targeting
+    - audience_activation_discovery
+  examples:
+    - "A retail-media seller reading buyer-granted shared datasets"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller advertises the experimental audience-activation feature and a
+    dataset_query method for data-cloud.example. The controller seeds a
+    deterministic product that accepts audience targeting.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "external_audience_display"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      audience_activation:
+        methods:
+          - pattern: "dataset_query"
+            vendor:
+              domain: "data-cloud.example"
+        preferred_method:
+          pattern: "dataset_query"
+          vendor:
+            domain: "data-cloud.example"
+  pricing_options:
+    - product_id: "external_audience_display"
+      pricing_option_id: "external_audience_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 4.0
+
+phases:
+  - id: dataset_binding
+    title: "Bind and discover a shared dataset"
+    steps:
+      - id: bind_dataset_source
+        title: "Bind the shared dataset to an audience ID"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          audiences:
+            - audience_id: "shared_high_value_customers"
+              name: "Shared high-value customers"
+              audience_type: "crm"
+              source:
+                kind: "dataset"
+                vendor:
+                  domain: "data-cloud.example"
+                locator: "share://provider.example/pinnacle/loyalty.high_value"
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_bind"
+        validations:
+          - check: response_schema
+            description: "The bind response matches sync-audiences-response.json"
+          - check: field_value
+            path: "audiences[0].audience_id"
+            value: "shared_high_value_customers"
+            description: "The seller binds the buyer's audience ID"
+          - check: field_value
+            path: "audiences[0].action"
+            value: "created"
+            description: "The first bind creates the audience"
+          - check: field_value
+            path: "audiences[0].status"
+            value: "ready"
+            description: "The simulated dataset ingest produces a targetable audience"
+          - check: field_value
+            path: "audiences[0].source.kind"
+            value: "dataset"
+            description: "The response identifies the external source kind"
+          - check: field_value
+            path: "audiences[0].source.vendor.domain"
+            value: "data-cloud.example"
+            description: "The response echoes the declared vendor"
+          - check: field_value
+            path: "audiences[0].source.locator"
+            value: "share://provider.example/pinnacle/loyalty.high_value"
+            description: "The response echoes the source reference without credentials"
+          - check: field_value
+            path: "audiences[0].source.access_status"
+            value: "active"
+            description: "The successful read reports an active source pipe"
+          - check: field_present
+            path: "audiences[0].last_synced_at"
+            description: "Source-derived counts have a freshness anchor"
+
+      - id: discover_dataset_source
+        title: "Discover the externally sourced audience"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_discover"
+        validations:
+          - check: response_schema
+            description: "Discovery remains schema-valid"
+          - check: field_contains
+            path: "audiences[*].audience_id"
+            value: "shared_high_value_customers"
+            description: "Discovery returns the bound audience"
+          - check: field_contains
+            path: "audiences[*].action"
+            value: "unchanged"
+            description: "Discovery does not mutate the audience"
+          - check: field_contains
+            path: "audiences[*].uploaded_count"
+            value: 0
+            description: "Discovery reports no new ingestion delta"
+          - check: field_contains
+            path: "audiences[*].source.locator"
+            value: "share://provider.example/pinnacle/loyalty.high_value"
+            description: "The source remains visible in the single discovery pane"
+
+  - id: targeted_purchase
+    title: "Use the sourced audience in a media buy"
+    steps:
+      - id: create_media_buy_with_sourced_audience
+        title: "Create a buy targeting the sourced audience"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "external_audience_display"
+              pricing_option_id: "external_audience_cpm"
+              bid_price: 5.0
+              budget: 10000
+              targeting_overlay:
+                audience_include:
+                  - "shared_high_value_customers"
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_purchase"
+        validations:
+          - check: response_schema
+            description: "The sourced-audience buy response matches the schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "The sourced audience is accepted as a real targeting binding"
+
+  - id: source_boundaries
+    title: "Reject unsupported rails and transport changes"
+    steps:
+      - id: reject_undeclared_platform_segment
+        title: "Reject a platform-segment rail the seller did not declare"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          audiences:
+            - audience_id: "undeclared_platform_segment"
+              source:
+                kind: "platform_segment"
+                vendor:
+                  domain: "activation-hub.example"
+                segment_ref: "seg_88213"
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_unsupported"
+        validations:
+          - check: response_schema
+            description: "Per-audience rejection remains a valid success envelope"
+          - check: field_value
+            path: "audiences[0].action"
+            value: "failed"
+            description: "The unsupported source is not silently accepted"
+          - check: field_value
+            path: "audiences[0].errors[0].code"
+            value: "UNSUPPORTED_FEATURE"
+            description: "An undeclared activation rail is rejected with UNSUPPORTED_FEATURE"
+
+      - id: create_inline_control
+        title: "Create an inline audience as a transport control"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          audiences:
+            - audience_id: "fixed_inline_transport"
+              audience_type: "crm"
+              add:
+                - external_id: "inline-control-1"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000301"
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_inline"
+        validations:
+          - check: response_schema
+            description: "The inline control is accepted"
+          - check: field_value
+            path: "audiences[0].action"
+            value: "created"
+            description: "The inline control audience is created"
+
+      - id: reject_cross_transport_update
+        title: "Reject changing an inline audience to a dataset source"
+        task: sync_audiences
+        schema_ref: "media-buy/sync-audiences-request.json"
+        response_schema_ref: "media-buy/sync-audiences-response.json"
+        doc_ref: "/media-buy/task-reference/sync_audiences"
+        stateful: false
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          audiences:
+            - audience_id: "fixed_inline_transport"
+              source:
+                kind: "dataset"
+                vendor:
+                  domain: "data-cloud.example"
+                locator: "share://provider.example/pinnacle/loyalty.changed"
+          idempotency_key: "$generate:uuid_v4#external_audience_source_binding_conflict"
+        validations:
+          - check: response_schema
+            description: "The per-audience conflict remains schema-valid"
+          - check: field_value
+            path: "audiences[0].action"
+            value: "failed"
+            description: "The transport-changing upsert is not applied"
+          - check: field_value
+            path: "audiences[0].errors[0].code"
+            value: "CONFLICT"
+            description: "Transport changes require delete-and-recreate"

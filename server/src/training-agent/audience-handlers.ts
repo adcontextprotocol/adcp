@@ -14,6 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import type { TrainingContext, ToolArgs } from './types.js';
 import { sessionKeyFromArgs } from './state.js';
+import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from './product-factory.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -39,8 +40,35 @@ interface AudienceInput {
   tags?: string[];
   add?: AudienceMemberInput[];
   remove?: AudienceMemberInput[];
+  source?: AudienceSourceInput;
   delete?: boolean;
   consent_basis?: string;
+}
+
+interface AudienceSourceBase {
+  vendor: { domain: string };
+}
+
+interface DatasetAudienceSourceInput extends AudienceSourceBase {
+  kind: 'dataset';
+  locator: string;
+  access_expires_at?: string;
+}
+
+interface PlatformSegmentAudienceSourceInput extends AudienceSourceBase {
+  kind: 'platform_segment';
+  segment_ref: string;
+}
+
+type AudienceSourceInput = DatasetAudienceSourceInput | PlatformSegmentAudienceSourceInput;
+
+interface AudienceSourceState {
+  kind: 'dataset' | 'platform_segment';
+  vendor: { domain: string };
+  locator?: string;
+  segment_ref?: string;
+  columns_read?: string[];
+  access_status: 'active' | 'unavailable';
 }
 
 export type TrainingAudienceStatus = 'processing' | 'ready' | 'too_small' | 'suspended';
@@ -56,6 +84,7 @@ interface AudienceState {
   audienceType: string;
   createdAt: string;
   lastSyncedAt: string;
+  source?: AudienceSourceState;
 }
 
 const audienceStore = new Map<string, Map<string, AudienceState>>();
@@ -133,7 +162,7 @@ const ACCOUNT_REF_SCHEMA = {
 export const AUDIENCE_TOOLS = [
   {
     name: 'sync_audiences',
-    description: 'Manage CRM-based audiences on an account with upsert semantics. Existing audiences matched by audience_id are updated, new ones are created. Members are specified as delta operations: add appends, remove drops. Omit audiences for discovery-only.',
+    description: 'Manage CRM-based audiences on an account with upsert semantics. Membership is supplied either as inline add/remove deltas or through an externally sourced dataset or platform segment. Omit audiences for discovery-only.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     execution: { taskSupport: 'forbidden' as const },
     inputSchema: {
@@ -152,10 +181,47 @@ export const AUDIENCE_TOOLS = [
               tags: { type: 'array', items: { type: 'string' } },
               add: { type: 'array' },
               remove: { type: 'array' },
+              source: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    properties: {
+                      kind: { type: 'string', const: 'dataset' },
+                      vendor: {
+                        type: 'object',
+                        properties: { domain: { type: 'string' } },
+                        required: ['domain'],
+                      },
+                      locator: { type: 'string', minLength: 1, maxLength: 512 },
+                      access_expires_at: { type: 'string', format: 'date-time' },
+                    },
+                    required: ['kind', 'vendor', 'locator'],
+                    additionalProperties: false,
+                  },
+                  {
+                    type: 'object',
+                    properties: {
+                      kind: { type: 'string', const: 'platform_segment' },
+                      vendor: {
+                        type: 'object',
+                        properties: { domain: { type: 'string' } },
+                        required: ['domain'],
+                      },
+                      segment_ref: { type: 'string', minLength: 1, maxLength: 256 },
+                    },
+                    required: ['kind', 'vendor', 'segment_ref'],
+                    additionalProperties: false,
+                  },
+                ],
+              },
               delete: { type: 'boolean' },
               consent_basis: { type: 'string' },
             },
             required: ['audience_id'],
+            allOf: [
+              { not: { required: ['source', 'add'] } },
+              { not: { required: ['source', 'remove'] } },
+            ],
           },
           minItems: 1,
         },
@@ -166,6 +232,36 @@ export const AUDIENCE_TOOLS = [
     },
   },
 ];
+
+function externalSourceSupported(source: AudienceSourceInput): boolean {
+  const pattern = source.kind === 'dataset' ? 'dataset_query' : 'platform_distribution';
+  return TRAINING_AUDIENCE_ACTIVATION_METHODS.some(method =>
+    method.pattern === pattern
+    && (!('vendor' in method) || method.vendor.domain === source.vendor.domain),
+  );
+}
+
+function sourceStateFromInput(source: AudienceSourceInput): AudienceSourceState {
+  if (source.kind === 'dataset') {
+    return {
+      kind: source.kind,
+      vendor: structuredClone(source.vendor),
+      locator: source.locator,
+      columns_read: ['external_id', 'hashed_email'],
+      access_status: 'active',
+    };
+  }
+  return {
+    kind: source.kind,
+    vendor: structuredClone(source.vendor),
+    segment_ref: source.segment_ref,
+    access_status: 'active',
+  };
+}
+
+function sourceResponse(source: AudienceSourceState | undefined): AudienceSourceState | undefined {
+  return source ? structuredClone(source) : undefined;
+}
 
 // ── Handler implementation ──────────────────────────────────────
 
@@ -198,6 +294,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
         effective_match_rate: a.matchedCount / a.uploadedCount,
       }),
       last_synced_at: a.lastSyncedAt,
+      ...(a.source && { source: sourceResponse(a.source) }),
     }));
     return { audiences: existing };
   }
@@ -225,11 +322,47 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       continue;
     }
 
-    const uploadedThisCall = input.add?.length ?? 0;
-    // Simulate ~70% match rate for testing.
-    const matchedThisCall = Math.floor(uploadedThisCall * 0.7);
-    const totalUploaded = (existing?.uploadedCount ?? 0) + uploadedThisCall;
-    const totalMatched = (existing?.matchedCount ?? 0) + matchedThisCall;
+    const suppliesInlineMembers = input.add !== undefined || input.remove !== undefined;
+    const changesTransport = existing !== undefined
+      && (input.source !== undefined || suppliesInlineMembers)
+      && (existing.source !== undefined) !== (input.source !== undefined);
+    if (changesTransport) {
+      results.push({
+        audience_id: input.audience_id,
+        action: 'failed',
+        errors: [{
+          code: 'CONFLICT',
+          field: 'audience_id',
+          message: 'Audience transport is fixed at creation; delete and recreate the audience to change transport.',
+        }],
+      });
+      continue;
+    }
+
+    if (input.source && !externalSourceSupported(input.source)) {
+      results.push({
+        audience_id: input.audience_id,
+        action: 'failed',
+        errors: [{
+          code: 'UNSUPPORTED_FEATURE',
+          field: 'source.kind',
+          message: `External audience source ${input.source.kind} is not declared by this seller.`,
+        }],
+      });
+      continue;
+    }
+
+    // External sources model one successful read of a stable shared dataset.
+    // Inline sources keep the existing deterministic ~70% match simulation.
+    const uploadedThisCall = input.source ? 240 : (input.add?.length ?? 0);
+    const matchedThisCall = input.source ? 168 : Math.floor(uploadedThisCall * 0.7);
+    const preservesSourcedCounts = existing?.source !== undefined && input.source === undefined;
+    const totalUploaded = input.source
+      ? uploadedThisCall
+      : preservesSourcedCounts ? existing.uploadedCount : (existing?.uploadedCount ?? 0) + uploadedThisCall;
+    const totalMatched = input.source
+      ? matchedThisCall
+      : preservesSourcedCounts ? existing.matchedCount : (existing?.matchedCount ?? 0) + matchedThisCall;
     // Mirror sales-platform capabilities.audience_targeting.minimum_audience_size.
     const minimumSize = 100;
     const status: AudienceState['status'] = totalMatched === 0
@@ -246,6 +379,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       audienceType: input.audience_type ?? existing?.audienceType ?? 'crm',
       createdAt: existing?.createdAt ?? now,
       lastSyncedAt: now,
+      source: input.source ? sourceStateFromInput(input.source) : existing?.source,
     };
 
     audiences.set(input.audience_id, state);
@@ -260,6 +394,7 @@ export async function handleSyncAudiences(args: ToolArgs, ctx: TrainingContext) 
       total_uploaded_count: state.uploadedCount,
       matched_count: state.matchedCount,
       last_synced_at: state.lastSyncedAt,
+      ...(state.source && { source: sourceResponse(state.source) }),
     };
 
     if (state.uploadedCount > 0) {

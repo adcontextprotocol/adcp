@@ -7847,6 +7847,133 @@ describe('create_media_buy handler', () => {
     expect(typeof result.media_buy_id).toBe('string');
   });
 
+  it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'sourced-audience.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: bound } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'external-dataset-bind-0001',
+      audiences: [{
+        audience_id: 'sourced_loyalty',
+        name: 'Sourced loyalty audience',
+        audience_type: 'crm',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+        },
+      }],
+    });
+
+    expect(bound.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'sourced_loyalty',
+        action: 'created',
+        status: 'ready',
+        uploaded_count: 240,
+        total_uploaded_count: 240,
+        matched_count: 168,
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+          columns_read: ['external_id', 'hashed_email'],
+          access_status: 'active',
+        },
+      }),
+    ]);
+
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'external-dataset-list-0001',
+    });
+    expect(discovered.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'sourced_loyalty',
+        action: 'unchanged',
+        uploaded_count: 0,
+        total_uploaded_count: 240,
+        matched_count: 168,
+        source: expect.objectContaining({
+          kind: 'dataset',
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+          access_status: 'active',
+        }),
+      }),
+    ]);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'sourced-audience.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: { audience_include: ['sourced_loyalty'] },
+      }],
+    });
+
+    expect(created.errors).toBeUndefined();
+    expect(typeof created.media_buy_id).toBe('string');
+  });
+
+  it('rejects undeclared external source rails and cross-transport audience updates', async () => {
+    const account = { brand: { domain: 'source-rejections.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: unsupported } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'platform-segment-bind-0001',
+      audiences: [{
+        audience_id: 'unsupported_segment',
+        source: {
+          kind: 'platform_segment',
+          vendor: { domain: 'activation-hub.example' },
+          segment_ref: 'seg_88213',
+        },
+      }],
+    });
+    expect(unsupported.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'unsupported_segment',
+        action: 'failed',
+        errors: [expect.objectContaining({ code: 'UNSUPPORTED_FEATURE', field: 'source.kind' })],
+      }),
+    ]);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'inline-audience-bind-0001',
+      audiences: [{
+        audience_id: 'fixed_inline_transport',
+        add: [{ external_id: 'inline-member-1' }],
+      }],
+    });
+    const { result: conflict } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'dataset-transport-change-0001',
+      audiences: [{
+        audience_id: 'fixed_inline_transport',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.changed',
+        },
+      }],
+    });
+    expect(conflict.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'fixed_inline_transport',
+        action: 'failed',
+        errors: [expect.objectContaining({ code: 'CONFLICT', field: 'audience_id' })],
+      }),
+    ]);
+  });
+
   it('propagates a forced audience suspension to media-buy health and clears it on recovery', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const account = {

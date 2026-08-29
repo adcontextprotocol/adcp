@@ -11,6 +11,7 @@
  * bodies that throw `AdcpError` directly) is a follow-up.
  */
 
+import { randomUUID } from 'node:crypto';
 import {
   AdcpError,
   type DecisioningPlatform,
@@ -61,7 +62,10 @@ import { registerSharedPublicBrandPartition, runWithSessionContext } from './sta
 import type { ToolArgs, TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
-import { taskRegistryScopeFromContext } from './task-registry-scope.js';
+import {
+  taskRegistryNamespaceForTenant,
+  taskRegistryScopeFromContext,
+} from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
 import {
   SellerManagedControlJobCoordinator,
@@ -815,6 +819,7 @@ export async function resolveTrainingSalesRequestContext(
  */
 export function legacyGetProductsHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry?: TaskRegistry,
 ): NonNullable<LegacyMediaBuyHandlers['getProducts']> {
   return async (req, ctx) => {
     const normalizedReq = withResolvedAccountScope(
@@ -829,6 +834,82 @@ export function legacyGetProductsHandler(
     if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
     const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
+    const rawResponse = executed.data as Record<string, unknown> | undefined;
+    if (
+      rawResponse?.status === 'submitted'
+      && typeof rawResponse.task_id === 'string'
+    ) {
+      // A replay has already registered its original task. The request-level
+      // idempotency cache adds replayed=true to the cached envelope, so do not
+      // allocate a duplicate registry row or completion worker here.
+      if (rawResponse.replayed !== true) {
+        if (!taskRegistry) {
+          throw new Error('Async get_products requires a configured task registry');
+        }
+        const account = ctx.account as { id?: unknown } | undefined;
+        if (typeof account?.id !== 'string' || account.id.length === 0) {
+          throw new Error('Async get_products requires a resolved account');
+        }
+        const taskId = rawResponse.task_id;
+        const ownerScope = taskOwnerScopeForPlatformContext(ctx, account.id);
+        const rawPushConfig = (normalizedReq as unknown as Record<string, unknown>)
+          .push_notification_config;
+        const pushConfig = rawPushConfig
+          && typeof rawPushConfig === 'object'
+          && !Array.isArray(rawPushConfig)
+          ? rawPushConfig as Record<string, unknown>
+          : undefined;
+        const taskRef = await taskRegistry.create({
+          tool: 'get_products',
+          accountId: account.id,
+          ownerScope,
+          hasWebhook: typeof pushConfig?.url === 'string',
+          overrideTaskId: taskId,
+        });
+        const completionScope = {
+          accountId: taskRef.accountId,
+          ownerScope: taskRef.ownerScope,
+          registryNamespace: taskRegistryNamespaceForTenant('sales'),
+        };
+        const completion = (async () => {
+          try {
+            const result = await waitForForcedTaskCompletion(taskId, completionScope);
+            await taskRegistry.complete(taskId, taskRef, result);
+            if (
+              pushConfig
+              && typeof pushConfig.url === 'string'
+              && ctx.emitWebhook
+            ) {
+              await ctx.emitWebhook({
+                url: pushConfig.url,
+                delivery_id: `get_products.${account.id}.${taskId}.completed`,
+                payload: {
+                  idempotency_key: randomUUID(),
+                  operation_id: typeof pushConfig.operation_id === 'string'
+                    ? pushConfig.operation_id
+                    : taskId,
+                  task_id: taskId,
+                  task_type: 'get_products',
+                  protocol: 'media-buy',
+                  status: 'completed',
+                  timestamp: new Date().toISOString(),
+                  ...(typeof pushConfig.token === 'string' && { token: pushConfig.token }),
+                  result,
+                },
+              });
+            }
+          } catch (error) {
+            await taskRegistry.fail(taskId, taskRef, {
+              code: 'SERVICE_UNAVAILABLE',
+              recovery: 'transient',
+              message: error instanceof Error ? error.message : 'Async get_products failed',
+            });
+          }
+        })();
+        taskRegistry._registerBackground(taskId, taskRef, completion);
+      }
+      return rawResponse as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
+    }
     const response = translateV5Result<{ products?: import('@adcp/sdk').LegacyProduct[] }>(
       executed.data,
       { allowAdvisories: true },
@@ -1274,12 +1355,20 @@ export class TrainingSalesPlatform
   audiences: AudiencePlatform<TrainingSalesMeta> = {
     syncAudiences: async (audienceList, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
+      const requestInput = ctx.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
+        ? ctx.input as Record<string, unknown>
+        : undefined;
+      const isDiscovery = requestInput !== undefined
+        && !Object.prototype.hasOwnProperty.call(requestInput, 'audiences');
       // sync_audiences requires idempotency_key per schema. The framework
       // strips it from per-row params; synthesise one so the v5 handler's
       // shape validation passes. The v5 handler doesn't enforce uniqueness
-      // here — the framework already handled idempotency upstream.
+      // here — the framework already handled idempotency upstream. Preserve
+      // the wire distinction between omitted audiences (discovery) and an
+      // authored list: AudiencePlatform projects omission to [], so the raw
+      // request context is the only place that distinction survives.
       const args = {
-        audiences: audienceList,
+        ...(!isDiscovery && { audiences: audienceList }),
         idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
         ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
       };

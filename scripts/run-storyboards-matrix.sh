@@ -255,6 +255,7 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "sales_guaranteed"
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/external_audience_source_binding"
   "media_buy_seller/vendor_metric_catalog_precondition"
   "canonical_format_validate_input"
   "notification_config_event_scope"
@@ -274,6 +275,8 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/change_rights_state_projection:8:0"
   "media_buy_seller/acceptance_policy_discovery:3:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
+  "media_buy_seller/external_audience_source_binding:8:0"
+  "media_buy_seller/get_products_async:10:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"
