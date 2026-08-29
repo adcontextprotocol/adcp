@@ -3,7 +3,7 @@
   "fixture_version": "1.0",
   "protocol": {
     "protocol_version": "unreleased",
-    "source_revision": "adcontextprotocol/adcp@a4a0d650e9d177d31e8df53bd60c2c00a4dc1dc7",
+    "source_revision": "adcontextprotocol/adcp@df3c80713416bd4146e9c56e91b8e34df8b173bb",
     "promoted_from": "adcontextprotocol/adcp-client@43f7660ce1be17073d1207ee0168ae8343941be8",
     "schema_ids": [
       "/schemas/core/reporting-canonicalization-contract.json",
