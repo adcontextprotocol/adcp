@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildFixedTraceGenerationRequest,
   fixedTraceToolSchemaSha256,
   runFixedTraceCase,
   type FixedTraceProviderStageConfig,
@@ -227,10 +228,38 @@ describe('fixed trace artifact runner', () => {
     });
     expect(observation.metadata.generation.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(generation.respondCalls).toHaveLength(2);
+    expect(generation.respondCalls[0].toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(generation.respondCalls[1].toolChoice).toBeUndefined();
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
       deterministicPass: true,
       metadataPass: true,
     });
+  });
+
+  it('forces official-doc retrieval only when the exact knowledge route exposes search_docs', () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const exactKnowledge = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', requires_depth: false, reason: 'docs' },
+      [tool('search_docs'), tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+    const mixedRoute = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge', 'schema_reference'], confidence: 'high', requires_depth: false, reason: 'schema' },
+      [tool('search_docs'), tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+    const noBoundary = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', requires_depth: false, reason: 'docs' },
+      [tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+
+    expect(exactKnowledge.toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(mixedRoute.toolChoice).toBeUndefined();
+    expect(noBoundary.toolChoice).toBeUndefined();
   });
 
   it('stops at the surface decision without dispatching generation', async () => {

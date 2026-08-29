@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(61);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(61);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(63);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(63);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
@@ -154,7 +154,7 @@ describe('strict router eval', () => {
       'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(60);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(62);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -190,6 +190,8 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('Exact bare acknowledgments');
     expect(nonAdmin).toContain('Do not respond merely to disclaim expertise or recommend a professional');
     expect(nonAdmin).toContain('A requirement that mentions an identifier or asset is still conceptual');
+    expect(nonAdmin).toContain('official docs say about package identifiers');
+    expect(nonAdmin).toContain('Never ignore a direct date/time question');
     expect(nonAdmin).toContain('a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit');
     expect(nonAdmin).toContain('select exactly ["agent_validation", "property_catalog"]');
     expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
@@ -200,6 +202,14 @@ describe('strict router eval', () => {
     const channelCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'channel-protocol')!;
     const mentionCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'mention-protocol')!;
     expect(mentionCase.expected.toolSets).toEqual(channelCase.expected.toolSets);
+  });
+
+  it('keeps conceptual identifiers out of schema tools and answers trusted clock questions directly', () => {
+    const identifierCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-identifier-concept')!;
+    const dateCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'current-utc-date')!;
+
+    expect(identifierCase.expected).toMatchObject({ action: 'respond', toolSets: ['knowledge'] });
+    expect(dateCase.expected).toMatchObject({ action: 'respond', toolSets: [] });
   });
 
   it('accepts exact plans and rejects fallback-shaped, unauthorized, or extra-field output', () => {
