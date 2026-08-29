@@ -197,6 +197,14 @@ describe('fixed cross-provider trace suite', () => {
       deterministicPass: true,
       answerPass: true,
     });
+
+    const toolErrorTrace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-tool-error')!;
+    const smartPunctuation = passingObservation(toolErrorTrace);
+    smartPunctuation.output = 'The search failed, so I can’t verify the official wording.';
+    expect(gradeFixedTrace(toolErrorTrace, smartPunctuation)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
+    });
   });
 
   it('keeps malformed, truncated, provider errors, and budget skips in the denominator', () => {
