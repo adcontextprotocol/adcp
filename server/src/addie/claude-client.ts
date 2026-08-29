@@ -62,6 +62,7 @@ import {
 } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
+  executeAddieToolCalls,
   recordProviderToolResults,
   type AddieExecutionMode,
   type ToolExecution,
@@ -1793,25 +1794,28 @@ export class AddieClaudeClient {
 
       // Handle custom tool use. Provider-managed results were recorded above.
       if (stopAction === 'execute_tools') {
-        // Get custom tool use blocks (these need our handlers)
-        const toolUseBlocks = turn.toolCalls;
-
         const toolResults: ModelToolResultContent[] = [];
 
-        for (const block of toolUseBlocks) {
-          const toolName = block.name;
-          hasExecutedCustomTool = true;
-          const toolInput = block.input;
-
-          logger.debug(
-            { toolName, ...(operationalExecution && { toolInput }) },
-            'Addie: Calling tool',
-          );
-          toolsUsed.push(toolName);
-          executionSequence++;
-          const executed = await executeToolCall(block, executionSequence);
-          toolResults.push(executed.result);
-          toolExecutions.push(executed.execution);
+        for await (const event of executeAddieToolCalls(
+          turn.toolCalls,
+          executeToolCall,
+          executionSequence,
+        )) {
+          executionSequence = event.sequence;
+          if (event.type === 'start') {
+            hasExecutedCustomTool = true;
+            logger.debug(
+              {
+                toolName: event.call.name,
+                ...(operationalExecution && { toolInput: event.call.input }),
+              },
+              'Addie: Calling tool',
+            );
+            toolsUsed.push(event.call.name);
+          } else {
+            toolResults.push(event.executed.result);
+            toolExecutions.push(event.executed.execution);
+          }
         }
 
         appendModelTurnContinuation(modelMessages, response, toolResults);
@@ -2468,38 +2472,39 @@ export class AddieClaudeClient {
         // Handle tool use
         if (stopAction === 'execute_tools') {
           logicalText += iterationText;
-          const toolUseBlocks = turn.toolCalls;
-
           const toolResults: ModelToolResultContent[] = [];
 
-          for (const block of toolUseBlocks) {
-            const toolName = block.name;
-            const toolInput = block.input;
-
-            logger.debug(
-              { toolName, ...(operationalExecution && { toolInput }) },
-              'Addie Stream: Calling tool',
-            );
-            toolsUsed.push(toolName);
-            executionSequence++;
-
-            // Emit tool start event
-            yield {
-              type: 'tool_start',
-              tool_name: toolName,
-              parameters: this.recordedToolParameters(options, toolInput),
-            };
-
-            const executed = await executeToolCall(block, executionSequence);
-            toolResults.push(executed.result);
-            toolExecutions.push(executed.execution);
-            yield {
-              type: 'tool_end',
-              tool_name: toolName,
-              result: executed.execution.result,
-              is_error: executed.execution.is_error,
-              normalized_result: executed.execution.normalized_result,
-            };
+          for await (const event of executeAddieToolCalls(
+            turn.toolCalls,
+            executeToolCall,
+            executionSequence,
+          )) {
+            executionSequence = event.sequence;
+            if (event.type === 'start') {
+              logger.debug(
+                {
+                  toolName: event.call.name,
+                  ...(operationalExecution && { toolInput: event.call.input }),
+                },
+                'Addie Stream: Calling tool',
+              );
+              toolsUsed.push(event.call.name);
+              yield {
+                type: 'tool_start',
+                tool_name: event.call.name,
+                parameters: this.recordedToolParameters(options, event.call.input),
+              };
+            } else {
+              toolResults.push(event.executed.result);
+              toolExecutions.push(event.executed.execution);
+              yield {
+                type: 'tool_end',
+                tool_name: event.call.name,
+                result: event.executed.execution.result,
+                is_error: event.executed.execution.is_error,
+                normalized_result: event.executed.execution.normalized_result,
+              };
+            }
           }
 
           // Continue the conversation with tool results

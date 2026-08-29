@@ -8,6 +8,7 @@ import type {
 import {
   BLOCKED_TOOL_RESULT,
   createAddieToolExecutor,
+  executeAddieToolCalls,
   recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
 import type { AddieTool } from '../../../src/addie/types.js';
@@ -210,6 +211,48 @@ describe('createAddieToolExecutor', () => {
       { type: 'text', text: '[Image: chart.png]' },
     ]);
     expect(result.execution.result).toBe('Loaded image: chart.png');
+  });
+});
+
+describe('executeAddieToolCalls', () => {
+  it('owns sequential dispatch and ledger numbering for one custom-tool turn', async () => {
+    const first = call({ id: 'first' });
+    const second = { ...call({ id: 'second' }), id: 'call_2' };
+    const executionOrder: string[] = [];
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => {
+      executionOrder.push(toolCall.id);
+      return {
+        result: {
+          type: 'tool_result' as const,
+          toolCallId: toolCall.id,
+          toolName: toolCall.name,
+          content: `result ${sequence}`,
+        },
+        execution: {
+          tool_name: toolCall.name,
+          parameters: toolCall.input,
+          result: `result ${sequence}`,
+          is_error: false,
+          duration_ms: 0,
+          sequence,
+        },
+      };
+    });
+
+    const events = [];
+    for await (const event of executeAddieToolCalls([first, second], execute, 4)) {
+      events.push(event);
+    }
+
+    expect(executionOrder).toEqual(['call_1', 'call_2']);
+    expect(execute).toHaveBeenNthCalledWith(1, first, 5);
+    expect(execute).toHaveBeenNthCalledWith(2, second, 6);
+    expect(events.map(({ type, sequence }) => [type, sequence])).toEqual([
+      ['start', 5],
+      ['end', 5],
+      ['start', 6],
+      ['end', 6],
+    ]);
   });
 });
 

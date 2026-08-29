@@ -79,6 +79,24 @@ export interface AddieToolCallResult {
   execution: ToolExecution;
 }
 
+export type AddieToolExecutor = (
+  call: ModelToolCallContent,
+  sequence: number,
+) => Promise<AddieToolCallResult>;
+
+export type AddieToolExecutionEvent =
+  | {
+      type: 'start';
+      call: ModelToolCallContent;
+      sequence: number;
+    }
+  | {
+      type: 'end';
+      call: ModelToolCallContent;
+      sequence: number;
+      executed: AddieToolCallResult;
+    };
+
 export interface AddieProviderToolExecution {
   result: ModelProviderToolResultContent;
   receipt: ModelProviderToolReceipt;
@@ -341,7 +359,7 @@ export function createAddieToolExecutor(
   tools: readonly AddieTool[],
   handlers: ReadonlyMap<string, ToolHandler>,
   options: AddieToolExecutorOptions,
-): (call: ModelToolCallContent, sequence: number) => Promise<AddieToolCallResult> {
+): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
@@ -542,4 +560,23 @@ export function createAddieToolExecutor(
       return failureResult(call, sequence, options.executionMode, normalized, durationMs);
     }
   };
+}
+
+/**
+ * Execute one canonical custom-tool turn sequentially. The shared sequence is
+ * advanced before dispatch so delivery modes can emit a start event without
+ * taking ownership of mutation ordering or ledger numbering.
+ */
+export async function* executeAddieToolCalls(
+  calls: readonly ModelToolCallContent[],
+  execute: AddieToolExecutor,
+  startingSequence: number,
+): AsyncGenerator<AddieToolExecutionEvent> {
+  let sequence = startingSequence;
+  for (const call of calls) {
+    sequence++;
+    yield Object.freeze({ type: 'start', call, sequence });
+    const executed = await execute(call, sequence);
+    yield Object.freeze({ type: 'end', call, sequence, executed });
+  }
 }
