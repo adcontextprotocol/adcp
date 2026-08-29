@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(60);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(60);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(61);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(61);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_testing', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content', 'publishing', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'billing', 'events', 'meetings',
@@ -154,7 +154,7 @@ describe('strict router eval', () => {
       'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(59);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(60);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -191,6 +191,7 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('Do not respond merely to disclaim expertise or recommend a professional');
     expect(nonAdmin).toContain('A requirement that mentions an identifier or asset is still conceptual');
     expect(nonAdmin).toContain('a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit');
+    expect(nonAdmin).toContain('select exactly ["agent_validation", "property_catalog"]');
     expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
     expect(admin).toContain('always select exactly ["events", "admin_events"]');
   });

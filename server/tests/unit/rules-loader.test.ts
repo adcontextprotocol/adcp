@@ -141,7 +141,9 @@ describe('Addie tool reference', () => {
     // any of these going missing means the generator output drifted from
     // tool-sets.ts and the doc page is no longer the source of truth.
     expect(ADDIE_TOOL_REFERENCE).toContain('**knowledge**');
-    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_testing**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_validation**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**property_catalog**');
+    expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_testing**');
     expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
   });
@@ -325,12 +327,20 @@ describe('Addie tool reference', () => {
     expect(events).not.toContain('### Slack file handling');
   });
 
-  it('scopes protocol and agent-testing guidance to their routed domains', () => {
+  it('scopes protocol, agent-validation, and property guidance to their routed domains', () => {
     const protocol = buildAddieToolReference({
       availableToolNames: getToolsForSets(['adcp_operations'], false, false),
       selectedToolSetNames: ['adcp_operations'],
     });
-    const testing = buildAddieToolReference({
+    const validation = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_validation'], false, false),
+      selectedToolSetNames: ['agent_validation'],
+    });
+    const property = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_catalog'], false, false),
+      selectedToolSetNames: ['property_catalog'],
+    });
+    const legacy = buildAddieToolReference({
       availableToolNames: getToolsForSets(['agent_testing'], false, false),
       selectedToolSetNames: ['agent_testing'],
     });
@@ -340,11 +350,18 @@ describe('Addie tool reference', () => {
     expect(protocol).toContain('### Building with AdCP');
     expect(protocol).not.toContain('### Publisher and agent testing');
     expect(protocol).not.toContain('### Property-registry operations');
-    expect(testing).toContain('### Publisher and agent testing');
-    expect(testing).toContain('### Property-registry operations');
-    expect(testing).toContain('### Building with AdCP');
-    expect(testing).not.toContain('### AdCP protocol operations');
-    expect(testing).not.toContain('### Seller-agent monitoring');
+    expect(validation).toContain('### Publisher and agent testing');
+    expect(validation).toContain('### Building with AdCP');
+    expect(validation).not.toContain('### Property-registry operations');
+    expect(property).toContain('### Property-registry operations');
+    expect(property).toContain('### Property-list enrichment');
+    expect(property).not.toContain('### Publisher and agent testing');
+    expect(property).not.toContain('### Building with AdCP');
+    expect(legacy).toContain('### Publisher and agent testing');
+    expect(legacy).toContain('### Property-registry operations');
+    expect(legacy).toContain('### Building with AdCP');
+    expect(legacy).not.toContain('### AdCP protocol operations');
+    expect(legacy).not.toContain('### Seller-agent monitoring');
   });
 
   it('scopes brand guidance to brand-registry requests', () => {
@@ -356,27 +373,27 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['brand_registry'], false, false),
       selectedToolSetNames: ['brand_registry'],
     });
-    const testing = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['agent_testing'], false, false),
-      selectedToolSetNames: ['agent_testing'],
+    const property = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['property_catalog'], false, false),
+      selectedToolSetNames: ['property_catalog'],
     });
 
     expect(directory).not.toContain('### Brand-registry operations');
     expect(directory).not.toContain('### Property-registry operations');
     expect(brandRegistry).toContain('### Brand-registry operations');
     expect(brandRegistry).not.toContain('### Member-directory operations');
-    expect(testing).not.toContain('### Brand-registry operations');
+    expect(property).not.toContain('### Brand-registry operations');
   });
 
   it('requires optional storyboard tools before advertising that workflow', () => {
-    const routedTools = getToolsForSets(['agent_testing'], false, false);
+    const routedTools = getToolsForSets(['agent_validation'], false, false);
     const withoutConditionalTools = buildAddieToolReference({
       availableToolNames: routedTools,
-      selectedToolSetNames: ['agent_testing'],
+      selectedToolSetNames: ['agent_validation'],
     });
     const withPartialStoryboardTools = buildAddieToolReference({
       availableToolNames: [...routedTools, 'recommend_storyboards'],
-      selectedToolSetNames: ['agent_testing'],
+      selectedToolSetNames: ['agent_validation'],
     });
     const withConditionalTools = buildAddieToolReference({
       availableToolNames: [
@@ -387,14 +404,14 @@ describe('Addie tool reference', () => {
         'run_storyboard_step',
         'get_adcp_capabilities',
       ],
-      selectedToolSetNames: ['agent_testing'],
+      selectedToolSetNames: ['agent_validation'],
     });
 
     expect(withoutConditionalTools).not.toContain('### Storyboard testing');
-    expect(withoutConditionalTools).toContain('### Property-list enrichment');
+    expect(withoutConditionalTools).not.toContain('### Property-list enrichment');
     expect(withPartialStoryboardTools).not.toContain('### Storyboard testing');
     expect(withConditionalTools).toContain('### Storyboard testing');
-    expect(withConditionalTools).toContain('### Property-list enrichment');
+    expect(withConditionalTools).not.toContain('### Property-list enrichment');
   });
 
   it('requires exact routed research tools before advertising conditional guidance', () => {
@@ -487,14 +504,14 @@ describe('Addie tool reference', () => {
   });
 
   it('loads property catalog guidance only with the complete routed workflow', () => {
-    const propertyTools = getToolsForSets(['agent_testing'], false, false);
+    const propertyTools = getToolsForSets(['property_catalog'], false, false);
     const complete = buildAddieToolReference({
       availableToolNames: propertyTools,
-      selectedToolSetNames: ['agent_testing'],
+      selectedToolSetNames: ['property_catalog'],
     });
     const missingDispute = buildAddieToolReference({
       availableToolNames: propertyTools.filter(name => name !== 'dispute_catalog_entry'),
-      selectedToolSetNames: ['agent_testing'],
+      selectedToolSetNames: ['property_catalog'],
     });
 
     expect(complete).toContain('### Property-list enrichment');
