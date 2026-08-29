@@ -54,16 +54,21 @@ const ROUTER_CAPABILITIES = Object.freeze({
 
 function fakeRouterProvider(
   content: ModelMessageContent[],
-  options: { finishReason?: ModelResponse['finishReason']; error?: Error } = {},
+  options: {
+    finishReason?: ModelResponse['finishReason'];
+    error?: Error;
+    providerId?: ModelProvider['id'];
+  } = {},
 ): ModelProvider & { requests: ModelRequest[] } {
   const requests: ModelRequest[] = [];
+  const providerId = options.providerId ?? 'anthropic';
   return {
-    id: 'anthropic',
+    id: providerId,
     capabilities: ROUTER_CAPABILITIES,
     requests,
     prepare(request: ModelRequest): PreparedModelInvocation {
       return {
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         capabilities: ROUTER_CAPABILITIES,
         providerRequest: {},
@@ -73,7 +78,7 @@ function fakeRouterProvider(
       requests.push(request);
       if (options.error) throw options.error;
       const response: ModelResponse = {
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         id: 'router-response',
         content,
@@ -83,7 +88,7 @@ function fakeRouterProvider(
       };
       yield {
         type: 'response_start',
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         id: response.id,
       };
@@ -717,6 +722,84 @@ describe('AddieRouter.route', () => {
       tokens_input: 12,
       tokens_output: 7,
       model: ModelConfig.fast,
+    });
+  });
+
+  it('uses provider-specific model settings with strict output validation', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","requires_depth":false,"reason":"documented"}',
+    }], { providerId: 'openai' });
+    const context: RoutingContext = {
+      message: 'How does AdCP work?',
+      source: 'channel',
+      isAAOAdmin: false,
+    };
+    const subject = new AddieRouter('unused', provider, undefined, {
+      model: 'gpt-5.6-luna',
+      reasoning: { effort: 'none' },
+      strictOutput: true,
+    });
+
+    const plan = await subject.route(context, { failureMode: 'throw' });
+
+    expect(provider.requests).toEqual([
+      buildRouterModelRequest(context, 'gpt-5.6-luna', { effort: 'none' }),
+    ]);
+    expect(plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      model: 'gpt-5.6-luna',
+    });
+  });
+
+  it.each([
+    ['malformed JSON', [{ type: 'text', text: 'not-json' }], 'stop'],
+    ['unauthorized tool set', [{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["admin"],"confidence":"high","requires_depth":false,"reason":"unsafe"}',
+    }], 'stop'],
+    ['truncated response', [{
+      type: 'text',
+      text: '{"action":"ignore","reason":"partial"}',
+    }], 'length'],
+  ] as const)('throws on strict %s so a caller can invoke fallback', async (
+    _name,
+    content,
+    finishReason,
+  ) => {
+    const provider = fakeRouterProvider([...content], { finishReason });
+    const subject = new AddieRouter('unused', provider, undefined, { strictOutput: true });
+    await expect(subject.route({
+      message: 'important question',
+      source: 'channel',
+      isAAOAdmin: false,
+    }, { failureMode: 'throw' })).rejects.toThrow();
+  });
+
+  it('observes strict candidate failure metadata before the caller falls back', async () => {
+    const provider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
+      providerId: 'openai',
+    });
+    const observer = vi.fn();
+    const subject = new AddieRouter('unused', provider, undefined, {
+      model: 'gpt-5.6-luna',
+      strictOutput: true,
+    });
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }, {
+      failureMode: 'throw',
+      observer,
+    })).rejects.toThrow('Router response is not JSON');
+    await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
+    expect(observer.mock.calls[0][0]).toMatchObject({
+      requestedProvider: 'openai',
+      requestedModel: 'gpt-5.6-luna',
+      returnedProvider: 'openai',
+      returnedModel: 'gpt-5.6-luna',
+      inputTokens: 12,
+      outputTokens: 7,
+      primaryErrorCategory: 'invalid_json',
     });
   });
 
