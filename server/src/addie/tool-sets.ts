@@ -169,24 +169,33 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   knowledge: {
     name: "knowledge",
     description:
-      "Search documentation, code repos, Slack history, curated resources, GitHub issues/PRs, and validate JSON against AdCP schemas for protocol questions, implementation help, roadmap/RFC lookups, and community discussions",
+      "Search AdCP documentation and indexed ad tech specifications for protocol questions and implementation help",
     tools: [
       "search_docs",
       "get_doc",
       "search_repos",
+    ],
+  },
+
+  community_research: {
+    name: "community_research",
+    description:
+      "When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack",
+    tools: [
       "search_slack",
       "get_channel_activity",
       "search_resources",
       "get_recent_news",
       "fetch_url",
       "read_slack_file",
-      // GitHub read tools — list/search issues, PRs, RFCs, epics.
-      // NOTE: get_github_issue is intentionally NOT listed here — it lives in
-      // ALWAYS_AVAILABLE_TOOLS and is reachable regardless of routing. Keeping
-      // it here caused Sonnet to hallucinate that reading individual issues was
-      // unavailable when `knowledge` wasn't selected. See #2998.
-      "list_github_issues",
-      // Schema validation tools
+    ],
+  },
+
+  schema_reference: {
+    name: "schema_reference",
+    description:
+      "Inspect, compare, and validate JSON against versioned AdCP schemas",
+    tools: [
       "validate_json",
       "get_schema",
       "list_schemas",
@@ -363,6 +372,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "draft_github_issue",
       "create_github_issue",
       "get_github_issue",
+      "list_github_issues",
     ],
   },
 

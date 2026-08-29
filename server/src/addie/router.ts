@@ -623,7 +623,9 @@ ${
     ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n'
     : ""
 }IMPORTANT: Select tool SETS based on the user's INTENT:
-- Questions about AdCP, protocols, implementation → ["knowledge"]
+- Questions about AdCP, protocols, or implementation → ["knowledge"]
+- AdCP schema fields or structure → ["knowledge", "schema_reference"]; validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, combine ["schema_reference", "agent_testing"] and add ["knowledge"] only when separate protocol documentation is requested
+- Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners or managing brand-registry canonical documents → ["directory"]
 - Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
@@ -631,9 +633,9 @@ ${
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]
 - Submitting or reviewing articles/perspectives, reading a Google Doc for publication, or generating, regenerating, or checking the cover illustration for a member's post → ["publishing"]
-- Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]
+- Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
 - Searching for an existing explanatory diagram/image, or substantive concept explanations that materially benefit from a visual → ["illustrations"]. Never use this set for an article/perspective cover; those always use ["publishing"]
-- Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
+- Questions about tracked working-group documents or member brand guidelines → ["knowledge", "member"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
     ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
@@ -652,6 +654,7 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
+- Open or unsettled multi-stakeholder governance questions may combine ["knowledge", "community_research"] to distinguish documented rules from current discussion
 - General questions needing no tools → []
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
