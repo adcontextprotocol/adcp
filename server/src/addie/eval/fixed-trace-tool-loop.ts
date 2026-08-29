@@ -15,6 +15,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import {
   createAddieToolExecutor,
+  executeAddieToolCalls,
   type ToolHandler,
 } from '../model-providers/tool-orchestration.js';
 import type {
@@ -236,23 +237,25 @@ export async function executeFixedTraceToolLoop(
     }
 
     const results = [];
-    for (const call of calls) {
-      seenCallIds.add(call.id);
-      seenToolNames.add(call.name);
-      const entry = registered.get(call.name)!;
-      const executed = await executeTool(call, executions.length + 1);
-      const blocked = executed.execution.blocked_by_policy === true;
-      executions.push(Object.freeze({
-        sequence: executions.length + 1,
-        name: call.name,
-        description: entry.definition.description,
-        input: deepFreeze(structuredClone(call.input)),
-        effect: entry.fixture.effect,
-        policyDisposition: blocked ? 'blocked' : 'allowed',
-        resultStatus: entry.fixture.resultStatus,
-        simulated: true,
-      }));
-      results.push(executed.result);
+    for await (const event of executeAddieToolCalls(calls, executeTool, executions.length)) {
+      if (event.type === 'start') {
+        seenCallIds.add(event.call.id);
+        seenToolNames.add(event.call.name);
+      } else {
+        const entry = registered.get(event.call.name)!;
+        const blocked = event.executed.execution.blocked_by_policy === true;
+        executions.push(Object.freeze({
+          sequence: event.sequence,
+          name: event.call.name,
+          description: entry.definition.description,
+          input: deepFreeze(structuredClone(event.call.input)),
+          effect: entry.fixture.effect,
+          policyDisposition: blocked ? 'blocked' : 'allowed',
+          resultStatus: entry.fixture.resultStatus,
+          simulated: true,
+        }));
+        results.push(event.executed.result);
+      }
     }
     appendModelTurnContinuation(messages, response, results);
   }

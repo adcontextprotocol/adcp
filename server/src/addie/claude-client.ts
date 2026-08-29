@@ -46,6 +46,7 @@ import type {
   ModelMessageContent,
   ModelRequest,
   ModelResponse,
+  ModelToolChoice,
   ModelToolCallContent,
   ModelToolDefinition,
   ModelToolResultContent,
@@ -61,6 +62,7 @@ import {
 } from './model-providers/model-turn.js';
 import {
   createAddieToolExecutor,
+  executeAddieToolCalls,
   recordProviderToolResults,
   type AddieExecutionMode,
   type ToolExecution,
@@ -679,6 +681,8 @@ export interface ProcessMessageOptions {
   allowedToolNames?: readonly string[];
   /** Router-selected capability sets used to scope prompt guidance/catalog. */
   selectedToolSetNames?: readonly string[];
+  /** Optional first-turn tool requirement chosen by trusted orchestration. */
+  initialToolChoice?: ModelToolChoice;
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -1247,6 +1251,7 @@ export class AddieClaudeClient {
     providerWebSearchEnabled: boolean,
     maxOutputTokens?: number,
     streaming = false,
+    toolChoice?: ModelToolChoice,
   ): ModelRequest {
     const safeMaxOutputTokens = !streaming && /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
       ? Math.min(
@@ -1265,6 +1270,7 @@ export class AddieClaudeClient {
       })),
       messages,
       tools,
+      ...(toolChoice && { toolChoice }),
       ...(providerWebSearchEnabled && { providerTools: [{ type: 'web_search' as const }] }),
       ...(controls.output_config?.effort === 'medium' && {
         reasoning: { effort: 'medium' as const },
@@ -1298,6 +1304,9 @@ export class AddieClaudeClient {
       prepared.modelTools,
       prepared.modelMessages,
       prepared.requestWebSearchEnabled,
+      undefined,
+      false,
+      options?.initialToolChoice,
     );
     const providerRequest = this.anthropicProvider.prepare(modelRequest)
       .providerRequest as unknown as PreparedProviderRequest;
@@ -1486,6 +1495,10 @@ export class AddieClaudeClient {
             modelMessages,
             modelLoop.emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+            false,
+            iteration === 1 && invocationTools.length > 0
+              ? options?.initialToolChoice
+              : undefined,
           );
           const provider = exactlyOnce
             ? this.exactlyOnceAnthropicProvider
@@ -1781,25 +1794,28 @@ export class AddieClaudeClient {
 
       // Handle custom tool use. Provider-managed results were recorded above.
       if (stopAction === 'execute_tools') {
-        // Get custom tool use blocks (these need our handlers)
-        const toolUseBlocks = turn.toolCalls;
-
         const toolResults: ModelToolResultContent[] = [];
 
-        for (const block of toolUseBlocks) {
-          const toolName = block.name;
-          hasExecutedCustomTool = true;
-          const toolInput = block.input;
-
-          logger.debug(
-            { toolName, ...(operationalExecution && { toolInput }) },
-            'Addie: Calling tool',
-          );
-          toolsUsed.push(toolName);
-          executionSequence++;
-          const executed = await executeToolCall(block, executionSequence);
-          toolResults.push(executed.result);
-          toolExecutions.push(executed.execution);
+        for await (const event of executeAddieToolCalls(
+          turn.toolCalls,
+          executeToolCall,
+          executionSequence,
+        )) {
+          executionSequence = event.sequence;
+          if (event.type === 'start') {
+            hasExecutedCustomTool = true;
+            logger.debug(
+              {
+                toolName: event.call.name,
+                ...(operationalExecution && { toolInput: event.call.input }),
+              },
+              'Addie: Calling tool',
+            );
+            toolsUsed.push(event.call.name);
+          } else {
+            toolResults.push(event.executed.result);
+            toolExecutions.push(event.executed.execution);
+          }
         }
 
         appendModelTurnContinuation(modelMessages, response, toolResults);
@@ -2075,6 +2091,9 @@ export class AddieClaudeClient {
               false,
               isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
               true,
+              iteration === 1 && invocationTools.length > 0
+                ? options?.initialToolChoice
+                : undefined,
             );
             const provider = isEmptyResponseRecovery
               ? this.exactlyOnceAnthropicProvider
@@ -2453,38 +2472,39 @@ export class AddieClaudeClient {
         // Handle tool use
         if (stopAction === 'execute_tools') {
           logicalText += iterationText;
-          const toolUseBlocks = turn.toolCalls;
-
           const toolResults: ModelToolResultContent[] = [];
 
-          for (const block of toolUseBlocks) {
-            const toolName = block.name;
-            const toolInput = block.input;
-
-            logger.debug(
-              { toolName, ...(operationalExecution && { toolInput }) },
-              'Addie Stream: Calling tool',
-            );
-            toolsUsed.push(toolName);
-            executionSequence++;
-
-            // Emit tool start event
-            yield {
-              type: 'tool_start',
-              tool_name: toolName,
-              parameters: this.recordedToolParameters(options, toolInput),
-            };
-
-            const executed = await executeToolCall(block, executionSequence);
-            toolResults.push(executed.result);
-            toolExecutions.push(executed.execution);
-            yield {
-              type: 'tool_end',
-              tool_name: toolName,
-              result: executed.execution.result,
-              is_error: executed.execution.is_error,
-              normalized_result: executed.execution.normalized_result,
-            };
+          for await (const event of executeAddieToolCalls(
+            turn.toolCalls,
+            executeToolCall,
+            executionSequence,
+          )) {
+            executionSequence = event.sequence;
+            if (event.type === 'start') {
+              logger.debug(
+                {
+                  toolName: event.call.name,
+                  ...(operationalExecution && { toolInput: event.call.input }),
+                },
+                'Addie Stream: Calling tool',
+              );
+              toolsUsed.push(event.call.name);
+              yield {
+                type: 'tool_start',
+                tool_name: event.call.name,
+                parameters: this.recordedToolParameters(options, event.call.input),
+              };
+            } else {
+              toolResults.push(event.executed.result);
+              toolExecutions.push(event.executed.execution);
+              yield {
+                type: 'tool_end',
+                tool_name: event.call.name,
+                result: event.executed.execution.result,
+                is_error: event.executed.execution.is_error,
+                normalized_result: event.executed.execution.normalized_result,
+              };
+            }
           }
 
           // Continue the conversation with tool results

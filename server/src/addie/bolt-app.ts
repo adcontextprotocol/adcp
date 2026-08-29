@@ -3566,6 +3566,7 @@ export async function buildChannelResponseInvocation(input: {
         ? {
             disableServerTools: true,
             allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+            initialToolChoice: { type: 'tool', name: 'search_docs' },
             maxIterations: 4,
           }
         : {}),
