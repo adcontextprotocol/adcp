@@ -205,6 +205,8 @@ describe('fixed trace artifact runner', () => {
       flagged: false,
       tools: [{
         name: 'search_docs',
+        description: 'Canonical search_docs schema.',
+        input: { query: 'task model' },
         effect: 'read',
         policyDisposition: 'allowed',
         resultStatus: 'ok',

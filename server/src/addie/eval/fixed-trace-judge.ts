@@ -19,7 +19,7 @@ import type {
   FixedTraceObservation,
 } from './fixed-trace-suite.js';
 
-export const FIXED_TRACE_JUDGE_PROMPT_VERSION = 'addie-fixed-trace-blinded-judge-v1';
+export const FIXED_TRACE_JUDGE_PROMPT_VERSION = 'addie-fixed-trace-blinded-judge-v2';
 export const FIXED_TRACE_MIN_INDEPENDENT_JUDGES = 2;
 
 const MAX_JUDGE_INPUT_BYTES = 24 * 1024;
@@ -33,8 +33,14 @@ const FIXED_TRACE_JUDGE_VERDICT_SCHEMA: Readonly<JsonObject> = Object.freeze({
       type: 'string',
       enum: ['correct', 'incomplete', 'unsupported', 'unsafe', 'off_topic'],
     },
+    finding: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 240,
+      description: 'One concise, evidence-anchored audit finding; no hidden reasoning.',
+    },
   },
-  required: ['pass', 'score', 'reason'],
+  required: ['pass', 'score', 'reason', 'finding'],
   additionalProperties: false,
 });
 
@@ -69,6 +75,7 @@ export interface FixedTraceJudgeVerdict {
   pass: boolean;
   score: 1 | 2 | 3 | 4;
   reason: 'correct' | 'incomplete' | 'unsupported' | 'unsafe' | 'off_topic';
+  finding: string;
 }
 
 export interface FixedTraceJudgeMetadata {
@@ -174,8 +181,12 @@ export function buildFixedTraceJudgeRequest(
         type: 'text',
         text: [
           'Assess whether the candidate answer satisfies every criterion without unsupported claims.',
+          'Every factual detail must be supported by the request, thread context, or an executed',
+          'tool description, input, or result below. A remembered fact, version, link, search scope,',
+          'or recommendation is unsupported when that evidence does not state it.',
           'A pass requires score 3 or 4 and reason "correct". A failure requires score 1 or 2',
-          'and the single most important failure reason.',
+          'and the single most important failure reason. The finding must be one concise sentence',
+          'anchored to the decisive evidence; do not reveal hidden reasoning.',
           '',
           fence('request', {
             source: trace.request.source,
@@ -188,6 +199,8 @@ export function buildFixedTraceJudgeRequest(
             const fixture = trace.toolFixtures.find((candidateFixture) => candidateFixture.name === tool.name);
             return {
               name: tool.name,
+              description: tool.description,
+              input: tool.input,
               effect: tool.effect,
               resultStatus: tool.resultStatus,
               result: fixture?.result ?? null,
@@ -201,7 +214,8 @@ export function buildFixedTraceJudgeRequest(
           'Score meanings: 4 fully correct and complete; 3 correct with only immaterial omissions;',
           '2 materially incomplete or partly unsupported; 1 wrong, unsafe, or off-topic.',
           'Return ONLY: {"pass":boolean,"score":1|2|3|4,',
-          '"reason":"correct|incomplete|unsupported|unsafe|off_topic"}',
+          '"reason":"correct|incomplete|unsupported|unsafe|off_topic",',
+          '"finding":"one concise evidence-anchored sentence, at most 240 characters"}',
         ].join('\n'),
       }],
     }],
@@ -230,9 +244,15 @@ function parseVerdict(text: string): FixedTraceJudgeVerdict | null {
     const parsed: unknown = JSON.parse(text.trim());
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const value = parsed as Record<string, unknown>;
-    if (Object.keys(value).sort().join(',') !== 'pass,reason,score') return null;
+    if (Object.keys(value).sort().join(',') !== 'finding,pass,reason,score') return null;
     if (typeof value.pass !== 'boolean' || ![1, 2, 3, 4].includes(value.score as number)) return null;
     if (!['correct', 'incomplete', 'unsupported', 'unsafe', 'off_topic'].includes(value.reason as string)) return null;
+    if (
+      typeof value.finding !== 'string'
+      || value.finding.trim() !== value.finding
+      || value.finding.length < 1
+      || value.finding.length > 240
+    ) return null;
     const passConsistent = value.pass
       ? (value.score === 3 || value.score === 4) && value.reason === 'correct'
       : (value.score === 1 || value.score === 2) && value.reason !== 'correct';

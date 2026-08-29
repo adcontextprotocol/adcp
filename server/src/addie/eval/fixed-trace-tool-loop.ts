@@ -245,6 +245,8 @@ export async function executeFixedTraceToolLoop(
       executions.push(Object.freeze({
         sequence: executions.length + 1,
         name: call.name,
+        description: entry.definition.description,
+        input: deepFreeze(structuredClone(call.input)),
         effect: entry.fixture.effect,
         policyDisposition: blocked ? 'blocked' : 'allowed',
         resultStatus: entry.fixture.resultStatus,
