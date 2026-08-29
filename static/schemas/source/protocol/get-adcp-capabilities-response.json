@@ -5,8 +5,8 @@
   "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
   "definitions": {
-    "LegacyReportingDeliveryMethod": {
-      "title": "Legacy Reporting Delivery Method",
+    "CapabilityReportingDeliveryMethod": {
+      "title": "Capability Reporting Delivery Method",
       "type": "string",
       "enum": ["webhook", "offline"]
     },
@@ -1032,7 +1032,7 @@
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
           "items": {
-            "$ref": "#/definitions/LegacyReportingDeliveryMethod"
+            "$ref": "#/definitions/CapabilityReportingDeliveryMethod"
           },
           "minItems": 1,
           "uniqueItems": true
