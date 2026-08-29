@@ -62,12 +62,29 @@
                 "description": "Per-account errors (only present when status is 'failed')",
                 "items": {
                   "$ref": "/schemas/core/error.json"
-                }
+                },
+                "minItems": 1
               }
             },
             "required": [
               "account",
               "status"
+            ],
+            "allOf": [
+              {
+                "if": { "properties": { "status": { "const": "synced" } }, "required": ["status"] },
+                "then": {
+                  "required": ["governance_agents"],
+                  "not": { "required": ["errors"] }
+                }
+              },
+              {
+                "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+                "then": {
+                  "required": ["errors"],
+                  "not": { "required": ["governance_agents"] }
+                }
+              }
             ],
             "additionalProperties": true
           }
@@ -176,6 +193,36 @@
               {
                 "code": "ACCOUNT_NOT_FOUND",
                 "message": "Account 'acct-unknown' does not exist or is not accessible to the authenticated agent."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "description": "Governance agent rejected by authoritative account criteria",
+      "data": {
+        "status": "completed",
+        "accounts": [
+          {
+            "account": { "account_id": "acct-001" },
+            "status": "failed",
+            "errors": [
+              {
+                "code": "GOVERNANCE_AGENT_NOT_ACCEPTED",
+                "message": "The proposed governance agent does not satisfy this account's acceptance criteria.",
+                "details": {
+                  "disclosure": "disclosed",
+                  "attempted_agent_origin": "https://unlisted.example",
+                  "accepted_governance_agents": {
+                    "any_of": [
+                      {
+                        "kind": "agent_url",
+                        "agent_url": "https://governance.example/mcp"
+                      }
+                    ]
+                  }
+                }
               }
             ]
           }

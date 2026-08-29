@@ -133,7 +133,7 @@
     },
     "property_list_applied": {
       "type": "boolean",
-      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
+      "description": "[AdCP 3.0] Indicates whether deprecated top-level property_list filtering was applied. True if the agent filtered products based on the provided property_list; every returned product also carries the corresponding property/include list_applications receipt. Absent or false if property_list was not provided or not supported by this agent."
     },
     "catalog_applied": {
       "type": "boolean",

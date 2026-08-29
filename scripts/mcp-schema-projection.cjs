@@ -807,6 +807,9 @@ function stripModelContextAnnotations(schema) {
         }
       }
     }
+    // Exact const values and homogeneous enums already communicate their JSON
+    // types. Mixed enums retain type because it still narrows the listed values.
+    if (Object.hasOwn(node, 'const')) delete node.type;
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves
@@ -814,6 +817,20 @@ function stripModelContextAnnotations(schema) {
     if (node.additionalProperties === false) delete node.additionalProperties;
     for (const keyword of Object.keys(node)) {
       if (keyword.startsWith('x-')) delete node[keyword];
+    }
+    // A homogeneous enum already communicates both the allowed values and
+    // their primitive type. Keep the enum in the prompt view and omit the
+    // redundant type keyword; the parent discovery profile remains the
+    // validation authority. Mixed enums retain type because it still narrows
+    // the otherwise-listed values.
+    if (typeof node.type === 'string' && Array.isArray(node.enum) && node.enum.length > 0) {
+      const matchesType = node.enum.every(value => {
+        if (node.type === 'integer') return Number.isInteger(value);
+        if (node.type === 'number') return typeof value === 'number' && Number.isFinite(value);
+        if (node.type === 'null') return value === null;
+        return typeof value === node.type;
+      });
+      if (matchesType) delete node.type;
     }
   });
   return stripped;

@@ -78,11 +78,8 @@ You have access to these tools to help users:
 - create_github_issue: Create a GitHub issue directly via the API (requires user confirmation first)
 - get_github_issue: Read an issue or PR by number — use when a user pastes a GitHub link or asks about a specific issue, RFC, or PR. Works for any \`adcontextprotocol/*\` or \`prebid/*\` repo. Pass \`repo\` as "owner/name" (default: "adcontextprotocol/adcp").
 
-**Billing Support (for members):**
-Members with billing questions (invoices, payments, membership fees, pricing, refunds) cannot be handled directly — use escalate_to_admin. Do not attempt to use billing tools on behalf of non-admin users.
-
 **Escalation:**
-- escalate_to_admin: Create a tracked request for the team. Use this for member billing questions, payment issues, and anything requiring human review. When the escalation is about a specific perspective draft (e.g. "please prioritize review of Mary's post"), pass \`perspective_id\` / \`perspective_slug\` so approving the post auto-resolves the escalation — no manual cleanup needed.
+- escalate_to_admin: Create a tracked request for the team. Use this for unresolved billing problems, refunds or disputes, and anything requiring human review. When the escalation is about a specific perspective draft (e.g. "please prioritize review of Mary's post"), pass \`perspective_id\` / \`perspective_slug\` so approving the post auto-resolves the escalation — no manual cleanup needed.
 - list_escalations: List open escalations needing attention (admin only)
 - resolve_escalation: Mark an escalation as resolved and notify the user via Slack DM or email (admin only). Use list_escalations first if you need to find the escalation ID.
 
@@ -103,6 +100,26 @@ interface RoutedToolReferenceModule {
 }
 
 const ROUTED_TOOL_REFERENCE_MODULES: readonly RoutedToolReferenceModule[] = [
+  {
+    selectedToolSets: ['member_billing'],
+    requiredToolNames: [
+      'find_membership_products',
+      'create_payment_link',
+      'send_invoice',
+      'confirm_send_invoice',
+      'get_billing_portal',
+    ],
+    text: `### Member billing self-service
+These tools operate only on the signed-in member and their selected organization; never use them on behalf of another person or organization.
+
+- find_membership_products: Look up current company or individual membership pricing.
+- create_payment_link: Create checkout for the signed-in member's organization.
+- send_invoice: Preview the organization's invoice. This does not send it.
+- confirm_send_invoice: Send only after the member explicitly confirms the previewed amount, recipient, and terms.
+- get_billing_portal: Open the portal for an owner or admin to view invoices, receipts, payment methods, and subscriptions.
+
+Escalate refunds, disputes, failed charges, identity mismatches, and anything these self-service tools cannot complete.`,
+  },
   {
     selectedToolSets: ['sponsored_intelligence'],
     requiredToolNames: [

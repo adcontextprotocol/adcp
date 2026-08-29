@@ -82,7 +82,7 @@ jobs:
           - surface: current
             tenant: governance
             min_clean_storyboards: 47
-            min_passing_steps: 157
+            min_passing_steps: 161
           - surface: current
             tenant: creative
             min_clean_storyboards: 49
@@ -374,6 +374,23 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Enforce governance seller-disposition evidence
+        if: matrix.surface == 'current' && matrix.tenant == 'governance'
+        run: |
+          set -euo pipefail
+          requirement="governance/failed_outcome_audit_persistence:4:0"
+          storyboard_id="${requirement%%:*}"
+          counts="${requirement#*:}"
+          expected_passed="${counts%%:*}"
+          expected_skipped="${counts##*:}"
+          if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+            echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+          else
+            echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
+            grep -F "${storyboard_id}" /tmp/storyboards.log || true
+            exit 1
+          fi
 
       - name: Enforce creative required-clean storyboards
         if: matrix.surface == 'current' && matrix.tenant == 'creative'
@@ -678,6 +695,9 @@ jobs:
             "media_buy_seller/declined_proposal_refinement:6:0"
             "media_buy_seller/declined_proposal_execution:8:0"
             "media_buy_seller/expired_proposal_execution:8:0"
+            "media_buy_seller/change_rights_state_projection:8:0"
+            "media_buy_seller/acceptance_policy_discovery:3:0"
+            "media_buy_seller/governance_agent_binding_acceptance:5:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"

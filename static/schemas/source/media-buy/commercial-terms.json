@@ -106,6 +106,15 @@
       },
       "required": ["effective_at"],
       "additionalProperties": false
+    },
+    "change_terms": {
+      "type": "array",
+      "items": { "$ref": "/schemas/media-buy/change-term.json" },
+      "minItems": 1,
+      "description": "Binding buyer change rights included in the commercial envelope and therefore covered by terms_digest. Entries are uniquely keyed by action. When this field is present, an omitted action is not a negotiated change right. Omission of the entire field means legacy-unspecified rights, not a prohibition.",
+      "x-adcp-validation": {
+        "unique_by": "action"
+      }
     }
   },
   "required": ["brand", "purchases", "start_time", "end_time"],

@@ -25,7 +25,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **billing** *(admin only)* — find_membership_products, create_payment_link, send_invoice, send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
+- **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
+- **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
 - **meetings** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
 - **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
@@ -52,7 +53,7 @@ resolve_escalation, list_escalations
 
 Conditionally registered (channel- or env-gated). Available when their preconditions are met.
 
-research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, confirm_send_invoice, get_billing_portal, parse_brand_properties, import_brand_properties, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
+research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
 `;
 
 /** Explicit catalog names for runtime/inventory parity checks. */

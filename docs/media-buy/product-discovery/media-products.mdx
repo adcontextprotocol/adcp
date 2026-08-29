@@ -38,6 +38,7 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `expires_at` (datetime, conditionally required): Required for a request-specific product issued through targeting-aware discovery and whenever `targeting_resolution` is present. Earlier custom products remain schema-valid when it is absent. After this time, a recognized expired ID issued to the authenticated account and lineage returns `PRODUCT_EXPIRED`; an ID whose tombstone is no longer retained or belongs to another account/lineage returns `PRODUCT_NOT_FOUND`, preventing cross-tenant existence disclosure.
 - `overlay_support` (TargetingOverlaySupport, optional): Product-scoped targeting dimensions whose values may be selected later. Required when requested through `required_overlay_support`. It guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every value.
 - `targeting_resolution` (ProductTargetingResolution, optional): Sparse differences from a structured overlay. Absence confirms exact acceptance of that product's structured overlay, but not how prose was interpreted; response-level `targeting_resolution.brief_targeting` confirms hard brief interpretation once for the result set when that interpretation materially affects eligibility, pricing, or forecasting. Presence requires `is_custom: true` and `expires_at`.
+- `list_applications` (list[InventoryListApplication], conditionally required): One product-scoped receipt for every effective property- or collection-list targeting reference, regardless of field projection. Exclusion applications receive a receipt even when they match zero entries; zero matches for any inclusion application make the product ineligible, so it is not returned. Each receipt identifies the list without echoing separately supplied fetch credentials, records `resolved_at` and `evaluated_at`, and partitions the resolved snapshot into `summary.matched` and `summary.unmatched`. Counts apply to this product only; pricing and forecasts reflect the eligible inventory after all effective lists are composed.
 - `property_targeting_allowed` (bool, optional, default: false): Whether buyers can filter this product to a subset of its `publisher_properties`. When `false` (default), the product is "all or nothing" - buyers must accept all properties or the product is excluded from `property_list` filtering results. See [Property Targeting](#property-targeting).
 - `collection_targeting_allowed` (bool, optional, default: false): Whether buyers can target a subset of this product's `shows`. When `false` (default), the product is a bundle — buyers get all listed shows. When `true`, buyers can select specific shows in the media buy.
 - `data_provider_signals` (list[DataProviderSignalSelector], **deprecated**): Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. New implementations should use `included_signals`.
@@ -53,6 +54,36 @@ Products declare which pricing models they support. Buyers select a specific pri
 - `max_optimization_goals` (integer, optional): Maximum number of `optimization_goals` this product accepts on a package. When absent, no limit is declared. Most social platforms accept only 1.
 - `conversion_tracking` (object, optional): Conversion event tracking capabilities. Presence indicates the product supports `optimization_goals` with `kind: "event"`. See [Conversion tracking](#conversion-tracking-1).
 - `product_card` (object, optional): Visual card definition for displaying this product in user interfaces. See [Product Cards](#product-cards).
+
+## Property and collection list application receipts
+
+Property and collection lists are resolved outside the seller, but their inventory effect is product-specific. Whenever effective discovery targeting contains `property_list`, `property_list_exclude`, `collection_list`, or `collection_list_exclude`, the seller MUST return one `list_applications` receipt for each targeting reference on every returned product. This requirement overrides a narrow `fields` projection. An exclusion application returns a zero-match receipt; zero matches for any inclusion application leave no eligible inventory, so the seller MUST omit that product. If the same list is referenced for both inclusion and exclusion, those are separate applications and produce separate receipts on any product that remains eligible.
+
+```json
+{
+  "product_id": "streamhaus_ctv_01",
+  "list_applications": [
+    {
+      "list_type": "collection",
+      "effect": "exclude",
+      "agent_url": "https://governance.pinnacleagency.com",
+      "list_id": "cl_novamotors_dna_2026",
+      "resolved_at": "2026-08-24T09:00:00Z",
+      "evaluated_at": "2026-08-24T09:00:02Z",
+      "summary": {
+        "matched": 59,
+        "unmatched": 141
+      }
+    }
+  ]
+}
+```
+
+`list_type` and `effect` identify which targeting field was applied: `property` + `include` corresponds to `property_list`, `property` + `exclude` to `property_list_exclude`, and likewise for collection lists. `agent_url` and `list_id` MUST equal the effective request reference. The seller MUST NOT echo `auth_token` or any other fetch credential.
+
+Every receipt independently partitions all entries in its resolved snapshot against the same product inventory before any effective list is applied. This common baseline makes overlapping lists and array order irrelevant. The counts do not assert the seller's library-wide coverage or another product's result. Product price and forecast reflect the eligible inventory after all effective lists are composed.
+
+`resolved_at` identifies the complete snapshot the seller evaluated. When the governance response supplies `resolved_at`, the seller copies it; otherwise the seller records when it completed assembling the snapshot, including all fetched pages. `evaluated_at` records the later product-inventory comparison. A later discovery response, or a proposal revision that reevaluates products, returns fresh timestamps and counts. Finalizing unchanged proposal terms does not reevaluate products and MAY repeat the receipts already bound to that proposal.
 
 ### Metric optimization
 
@@ -306,12 +337,13 @@ Defines creative requirements and restrictions:
 
 ### Placements
 
-Products can optionally declare specific public ad placements within their inventory. Placement IDs are publisher-scoped. When a placement exists in a publisher's `adagents.json` placement declarations, the product placement references that entry with `kind: "publisher_ref"`, `publisher_domain`, and `placement_id`. The product may omit `name` in that case because the publisher declaration resolves the name and other public metadata. When no public publisher declaration exists, the sales agent defines an inline placement with `kind: "seller_inline"` and buyer-facing fields such as `name`, `description`, formats, and tags; its `placement_id` is still interpreted in the publisher namespace, or in the seller agent's own publisher namespace when `publisher_domain` is omitted. Whether a publisher reference resolved from publisher-hosted adagents.json or a community-maintained fallback file is resolver metadata, not a separate placement kind.
+Products can optionally declare specific public ad placements within their inventory. `kind` identifies who owns the placement ID. A `publisher_ref` has canonical `{publisher_domain, placement_id}` identity and resolves in the publisher's `adagents.json`. A `seller_inline` placement is defined by the sales agent; new 3.2 products include `seller_agent` so `{seller_agent, placement_id}` is self-contained. Legacy inline placements without it remain valid but are scoped to the enclosing seller and product. A `publisher_domain` on an inline placement describes inventory context—it does not let the seller mint an ID in that publisher's catalog namespace.
 
 - **`kind: "publisher_ref"`** - Publisher-scoped placement reference resolved from the named publisher's `adagents.json`; requires `publisher_domain`
-- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name`
-- **`publisher_domain`** - Domain whose `adagents.json` defines the referenced placement. New multi-publisher products SHOULD include it so the placement namespace is explicit.
-- **`placement_id`** - Placement ID in the publisher namespace. Buyers reference it with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts.
+- **`kind: "seller_inline"`** - Public buyer-facing placement metadata defined inline by the sales agent; requires `name` and should include `seller_agent`
+- **`publisher_domain`** - For `publisher_ref`, the domain whose `adagents.json` defines the placement. For `seller_inline`, optional inventory-publisher attribution only.
+- **`seller_agent`** - Defining sales-agent identity for a self-contained inline placement
+- **`placement_id`** - ID within the authority selected by `kind`. Legacy product-context references remain accepted.
 - **`mode: "targetable"`** - The buyer may select this publisher-scoped placement with `targeting_overlay.placement_selection`
 - **`mode: "included"`** - The public placement is fixed product inventory and cannot be cherry-picked. Across discovery, create, and update, a selected request exactly equal to the product's complete included set is an inherent match and may be echoed without `overlay_support.placement_selection`; partial selection requires a selectable product.
 - **`video_placement_types`** - Declared video placement types for OLV and other video placements. Concrete placements usually declare one value; aggregate placements may declare multiple.
@@ -498,6 +530,8 @@ constrained route.
     },
     {
       "kind": "seller_inline",
+      "publisher_domain": "daily-pulse.example",
+      "seller_agent": { "agent_url": "https://sales.daily-pulse.example/adcp" },
       "placement_id": "premium_rotation",
       "name": "Premium rotation",
       "mode": "included",
@@ -1571,7 +1605,7 @@ A buyer agent turns a chosen dimensional row into a buy through the existing buy
 
 `kind: "signal"` rows use canonical `signal_ref` plus optional `signal_value` to describe a signal bucket. Use `presence: "present"` for rows where the signal is available with the supplied value, and `presence: "absent"` with `signal_value: null` for the explicit not-present bucket. `signal_id` is only a shorthand when the enclosing object already identifies the signal unambiguously, such as a coverage forecast nested directly under a single `get_signals` item. Product-level forecasts use `ForecastPoint.product_id` for product context; do not add a separate product dimension item.
 
-After purchase, buyers verify one-dimensional marginals with `get_media_buy_delivery.reporting_dimensions` (`geo`, `device_type`, `device_platform`, `audience`, or `placement`) and reconcile measurement expectations through the package's `committed_metrics`, `performance_standards`, and reported `viewability` / `vendor_metric_values`. Standard delivery reporting does not currently return cross-dimensional intersections such as placement x country or product x signal; sellers that need exact post-buy reconciliation for those intersections must expose a seller-specific reporting surface or a future standard intersection capability.
+After purchase, buyers verify marginals with `get_media_buy_delivery.reporting_dimensions` (`geo`, `device_type`, `device_platform`, `audience`, `placement`, `property`, `collection`, or `installment`) and reconcile measurement expectations through the package's `committed_metrics`, `performance_standards`, and reported `viewability` / `vendor_metric_values`. The standardized `collection_property`, `installment_property`, and `placement_property` dimensions prove which property carried a content program, specific airing or programming block, or aggregate placement. Other arbitrary intersections, such as placement × country or product × signal, are not currently standardized.
 
 #### CTV with GRP Demographics
 

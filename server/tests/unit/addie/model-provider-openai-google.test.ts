@@ -23,6 +23,8 @@ import {
   ReadOnlyToolLoopBoundaryError,
 } from '../../../src/addie/model-providers/read-only-tool-loop.js';
 import { createOfficialDocsReadOnlyToolBoundary } from '../../../src/addie/jobs/official-docs-read-only-tools.js';
+import { executeFixedTraceToolLoop } from '../../../src/addie/eval/fixed-trace-tool-loop.js';
+import { FIXED_TRACE_SUITE } from '../../../src/addie/eval/fixed-trace-suite.js';
 
 const { googleGenAIConstructor } = vi.hoisted(() => ({
   googleGenAIConstructor: vi.fn(function FakeGoogleGenAI() {
@@ -135,6 +137,177 @@ describe('OpenAIResponsesProvider', () => {
     expect(normalized.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 0 });
   });
 
+  it('projects custom tools and stateless function-call continuation exactly', () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    const prepared = provider.prepare(request(OPENAI_ROUTER_MODEL, {
+      tools: [{
+        name: 'search_docs',
+        description: 'Search official docs.',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+          additionalProperties: false,
+        },
+      }],
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Find the task model.' }] },
+        { role: 'assistant', content: [{
+          type: 'tool_call',
+          id: 'call_1',
+          name: 'search_docs',
+          input: { query: 'task model' },
+        }] },
+        { role: 'user', content: [{
+          type: 'tool_result',
+          toolCallId: 'call_1',
+          toolName: 'search_docs',
+          content: 'The protocol is task based.',
+        }] },
+      ],
+    }));
+
+    expect(prepared.providerRequest).toMatchObject({
+      input: [
+        { type: 'message', role: 'user', content: 'Find the task model.' },
+        { type: 'function_call', call_id: 'call_1', name: 'search_docs', arguments: '{"query":"task model"}' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'The protocol is task based.' },
+      ],
+      tools: [{
+        type: 'function',
+        name: 'search_docs',
+        description: 'Search official docs.',
+        parameters: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+          additionalProperties: false,
+        },
+        strict: false,
+      }],
+      parallel_tool_calls: false,
+    });
+  });
+
+  it('marks failed tool results explicitly in Responses continuation output', () => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    const prepared = provider.prepare(request(OPENAI_ROUTER_MODEL, {
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'Find the task model.' }] },
+        { role: 'assistant', content: [{
+          type: 'tool_call', id: 'call_1', name: 'search_docs', input: { query: 'task model' },
+        }] },
+        { role: 'user', content: [{
+          type: 'tool_result', toolCallId: 'call_1', toolName: 'search_docs', content: '', isError: true,
+        }] },
+      ],
+    }));
+
+    expect(prepared.providerRequest.input).toEqual([
+      { type: 'message', role: 'user', content: 'Find the task model.' },
+      { type: 'function_call', call_id: 'call_1', name: 'search_docs', arguments: '{"query":"task model"}' },
+      { type: 'function_call_output', call_id: 'call_1', output: '[Tool execution error]\nNo error details provided.' },
+    ]);
+  });
+
+  it('normalizes and emits function calls through the shared event boundary', async () => {
+    const create = vi.fn().mockResolvedValue(openAIResponse({
+      output: [{
+        id: 'fc_1',
+        type: 'function_call',
+        call_id: 'call_1',
+        name: 'search_docs',
+        arguments: '{"query":"task model"}',
+        status: 'completed',
+      }],
+    }));
+    const provider = new OpenAIResponsesProvider('unused', { responses: { create } });
+    const normalized = await collectModelResponse(provider.respond(request(OPENAI_ROUTER_MODEL, {
+      tools: [{ name: 'search_docs', description: 'Search.', inputSchema: { type: 'object' } }],
+    })), 'openai');
+
+    expect(normalized).toMatchObject({
+      finishReason: 'tool_calls',
+      content: [{
+        type: 'tool_call',
+        id: 'call_1',
+        name: 'search_docs',
+        input: { query: 'task model' },
+      }],
+    });
+  });
+
+  it('round-trips function results through the normalized fixed-trace loop', async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(openAIResponse({
+        id: 'resp_tool',
+        output: [{
+          id: 'fc_1',
+          type: 'function_call',
+          call_id: 'call_1',
+          name: 'search_docs',
+          arguments: '{"query":"task model"}',
+          status: 'completed',
+        }],
+      }))
+      .mockResolvedValueOnce(openAIResponse({
+        id: 'resp_final',
+        output: [{
+          id: 'msg_final',
+          type: 'message',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: 'The protocol uses task-based interactions.', annotations: [] }],
+        }],
+      }));
+    const provider = new OpenAIResponsesProvider('unused', { responses: { create } });
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const definitions = trace.toolFixtures.map((fixture) => ({
+      name: fixture.name,
+      description: `Synthetic ${fixture.name}.`,
+      replaySafety: 'pure_local' as const,
+      input_schema: fixture.name === 'search_docs'
+        ? {
+            type: 'object' as const,
+            properties: { query: { type: 'string' } },
+            required: ['query'],
+            additionalProperties: false,
+          }
+        : {
+            type: 'object' as const,
+            properties: { doc_id: { type: 'string' } },
+            required: ['doc_id'],
+            additionalProperties: false,
+          },
+    }));
+
+    const result = await executeFixedTraceToolLoop(
+      provider,
+      request(OPENAI_ROUTER_MODEL),
+      trace,
+      definitions,
+      { maxIterations: 3 },
+    );
+
+    expect(result).toMatchObject({
+      iterations: 2,
+      text: 'The protocol uses task-based interactions.',
+      usage: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 4, cacheWriteTokens: 0 },
+      tools: [{ name: 'search_docs', simulated: true, policyDisposition: 'allowed' }],
+    });
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][0]).toMatchObject({
+      input: expect.arrayContaining([
+        { type: 'function_call', call_id: 'call_1', name: 'search_docs', arguments: '{"query":"task model"}' },
+        {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: expect.stringContaining('Official docs: AdCP uses task-based interactions'),
+        },
+      ]),
+    });
+  });
+
   it('fails closed when streaming transport is requested', async () => {
     const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     await expect(collectModelResponse(
@@ -175,17 +348,39 @@ describe('OpenAIResponsesProvider', () => {
     expect(withoutRead.usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheWriteTokens: 3 });
   });
 
-  it('fails closed on unsupported models, tools, cache hints, and non-text input', () => {
+  it('fails closed on unsupported models, provider tools, cache hints, and unsupported input', () => {
     const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     expect(() => provider.prepare(request('gpt-other'))).toThrow('Unsupported OpenAI router model');
-    expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { tools: [{ name: 'x', description: 'x', inputSchema: {} }] }))).toThrow();
+    expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { providerTools: [{ type: 'web_search' }] }))).toThrow('providerWebSearch');
     expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { system: [{ text: 'x', cacheHint: 'ephemeral' }] }))).toThrow('cache hints');
     expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { messages: [{ role: 'user', content: [{ type: 'image', mediaType: 'image/png', data: 'x' }] }] }))).toThrow();
+    expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { messages: [{ role: 'user', content: [{ type: 'tool_call', id: 'x', name: 'x', input: {} }] }] }))).toThrow('does not support tool_call');
+    expect(() => provider.prepare(request(OPENAI_ROUTER_MODEL, { messages: [{ role: 'user', content: [] }] }))).toThrow('non-empty');
   });
 
   it('rejects incomplete, unexpected, and malformed responses', () => {
     expect(() => normalizeOpenAIResponse(openAIResponse({ status: 'queued' }))).toThrow('Nonterminal');
-    expect(() => normalizeOpenAIResponse(openAIResponse({ output: [{ type: 'function_call' }] }))).toThrow('Unexpected');
+    expect(() => normalizeOpenAIResponse(openAIResponse({ output: [{ type: 'function_call' }] }))).toThrow('Malformed');
+    expect(() => normalizeOpenAIResponse(openAIResponse({
+      output: [{
+        type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'search_docs',
+        arguments: 'not-json', status: 'completed',
+      }],
+    }))).toThrow('arguments');
+    expect(() => normalizeOpenAIResponse(openAIResponse({
+      output: [{
+        type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'search_docs',
+        arguments: '[]', status: 'completed',
+      }],
+    }))).toThrow('arguments');
+    expect(() => normalizeOpenAIResponse(openAIResponse({
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_output_tokens' },
+      output: [{
+        type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'search_docs',
+        arguments: '{}', status: 'completed',
+      }],
+    }))).toThrow('before function calls were terminal');
     expect(() => normalizeOpenAIResponse(openAIResponse({ usage: undefined }))).toThrow('usage');
     expect(normalizeOpenAIResponse(openAIResponse({
       status: 'incomplete',

@@ -189,19 +189,8 @@
       "additionalProperties": false
     },
     "error": {
-      "type": "object",
-      "description": "Error details. Required when outcome is 'failed'.",
-      "properties": {
-        "code": {
-          "type": "string",
-          "description": "Error code from the seller."
-        },
-        "message": {
-          "type": "string",
-          "description": "Human-readable error description."
-        }
-      },
-      "additionalProperties": false
+      "$ref": "/schemas/governance/reported-outcome-error.json",
+      "description": "Buyer-attributed error associated with a failed seller interaction. Required when outcome is failed; classification_source=seller_response_copy preserves what the buyer received without claiming seller-attested provenance."
     },
     "governance_context": {
       "type": "string",

@@ -189,6 +189,13 @@ export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
   return inputSchema;
 }
 
+/** Load a canonical source schema for embedding in an MCP tool definition.
+ * Keeping its $id intact makes local fragment references resolve against the
+ * nested schema resource rather than the surrounding tool schema. */
+export function loadSourceSchema(relativePath: string): JsonSchema {
+  return structuredClone(readSchema(relativePath));
+}
+
 function schemaFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const path = join(directory, entry.name);
@@ -197,8 +204,8 @@ function schemaFiles(directory: string): string[] {
   });
 }
 
-function productDiscoverySourceValidator(fileName: string): ValidateFunction {
-  const cached = sourceValidators.get(fileName);
+function sourceValidator(relativePath: string): ValidateFunction {
+  const cached = sourceValidators.get(relativePath);
   if (cached) return cached;
 
   if (!sourceAjv) {
@@ -209,10 +216,22 @@ function productDiscoverySourceValidator(fileName: string): ValidateFunction {
       if (typeof schema.$id === 'string') sourceAjv.addSchema(schema, schema.$id);
     }
   }
-  const validator = sourceAjv.getSchema(`/schemas/media-buy/${fileName}.json`);
-  if (!validator) throw new Error(`Source schema validator not found: ${fileName}`);
-  sourceValidators.set(fileName, validator);
+  const schema = readSchema(relativePath);
+  const schemaId = schema.$id;
+  if (typeof schemaId !== 'string') throw new Error(`Source schema has no $id: ${relativePath}`);
+  const validator = sourceAjv.getSchema(schemaId);
+  if (!validator) throw new Error(`Source schema validator not found: ${relativePath}`);
+  sourceValidators.set(relativePath, validator);
   return validator;
+}
+
+export function validateSourceSchema(relativePath: string, value: unknown): {
+  valid: boolean;
+  errors: ErrorObject[];
+} {
+  const validator = sourceValidator(relativePath);
+  const valid = validator(value) === true;
+  return { valid, errors: [...(validator.errors ?? [])] };
 }
 
 function errorField(error: ErrorObject): string | undefined {
@@ -319,7 +338,7 @@ export function validateProductDiscoverySourceInput(
   fileName: string,
   args: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
-  const validator = productDiscoverySourceValidator(fileName);
+  const validator = sourceValidator(`media-buy/${fileName}.json`);
   if (!validator(args)) {
     const error = validator.errors?.[0];
     const field = error && errorField(error);
@@ -354,7 +373,7 @@ export function validateProductDiscoverySourceResponse(
   response: Record<string, unknown>,
   request?: Record<string, unknown>,
 ): { message: string; field?: string } | undefined {
-  const validator = productDiscoverySourceValidator(fileName);
+  const validator = sourceValidator(`media-buy/${fileName}.json`);
   if (!validator(response)) {
     const error = validator.errors?.[0];
     const field = error && errorField(error);

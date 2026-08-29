@@ -25,7 +25,7 @@ The set always means “choose exactly one compatible representation.” Arrays 
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/creative-representation-set.json",
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/creative-representation-set.json",
   "creative_id": "cr_launch_mrec",
   "revision_id": "rev_2026_08_22_1",
   "revision_content_digest": "sha256:dfab7f7290bba72f6826ee10186f7618d6b53b3037290f72b094294bceaf6835",
@@ -235,7 +235,7 @@ bytes to change without changing either review fingerprint.
 
 ## Resolution failure
 
-When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-representation-unresolved.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.8/error-details/creative-representation-unresolved.json), with exactly one `representation_rejections` entry for every candidate. Unsupported representations remain in the immutable set; failure does not delete or rewrite them.
+When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.details` MUST conform to [`error-details/creative-representation-unresolved.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.9/error-details/creative-representation-unresolved.json), with exactly one `representation_rejections` entry for every candidate. Unsupported representations remain in the immutable set; failure does not delete or rewrite them.
 
 ```json
 {
@@ -272,7 +272,7 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
 
 ```json
 {
-  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.8/core/creative-representation-set.json",
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/creative-representation-set.json",
   "creative_id": "cr_launch_video",
   "revision_id": "rev_7",
   "revision_content_digest": "sha256:67d087e0a6e84185fc9b28d5854b1f9d90958ac902a3d569422af3ba69951154",

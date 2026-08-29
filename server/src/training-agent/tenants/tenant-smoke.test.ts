@@ -10,17 +10,20 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import Ajv from 'ajv';
 import type { TrainingContext } from '../types.js';
+import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
+import { clearIdempotencyCache } from '../idempotency.js';
 import {
   clearSessions,
   flushDirtySessions,
   getSession,
+  registerSharedPublicBrandPartition,
   runWithSessionContext,
   sessionKeyFromArgs,
   stopSessionCleanup,
 } from '../state.js';
+import { handleControlMediaBuy } from '../task-handlers.js';
 import { clearSiSessions } from '../si-handlers.js';
 import { clearForcedTaskCompletions } from '../comply-test-controller.js';
 import { getAgentUrl } from '../config.js';
@@ -198,6 +201,46 @@ describe('tenant routing smoke', () => {
     }
   });
 
+  it('reads controller-seeded media buys when the current runner retains sandbox on task calls', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'controller-seeded-current-runner.example' },
+        operator: 'controller-seeded-current-runner.example',
+        sandbox: true,
+      };
+
+      const seeded = await callTenantTool(url, 2, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: 'controller_seeded_current_runner_buy',
+          fixture: { status: 'active', currency: 'USD' },
+        },
+      }) as { result?: { structuredContent?: { success?: boolean; adcp_error?: unknown } } };
+      expect(seeded.result?.structuredContent?.adcp_error, JSON.stringify(seeded)).toBeUndefined();
+      expect(seeded.result?.structuredContent?.success).toBe(true);
+
+      const read = await callTenantTool(url, 3, 'get_media_buys', {
+        account,
+        media_buy_ids: ['controller_seeded_current_runner_buy'],
+      }) as { result?: { structuredContent?: { media_buys?: Array<{
+        media_buy_id?: string;
+        status?: string;
+      }> } } };
+      expect(read.result?.structuredContent?.media_buys).toEqual([
+        expect.objectContaining({
+          media_buy_id: 'controller_seeded_current_runner_buy',
+          status: 'active',
+        }),
+      ]);
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('serves brand.json with tenant public keys', async () => {
     const { baseUrl, close } = await bootServer();
     try {
@@ -305,7 +348,7 @@ describe('tenant routing smoke', () => {
             operator: 'pinnacle-agency.example',
           },
           governance_agents: [{
-            url: 'https://governance.tenant-signal-gov.example/mcp',
+            url: 'https://governance.example/mcp',
             authentication: {
               schemes: ['Bearer'],
               credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -341,7 +384,7 @@ describe('tenant routing smoke', () => {
   it('validates and idempotently applies the sync_governance write boundary', async () => {
     const { baseUrl, close } = await bootServer();
     try {
-      const url = `${baseUrl}/signals/mcp`;
+      const url = `${baseUrl}/sales/mcp`;
       await initializeTenant(url);
       const account = {
         brand: {
@@ -354,6 +397,7 @@ describe('tenant routing smoke', () => {
           },
         },
         operator: 'pinnacle-agency.example',
+        sandbox: true,
       };
       await callTenantTool(url, 2, 'sync_accounts', {
         accounts: [{ ...account, billing: 'operator', payment_terms: 'net_30' }],
@@ -363,7 +407,7 @@ describe('tenant routing smoke', () => {
         accounts: [{
           account,
           governance_agents: [{
-            url: 'https://governance.tenant-sync-governance.example/mcp',
+            url: 'https://governance.example/mcp',
             authentication: {
               schemes: ['Bearer'],
               credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -421,6 +465,63 @@ describe('tenant routing smoke', () => {
       expect(first.result?.structuredContent?.replayed).toBeUndefined();
       expect(replay.result?.structuredContent?.replayed).toBe(true);
 
+      const rejectedCredential = 'gov-token-rejected-xxxxxxxxxxxxxxxxxxxxxxxx';
+      const rejected = await callTenantTool(url, 11, 'sync_governance', {
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://user:secret@untrusted-governance.example/private?token=query-secret',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: rejectedCredential,
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-sync-governance-rejected-userinfo',
+      }) as { result?: { structuredContent?: { accounts?: Array<Record<string, unknown>> } } };
+      const rejectedJson = JSON.stringify(rejected.result?.structuredContent);
+      expect(rejectedJson).toContain('INVALID_REQUEST');
+      expect(rejectedJson).not.toContain('query-secret');
+      expect(rejectedJson).not.toContain(rejectedCredential);
+      expect(rejected.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
+
+      const legacyBinding = await callTenantTool(url, 12, 'sync_governance', {
+        adcp_version: '3.1',
+        accounts: [{
+          account,
+          governance_agents: [{
+            url: 'https://untrusted-governance.example/mcp',
+            authentication: {
+              schemes: ['Bearer'],
+              credentials: rejectedCredential,
+            },
+          }],
+        }],
+        idempotency_key: 'tenant-sync-governance-not-accepted',
+      }) as { result?: { structuredContent?: { accounts?: Array<Record<string, unknown>> } } };
+      const legacyBindingJson = JSON.stringify(legacyBinding.result?.structuredContent);
+      expect(legacyBinding.result?.structuredContent?.accounts?.[0]).toMatchObject({
+        status: 'failed',
+        errors: [{ code: 'GOVERNANCE_AGENT_NOT_ACCEPTED' }],
+      });
+      expect(legacyBinding.result?.structuredContent?.accounts?.[0]).not.toHaveProperty('governance_agents');
+      expect(legacyBindingJson).not.toContain(rejectedCredential);
+
+      const retainedBinding = await callTenantTool(url, 14, 'comply_test_controller', {
+        account,
+        scenario: 'query_account_governance_binding',
+        params: { account },
+      }) as { result?: { structuredContent?: { simulated?: { governance_agents?: Array<{ url?: string }> } } } };
+      expect(retainedBinding.result?.structuredContent?.simulated?.governance_agents).toEqual([
+        { url: 'https://governance.example/mcp' },
+      ]);
+
+      const rebound = await callTenantTool(url, 13, 'sync_governance', {
+        ...payload,
+        idempotency_key: 'tenant-sync-governance-rebound',
+      }) as { result?: { structuredContent?: { accounts?: Array<{ status?: string }> } } };
+      expect(rebound.result?.structuredContent?.accounts?.[0]?.status).toBe('synced');
+
       const conflict = await callTenantTool(url, 9, 'sync_governance', {
         ...payload,
         accounts: [{
@@ -442,7 +543,7 @@ describe('tenant routing smoke', () => {
     const stub = new GovernanceAgentStub();
     try {
       const { url: stubUrl } = await stub.start();
-      const authorityUrl = 'https://governance-stub.invalid/mcp';
+      const authorityUrl = 'https://governance.example/mcp';
       (stub as unknown as { issuer: string }).issuer = authorityUrl;
       const salesUrl = `${baseUrl}/sales/mcp`;
       await initializeTenant(salesUrl);
@@ -468,7 +569,7 @@ describe('tenant routing smoke', () => {
       });
       // The public request schema correctly requires HTTPS. Exercise the handler
       // seam directly so the local HTTP stub can observe the outbound call.
-      const registration = handleSyncGovernance({
+      const registration = await handleSyncGovernance({
         accounts: [{
           account,
           governance_agents: [{
@@ -543,7 +644,7 @@ describe('tenant routing smoke', () => {
         }),
       });
     } finally {
-      setGovernanceAuthorityTestOverride('https://governance-stub.invalid/mcp', undefined);
+      setGovernanceAuthorityTestOverride('https://governance.example/mcp', undefined);
       await stub.stop();
       await close();
     }
@@ -564,7 +665,10 @@ describe('tenant routing smoke', () => {
         await initializeTenant(url);
         const response = await callTenantTool(url, 20 + index, 'get_adcp_capabilities', {}) as {
           result?: { structuredContent?: {
-            adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
+            adcp?: { governance_enforcement?: {
+              tasks?: Array<{ task?: string; modes?: string[] }>;
+              accepted_governance_agents?: { any_of?: Array<{ kind?: string; agent_url?: string }> };
+            } };
             experimental_features?: string[];
             specialisms?: string[];
             media_buy?: {
@@ -581,6 +685,8 @@ describe('tenant routing smoke', () => {
               : ['signed_context'],
           })),
         );
+        expect(capabilities?.adcp?.governance_enforcement?.accepted_governance_agents?.any_of)
+          .toContainEqual({ kind: 'agent_url', agent_url: 'https://governance.example/mcp' });
         expect(capabilities?.experimental_features).toContain('governance.campaign');
         if (tenant === 'sales') {
           expect(capabilities?.experimental_features).toContain('media_buy.audience_activation');
@@ -657,7 +763,7 @@ describe('tenant routing smoke', () => {
       );
 
       const capabilitiesResponse = await callTenantTool(url, 3, 'get_adcp_capabilities', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
       }) as {
         result?: { structuredContent?: {
@@ -667,10 +773,15 @@ describe('tenant routing smoke', () => {
             supports_proposals?: boolean;
             lifecycle_tools?: string[];
             proposal_refinement?: { supported_dimensions?: string[]; max_alternatives?: number };
+            acceptance_policy_discovery?: {
+              catalog_url?: string;
+              catalog_digest?: string;
+              default_profile_ids?: string[];
+            };
           };
         } };
       };
-      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
+      expect(capabilitiesResponse.result?.structuredContent?.adcp_version).toBe('3.2-beta.8');
       expect(capabilitiesResponse.result?.structuredContent?.adcp?.supported_versions).toContain('3.2-beta.6');
       const mediaBuy = capabilitiesResponse.result?.structuredContent?.media_buy;
       expect(mediaBuy?.supports_proposals).toBe(true);
@@ -695,6 +806,11 @@ describe('tenant routing smoke', () => {
         ],
         max_alternatives: 3,
       });
+      expect(mediaBuy?.acceptance_policy_discovery).toEqual({
+        catalog_url: 'https://test-agent.adcontextprotocol.org/registry/acceptance-policy-catalog.json',
+        catalog_digest: 'sha256:3afb3865dbd69025b4f925c5c018c7659fa0a744efcb0b12b87e1b3a119b3d2a',
+        default_profile_ids: ['meta_political_advertising_acceptance'],
+      });
 
       for (const [id, adcpVersion] of [[31, '3.2'], [32, '3.0']] as const) {
         const nonBetaCapabilities = await callTenantTool(url, id, 'get_adcp_capabilities', {
@@ -704,19 +820,24 @@ describe('tenant routing smoke', () => {
           result?: { structuredContent?: {
             adcp_version?: string;
             adcp?: { governance_enforcement?: { tasks?: Array<{ task?: string; modes?: string[] }> } };
-            media_buy?: { lifecycle_tools?: string[]; proposal_refinement?: unknown };
+            media_buy?: {
+              lifecycle_tools?: string[];
+              proposal_refinement?: unknown;
+              acceptance_policy_discovery?: unknown;
+            };
           } };
         };
-        expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe('3.0');
+        expect(nonBetaCapabilities.result?.structuredContent?.adcp_version).toBe(adcpVersion === '3.0' ? '3.0' : '3.1');
         expect(nonBetaCapabilities.result?.structuredContent?.adcp?.governance_enforcement?.tasks).toEqual([
           { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
         ]);
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.lifecycle_tools).toBeUndefined();
         expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.proposal_refinement).toBeUndefined();
+        expect(nonBetaCapabilities.result?.structuredContent?.media_buy?.acceptance_policy_discovery).toBeUndefined();
       }
 
       const requested = await callTenantTool(url, 4, 'request_proposals', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-request-0001',
         account: {
@@ -730,12 +851,12 @@ describe('tenant routing smoke', () => {
           proposals?: Array<{ proposal_id?: string }>;
         } };
       };
-      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
+      expect(requested.result?.structuredContent?.adcp_version).toBe('3.2-beta.8');
       const sourceProposalId = requested.result?.structuredContent?.proposals?.[0]?.proposal_id;
       expect(sourceProposalId, JSON.stringify(requested)).toBeTruthy();
 
       const partial = await callTenantTool(url, 5, 'refine_proposals', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-three-0001',
         account: {
@@ -756,14 +877,14 @@ describe('tenant routing smoke', () => {
         } };
       };
       const counteroffer = partial.result?.structuredContent;
-      expect(counteroffer?.adcp_version).toBe('3.2-beta.6');
+      expect(counteroffer?.adcp_version).toBe('3.2-beta.8');
       expect(counteroffer?.adcp_error).toBeUndefined();
       expect(counteroffer?.results?.[0]?.outcome, JSON.stringify(counteroffer)).toBe('partial');
       expect(counteroffer?.results?.[0]?.reason_code).toBe('alternatives_unavailable');
       expect(counteroffer?.results?.[0]?.proposals).toHaveLength(2);
 
       const refined = await callTenantTool(url, 6, 'refine_proposals', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-refine-two-0001',
         account: {
@@ -784,7 +905,7 @@ describe('tenant routing smoke', () => {
         } };
       };
       const refinement = refined.result?.structuredContent;
-      expect(refinement?.adcp_version).toBe('3.2-beta.6');
+      expect(refinement?.adcp_version).toBe('3.2-beta.8');
       expect(refinement?.adcp_error).toBeUndefined();
       expect(refinement?.results?.[0]?.outcome).toBe('revised');
       expect(refinement?.results?.[0]?.proposals).toHaveLength(2);
@@ -792,7 +913,7 @@ describe('tenant routing smoke', () => {
       const revisedProposalId = refinement?.results?.[0]?.proposals?.[0]?.proposal_id;
       expect(revisedProposalId).toEqual(expect.any(String));
       const finalized = await callTenantTool(url, 7, 'refine_proposals', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
         idempotency_key: 'tenant-profile-finalize-0001',
         refinements: [{ proposal_id: revisedProposalId, action: 'finalize' }],
@@ -1528,11 +1649,6 @@ describe('tenant routing smoke', () => {
             description: 'A deterministic seeded offer',
             delivery_type: 'guaranteed',
             channels: ['display'],
-            allowed_actions: [{
-              action: 'extend_flight',
-              modes: ['requires_approval'],
-              sla: { response_max: 'PT4H', completion_max: 'P2D' },
-            }],
             format_ids: [{
               agent_url: 'https://creative.adcontextprotocol.org/',
               id: 'display_300x250_image',
@@ -1714,7 +1830,7 @@ describe('tenant routing smoke', () => {
         accounts: [{
           account,
           governance_agents: [{
-            url: 'https://governance.tenant-rights-gov.example/mcp',
+            url: 'https://governance.example/mcp',
             authentication: {
               schemes: ['Bearer'],
               credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -1792,7 +1908,7 @@ describe('tenant routing smoke', () => {
         accounts: [{
           account,
           governance_agents: [{
-            url: 'https://governance.tenant-creative-gov.example/mcp',
+            url: 'https://governance.example/mcp',
             authentication: {
               schemes: ['Bearer'],
               credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -1867,7 +1983,7 @@ describe('tenant routing smoke', () => {
         accounts: [{
           account,
           governance_agents: [{
-            url: 'https://governance.tenant-creative-refine-gov.example/mcp',
+            url: 'https://governance.example/mcp',
             authentication: {
               schemes: ['Bearer'],
               credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
@@ -1941,9 +2057,9 @@ describe('tenant routing smoke', () => {
         ?.filter(format => format.operations?.includes('preview'))
         .map(format => format.capability_id) ?? [];
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.8');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.8']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -1955,15 +2071,11 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
-      const schema = JSON.parse(fs.readFileSync(path.resolve(
-        'dist/schemas/3.2.0-beta.6/bundled/protocol/get-adcp-capabilities-response.json',
-      ), 'utf8'));
-      const validate = new Ajv({ allErrors: true, strict: false, discriminator: true, validateFormats: false })
-        .compile(schema);
-      expect(
-        validate(body.result?.structuredContent),
-        JSON.stringify(validate.errors),
-      ).toBe(true);
+      const validation = validateSourceSchema(
+        'protocol/get-adcp-capabilities-response.json',
+        body.result?.structuredContent,
+      );
+      expect(validation.valid, JSON.stringify(validation.errors)).toBe(true);
     } finally {
       await close();
     }
@@ -2376,6 +2488,178 @@ describe('tenant routing smoke', () => {
       await close();
     }
   }, 30000);
+
+  it('executes seller-managed controls through a durable revision-bound task', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'seller-managed-control.example' },
+        operator: 'seller-managed-control.example',
+        sandbox: true,
+      };
+      const payload = (response: Record<string, unknown>) => (
+        response as { result?: { structuredContent?: Record<string, unknown> } }
+      ).result?.structuredContent;
+
+      const seeded = payload(await callTenantTool(url, 20, 'comply_test_controller', {
+        account,
+        scenario: 'seed_media_buy',
+        params: {
+          media_buy_id: 'seller_managed_control_buy',
+          fixture: {
+            status: 'active',
+            currency: 'USD',
+            total_budget: 10_000,
+            start_time: '2026-01-01T00:00:00Z',
+            end_time: '2099-12-31T23:59:59Z',
+            packages: [{
+              package_id: 'seller_managed_control_package',
+              product_id: 'seller_managed_control_product',
+              pricing_option_id: 'seller_managed_control_pricing',
+              budget: 10_000,
+            }],
+            accepted_proposal: {
+              proposal_id: 'seller_managed_control_proposal',
+              proposal_kind: 'new_media_buy',
+              proposal_status: 'accepted',
+              accepted_at: '2026-01-01T00:00:00Z',
+              media_buy_id: 'seller_managed_control_buy',
+              name: 'Seller-managed control task',
+              commercial_terms: {
+                brand: account.brand,
+                purchases: [],
+                start_time: '2026-01-01T00:00:00Z',
+                end_time: '2099-12-31T23:59:59Z',
+                total_budget: { amount: 10_000, currency: 'USD' },
+                change_terms: [{
+                  term_id: 'seller_managed_budget_increase',
+                  action: 'increase_budget',
+                  service_mode: 'seller_managed',
+                  allowed_statuses: ['active', 'pending_creatives'],
+                  constraints: { kind: 'budget', max_delta_percent: 20 },
+                }],
+              },
+              terms_digest: 'sha256:DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
+            },
+          },
+        },
+      }));
+      expect(seeded?.success).toBe(true);
+
+      const before = payload(await callTenantTool(url, 19, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect(
+        (before?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]?.available_actions,
+        JSON.stringify(before),
+      ).toEqual([{
+        task: 'control_media_buy',
+        action: 'increase_budget',
+        mode: 'seller_managed',
+        change_term_id: 'seller_managed_budget_increase',
+      }]);
+
+      const request = {
+        idempotency_key: 'seller-managed-control-task-0001',
+        account,
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 1,
+        total_budget: { amount: 11_000, currency: 'USD' },
+      };
+      const submitted = payload(await callTenantTool(url, 21, 'control_media_buy', request));
+      expect(submitted, JSON.stringify(submitted)).toMatchObject({ status: 'submitted' });
+      expect(typeof submitted?.task_id).toBe('string');
+      const taskId = String(submitted?.task_id);
+
+      const replay = payload(await callTenantTool(url, 22, 'control_media_buy', request));
+      expect(replay).toMatchObject({ task_id: taskId });
+
+      let terminal: Record<string, unknown> | undefined;
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        terminal = payload(await callTenantTool(url, 23 + attempt, 'get_task_status', {
+          account,
+          task_id: taskId,
+          include_result: true,
+        }));
+        if (terminal?.status === 'completed' || terminal?.status === 'failed') break;
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(terminal).toMatchObject({
+        task_id: taskId,
+        task_type: 'control_media_buy',
+        status: 'completed',
+        result: {
+          status: 'completed',
+          media_buy_id: 'seller_managed_control_buy',
+          revision: 2,
+        },
+      });
+
+      // Drop the SDK replay cache after the durable task has advanced the
+      // media-buy revision. The platform must recover the original task from
+      // its stable principal/account/idempotency row before stale-revision
+      // preflight, and the registry must accept the exact task replay.
+      await clearIdempotencyCache();
+      const postCompletionReplay = payload(await callTenantTool(url, 79, 'control_media_buy', request));
+      expect(postCompletionReplay).toMatchObject({ status: 'submitted', task_id: taskId });
+
+      const read = payload(await callTenantTool(url, 80, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect((read?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]).toMatchObject({
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 2,
+        total_budget: 11_000,
+      });
+
+      // Model a replacement worker after the media-buy CAS committed but
+      // before the outbox/task terminal write. The task-bound receipt must
+      // return the original artifact without applying the increase twice or
+      // rejecting the original revision as stale.
+      const replayArgs = registerSharedPublicBrandPartition(
+        structuredClone(request),
+        account.brand.domain,
+      );
+      const recovered = await runWithSessionContext(async () => await handleControlMediaBuy(
+        replayArgs,
+        { mode: 'open' },
+        {
+          sellerManagedExecution: {
+            kind: 'execute',
+            taskId,
+            mediaBuyId: 'seller_managed_control_buy',
+            expectedRevision: 1,
+            actions: ['increase_budget'],
+          },
+        },
+      ));
+      expect(recovered).toMatchObject({
+        status: 'completed',
+        media_buy_id: 'seller_managed_control_buy',
+        revision: 2,
+      });
+
+      const stale = payload(await callTenantTool(url, 81, 'control_media_buy', {
+        ...request,
+        idempotency_key: 'seller-managed-control-task-stale-0002',
+      }));
+      expect(stale?.adcp_error).toMatchObject({ code: 'CONFLICT' });
+      const readAfterStale = payload(await callTenantTool(url, 82, 'get_media_buys', {
+        account,
+        media_buy_ids: ['seller_managed_control_buy'],
+      }));
+      expect((readAfterStale?.media_buys as Array<Record<string, unknown>> | undefined)?.[0]).toMatchObject({
+        revision: 2,
+        total_budget: 11_000,
+      });
+    } finally {
+      await close();
+    }
+  }, 15000);
 
   it('serves the AdCP 3.1 dual product shape through the explicit legacy facade', async () => {
     const { baseUrl, close } = await bootServer();
@@ -3085,7 +3369,7 @@ describe('tenant routing smoke', () => {
         };
       };
       expect(listed.result?.structuredContent?.status).toBe('completed');
-      expect(listed.result?.structuredContent?.adcp_version).toBe('3.0');
+      expect(listed.result?.structuredContent?.adcp_version).toBe('3.1');
       expect(listed.result?.structuredContent?.scenarios).toEqual(expect.arrayContaining(SALES_CURRENT_SCENARIOS));
 
       const r = await fetch(url, {
@@ -3122,7 +3406,7 @@ describe('tenant routing smoke', () => {
         };
       };
       expect(body.result?.structuredContent?.status).toBe('completed');
-      expect(body.result?.structuredContent?.adcp_version).toBe('3.0');
+      expect(body.result?.structuredContent?.adcp_version).toBe('3.1');
       expect(body.result?.structuredContent?.success).toBe(true);
       expect(body.result?.structuredContent?.context?.correlation_id).toBe('tenant-seed-measurement-catalog');
 
@@ -3167,7 +3451,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.8'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
@@ -3591,7 +3875,7 @@ describe('tenant routing smoke', () => {
       };
       const payload = {
         idempotency_key: 'tenant-products-idempotency-0001',
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         buying_mode: 'wholesale',
         account,
       };
@@ -3709,7 +3993,7 @@ describe('tenant routing smoke', () => {
         brand: account.brand,
       }) as { result?: { structuredContent?: { adcp_version?: string; products?: Array<{ product_id?: string }>; replayed?: boolean } } };
       expect(aliasReplay.result?.structuredContent).not.toHaveProperty('adcp_error');
-      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.6');
+      expect(aliasReplay.result?.structuredContent?.adcp_version).toBe('3.2-beta.8');
       expect(aliasReplay.result?.structuredContent?.products?.map(product => product.product_id))
         .toEqual(first.result?.structuredContent?.products?.map(product => product.product_id));
       expect(aliasReplay.result?.structuredContent?.replayed).toBeUndefined();
@@ -3912,7 +4196,7 @@ describe('tenant routing smoke', () => {
         sandbox: true,
       };
       const directive = await callTenantTool(url, 91, 'comply_test_controller', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         account,
         scenario: 'force_get_products_arm',
         params: {
@@ -3924,7 +4208,7 @@ describe('tenant routing smoke', () => {
       expect(directive.result?.structuredContent?.success).toBe(true);
 
       const rejected = await callTenantTool(url, 92, 'get_products', {
-        adcp_version: '3.2-beta.6',
+        adcp_version: '3.2-beta.8',
         adcp_major_version: 3,
         idempotency_key: 'tenant-products-rejected-0001',
         buying_mode: 'brief',

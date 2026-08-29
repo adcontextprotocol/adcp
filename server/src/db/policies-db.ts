@@ -1,4 +1,178 @@
 import { query, getClient } from './client.js';
+import { z } from 'zod';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
+
+const ACCEPTANCE_POLICY_PROFILE_SCHEMA_URI = '/schemas/media-buy/acceptance-policy-profile.json';
+const SHA256_DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
+const PROFILE_ID_RE = /^[A-Za-z0-9_.:-]+$/;
+const POLICY_CATEGORY_RE = /^[a-z][a-z0-9_]*$/;
+const JURISDICTION_RE = /^[A-Z]{2}$/;
+const JURISDICTION_GROUP_RE = /^[A-Z][A-Z0-9_-]*$/;
+
+const RequirementDescriptionSchema = z.string().min(1);
+const RequirementCriteriaSchema = z.array(z.string().regex(/^[a-z][a-z0-9_.:-]*$/)).min(1);
+const AcceptancePolicyRequirementSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('category_declaration'),
+    declaration: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('advertiser_verification'),
+    verification_scheme: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('advertiser_eligibility'),
+    criteria: RequirementCriteriaSchema,
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('funding_restriction'),
+    criteria: RequirementCriteriaSchema,
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('certification'),
+    credential: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('license'),
+    credential: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  ...(['prior_authorization', 'account_setup', 'sales_assisted', 'transparency_reporting'] as const).map(kind =>
+    z.object({ kind: z.literal(kind), description: RequirementDescriptionSchema.optional() }).strict(),
+  ),
+  z.object({
+    kind: z.literal('disclosure'),
+    format: z.string().min(1).optional(),
+    placement: z.string().min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('targeting_restriction'),
+    restricted_attributes: z.array(z.enum([
+      'racial_ethnic_origin',
+      'political_opinions',
+      'religious_beliefs',
+      'trade_union_membership',
+      'health_data',
+      'sex_life_sexual_orientation',
+      'genetic_data',
+      'biometric_data',
+      'age',
+      'familial_status',
+    ])).min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  ...(['creative_restriction', 'destination_restriction'] as const).map(kind =>
+    z.object({ kind: z.literal(kind), description: RequirementDescriptionSchema }).strict(),
+  ),
+  z.object({
+    kind: z.literal('format_restriction'),
+    format_ids: z.array(z.string().min(1)).min(1).optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('time_restriction'),
+    starts_at: z.string().datetime().optional(),
+    ends_at: z.string().datetime().optional(),
+    description: RequirementDescriptionSchema.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('custom'),
+    id: z.string().regex(/^[a-z][a-z0-9_.:-]*$/),
+    description: RequirementDescriptionSchema,
+    ext: z.record(z.string(), z.unknown()).optional(),
+  }).strict(),
+]);
+
+const AcceptancePolicyRuleSchema = z.object({
+  rule_id: z.string().regex(PROFILE_ID_RE),
+  subject_category: z.string().regex(POLICY_CATEGORY_RE),
+  subject_facets: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1).optional(),
+  advertiser_roles: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1).optional(),
+  jurisdictions: z.array(z.string().regex(JURISDICTION_RE)).min(1).optional(),
+  jurisdiction_groups: z.array(z.string().regex(JURISDICTION_GROUP_RE)).min(1).optional(),
+  applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])).min(1),
+  disposition: z.enum(['allowed', 'conditional', 'prohibited']),
+  requirements: z.array(AcceptancePolicyRequirementSchema).min(1).optional(),
+  policy_ids: z.array(z.string().min(1)).min(1).optional(),
+  description: z.string().min(1).max(1000).optional(),
+  effective_at: z.string().datetime().optional(),
+  expires_at: z.string().datetime().optional(),
+  ext: z.record(z.string(), z.unknown()).optional(),
+}).strict().superRefine((rule, ctx) => {
+  if (rule.disposition === 'conditional' && !rule.requirements) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['requirements'], message: 'required for conditional rules' });
+  }
+});
+
+const AcceptancePolicyScopeSchema = z.object({
+  subject_categories: z.array(z.string().regex(POLICY_CATEGORY_RE)).min(1),
+  applies_to: z.array(z.enum(['account', 'media_buy', 'creative', 'landing_page', 'targeting', 'delivery', 'format'])).min(1),
+  jurisdictions: z.array(z.string().regex(JURISDICTION_RE)).min(1).optional(),
+  jurisdiction_groups: z.array(z.string().regex(JURISDICTION_GROUP_RE)).min(1).optional(),
+  all_jurisdictions: z.literal(true).optional(),
+}).strict().superRefine((scope, ctx) => {
+  if (!scope.jurisdictions && !scope.jurisdiction_groups && scope.all_jurisdictions !== true) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'jurisdiction coverage must be explicit' });
+  }
+});
+
+export const AcceptancePolicyProfileSchema = z.object({
+  profile_id: z.string().regex(PROFILE_ID_RE),
+  version: z.string().min(1),
+  content_digest: z.string().regex(SHA256_DIGEST_RE),
+  policy_refs: z.array(z.object({
+    policy_id: z.string().min(1),
+    version: z.string().min(1),
+    content_digest: z.string().regex(SHA256_DIGEST_RE),
+  }).strict()).min(1),
+  coverage: z.enum(['partial', 'complete']),
+  scope: AcceptancePolicyScopeSchema.optional(),
+  region_aliases: z.record(z.string().regex(JURISDICTION_GROUP_RE), z.array(z.string().regex(JURISDICTION_RE)).min(1)).optional(),
+  description: z.string().min(1).optional(),
+  rules: z.array(AcceptancePolicyRuleSchema).min(1),
+  ext: z.record(z.string(), z.unknown()).optional(),
+}).strict().superRefine((profile, ctx) => {
+  if (profile.coverage === 'complete' && !profile.scope) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['scope'], message: 'required for complete coverage' });
+  }
+});
+export type AcceptancePolicyProfile = z.infer<typeof AcceptancePolicyProfileSchema>;
+
+const CanonicalPolicyDocumentSchema = z.object({
+  policy_id: z.string(),
+  source: z.enum(['registry', 'inline']).optional(),
+  version: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  category: z.enum(['regulation', 'standard']),
+  enforcement: z.enum(['must', 'should', 'may']),
+  requires_human_review: z.boolean().optional(),
+  jurisdictions: z.array(z.string()).optional(),
+  region_aliases: z.record(z.string(), z.array(z.string())).optional(),
+  policy_categories: z.array(z.string()).optional(),
+  channels: z.array(z.string()).optional(),
+  governance_domains: z.array(z.string()).optional(),
+  effective_date: z.string().optional(),
+  sunset_date: z.string().optional(),
+  source_url: z.string().optional(),
+  source_name: z.string().optional(),
+  issuer: z.object({ domain: z.string(), name: z.string().optional() }).strict().optional(),
+  acceptance_profile: AcceptancePolicyProfileSchema.optional(),
+  policy: z.string(),
+  guidance: z.string().optional(),
+  exemplars: z.object({
+    pass: z.array(z.object({ scenario: z.string(), explanation: z.string() }).strict()).optional(),
+    fail: z.array(z.object({ scenario: z.string(), explanation: z.string() }).strict()).optional(),
+  }).strict().optional(),
+  ext: z.record(z.string(), z.unknown()).optional(),
+}).strict();
+type CanonicalPolicyDocument = z.infer<typeof CanonicalPolicyDocumentSchema>;
 
 export interface Policy {
   policy_id: string;
@@ -16,6 +190,10 @@ export interface Policy {
   sunset_date: string | null;
   source_url: string | null;
   source_name: string | null;
+  issuer: { domain: string; name?: string } | null;
+  acceptance_profile: AcceptancePolicyProfile | null;
+  content_digest?: string | null;
+  canonical_content?: Record<string, unknown> | null;
   policy: string;
   guidance: string | null;
   exemplars: { pass?: Array<{ scenario: string; explanation: string }>; fail?: Array<{ scenario: string; explanation: string }> } | null;
@@ -79,7 +257,41 @@ export interface EditorInfo {
   name?: string;
 }
 
-function deserializePolicy(row: any): Policy {
+type PolicyRow = Omit<Policy,
+  'jurisdictions' | 'region_aliases' | 'policy_categories' | 'channels' |
+  'governance_domains' | 'exemplars' | 'issuer' | 'acceptance_profile' |
+  'canonical_content' | 'ext' | 'created_at' | 'updated_at'
+> & Record<string, unknown>;
+
+interface PolicyPublicationRow {
+  policy_id: string;
+  version: string;
+  content_digest: string;
+  canonical_content: unknown;
+  acceptance_profile: unknown;
+  published_at: string | Date;
+}
+
+function parsedJson(value: unknown): unknown {
+  return typeof value === 'string' ? JSON.parse(value) : value;
+}
+
+async function parseAcceptancePolicyProfile(value: unknown): Promise<AcceptancePolicyProfile> {
+  const parsed = parsedJson(value);
+  const validation = await validateProtocolSchema(ACCEPTANCE_POLICY_PROFILE_SCHEMA_URI, parsed);
+  if (!validation.valid) {
+    const details = validation.errors
+      .map(error => `${error.instancePath || '/'} ${error.message ?? 'is invalid'}`)
+      .join('; ');
+    throw new Error(`Invalid policy acceptance_profile: ${details}`);
+  }
+  return parsed as AcceptancePolicyProfile;
+}
+
+async function deserializePolicy(row: PolicyRow): Promise<Policy> {
+  const acceptanceProfile = row.acceptance_profile == null
+    ? null
+    : await parseAcceptancePolicyProfile(row.acceptance_profile);
   return {
     ...row,
     jurisdictions: typeof row.jurisdictions === 'string' ? JSON.parse(row.jurisdictions) : (row.jurisdictions || []),
@@ -88,10 +300,57 @@ function deserializePolicy(row: any): Policy {
     channels: row.channels == null ? null : (typeof row.channels === 'string' ? JSON.parse(row.channels) : row.channels),
     governance_domains: typeof row.governance_domains === 'string' ? JSON.parse(row.governance_domains) : (row.governance_domains || []),
     exemplars: row.exemplars == null ? null : (typeof row.exemplars === 'string' ? JSON.parse(row.exemplars) : row.exemplars),
+    issuer: row.issuer == null ? null : (typeof row.issuer === 'string' ? JSON.parse(row.issuer) : row.issuer),
+    acceptance_profile: acceptanceProfile,
+    ...(row.content_digest !== undefined ? { content_digest: row.content_digest } : {}),
+    ...(row.canonical_content !== undefined ? {
+      canonical_content: row.canonical_content == null
+        ? null
+        : (typeof row.canonical_content === 'string' ? JSON.parse(row.canonical_content) : row.canonical_content),
+    } : {}),
     ext: row.ext == null ? null : (typeof row.ext === 'string' ? JSON.parse(row.ext) : row.ext),
-    created_at: new Date(row.created_at),
-    updated_at: new Date(row.updated_at),
-  };
+    created_at: new Date(String(row.created_at)),
+    updated_at: new Date(String(row.updated_at)),
+  } as Policy;
+}
+
+async function deserializePublishedPolicy(row: PolicyPublicationRow): Promise<Policy> {
+  const canonical = CanonicalPolicyDocumentSchema.parse(parsedJson(row.canonical_content));
+  const publishedAt = new Date(row.published_at);
+  return deserializePolicy({
+    policy_id: canonical.policy_id,
+    version: canonical.version,
+    name: canonical.name,
+    description: canonical.description ?? null,
+    category: canonical.category,
+    enforcement: canonical.enforcement,
+    jurisdictions: canonical.jurisdictions ?? [],
+    region_aliases: canonical.region_aliases ?? {},
+    policy_categories: canonical.policy_categories ?? [],
+    channels: canonical.channels ?? null,
+    governance_domains: canonical.governance_domains ?? [],
+    effective_date: canonical.effective_date ?? null,
+    sunset_date: canonical.sunset_date ?? null,
+    source_url: canonical.source_url ?? null,
+    source_name: canonical.source_name ?? null,
+    issuer: canonical.issuer ?? null,
+    // The authoritative canonical JSON Schema is applied by
+    // deserializePolicy below; keep this raw so every source follows the same
+    // validation path and error contract.
+    acceptance_profile: row.acceptance_profile == null
+      ? null
+      : parsedJson(row.acceptance_profile),
+    policy: canonical.policy,
+    guidance: canonical.guidance ?? null,
+    exemplars: canonical.exemplars ?? null,
+    ext: canonical.ext ?? null,
+    source_type: 'registry',
+    review_status: 'approved',
+    content_digest: row.content_digest,
+    canonical_content: canonical,
+    created_at: publishedAt,
+    updated_at: publishedAt,
+  });
 }
 
 function deserializeRevision(row: any): PolicyRevision {
@@ -149,7 +408,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
       `SELECT policy_id, version, name, description, category, enforcement,
               jurisdictions, region_aliases, policy_categories, channels,
               governance_domains, effective_date, sunset_date,
-              source_url, source_name, source_type, review_status,
+              source_url, source_name, issuer, source_type, review_status,
               created_at, updated_at
        FROM policies ${where} ORDER BY category, name LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
       [...values, limit, offset]
@@ -165,7 +424,7 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
 
   const stats = statsResult.rows[0];
   return {
-    policies: dataResult.rows.map(deserializePolicy),
+    policies: await Promise.all(dataResult.rows.map(row => deserializePolicy(row))),
     total: parseInt(stats.total, 10),
     regulation: parseInt(stats.regulation, 10),
     standard: parseInt(stats.standard, 10),
@@ -176,13 +435,31 @@ export async function listPolicies(options: ListPoliciesOptions = {}): Promise<{
  * Resolve a single policy by ID, optionally pinned to a version.
  */
 export async function resolvePolicy(policyId: string, version?: string): Promise<Policy | null> {
-  const result = await query<any>(
-    'SELECT * FROM policies WHERE policy_id = $1',
+  if (version) {
+    const publication = await query<PolicyPublicationRow>(
+      `SELECT policy_id, version, content_digest, canonical_content,
+              acceptance_profile, published_at
+       FROM policy_publications
+       WHERE policy_id = $1 AND version = $2`,
+      [policyId, version]
+    );
+    if (publication.rows.length > 0) return deserializePublishedPolicy(publication.rows[0]);
+    // An explicit version is an immutable-publication request. Never fall
+    // through to the mutable current-row projection, even when its version
+    // string happens to match the requested version.
+    return null;
+  }
+  const result = await query<PolicyRow>(
+    `SELECT policy.*, publication.content_digest, publication.canonical_content
+     FROM policies policy
+     LEFT JOIN policy_publications publication
+       ON publication.policy_id = policy.policy_id
+      AND publication.version = policy.version
+     WHERE policy.policy_id = $1`,
     [policyId]
   );
   if (result.rows.length === 0) return null;
   const policy = deserializePolicy(result.rows[0]);
-  if (version && policy.version !== version) return null;
   return policy;
 }
 
@@ -191,12 +468,17 @@ export async function resolvePolicy(policyId: string, version?: string): Promise
  */
 export async function bulkResolve(policyIds: string[]): Promise<Record<string, Policy | null>> {
   if (policyIds.length === 0) return {};
-  const result = await query<any>(
-    'SELECT * FROM policies WHERE policy_id = ANY($1)',
+  const result = await query<PolicyRow>(
+    `SELECT policy.*, publication.content_digest, publication.canonical_content
+     FROM policies policy
+     LEFT JOIN policy_publications publication
+       ON publication.policy_id = policy.policy_id
+      AND publication.version = policy.version
+     WHERE policy.policy_id = ANY($1)`,
     [policyIds]
   );
   const map: Record<string, Policy | null> = Object.create(null);
-  const rows = result.rows.map(deserializePolicy);
+  const rows = await Promise.all(result.rows.map(row => deserializePolicy(row)));
   for (const id of policyIds) {
     // Validate property name to prevent prototype pollution
     if (typeof id === 'string' && !['__proto__', 'constructor', 'prototype'].includes(id)) {
@@ -281,7 +563,7 @@ export async function savePolicy(
       );
 
       await client.query('COMMIT');
-      return { policy: deserializePolicy(updateResult.rows[0]), revision_number: revisionNumber };
+      return { policy: await deserializePolicy(updateResult.rows[0]), revision_number: revisionNumber };
     }
 
     // Insert new policy (community policies start as pending review)
@@ -311,7 +593,7 @@ export async function savePolicy(
     );
 
     await client.query('COMMIT');
-    return { policy: deserializePolicy(insertResult.rows[0]), revision_number: null };
+    return { policy: await deserializePolicy(insertResult.rows[0]), revision_number: null };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

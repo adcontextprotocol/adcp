@@ -14,7 +14,8 @@
       "type": "array",
       "description": "Collection IDs from the adagents.json collections array. Each ID must match a collection_id declared in that file.",
       "items": {
-        "type": "string"
+        "type": "string",
+        "x-entity": "collection"
       },
       "minItems": 1
     }

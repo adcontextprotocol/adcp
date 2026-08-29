@@ -1,0 +1,65 @@
+{
+  "policy_id": "x_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "X Political Content Advertising Acceptance",
+  "description": "X conditional political-content and campaigning acceptance by country, advertiser eligibility, certification, format, targeting, and election timing.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2023-08-29",
+  "source_url": "https://business.x.com/en/help/ads-policies/ads-content-policies/political-content",
+  "source_name": "X",
+  "issuer": { "domain": "x.com", "name": "X" },
+  "acceptance_profile": {
+    "profile_id": "x_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:7df1787ce5458151286e80a00e7e1058f72850315e24626fb69458703c994f72",
+    "policy_refs": [{ "policy_id": "x_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:3d5133d0d6d5393bc843da4ccf78aaacb83a3295271754a668aa6b0695df3ad3" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "targeting", "delivery", "format"],
+      "all_jurisdictions": true
+    },
+    "description": "Reusable coarse profile of X's public political-content advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "x_political_conditional_supported_markets",
+        "effective_at": "2023-08-29T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery", "format"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "certification", "credential": "x_political_content_advertiser_certification" },
+          { "kind": "advertiser_eligibility", "criteria": ["supported_delivery_market", "market_specific_domestic_entity_or_residency"] },
+          { "kind": "funding_restriction", "criteria": ["market_specific_funding_rules"] },
+          { "kind": "format_restriction", "description": "Use only political-content advertising formats permitted for the market." },
+          { "kind": "targeting_restriction", "description": "Use only political-content targeting permitted for the market." },
+          { "kind": "time_restriction", "description": "Observe applicable election silence and blackout periods." }
+        ],
+        "policy_ids": ["x_political_advertising_acceptance"],
+        "description": "Political campaigning is conditional in supported markets; this partial profile does not imply acceptance in an unlisted or unknown market."
+      }
+    ]
+  },
+  "policy": "Political campaigning advertisements are accepted only in specified countries and subject to certification. Eligible advertisers must satisfy applicable domestic-entity, residency, funding, and local-law requirements. Only permitted formats and constrained targeting may be used, and election silence or blackout periods apply where required. Qualifying news reporting may be exempt when it is not purchased by or coordinated with a political actor.",
+  "guidance": "Model political advertising as conditional only for a supported delivery market. Unsupported markets are prohibited. Certification, advertiser location, format, targeting, and time restrictions are separate requirements.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A certified domestic advertiser in a supported country uses an eligible format and targeting configuration outside the applicable silence period.",
+        "explanation": "The campaign meets the coarse market and certification conditions."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A foreign political organization requests campaigning delivery in a market that requires a domestic advertiser.",
+        "explanation": "The advertiser does not satisfy the market-specific eligibility rule."
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/installment-delivery-metrics.json",
+  "title": "Installment Delivery Metrics",
+  "description": "Delivery metrics for one canonically identified installment.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "installment_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/installment-ref.json"
+        },
+        "installment_name": {
+          "type": "string",
+          "description": "Current human-readable installment name. Convenience metadata only; installment_ref is stable identity."
+        },
+        "scheduled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Convenience echo of the installment's scheduled publication or air time."
+        }
+      },
+      "required": [
+        "installment_ref",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

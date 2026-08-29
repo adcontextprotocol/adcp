@@ -1,0 +1,95 @@
+{
+  "policy_id": "google_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "Google Political Content Advertising Acceptance",
+  "description": "Google market-specific political-content eligibility, verification, disclosure, targeting, blackout, and regional prohibition rules.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2025-09-01",
+  "source_url": "https://support.google.com/displayvideo/answer/6014595?hl=en",
+  "source_name": "Google",
+  "issuer": { "domain": "google.com", "name": "Google" },
+  "acceptance_profile": {
+    "profile_id": "google_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:29bf0717dec7f6a587d1f5aa27f23b0b38e639478d5e9b8ccb49259ca33d120d",
+    "policy_refs": [{ "policy_id": "google_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:731e77b1d89976bee3b173741066e80b8919f0af20a80a50ca89e7d8ce92afe1" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+      "all_jurisdictions": true
+    },
+    "region_aliases": {
+      "EU": ["AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"]
+    },
+    "description": "Reusable coarse profile of Google's public political-content advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "google_political_conditional",
+        "effective_at": "2025-09-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "advertiser_verification", "verification_scheme": "google_election_ads_verification" },
+          { "kind": "disclosure", "format": "sponsor_identity", "placement": "creative" },
+          { "kind": "targeting_restriction", "description": "Use only geographic and demographic targeting permitted for the election type and market." },
+          { "kind": "creative_restriction", "description": "Provide any required synthetic or digitally altered content disclosure." },
+          { "kind": "time_restriction", "description": "Observe election-specific blackout periods." }
+        ],
+        "policy_ids": ["google_political_advertising_acceptance"],
+        "description": "In supported non-prohibited markets, political content is conditional on market-specific verification, disclosure, targeting, content, and timing requirements."
+      },
+      {
+        "rule_id": "google_eu_political_prohibited",
+        "effective_at": "2025-09-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation", "political_merchandise"],
+        "jurisdiction_groups": ["EU"],
+        "applies_to": ["account", "media_buy", "creative", "targeting", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["google_political_advertising_acceptance"],
+        "description": "Political advertising covered by the operator's EU policy is not accepted for EU delivery."
+      },
+      {
+        "rule_id": "google_eu_official_information_conditional",
+        "effective_at": "2025-09-01T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["government_information"],
+        "advertiser_roles": ["government_entity", "election_authority"],
+        "jurisdiction_groups": ["EU"],
+        "applies_to": ["account", "media_buy", "creative", "delivery"],
+        "disposition": "conditional",
+        "requirements": [
+          { "kind": "advertiser_eligibility", "criteria": ["official_public_authority_or_election_participation_source"] },
+          { "kind": "prior_authorization", "description": "Apply for and receive the operator's official-information exception before delivery." },
+          { "kind": "creative_restriction", "description": "Content must be non-persuasive official information or qualifying election-participation information." }
+        ],
+        "policy_ids": ["google_political_advertising_acceptance"],
+        "description": "Qualifying official public information may be considered only through the operator's application-based exception."
+      }
+    ]
+  },
+  "policy": "Political content acceptance varies by delivery region and election type. Where accepted, advertisers may need election-ad verification, identity and sponsor disclosures, restricted geographic and demographic targeting, synthetic-content disclosure, and compliance with election-specific blackout periods. Some official government information and qualifying news content may be treated differently. Political advertising as defined by EU Regulation 2024/900 is prohibited for European Union delivery, subject to an application-based exception for qualifying official election-participation messages and non-persuasive public-authority information.",
+  "guidance": "Resolve this entry with current region-specific issuer guidance. Treat ordinary EU political delivery as prohibited, the defined EU official-information exception as conditional, and political delivery in other supported regions as conditional unless a more specific current issuer policy defines another result.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A verified advertiser in a supported market supplies the required election disclosure and uses targeting permitted for that election type.",
+        "explanation": "The request satisfies the coarse conditional-acceptance requirements for a supported market."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "A buyer declares political content but requests that the campaign serve to users in EU member states.",
+        "explanation": "The operator's EU policy does not accept political advertising for EU delivery."
+      }
+    ]
+  }
+}

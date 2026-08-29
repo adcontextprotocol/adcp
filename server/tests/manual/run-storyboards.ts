@@ -41,6 +41,7 @@ import {
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
 import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -102,12 +103,20 @@ if (shardIndex !== undefined && shardCount !== undefined && (shardIndex < 0 || s
 const shard = shardIndex === undefined || shardCount === undefined
   ? undefined
   : { index: shardIndex, count: shardCount };
+const installedSdkVersion = readFileSync(
+  join(process.cwd(), 'node_modules', '@adcp', 'sdk', 'ADCP_VERSION'),
+  'utf8',
+).trim();
+const installedSdkSchemaRoot = join(
+  process.cwd(),
+  'node_modules', '@adcp', 'sdk', 'dist', 'lib', 'schemas-data', installedSdkVersion,
+);
 const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
   ? {
       complianceDir: process.env.ADCP_COMPLIANCE_DIR,
       ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
     }
-  : undefined;
+  : { schemaRoot: installedSdkSchemaRoot };
 const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
@@ -121,7 +130,7 @@ const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : releasedComplianceVersion === undefined
-    ? '3.2-beta.6'
+    ? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,6 +146,7 @@ interface Summary {
   not_applicable: number;
   error?: string;
   failures: Array<{ step: string; error: string; validationId?: string }>;
+  skips: Array<{ step: string; reason: string }>;
 }
 
 async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close: () => Promise<void> }> {
@@ -216,10 +226,6 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
   [
     'webhook_emission',
     'The beta.12 packaged webhook receiver bounds shutdown memory and retry capture, but the current webhook_emission run still exceeds the isolated runner\'s 120-second result deadline. Remove when the storyboard returns a result inside the runner budget.',
-  ],
-  [
-    'wholesale_feed_signals_scope_isolation',
-    'The beta.12 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
   ],
 ]);
 
@@ -532,6 +538,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     sb.id === 'governance_spend_authority'
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
+    || sb.id === 'governance/failed_outcome_audit_persistence'
   ) {
     patched = structuredClone(patched) as Storyboard;
     const authenticatedCaller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
@@ -750,7 +757,19 @@ function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
   return YAML.parse(readFileSync(path, 'utf-8')) as LoadedTestKit;
 }
 
-function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
+function brandFromKit(
+  kit: LoadedTestKit | undefined,
+  storyboardId: string,
+): StoryboardRunOptions['brand'] | undefined {
+  // These conformance vectors deliberately switch between two explicitly
+  // authored account identities. Supplying the test-kit brand makes the SDK
+  // runner's brand invariant overwrite both identities, which turns the
+  // cross-scope probe into a second public-scope request and invalidates the
+  // test itself.
+  if (
+    storyboardId === 'wholesale_feed_products_scope_isolation'
+    || storyboardId === 'wholesale_feed_signals_scope_isolation'
+  ) return undefined;
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
 }
@@ -820,7 +839,7 @@ function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: b
 }
 
 function summarize(sb: Storyboard, result: StoryboardResult | { error: string }): Summary {
-  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [] };
+  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [], skips: [] };
   if ('error' in result) {
     base.error = result.error;
     return base;
@@ -852,6 +871,12 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
           step: s.id ?? s.step_id ?? '(unknown step)',
           error: formatStepFailureDetail(s.error, s.validations, { includeActual: true }),
           ...(validationId ? { validationId } : {}),
+        });
+      } else if (status === 'skipped') {
+        const s = step as { id?: string; step_id?: string; error?: string; skip_reason?: string };
+        base.skips.push({
+          step: s.id ?? s.step_id ?? '(unknown step)',
+          reason: s.skip_reason ?? s.error ?? 'runner did not provide a skip reason',
         });
       }
     }
@@ -968,7 +993,7 @@ async function main() {
     clearForcedTaskCompletions();
     clearCatalogEventStores();
     const kit = loadTestKit(storyboard);
-    const brand = brandFromKit(kit);
+    const brand = brandFromKit(kit, storyboard.id);
     const testKit = testKitOptionsFromKit(kit);
     const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
@@ -1146,6 +1171,16 @@ async function main() {
       if (!verbose && r.failures.length > 5) {
         // eslint-disable-next-line no-console
         console.log(`    … +${r.failures.length - 5} more (run with --verbose)`);
+      }
+    }
+  }
+
+  if (verbose) {
+    const skippedResults = results.filter(result => result.skips.length > 0);
+    if (skippedResults.length > 0) {
+      console.log('\n--- Skips ---');
+      for (const result of skippedResults) {
+        for (const skip of result.skips) console.log(`  ${result.id} · ${skip.step}: ${skip.reason}`);
       }
     }
   }

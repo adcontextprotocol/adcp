@@ -1597,6 +1597,7 @@ async function runTests() {
             by_creative: [
               {
                 creative_id: 'cr_123',
+                creative_name: 'Brand hero video',
                 spend: 14000,
                 impressions: 560000,
                 weight: 56
@@ -6079,7 +6080,7 @@ async function runTests() {
       // Every bundled schema must be self-contained and compile standalone.
       await testAllBundledSchemasCompile(bundledPath);
 
-      await testBundledDeliveryMetricSchemaTitles(BUNDLED_DIR);
+      await testBundledDeliveryMetricSchemas(BUNDLED_DIR);
 
       // Test a response schema to verify nested refs are resolved
       await testBundledSchemaValidation(
@@ -7177,7 +7178,7 @@ async function testBundledSchemaCompile(schemaPath, description) {
   }
 }
 
-async function testBundledDeliveryMetricSchemaTitles(bundledDir) {
+async function testBundledDeliveryMetricSchemas(bundledDir) {
   totalTests++;
   try {
     const latestDir = path.join(bundledDir, 'latest');
@@ -7196,6 +7197,17 @@ async function testBundledDeliveryMetricSchemaTitles(bundledDir) {
       if (schema.title !== expectedTitle) {
         missing.push(`${relPath} title=${JSON.stringify(schema.title)} expected ${JSON.stringify(expectedTitle)}`);
       }
+    }
+
+    const creativeMetrics = JSON.parse(fs.readFileSync(
+      path.join(latestDir, 'core/creative-delivery-metrics.json'),
+      'utf8'
+    ));
+    const creativeProperties = creativeMetrics.allOf
+      ?.find((branch) => branch.properties?.creative_id)
+      ?.properties;
+    if (creativeProperties?.creative_name?.type !== 'string') {
+      missing.push('core/creative-delivery-metrics.json must declare optional string creative_name');
     }
 
     const deliverySchema = JSON.parse(fs.readFileSync(
@@ -7219,17 +7231,17 @@ async function testBundledDeliveryMetricSchemaTitles(bundledDir) {
     }
 
     if (missing.length === 0) {
-      log(`  \u2713 Bundled delivery metric schemas preserve named titles`, 'success');
+      log(`  \u2713 Bundled delivery metric schemas preserve names and named titles`, 'success');
       passedTests++;
       return true;
     }
 
-    log(`  \u2717 Bundled delivery metric schemas preserve named titles`, 'error');
+    log(`  \u2717 Bundled delivery metric schemas preserve names and named titles`, 'error');
     for (const issue of missing) log(`      ${issue}`, 'error');
     failedTests++;
     return false;
   } catch (error) {
-    log(`  \u2717 Bundled delivery metric schemas preserve named titles: ${error.message}`, 'error');
+    log(`  \u2717 Bundled delivery metric schemas preserve names and named titles: ${error.message}`, 'error');
     failedTests++;
     return false;
   }

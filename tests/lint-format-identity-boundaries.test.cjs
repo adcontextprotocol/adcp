@@ -14,6 +14,7 @@ const LEGACY_FORMAT_BOUNDARIES = new Set([
   'server/src/creative-agent/preview-renderer.ts',
   'server/src/creative-agent/task-handlers.ts',
   'server/src/db/agent-inventory-profiles-db.ts',
+  'server/src/db/policies-db.ts',
   'server/src/routes/registry-api.ts',
   'server/src/shared/formats.ts',
   'server/src/training-agent/comply-test-controller.ts',

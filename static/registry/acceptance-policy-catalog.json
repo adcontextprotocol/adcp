@@ -1,0 +1,22 @@
+{
+  "catalog_version": "1.0.0",
+  "generated_at": "2026-08-23T00:00:00Z",
+  "registry_profiles": [
+    {
+      "policy_id": "meta_political_advertising_acceptance",
+      "policy_version": "1.1.0",
+      "policy_digest": "sha256:a8d61d10c9fc04ae7a0af83870f65b92987b9c0a7519d5724afabbbea30b25fc",
+      "profile_id": "meta_political_advertising_acceptance",
+      "profile_version": "1.0.0",
+      "profile_digest": "sha256:7584e8e357a69501b43e9cff6e18ae811355d6765bd1c13b11433ccc79dc32fe"
+    },
+    {
+      "policy_id": "google_political_advertising_acceptance",
+      "policy_version": "1.1.0",
+      "policy_digest": "sha256:731e77b1d89976bee3b173741066e80b8919f0af20a80a50ca89e7d8ce92afe1",
+      "profile_id": "google_political_advertising_acceptance",
+      "profile_version": "1.0.0",
+      "profile_digest": "sha256:29bf0717dec7f6a587d1f5aa27f23b0b38e639478d5e9b8ccb49259ca33d120d"
+    }
+  ]
+}

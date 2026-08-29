@@ -11,6 +11,7 @@ import {
   isToolResultError,
   normalizeToolError,
   normalizeToolResult,
+  renderToolResultForModel,
   type NormalizedToolResult,
   type ToolHandlerResult,
   type ToolResultPresentation,
@@ -293,6 +294,15 @@ function failureResult(
   blockedByPolicy = false,
 ): AddieToolCallResult {
   const presentation = recordedPresentation(mode, normalized);
+  const modelResult = renderToolResultForModel(call.name, normalized);
+  if (modelResult.framing_truncated && !normalized.model_context_truncated) {
+    logger.warn({
+      event: 'addie_tool_result_content_bounded',
+      toolName: call.name,
+      modelContextTruncated: true,
+      evidenceFraming: true,
+    }, 'Addie: Tool result content bounded for evidence framing');
+  }
   const resultText = recordedResult(
     mode,
     normalized.model_context,
@@ -303,7 +313,7 @@ function failureResult(
       type: 'tool_result',
       toolCallId: call.id,
       toolName: call.name,
-      content: normalized.model_context,
+      content: modelResult.content,
       isError: true,
     },
     execution: {
@@ -466,6 +476,15 @@ export function createAddieToolExecutor(
       );
       const presentation = recordedPresentation(options.executionMode, normalized);
       const isError = isToolResultError(normalized.status);
+      const modelResult = renderToolResultForModel(call.name, normalized);
+      if (modelResult.framing_truncated && !normalized.model_context_truncated) {
+        logger.warn({
+          event: 'addie_tool_result_content_bounded',
+          toolName: call.name,
+          modelContextTruncated: true,
+          evidenceFraming: true,
+        }, 'Addie: Tool result content bounded for evidence framing');
+      }
       const summary = normalized.presentation.source === 'legacy' && typeof handlerResult === 'string'
         ? summarizeLegacyToolResult(call.name, handlerResult)
         : presentation.user_summary;
@@ -474,7 +493,7 @@ export function createAddieToolExecutor(
           type: 'tool_result',
           toolCallId: call.id,
           toolName: call.name,
-          content: normalized.model_context,
+          content: modelResult.content,
           ...(isError && { isError: true }),
         },
         execution: {

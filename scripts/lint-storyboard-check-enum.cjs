@@ -48,6 +48,20 @@ const SYNTHESIZED_CHECK_KINDS = new Set([
   'capture_path_not_resolvable',
   'unresolved_substitution',
 ]);
+const NEGATIVE_PATH_VALUES = new Set(['schema_invalid', 'payload_well_formed']);
+const CHECK_MATCHER_KEYS = new Map([
+  ['field_pattern', ['pattern']],
+  ['envelope_field_pattern', ['pattern']],
+  ['field_value', ['value', 'allowed_values']],
+  ['field_value_or_absent', ['value', 'allowed_values']],
+  ['field_contains', ['value']],
+  ['array_length', ['value', 'min', 'max']],
+  ['http_status', ['value']],
+  ['http_status_in', ['value', 'values', 'allowed_values']],
+  ['error_code', ['value', 'allowed_values']],
+  ['field_less_than', ['value', 'context_key']],
+  ['field_greater_than', ['value']],
+]);
 
 function loadKnownCheckKinds() {
   const doc = yaml.load(fs.readFileSync(CONTRACT_FILE, 'utf8'));
@@ -75,6 +89,11 @@ const RULE_MESSAGES = {
     `check. Synthesized codes are emitted by the runner after authored checks complete — a ` +
     `storyboard cannot meaningfully assert against them. Remove this entry. See ` +
     `storyboard-schema.yaml's "Runner grading codes" section for which codes are synthesized.`,
+  missing_check_matcher: (check) =>
+    `validations[].check "${check}" is missing its recognized matcher key; use the ` +
+    `matcher documented for that check (normally value, values, or pattern).`,
+  invalid_negative_path: (value) =>
+    `negative_path "${value}" is not valid; use schema_invalid or payload_well_formed.`,
 };
 
 function isStoryboardYaml(rel) {
@@ -102,6 +121,7 @@ function* walkValidations(doc) {
           step: step.id,
           index: i,
           check: v.check,
+          validation: v,
         };
       }
     }
@@ -142,6 +162,39 @@ function lint(sourceDir = SOURCE_DIR) {
           check: hit.check,
           rule: 'unknown_check_kind',
         });
+        continue;
+      }
+      const matcherKeys = CHECK_MATCHER_KEYS.get(hit.check);
+      const authoredMatcherKeys = Object.keys(hit.validation).filter(key => ![
+        'check', 'path', 'description', 'id', 'severity', 'permanent_advisory',
+      ].includes(key));
+      if (
+        matcherKeys
+        && authoredMatcherKeys.length > 0
+        && !matcherKeys.some(key => Object.hasOwn(hit.validation, key))
+      ) {
+        violations.push({
+          file: rel,
+          phase: hit.phase,
+          step: hit.step,
+          index: hit.index,
+          check: hit.check,
+          rule: 'missing_check_matcher',
+        });
+      }
+    }
+    for (const phase of doc?.phases ?? []) {
+      for (const step of phase?.steps ?? []) {
+        if (step?.negative_path !== undefined && !NEGATIVE_PATH_VALUES.has(step.negative_path)) {
+          violations.push({
+            file: rel,
+            phase: phase.id,
+            step: step.id,
+            index: -1,
+            check: step.negative_path,
+            rule: 'invalid_negative_path',
+          });
+        }
       }
     }
   }
@@ -184,6 +237,7 @@ if (require.main === module) main();
 module.exports = {
   RULE_MESSAGES,
   SYNTHESIZED_CHECK_KINDS,
+  NEGATIVE_PATH_VALUES,
   loadKnownCheckKinds,
   lint,
 };

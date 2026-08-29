@@ -200,6 +200,7 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
 | Field   | Type     | Description                                                                                                                                                                                                                                                                           |
 | ------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `tasks` | object[] | Task-scoped enforcement claims. Each entry has `task` and `modes`; the corresponding request schema defines when the operation is commitment-bearing through `x-governed-commitment`. `task` is the semantic uniqueness key: emit one entry per task and combine modes in that entry. |
+| `accepted_governance_agents` | object | Optional seller-wide advisory matchers for governance agents a buyer may bind. `any_of[]` accepts explicit canonicalized HTTPS URLs or deterministic registry-verification criteria. Omission means any otherwise-valid agent is accepted; [`sync_governance`](/docs/accounts/tasks/sync_governance) remains authoritative per account. |
 
 ```json
 {
@@ -213,7 +214,23 @@ Declares cross-role enforcement of buyer governance for consequential tasks. Thi
           "modes": ["signed_context", "online_execution_check"]
         },
         { "task": "activate_signal", "modes": ["signed_context"] }
-      ]
+      ],
+      "accepted_governance_agents": {
+        "any_of": [
+          {
+            "kind": "agent_url",
+            "agent_url": "https://governance.example/mcp"
+          },
+          {
+            "kind": "verification",
+            "registry": "https://registry.example/agents",
+            "role": "governance",
+            "adcp_version": "3.2",
+            "verification_modes": ["spec", "live"],
+            "max_age_seconds": 86400
+          }
+        ]
+      }
     }
   }
 }
@@ -367,6 +384,7 @@ Account and authentication capabilities. All sellers should declare this section
 | `account_financials` | boolean | Default: `false`. When `true`, the seller supports [`get_account_financials`](/docs/accounts/tasks/get_account_financials) for querying spend, credit, and invoice status. Only applicable to operator-billed accounts. |
 | `identity_updates` | object | Optional capability gate for reconciling an existing account's buyer-controlled operator identity through `sync_accounts` settings-update mode. `supported_changes` declares `operator_unit_name`, `operator_unit`, and/or `operator`. |
 | `notifications` | object | Optional. Declares durable account lifecycle webhook support. When `supported: true`, buyers may register `account.status_changed` subscribers with `sync_accounts.accounts[].notification_configs[]` and repair by re-reading `list_accounts`. |
+| `change_feed` | object | Optional. Declares the durable [`list_account_changes`](/docs/accounts/tasks/list_account_changes) feed and `account.change_recorded` wake-up. When supported, includes a retention floor of at least 90 days and the resource types covered. |
 | `sandbox` | boolean | Default: `false`. Strongly recommended for production sales agents. When `true`, the seller supports sandbox accounts for testing. Account-id namespaces discover pre-existing test accounts through `list_accounts` or out-of-band setup. Buyer-declared accounts use `sandbox: true` in `sync_accounts`, or in the natural-key account reference when the seller uses unambiguous lazy provisioning — no real platform calls or spend. See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox). |
 
 #### account.notifications
@@ -395,6 +413,42 @@ Declares whether the seller supports durable account lifecycle invalidation webh
 ```
 
 When `supported: false` or absent, buyers MUST NOT assume durable account status webhooks are available. They can still use the one-shot `sync_accounts.push_notification_config` callback for the initial provisioning result when offered, and poll `list_accounts` for later account status changes.
+
+#### account.change_feed
+
+Declares whether the seller exposes a durable ordered account change feed.
+This capability is separate from `account.notifications`, which covers the
+specialized account lifecycle invalidation, and from `webhook_activity`, which
+is only delivery-attempt diagnostics.
+
+```json
+{
+  "account": {
+    "change_feed": {
+      "supported": true,
+      "read_task": "list_account_changes",
+      "registration_task": "sync_accounts",
+      "event_type": "account.change_recorded",
+      "retention_days": 90,
+      "resource_types": [
+        "account",
+        "account_financials",
+        "media_buy",
+        "package",
+        "creative",
+        "creative_assignment",
+        "delivery_report"
+      ]
+    }
+  }
+}
+```
+
+Advertising a resource type is a completeness commitment: every material
+change to fields recoverable through that resource's authoritative read is
+recorded regardless of origin. Snapshot completeness is normative and is not
+weakened into a self-asserted `complete: true` flag. Account-specific connected
+source status and freshness are returned by `list_account_changes`.
 
 See [Provision a seller-mediated account](/docs/accounts/provisioning-walkthrough) for the complete discovery, registration, human setup, webhook, and repair sequence.
 
@@ -437,6 +491,24 @@ See [Accounts and Agents](/docs/building/by-layer/L2/accounts-and-agents#what-se
 ### media_buy
 
 Media-buy protocol capabilities. Only present if `media_buy` is in `supported_protocols`. Sellers declaring `media_buy` should also include `account` (with `supported_billing`) and `media_buy.portfolio` — buyers need both to establish billing and understand inventory coverage. Compliance testing validates their presence.
+
+#### acceptance_policy_discovery
+
+`media_buy.acceptance_policy_discovery` advertises a structured catalog for what the seller will accept. `catalog_url` identifies an HTTPS `acceptance-policy-catalog.json` document, `catalog_digest` pins its bytes, and `default_profile_ids[]` selects seller-wide profiles. The declaration does not claim the seller evaluates buyer-supplied acceptance context during discovery; buyers compose the published profiles for advisory preflight and treat exact task responses as authoritative.
+
+This capability is advisory. Missing capability or omitted rules in a partial profile are unknown, not unrestricted acceptance. Products may add profile IDs; defaults and product profiles compose restrictively. The exact task response remains authoritative and may return [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) for an account-specific or undisclosed rule.
+
+```json
+{
+  "media_buy": {
+    "acceptance_policy_discovery": {
+      "catalog_url": "https://seller.example/.well-known/adcp-acceptance-policies.json",
+      "catalog_digest": "sha256:54f04c3e2e8dfdf682b0da0cd0ee4d5265e54a6e0f72b9260785dfc1526fd08a",
+      "default_profile_ids": ["seller-default"]
+    }
+  }
+}
+```
 
 #### lifecycle_tools
 

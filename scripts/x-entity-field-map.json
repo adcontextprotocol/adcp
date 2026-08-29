@@ -34,6 +34,8 @@
     "session_id": "si_session",
     "offering_id": "offering",
     "property_id": "property",
+    "collection_id": "collection",
+    "installment_id": "installment",
     "task_id": "task",
     "credential_id": "attestation_credential",
     "pricing_option_id": "__scope_specific__"

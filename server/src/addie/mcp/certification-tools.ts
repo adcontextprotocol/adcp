@@ -1441,6 +1441,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
+    { label: 'Shared-account change feed lab', url: `${DOCS_BASE}/docs/learning/shared-account-change-feed` },
+    { label: 'Snapshot and log contract', url: `${DOCS_BASE}/docs/protocol/snapshot-and-log` },
     { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'TMP specification', url: `${DOCS_BASE}/docs/trusted-match/specification` },
@@ -1460,6 +1462,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track S: Specialist deep dives
   S1: [
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Shared-account change feed lab', url: `${DOCS_BASE}/docs/learning/shared-account-change-feed` },
+    { label: 'List account changes task', url: `${DOCS_BASE}/docs/accounts/tasks/list_account_changes` },
     { label: 'Proposal negotiation with refine_proposals', url: `${DOCS_BASE}/docs/media-buy/task-reference/refine_proposals` },
     { label: 'Proposal refinement capabilities', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities#proposal-refinement` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -3020,7 +3024,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.12 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the exact 3.2 beta.6 wire pin with @adcp/sdk@14.0.0-beta.15 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3035,7 +3039,7 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-beta.12 test-mcp get_products '{"adcp_version":"3.2-beta.6","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@14.0.0-beta.15 test-mcp get_products '{"adcp_version":"3.2-beta.8","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.

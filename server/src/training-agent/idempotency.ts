@@ -525,6 +525,18 @@ export function getSdkIdempotencyStore(): IdempotencyStore {
 }
 
 function normalizeIdempotencyPayload(payload: unknown): unknown {
+  if (Array.isArray(payload)
+    && payload[0] === '@adcp/sdk-idempotency/v2'
+    && payload[1] === 'control_media_buy'
+    && Array.isArray(payload[2])
+    && payload[2].length === 3) {
+    // The SDK includes the transport session in every generic mutation
+    // fingerprint even when resolveIdempotencyPrincipal is stable. Seller-
+    // managed controls must reconnect the same durable task after a transport
+    // restart, so bind this one operation to tenant/account + request bytes,
+    // not the replaceable MCP session. Other tools retain SDK defaults.
+    return [payload[0], payload[1], [null, payload[2][1], payload[2][2]], payload[3]];
+  }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
   const record = payload as Record<string, unknown>;
   if (!Array.isArray(record.packages) || typeof record.start_time !== 'string') return payload;

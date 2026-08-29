@@ -1,0 +1,127 @@
+id: wholesale_feed_signals_scope_isolation
+version: "1.0.0"
+title: "Wholesale signals feed cache-scope isolation"
+category: marketplace_catalog
+summary: "Validates that get_signals conditional-fetch is keyed by cache_scope: a wholesale_feed_version minted under one cache_scope must not short-circuit (unchanged: true) a request the agent resolves to a different cache_scope."
+track: signals
+introduced_in: "3.2"
+
+requires_capability:
+  path: wholesale_feed_versioning.cache_scope_account
+  equals: true
+
+required_tools:
+  - get_signals
+
+narrative: |
+  Wholesale feed tokens are scope-keyed: a caller caches
+  `(cache_scope, wholesale_feed_version)` pairs, not a global agent version. An
+  agent that publishes per-account overlays (`cache_scope_account: true`)
+  therefore keeps distinct token spaces for the public rate card and for
+  account overlays.
+
+  This storyboard mints a token while the agent serves `cache_scope: public`,
+  then echoes that token on a request the agent resolves to `cache_scope:
+  account`. A scope-keyed comparator MUST reject the cross-scope token and
+  return the full feed for the resolved scope; an agent that keys conditional
+  fetch on a global token would wrongly answer `unchanged: true` and the caller
+  would silently miss the account overlay.
+
+agent:
+  interaction_model: signals_agent
+  capabilities:
+    - wholesale_feed_versioning
+  examples:
+    - "Signals agents that publish account-specific overlays"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent advertises `wholesale_feed_versioning.cache_scope_account: true`
+    and exposes `get_signals`. The harness uses the reserved account-overlay
+    identity (`account-overlay.example`) to elicit a `cache_scope: account`
+    response and an ordinary account for the public layer.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: scope_isolation
+    title: "Cross-scope token must not short-circuit"
+    steps:
+      - id: bootstrap_public
+        title: "Bootstrap public signals feed"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        stateful: true
+        context_outputs:
+          - name: public_signal_feed_version
+            path: "wholesale_feed_version"
+        expected: |
+          Return public-scope signal rows with the public feed token.
+        sample_request:
+          discovery_mode: "wholesale"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "wholesale_feed_signals_scope--bootstrap_public"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_value
+            path: "cache_scope"
+            value: "public"
+            description: "Ordinary account resolves to the public cache scope"
+          - check: field_present
+            path: "wholesale_feed_version"
+            description: "Public response carries the public feed token"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "Bootstrap returns signal rows"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "wholesale_feed_signals_scope--bootstrap_public"
+            description: "Context correlation_id returned unchanged"
+
+      - id: cross_scope_probe_not_unchanged
+        title: "Account-scope probe must not honor a public token"
+        task: get_signals
+        schema_ref: "signals/get-signals-request.json"
+        response_schema_ref: "signals/get-signals-response.json"
+        doc_ref: "/signals/tasks/get_signals"
+        stateful: true
+        expected: |
+          An account-scope request that echoes the public token MUST NOT return
+          unchanged; it MUST return the full account feed for its own scope.
+        sample_request:
+          discovery_mode: "wholesale"
+          account:
+            brand:
+              domain: "account-overlay.example"
+            operator: "pinnacle-agency.example"
+          if_wholesale_feed_version: "$context.public_signal_feed_version"
+          context:
+            correlation_id: "wholesale_feed_signals_scope--cross_probe"
+        validations:
+          - check: response_schema
+            description: "Response matches get-signals-response.json schema"
+          - check: field_value
+            path: "cache_scope"
+            value: "account"
+            description: "Reserved overlay account resolves to the account cache scope"
+          - check: field_absent
+            path: "unchanged"
+            description: "A public-scope token MUST NOT short-circuit an account-scope read to unchanged: true"
+          - check: field_present
+            path: "signals[0].signal_agent_segment_id"
+            description: "The account feed is returned in full for its own scope"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "wholesale_feed_signals_scope--cross_probe"
+            description: "Context correlation_id returned unchanged"

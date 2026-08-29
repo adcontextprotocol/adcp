@@ -71,6 +71,9 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
   const refsWithRawConfig = rawAccounts && rawAccounts.length === refs.length
     ? refs.map((ref, i) => ({
         ...(ref as Record<string, unknown>),
+        ...(rawAccounts[i].sandbox !== undefined && {
+          sandbox: rawAccounts[i].sandbox,
+        }),
         ...(rawAccounts[i].notification_configs !== undefined && {
           notification_configs: rawAccounts[i].notification_configs,
         }),
