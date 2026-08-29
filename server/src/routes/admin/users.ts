@@ -16,6 +16,7 @@ import {
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { findSupersededMembershipOrganizations } from '../../db/membership-consolidation-db.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -1363,6 +1364,26 @@ export function createAdminUsersRouter(): Router {
         promoted: true,
         message: 'Promoted (no current primary to demote — invariant repaired).',
       });
+    }
+
+    // Foot-gun gate: promote runs the same consolidation as link-credential.
+    // Memberships in an organization the incoming credential already belongs
+    // to are DELETED by it — their role, seat, and WorkOS membership id are
+    // not recoverable, and an unlink cannot put them back. Require stated
+    // intent, matching the `consolidate: true` gate on the bind path above.
+    if (req.body?.consolidate !== true) {
+      const superseded = await findSupersededMembershipOrganizations(
+        currentPrimaryId,
+        newPrimaryId
+      );
+      if (superseded.length > 0) {
+        return res.status(409).json({
+          error: 'Promoting would delete organization memberships',
+          message: `The outgoing primary holds memberships in ${superseded.length} organization(s) the incoming credential already belongs to. Promoting deletes those rows — their role, seat, and WorkOS membership id cannot be recovered. Re-submit with \`"consolidate": true\` to confirm this is intended.`,
+          consolidate_confirmation_required: true,
+          superseded_organization_ids: superseded,
+        });
+      }
     }
 
     // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary
