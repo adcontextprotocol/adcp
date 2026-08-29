@@ -187,6 +187,7 @@ import {
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from './tool-sets.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
@@ -1597,7 +1598,7 @@ async function selectRoutedToolsForSlackResponse(
   const isDirectInteraction = source === 'dm' || source === 'mention';
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
-    : isDirectInteraction ? ['knowledge'] : [];
+    : isDirectInteraction ? [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS] : [];
   const selectedSets = selectSlackToolSets({
     routerSelectedSets,
     routerAvailable: true,

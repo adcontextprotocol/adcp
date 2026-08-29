@@ -5,6 +5,7 @@ import {
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
   LEGACY_ADMIN_TOOLS,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
   buildUnavailableSetsHint,
   getToolsForSets,
@@ -211,8 +212,11 @@ describe('getToolsForSets', () => {
   describe('bounded member-facing domains', () => {
     it.each([
       ['publishing', 9],
-      ['github', 3],
+      ['github', 4],
       ['illustrations', 1],
+      ['knowledge', 3],
+      ['community_research', 6],
+      ['schema_reference', 4],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
@@ -226,6 +230,34 @@ describe('getToolsForSets', () => {
         'get_github_issue',
       ]));
       expect(getToolsForSets(['knowledge'], false, false)).not.toContain('draft_github_issue');
+    });
+
+    it('keeps protocol, community, and schema retrieval in separate domains', () => {
+      const knowledge = getToolsForSets(['knowledge'], false, false);
+      const community = getToolsForSets(['community_research'], false, false);
+      const schemas = getToolsForSets(['schema_reference'], false, false);
+
+      expect(knowledge).toContain('search_docs');
+      expect(knowledge).not.toContain('search_slack');
+      expect(knowledge).not.toContain('validate_json');
+      expect(community).toContain('search_slack');
+      expect(community).not.toContain('search_docs');
+      expect(schemas).toContain('validate_json');
+      expect(schemas).not.toContain('search_docs');
+    });
+
+    it('preserves safe pre-split research tools when routing is unavailable', () => {
+      const fallback = getToolsForSets(
+        [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
+        false,
+        false,
+      );
+
+      expect(fallback).toContain('search_docs');
+      expect(fallback).toContain('search_slack');
+      expect(fallback).toContain('validate_json');
+      expect(fallback).not.toContain('draft_github_issue');
+      expect(fallback).not.toContain('create_github_issue');
     });
 
     it('cuts the global member surface to six escape hatches', () => {

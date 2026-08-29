@@ -859,9 +859,9 @@ describe('AddieRouter.route', () => {
       source: 'dm',
     })).resolves.toMatchObject({
       action: 'respond',
-      tool_sets: ['knowledge'],
+      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
       confidence: 'high',
-      reason: 'Router error - defaulting to knowledge tools',
+      reason: 'Router error - defaulting to safe knowledge tools',
       decision_method: 'llm',
     });
   });
@@ -936,9 +936,9 @@ describe('parseRouterResponse', () => {
     const plan = parseRouterResponse('{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"The user is asking about AdCP protoc');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
-      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.tool_sets).toEqual(['knowledge', 'community_research', 'schema_reference']);
       expect(plan.confidence).toBe('high');
-      expect(plan.reason).toBe('Parse error - defaulting to knowledge tools');
+      expect(plan.reason).toBe('Parse error - defaulting to safe knowledge tools');
     }
   });
 
@@ -946,7 +946,7 @@ describe('parseRouterResponse', () => {
     const plan = parseRouterResponse('{"action":"clarify","question":"What do you mean?","reason":"ambiguous"}');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
-      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.tool_sets).toEqual(['knowledge', 'community_research', 'schema_reference']);
       expect(plan.confidence).toBe('suggest');
     }
   });

@@ -16,7 +16,7 @@ If you're an integrator or admin and you want to know whether Addie can do X: se
 
 ## knowledge
 
-Search documentation, code repos, Slack history, curated resources, GitHub issues/PRs, and validate JSON against AdCP schemas for protocol questions, implementation help, roadmap/RFC lookups, and community discussions
+Search AdCP documentation and indexed ad tech specifications for protocol questions and implementation help
 
 ### `search_docs`
 
@@ -35,6 +35,10 @@ Get the full content of a specific documentation page by ID. Canonical IDs retur
 Search indexed external GitHub repositories for ad tech specifications and protocols. Includes: AdCP (core protocol spec, sales agent, signals agent, JS/Python/Go clients), A2A (Google Agent-to-Agent protocol and samples), MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), Prebid (full documentation site with configuration guides, bidder adapter docs, ad ops workflows, GAM integration, troubleshooting, Prebid Mobile, and video; plus Prebid.js source with module docs, and Prebid Server source), and LangGraph. Use this for protocol details, spec comparisons, implementation examples, and SDK usage.
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
+
+## community_research
+
+When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack
 
 ### `search_slack`
 
@@ -72,11 +76,9 @@ Download and read a file that was shared in Slack. PROACTIVELY use this whenever
 
 *Source: `server/src/addie/mcp/url-tools.ts`*
 
-### `list_github_issues`
+## schema_reference
 
-Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
+Inspect, compare, and validate JSON against versioned AdCP schemas
 
 ### `validate_json`
 
@@ -696,6 +698,12 @@ File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via
 ### `get_github_issue`
 
 Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `list_github_issues`
+
+Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
