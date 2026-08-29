@@ -299,6 +299,10 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const materialization = readJson(index.base_inputs.materialization);
   assert.equal(validateReportDefinition(reportDefinition), true, JSON.stringify(validateReportDefinition.errors));
   assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
+  assert.equal(obligation.reconciliation_status, 'pending');
+  assert.equal(obligation.health, 'waiting');
+  assert.equal(obligation.receipt_count, 0);
+  assert.equal(obligation.accepted_receipt_count, 0);
   assert.equal(validateRevision(revision), true, JSON.stringify(validateRevision.errors));
   assert.equal(validateMaterialization(materialization), true, JSON.stringify(validateMaterialization.errors));
   assert.equal(revision.report_definition_sha256, index.assets[index.base_inputs.report_definition].sha256);

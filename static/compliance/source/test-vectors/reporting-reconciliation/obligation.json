@@ -28,14 +28,14 @@
   "destination_ref": "fixture-destination",
   "required_finality": "official",
   "reconciliation_mode": "consumer_receipt",
-  "reconciliation_status": "accepted",
-  "health": "complete",
+  "reconciliation_status": "pending",
+  "health": "waiting",
   "production_status": "published",
   "revision_count": 1,
   "materialization_count": 1,
   "successful_materialization_count": 1,
-  "receipt_count": 1,
-  "accepted_receipt_count": 1,
+  "receipt_count": 0,
+  "accepted_receipt_count": 0,
   "issues": [],
   "resource_retained_until": "2026-09-27T04:00:02Z"
 }
