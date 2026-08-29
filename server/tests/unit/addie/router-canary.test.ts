@@ -5,6 +5,7 @@ import {
   ROUTER_CANARY_PRICING_VERSION,
   ROUTER_CANARY_RESERVED_COST_MICROS,
   admitRouterCanary,
+  getRouterCanarySummary,
   recordRouterCanaryOutcome,
   selectRouterCanaryCohort,
   type RouterCanaryAdmission,
@@ -170,5 +171,84 @@ describe('Luna router canary ledger', () => {
       candidateLatencyMs: 1,
       candidateCostMicros: 1,
     })).rejects.toThrow('Invalid router canary outcome');
+  });
+
+  it('returns aggregate-only canary status, rates, and latched rollback state', async () => {
+    const runQuery = vi.fn().mockResolvedValue({
+      rows: [{
+        hash_key_version: 'test-v1',
+        sample_bps: 100,
+        daily_limit: 10,
+        daily_budget_micros: ROUTER_CANARY_RESERVED_COST_MICROS * 10,
+        reserved_cost_micros: ROUTER_CANARY_RESERVED_COST_MICROS,
+        deadline_ms: 10_000,
+        inflight_count: 0,
+        rolled_back_at: new Date('2026-08-29T12:00:00.000Z'),
+        rollback_reason: 'failure_rate',
+        sampled_count: '12',
+        admitted_count: '10',
+        completed_count: '10',
+        quota_rejected_count: '1',
+        rollback_rejected_count: '1',
+        invalid_config_count: '0',
+        candidate_success_count: '8',
+        candidate_failure_count: '2',
+        fallback_success_count: '2',
+        fallback_safe_default_count: '0',
+        timeout_count: '1',
+        invalid_output_count: '1',
+        identity_error_count: '0',
+        provider_error_count: '0',
+        candidate_latency_ms_sum: '5000',
+        candidate_latency_ms_max: 900,
+        candidate_cost_micros_sum: '3000',
+        fallback_latency_ms_sum: '400',
+      }],
+      rowCount: 1,
+    });
+
+    const summary = await getRouterCanarySummary(7, { query: runQuery });
+
+    expect(summary).toMatchObject({
+      days: 7,
+      cohorts: [{
+        hash_key_version: 'test-v1',
+        state: {
+          rolled_back: true,
+          rolled_back_at: '2026-08-29T12:00:00.000Z',
+          rollback_reason: 'failure_rate',
+        },
+        admission: { sampled: 12, admitted: 10 },
+        outcomes: {
+          completed: 10,
+          candidate_succeeded: 8,
+          candidate_failed: 2,
+        },
+        rates: {
+          completion: 1,
+          candidate_success: 0.8,
+          fallback_safe_default: 0,
+        },
+        candidate: {
+          latency_ms_average: 500,
+          latency_ms_max: 900,
+          estimated_cost_micros: 3000,
+          estimated_cost_micros_average: 300,
+        },
+        fallback: { latency_ms_average: 200 },
+      }],
+    });
+    expect(runQuery.mock.calls[0][1]).toEqual([
+      7,
+      ROUTER_CANARY_POLICY_VERSION,
+      ROUTER_CANARY_PRICING_VERSION,
+      'gpt-5.6-luna',
+    ]);
+  });
+
+  it.each([0, 91, 1.5])('rejects invalid summary window %s', async (days) => {
+    await expect(getRouterCanarySummary(days, {
+      query: vi.fn(),
+    })).rejects.toThrow('Invalid router canary summary window');
   });
 });

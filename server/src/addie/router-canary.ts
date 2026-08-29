@@ -12,6 +12,7 @@ export const ROUTER_CANARY_POLICY_VERSION = 'addie-router-luna-canary:v1';
 export const ROUTER_CANARY_PRICING_VERSION = 'openai-gpt-5.6-luna-2026-08-26';
 export const ROUTER_CANARY_MAX_CHANNELS = 4;
 export const ROUTER_CANARY_MAX_DEADLINE_MS = 15_000;
+export const ROUTER_CANARY_SUMMARY_MAX_DAYS = 90;
 export const ROUTER_CANARY_STALE_INFLIGHT_MS = 15 * 60 * 1000;
 export const ROUTER_CANARY_ROLLBACK_POLICY = Object.freeze({
   minimumCompleted: 5,
@@ -525,5 +526,230 @@ export async function recordRouterCanaryOutcome(
     recorded: Boolean(row),
     rolledBack: row?.rolled_back ?? false,
     rollbackReason: row?.rollback_reason ?? null,
+  };
+}
+
+interface RouterCanarySummaryRow {
+  hash_key_version: string;
+  sample_bps: number;
+  daily_limit: number;
+  daily_budget_micros: number;
+  reserved_cost_micros: number;
+  deadline_ms: number;
+  inflight_count: number;
+  rolled_back_at: Date | null;
+  rollback_reason: string | null;
+  sampled_count: string;
+  admitted_count: string;
+  completed_count: string;
+  quota_rejected_count: string;
+  rollback_rejected_count: string;
+  invalid_config_count: string;
+  candidate_success_count: string;
+  candidate_failure_count: string;
+  fallback_success_count: string;
+  fallback_safe_default_count: string;
+  timeout_count: string;
+  invalid_output_count: string;
+  identity_error_count: string;
+  provider_error_count: string;
+  candidate_latency_ms_sum: string;
+  candidate_latency_ms_max: number;
+  candidate_cost_micros_sum: string;
+  fallback_latency_ms_sum: string;
+}
+
+function count(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '0', 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+export interface RouterCanarySummary {
+  days: number;
+  scope: {
+    policy_version: typeof ROUTER_CANARY_POLICY_VERSION;
+    pricing_version: typeof ROUTER_CANARY_PRICING_VERSION;
+    requested_provider: 'openai';
+    requested_model: typeof OPENAI_ROUTER_MODEL;
+    population: 'allowlisted_public_channel_full_model_router_only';
+  };
+  rollback_thresholds: typeof ROUTER_CANARY_ROLLBACK_POLICY;
+  cohorts: Array<{
+    hash_key_version: string;
+    config: {
+      sample_bps: number;
+      daily_limit: number;
+      daily_budget_micros: number;
+      reserved_cost_micros: number;
+      deadline_ms: number;
+    };
+    state: {
+      inflight: number;
+      rolled_back: boolean;
+      rolled_back_at: string | null;
+      rollback_reason: string | null;
+    };
+    admission: {
+      sampled: number;
+      admitted: number;
+      quota_rejected: number;
+      rollback_rejected: number;
+      invalid_configuration: number;
+    };
+    outcomes: {
+      completed: number;
+      candidate_succeeded: number;
+      candidate_failed: number;
+      fallback_succeeded: number;
+      fallback_safe_default: number;
+      timeout: number;
+      invalid_output: number;
+      identity_or_capability_error: number;
+      provider_error: number;
+    };
+    rates: {
+      completion: number | null;
+      candidate_success: number | null;
+      fallback_safe_default: number | null;
+    };
+    candidate: {
+      latency_ms_average: number | null;
+      latency_ms_max: number | null;
+      estimated_cost_micros: number;
+      estimated_cost_micros_average: number | null;
+    };
+    fallback: { latency_ms_average: number | null };
+  }>;
+}
+
+/** Aggregate-only operator visibility for the dormant or active canary. */
+export async function getRouterCanarySummary(
+  days = 7,
+  dependencies: { query?: QueryFn } = {},
+): Promise<RouterCanarySummary> {
+  if (!Number.isInteger(days) || days < 1 || days > ROUTER_CANARY_SUMMARY_MAX_DAYS) {
+    throw new RangeError('Invalid router canary summary window');
+  }
+  const runQuery = dependencies.query ?? defaultQuery as QueryFn;
+  const result = await runQuery<RouterCanarySummaryRow>(
+    `SELECT state.hash_key_version, state.sample_bps, state.daily_limit,
+            state.daily_budget_micros, state.reserved_cost_micros,
+            state.deadline_ms, state.inflight_count, state.rolled_back_at,
+            state.rollback_reason,
+            COALESCE(SUM(metrics.sampled_count), 0)::text AS sampled_count,
+            COALESCE(SUM(metrics.admitted_count), 0)::text AS admitted_count,
+            COALESCE(SUM(metrics.completed_count), 0)::text AS completed_count,
+            COALESCE(SUM(metrics.quota_rejected_count), 0)::text AS quota_rejected_count,
+            COALESCE(SUM(metrics.rollback_rejected_count), 0)::text AS rollback_rejected_count,
+            COALESCE(SUM(metrics.invalid_config_count), 0)::text AS invalid_config_count,
+            COALESCE(SUM(metrics.candidate_success_count), 0)::text AS candidate_success_count,
+            COALESCE(SUM(metrics.candidate_failure_count), 0)::text AS candidate_failure_count,
+            COALESCE(SUM(metrics.fallback_success_count), 0)::text AS fallback_success_count,
+            COALESCE(SUM(metrics.fallback_safe_default_count), 0)::text
+              AS fallback_safe_default_count,
+            COALESCE(SUM(metrics.timeout_count), 0)::text AS timeout_count,
+            COALESCE(SUM(metrics.invalid_output_count), 0)::text AS invalid_output_count,
+            COALESCE(SUM(metrics.identity_error_count), 0)::text AS identity_error_count,
+            COALESCE(SUM(metrics.provider_error_count), 0)::text AS provider_error_count,
+            COALESCE(SUM(metrics.candidate_latency_ms_sum), 0)::text
+              AS candidate_latency_ms_sum,
+            COALESCE(MAX(metrics.candidate_latency_ms_max), 0)::integer
+              AS candidate_latency_ms_max,
+            COALESCE(SUM(metrics.candidate_cost_micros_sum), 0)::text
+              AS candidate_cost_micros_sum,
+            COALESCE(SUM(metrics.fallback_latency_ms_sum), 0)::text
+              AS fallback_latency_ms_sum
+     FROM addie_router_canary_state state
+     LEFT JOIN addie_router_canary_daily_metrics metrics
+       ON metrics.policy_version = state.policy_version
+      AND metrics.pricing_version = state.pricing_version
+      AND metrics.hash_key_version = state.hash_key_version
+      AND metrics.requested_model = state.requested_model
+      AND metrics.metric_date >= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
+        - ($1::integer - 1)
+     WHERE state.policy_version = $2 AND state.pricing_version = $3
+       AND state.requested_model = $4
+     GROUP BY state.policy_version, state.pricing_version, state.requested_model,
+              state.hash_key_version, state.sample_bps, state.daily_limit,
+              state.daily_budget_micros, state.reserved_cost_micros,
+              state.deadline_ms, state.inflight_count, state.rolled_back_at,
+              state.rollback_reason, state.created_at
+     ORDER BY state.created_at DESC`,
+    [
+      days,
+      ROUTER_CANARY_POLICY_VERSION,
+      ROUTER_CANARY_PRICING_VERSION,
+      OPENAI_ROUTER_MODEL,
+    ],
+  );
+  return {
+    days,
+    scope: {
+      policy_version: ROUTER_CANARY_POLICY_VERSION,
+      pricing_version: ROUTER_CANARY_PRICING_VERSION,
+      requested_provider: 'openai',
+      requested_model: OPENAI_ROUTER_MODEL,
+      population: 'allowlisted_public_channel_full_model_router_only',
+    },
+    rollback_thresholds: ROUTER_CANARY_ROLLBACK_POLICY,
+    cohorts: result.rows.map((row) => {
+      const admitted = count(row.admitted_count);
+      const completed = count(row.completed_count);
+      const candidateSucceeded = count(row.candidate_success_count);
+      const fallbackSafeDefault = count(row.fallback_safe_default_count);
+      const candidateLatency = count(row.candidate_latency_ms_sum);
+      const candidateCost = count(row.candidate_cost_micros_sum);
+      const fallbackLatency = count(row.fallback_latency_ms_sum);
+      return {
+        hash_key_version: row.hash_key_version,
+        config: {
+          sample_bps: row.sample_bps,
+          daily_limit: row.daily_limit,
+          daily_budget_micros: row.daily_budget_micros,
+          reserved_cost_micros: row.reserved_cost_micros,
+          deadline_ms: row.deadline_ms,
+        },
+        state: {
+          inflight: row.inflight_count,
+          rolled_back: row.rolled_back_at !== null,
+          rolled_back_at: row.rolled_back_at?.toISOString() ?? null,
+          rollback_reason: row.rollback_reason,
+        },
+        admission: {
+          sampled: count(row.sampled_count),
+          admitted,
+          quota_rejected: count(row.quota_rejected_count),
+          rollback_rejected: count(row.rollback_rejected_count),
+          invalid_configuration: count(row.invalid_config_count),
+        },
+        outcomes: {
+          completed,
+          candidate_succeeded: candidateSucceeded,
+          candidate_failed: count(row.candidate_failure_count),
+          fallback_succeeded: count(row.fallback_success_count),
+          fallback_safe_default: fallbackSafeDefault,
+          timeout: count(row.timeout_count),
+          invalid_output: count(row.invalid_output_count),
+          identity_or_capability_error: count(row.identity_error_count),
+          provider_error: count(row.provider_error_count),
+        },
+        rates: {
+          completion: admitted > 0 ? completed / admitted : null,
+          candidate_success: completed > 0 ? candidateSucceeded / completed : null,
+          fallback_safe_default: completed > 0 ? fallbackSafeDefault / completed : null,
+        },
+        candidate: {
+          latency_ms_average: completed > 0 ? candidateLatency / completed : null,
+          latency_ms_max: completed > 0 ? row.candidate_latency_ms_max : null,
+          estimated_cost_micros: candidateCost,
+          estimated_cost_micros_average: completed > 0 ? candidateCost / completed : null,
+        },
+        fallback: {
+          latency_ms_average: count(row.candidate_failure_count) > 0
+            ? fallbackLatency / count(row.candidate_failure_count)
+            : null,
+        },
+      };
+    }),
   };
 }

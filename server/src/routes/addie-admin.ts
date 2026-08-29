@@ -69,6 +69,10 @@ import {
   ROUTER_SHADOW_RETENTION_DAYS,
   getRouterShadowSummary,
 } from '../addie/router-shadow.js';
+import {
+  ROUTER_CANARY_SUMMARY_MAX_DAYS,
+  getRouterCanarySummary,
+} from '../addie/router-canary.js';
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -642,6 +646,28 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         'Error fetching router shadow summary',
       );
       res.status(500).json({ error: 'Unable to fetch router shadow summary' });
+    }
+  });
+
+  // GET /api/admin/addie/threads/router-canary-summary
+  // Aggregate-only admission, fallback, latency, cost, and rollback evidence.
+  apiRouter.get('/threads/router-canary-summary', async (req, res) => {
+    const days = typeof req.query.days === 'string' && req.query.days.trim() !== ''
+      ? Number(req.query.days)
+      : 7;
+    if (!Number.isInteger(days) || days < 1 || days > ROUTER_CANARY_SUMMARY_MAX_DAYS) {
+      return res.status(400).json({
+        error: `days must be an integer from 1 to ${ROUTER_CANARY_SUMMARY_MAX_DAYS}`,
+      });
+    }
+    try {
+      res.json(await getRouterCanarySummary(days));
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching router canary summary',
+      );
+      res.status(500).json({ error: 'Unable to fetch router canary summary' });
     }
   });
 
