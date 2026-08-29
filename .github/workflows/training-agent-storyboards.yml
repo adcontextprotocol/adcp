@@ -9,14 +9,13 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-schemas.cjs'
       - 'scripts/build-compliance.cjs'
-      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
-      - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
@@ -30,14 +29,13 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-schemas.cjs'
       - 'scripts/build-compliance.cjs'
-      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
-      - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
@@ -152,18 +150,11 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Overlay in-repo compliance source onto SDK cache
+      - name: Build current compliance and schema bundles
         if: matrix.surface == 'current'
-        # The storyboard runner loads from @adcp/sdk's bundled compliance
-        # cache (a snapshot synced from this repo's static/compliance/source/
-        # on each SDK publish). To grade current-PR fixtures rather than
-        # the published snapshot, rebuild the development compliance bundle
-        # and copy that generated bundle onto the cache so index.json includes
-        # newly-added storyboards.
-        # Logic lives in scripts/overlay-compliance-cache.sh so the
-        # pre-push hook (scripts/run-storyboards-matrix.sh) and CI grade
-        # against the same overlay.
-        run: bash scripts/overlay-compliance-cache.sh
+        run: |
+          node scripts/build-schemas.cjs
+          node scripts/build-compliance.cjs
 
       - name: Select latest released 3.0.x compliance bundle
         if: matrix.surface == '3.0-compat'
@@ -244,8 +235,8 @@ jobs:
         env:
           TENANT_PATH: ${{ matrix.tenant }}
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
-          ADCP_COMPLIANCE_DIR: ${{ steps.compat-bundle.outputs.dir }}
-          ADCP_SCHEMA_ROOT: ${{ steps.compat-bundle.outputs.schema_dir }}
+          ADCP_COMPLIANCE_DIR: ${{ matrix.surface == 'current' && 'dist/compliance/latest' || steps.compat-bundle.outputs.dir }}
+          ADCP_SCHEMA_ROOT: ${{ matrix.surface == 'current' && 'dist/schemas/latest' || steps.compat-bundle.outputs.schema_dir }}
         run: |
           set -uo pipefail
           # Creative-builder retains a large generated-schema graph after its
@@ -479,6 +470,8 @@ jobs:
         orchestrator: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       SALES_ORCHESTRATOR_COUNT: 8
+      ADCP_COMPLIANCE_DIR: dist/compliance/latest
+      ADCP_SCHEMA_ROOT: dist/schemas/latest
       # SDK beta.11 keeps each storyboard inside the 4 GiB RSS envelope, but
       # the heaviest lifecycle flows can approach two minutes on a loaded
       # runner. Preserve the hard memory bound and allow teardown headroom.
@@ -498,8 +491,10 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Overlay in-repo compliance source onto SDK cache
-        run: bash scripts/overlay-compliance-cache.sh
+      - name: Build current compliance and schema bundles
+        run: |
+          node scripts/build-schemas.cjs
+          node scripts/build-compliance.cjs
 
       - name: Run isolated /sales storyboards
         env:

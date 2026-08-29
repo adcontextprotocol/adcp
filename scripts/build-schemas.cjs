@@ -1493,6 +1493,14 @@ function updateSourceRegistry(version) {
   console.log(`✏️  Updated source registry: ${registryPath}`);
 }
 
+function pinSchemaRootDeclaredVersion(root, version) {
+  const registryPath = path.join(root, 'index.json');
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  registry.published_version = version;
+  registry.adcp_version = version;
+  fs.writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+}
+
 /**
  * Find all JSON schema files in a directory (excluding index.json)
  */
@@ -2534,6 +2542,7 @@ async function main() {
     console.log(`📋 Updating latest/ to match release`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    pinSchemaRootDeclaredVersion(latestDir, version);
     copyAsyncResponseRefsToCore(latestDir);
 
     // Build extensions for latest (using full version for filtering)
@@ -2591,6 +2600,10 @@ async function main() {
     console.log(`📋 Building schemas to dist/schemas/latest/`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    // Public SDK schemaRoot consumers bind a root to an exact protocol
+    // release. Keep latest/ URLs for development while declaring which
+    // package/schema release those aliases represent.
+    pinSchemaRootDeclaredVersion(latestDir, version);
     const asyncRefCount = copyAsyncResponseRefsToCore(latestDir);
     console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 

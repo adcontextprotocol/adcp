@@ -2672,7 +2672,7 @@ describe('validate_input handler', () => {
     ]);
   });
 
-  it('accepts protocol-valid macro-bearing URL assets under SDK beta.15', async () => {
+  it('accepts protocol-valid macro-bearing URL assets under SDK beta.16', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {
       manifest: {
@@ -2681,7 +2681,7 @@ describe('validate_input handler', () => {
           daast_tag: {
             asset_type: 'daast',
             delivery_type: 'url',
-            url: 'https://daast.acme.example/tag.xml',
+            url: 'https://daast.acme.example/tag.xml?cb=${CACHEBUSTER}&gdpr=[GDPR]',
           },
         },
       },
