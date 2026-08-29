@@ -193,6 +193,67 @@ describe('admin promote credential to primary', () => {
     expect(memberships.rows.every(r => r.workos_user_id === TARGET_USER_ID)).toBe(true);
   });
 
+  /**
+   * Both credentials hold a membership in the same organization. The
+   * consolidation deletes the outgoing primary's row, so the endpoint must
+   * refuse without stated intent.
+   */
+  async function setupOverlappingPair() {
+    await setupBoundPair();
+    // Give the target its own membership in the host's org, so promoting
+    // would delete the host's row for that org rather than move it.
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'target@test.example', 'member', NOW(), NOW())`,
+      [TARGET_USER_ID, HOST_ORG_ID]
+    );
+  }
+
+  it('409s rather than silently deleting a membership the target already holds', async () => {
+    await setupOverlappingPair();
+
+    const response = await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .expect(409);
+
+    expect(response.body).toMatchObject({
+      consolidate_confirmation_required: true,
+      superseded_organization_ids: [HOST_ORG_ID],
+      superseded_working_group_ids: [],
+    });
+
+    // Nothing moved: the host is still primary and still holds its row.
+    const bindings = await pool.query<{ is_primary: boolean }>(
+      `SELECT is_primary FROM identity_workos_users WHERE workos_user_id = $1`,
+      [HOST_USER_ID]
+    );
+    expect(bindings.rows[0].is_primary).toBe(true);
+  });
+
+  it('promotes once the caller confirms the consolidation', async () => {
+    await setupOverlappingPair();
+
+    await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .send({ consolidate: true })
+      .expect(200);
+
+    const bindings = await pool.query<{ workos_user_id: string; is_primary: boolean }>(
+      `SELECT workos_user_id, is_primary FROM identity_workos_users
+        WHERE workos_user_id IN ($1, $2)`,
+      [HOST_USER_ID, TARGET_USER_ID]
+    );
+    expect(bindings.rows.find(r => r.workos_user_id === TARGET_USER_ID)?.is_primary).toBe(true);
+  });
+
+  it('promotes without confirmation when the memberships do not overlap', async () => {
+    await setupBoundPair();
+
+    await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .expect(200);
+  });
+
   it('writes a promote_credential_to_primary audit row', async () => {
     await setupBoundPair();
     await request(app)
