@@ -51,6 +51,7 @@ class ScriptedJudgeProvider implements ModelProvider {
     readonly id: ModelProviderId,
     private readonly output: string | string[],
     private readonly finishReason: 'stop' | 'length' = 'stop',
+    private readonly includeProviderState = false,
   ) {}
 
   prepare(request: ModelRequest): PreparedModelInvocation {
@@ -71,17 +72,28 @@ class ScriptedJudgeProvider implements ModelProvider {
     await options.beforeDispatch?.(prepared);
     this.dispatches++;
     const outputs = Array.isArray(this.output) ? this.output : [this.output];
+    const providerState = {
+      type: 'provider_state' as const,
+      provider: this.id,
+      kind: 'thinking',
+    };
     const response = {
       provider: this.id,
       model: request.model,
       id: `${this.id}-judge-response`,
-      content: outputs.map((text) => ({ type: 'text' as const, text })),
+      content: [
+        ...(this.includeProviderState ? [providerState] : []),
+        ...outputs.map((text) => ({ type: 'text' as const, text })),
+      ],
       finishReason: this.finishReason,
       providerFinishReason: this.finishReason,
       usage: { inputTokens: 100, outputTokens: 20 },
     };
     yield { type: 'response_start', provider: this.id, model: request.model, id: response.id };
-    for (const [index, text] of outputs.entries()) yield { type: 'text_delta', index, text };
+    if (this.includeProviderState) yield { type: 'provider_state', index: 0, state: providerState };
+    for (const [index, text] of outputs.entries()) {
+      yield { type: 'text_delta', index: index + (this.includeProviderState ? 1 : 0), text };
+    }
     yield { type: 'response_complete', response };
   }
 }
@@ -214,6 +226,20 @@ describe('fixed-trace independent judge', () => {
       .resolves.toMatchObject({
         status: 'judged',
         verdict: { pass: true, score: 3, reason: 'correct' },
+      });
+  });
+
+  it('accepts a verdict accompanied only by authenticated provider thinking state', async () => {
+    const provider = new ScriptedJudgeProvider(
+      'anthropic',
+      '{"pass":true,"score":4,"reason":"correct"}',
+      'stop',
+      true,
+    );
+    await expect(judgeFixedTraceObservation(trace, observation(trace.id, 'openai'), config(provider)))
+      .resolves.toMatchObject({
+        status: 'judged',
+        verdict: { pass: true, score: 4, reason: 'correct' },
       });
   });
 
