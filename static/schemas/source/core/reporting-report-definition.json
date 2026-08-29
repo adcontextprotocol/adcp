@@ -5,6 +5,13 @@
   "x-status": "experimental",
   "description": "Immutable, inspectable semantic contract for how a reporting feed is produced and finalized. Its exact bytes are pinned by report_definition_sha256.",
   "type": "object",
+  "definitions": {
+    "ReportCalendarTimezoneBasis": {
+      "title": "Report Calendar Timezone Basis",
+      "type": "string",
+      "enum": ["utc", "account_timezone", "configured_timezone"]
+    }
+  },
   "properties": {
     "contract_version": { "type": "string", "const": "1.0" },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-definition+json" },
@@ -25,7 +32,7 @@
     "calendar": {
       "type": "object",
       "properties": {
-        "timezone_basis": { "type": "string", "enum": ["utc", "account_timezone", "configured_timezone"] },
+        "timezone_basis": { "$ref": "#/definitions/ReportCalendarTimezoneBasis" },
         "timezone": { "type": "string", "minLength": 1, "maxLength": 255 }
       },
       "required": ["timezone_basis"],

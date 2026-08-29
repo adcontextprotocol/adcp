@@ -5,6 +5,13 @@
   "x-status": "experimental",
   "description": "Recipient configuration for a producer-hosted reporting share. The caller either references an existing seller-issued immutable recipient/destination generation or asks the seller to provision one for the named recipient. A destination_ref is owned by the stable authenticated principal's relationship with this seller and may be reused across accounts; each account delivery configuration separately authorizes disclosure of its feed and scope. Changing proof-bound recipient coordinates or the accepted delivery contract produces a new destination_ref. No bearer profile, token, private key, password, or other credential may appear here.",
   "type": "object",
+  "definitions": {
+    "ReportingCloud": {
+      "title": "Reporting Cloud",
+      "type": "string",
+      "enum": ["aws", "azure", "gcp"]
+    }
+  },
   "oneOf": [
     {
       "title": "Existing binding",
@@ -26,7 +33,7 @@
           "description": "Intended buyer principal. The identity is interpreted by the provider and access mode; for example, a Databricks sharing identifier, Snowflake organization/account pair, or Open Sharing recipient email. It is an identifier, never a credential.",
           "properties": {
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
-            "cloud": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+            "cloud": { "$ref": "#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
           },
           "required": ["identity"],

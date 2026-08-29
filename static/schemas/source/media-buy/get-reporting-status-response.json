@@ -42,7 +42,7 @@
     }
   ],
   "properties": {
-    "view": { "type": "string", "enum": ["summary", "periods", "revision"] },
+    "view": { "$ref": "/schemas/media-buy/get-reporting-status-request.json#/definitions/ReportingStatusView" },
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
@@ -53,7 +53,7 @@
         "period_start": { "type": "string", "format": "date-time" },
         "period_end": { "type": "string", "format": "date-time" },
         "scope_closed": { "type": "boolean", "description": "True only when no new obligation can enter this evaluated scope." },
-        "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
+        "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" }, "uniqueItems": true },
         "all_accessible_media_buys": { "type": "boolean", "description": "True when media_buy_ids was omitted and the scope covers all caller-accessible account buys." },
         "delivery_config_generations": {
           "type": "array",
@@ -63,14 +63,14 @@
             "properties": {
               "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
-              "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] }
+              "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
             "additionalProperties": false
           },
           "uniqueItems": true
         },
-        "feed_purposes": { "type": "array", "items": { "type": "string", "enum": ["pacing", "analytics", "billing"] }, "uniqueItems": true },
+        "feed_purposes": { "type": "array", "items": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" }, "uniqueItems": true },
         "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "uniqueItems": true },
         "ledger_retained_from": { "type": "string", "format": "date-time", "description": "Earliest period boundary for which anti-entropy metadata is retained for every selected configuration generation." },
         "coverage_complete": { "type": "boolean", "description": "Whether the requested horizon is fully inside retained ledger coverage. False means health cannot prove completeness for the whole requested horizon." }

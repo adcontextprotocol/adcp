@@ -5,18 +5,32 @@
   "x-status": "experimental",
   "description": "Exact reporting-support denominator for one offering at one evaluation boundary. Coverage is independent of freshness, finality, and delivery health. It prevents a covered subset from being represented as a complete media-buy or campaign total.",
   "type": "object",
+  "definitions": {
+    "ReportingMediaBuyId": {
+      "title": "Reporting Media Buy ID",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "ReportingPackageId": {
+      "title": "Reporting Package ID",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "package"
+    }
+  },
   "properties": {
     "status": { "type": "string", "enum": ["full", "partial", "none", "unknown"] },
     "evaluated_at": { "type": "string", "format": "date-time" },
-    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true, "description": "Exact media-buy denominator, including unsupported and unknown buys. An empty array is an explicitly evaluated zero-buy scope." },
-    "fully_covered_media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
-    "partially_covered_media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
-    "unsupported_media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
-    "unknown_media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true },
-    "package_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "package" }, "uniqueItems": true, "description": "Exact package denominator for the evaluated media buys." },
-    "covered_package_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "package" }, "uniqueItems": true },
-    "unsupported_package_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "package" }, "uniqueItems": true },
-    "unknown_package_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "package" }, "uniqueItems": true },
+    "media_buy_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingMediaBuyId" }, "uniqueItems": true, "description": "Exact media-buy denominator, including unsupported and unknown buys. An empty array is an explicitly evaluated zero-buy scope." },
+    "fully_covered_media_buy_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingMediaBuyId" }, "uniqueItems": true },
+    "partially_covered_media_buy_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingMediaBuyId" }, "uniqueItems": true },
+    "unsupported_media_buy_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingMediaBuyId" }, "uniqueItems": true },
+    "unknown_media_buy_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingMediaBuyId" }, "uniqueItems": true },
+    "package_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingPackageId" }, "uniqueItems": true, "description": "Exact package denominator for the evaluated media buys." },
+    "covered_package_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingPackageId" }, "uniqueItems": true },
+    "unsupported_package_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingPackageId" }, "uniqueItems": true },
+    "unknown_package_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingPackageId" }, "uniqueItems": true },
     "limitations": {
       "type": "array",
       "description": "Stable reasons that some requested scope is not covered by the exact selected offering. These are capability facts, not delivery failures.",
@@ -24,8 +38,8 @@
         "type": "object",
         "properties": {
           "reason": { "type": "string", "enum": ["offering_unsupported", "account_entitlement_unavailable", "credential_scope_insufficient", "provider_limitation", "capability_unknown"] },
-          "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
-          "package_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "package" }, "minItems": 1, "uniqueItems": true }
+          "media_buy_id": { "$ref": "#/definitions/ReportingMediaBuyId" },
+          "package_ids": { "type": "array", "items": { "$ref": "#/definitions/ReportingPackageId" }, "minItems": 1, "uniqueItems": true }
         },
         "required": ["reason", "media_buy_id"],
         "additionalProperties": false

@@ -12,7 +12,7 @@
     "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config", "description": "Durable configuration that requested this materialization." },
     "delivery_config_version": { "type": "integer", "minimum": 1 },
     "destination_ref": { "type": "string", "minLength": 1, "maxLength": 255, "x-entity": "reporting_destination", "description": "Immutable caller-owned destination generation selected by the account-authorized obligation. It may be reused by the same caller across other independently authorized accounts." },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
+    "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
     "method": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
     "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
     "attempt": { "type": "integer", "minimum": 1 },

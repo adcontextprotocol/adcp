@@ -10,7 +10,7 @@
     "delivery_config_version": { "type": "integer", "minimum": 1, "description": "Caller-selected immutable semantic generation. Increment when feed/profile/scope/finality/schedule/method/destination changes; lifecycle fields may change in place." },
     "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "description": "Atomic reporting offering advertised by the seller that binds feed, profile, schedule, finality, and delivery support." },
     "active": { "type": "boolean", "default": true, "description": "Whether new reporting obligations should use this configuration. Inactive configurations remain visible for historical resolution." },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Operational use of this independently reconciled feed. pacing is the fast snapshot path; billing is invoice-authoritative. Event-level exposure is intentionally deferred until a privacy and authorization contract exists." },
+    "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Exact immutable semantic definition selected from the offering. This makes the expected obligation identity independently derivable and prevents attribution, timezone, source-mapping, or restatement-policy drift behind a profile label." },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "description": "Versioned semantic profile for the aggregate report, such as media_buy_delivery_v1. It MUST match the selected offering." },
     "scope": {
@@ -18,7 +18,7 @@
       "description": "Media buys covered by this configuration.",
       "properties": {
         "all_media_buys": { "type": "boolean", "const": true },
-        "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "minItems": 1, "uniqueItems": true }
+        "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" }, "minItems": 1, "uniqueItems": true }
       },
       "minProperties": 1,
       "maxProperties": 1,

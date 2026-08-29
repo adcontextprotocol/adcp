@@ -10,10 +10,10 @@
     "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_delivery_config" },
     "delivery_config_version": { "type": "integer", "minimum": 1 },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition" },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] },
+    "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
     "reporting_profile": { "type": "string", "minLength": 1, "maxLength": 128 },
     "account_id": { "type": "string", "minLength": 1, "x-entity": "account" },
-    "media_buy_ids": { "type": "array", "items": { "type": "string", "minLength": 1, "x-entity": "media_buy" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown." },
+    "media_buy_ids": { "type": "array", "items": { "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId" }, "uniqueItems": true, "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown." },
     "scope_resolved_at": { "type": "string", "format": "date-time", "description": "Instant at which the configured scope was resolved and frozen for this obligation. For all_media_buys, include every caller-authorized account media buy whose effective flight overlaps the half-open period and was known by this cutoff. Later-created or backdated buys do not rewrite this obligation." },
     "coverage": { "$ref": "/schemas/core/reporting-coverage.json", "description": "Immutable effective coverage of the exact selected offering at this period boundary. Delivery health is evaluated separately over the covered denominator." },
     "period": {

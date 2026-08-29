@@ -5,6 +5,14 @@
   "x-status": "experimental",
   "description": "Secret-free authenticated descriptor for an exact reporting materialization. The descriptor MUST select immutable bytes or a provider-native immutable snapshot/version so an exact older revision never resolves to mutable latest state. Callers resolve access through the previously validated caller/account-bound destination/share binding, never from credentials embedded here. No field, including future extensions, may contain credentials, signed URLs, bearer material, or private keys.",
   "type": "object",
+  "definitions": {
+    "ReportingReaderCompatibilityItem": {
+      "title": "Reporting Reader Compatibility Item",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
   "properties": {
     "resource_ref": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_resource", "description": "Seller-issued opaque reference to this exact authenticated resource descriptor." },
     "kind": { "type": "string", "enum": ["manifest", "dataset", "warehouse_relation"], "description": "Shape through which the durable revision is consumed." },
@@ -14,7 +22,7 @@
     "manifest_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "SHA-256 over the exact manifest bytes. Consumers verify this before parsing the manifest." },
     "immutability": { "type": "string", "enum": ["immutable_location", "native_version"], "description": "How this descriptor selects the exact immutable materialization." },
     "expires_at": { "type": "string", "format": "date-time", "description": "Mandatory finite lower-bound endpoint through which this exact resource remains resolvable; it cannot be earlier than the advertised retention contract." },
-    "reader_compatibility": { "type": "array", "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true }
+    "reader_compatibility": { "type": "array", "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.", "items": { "$ref": "#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
   },
   "required": ["resource_ref", "kind", "location", "immutability", "expires_at"],
   "allOf": [

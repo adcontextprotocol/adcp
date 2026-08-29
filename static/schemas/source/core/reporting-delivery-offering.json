@@ -5,9 +5,17 @@
   "x-status": "experimental",
   "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering.",
   "type": "object",
+  "definitions": {
+    "ReportingFeedPurpose": {
+      "title": "Reporting Feed Purpose",
+      "type": "string",
+      "enum": ["pacing", "analytics", "billing"],
+      "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+    }
+  },
   "properties": {
     "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering" },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"], "description": "Operational use of this independently scheduled offering. pacing commonly selects short-period snapshot revisions; billing requires official revisions and consumer reconciliation." },
+    "feed_purpose": { "$ref": "#/definitions/ReportingFeedPurpose" },
     "report_definition_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_definition", "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value." },
     "report_definition_uri": { "type": "string", "format": "uri", "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)", "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin." },
     "report_definition_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest." },
@@ -22,7 +30,7 @@
         "schema_dialect": { "type": "string", "const": "https://json-schema.org/draft/2020-12/schema", "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value." },
         "schema_ref_policy": { "type": "string", "const": "local_fragment_only", "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden." },
         "grain": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Stable description of what one logical row represents." },
-        "primary_keys": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "minItems": 1, "uniqueItems": true },
+        "primary_keys": { "type": "array", "items": { "$ref": "/schemas/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey" }, "minItems": 1, "uniqueItems": true },
         "canonicalization_id": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest." },
         "canonicalization_contract_version": { "type": "string", "const": "1.0" },
         "canonicalization_media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
@@ -40,7 +48,7 @@
       "properties": {
         "pattern": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
-        "orchestration": { "type": "string", "enum": ["producer_managed", "consumer_managed"] },
+        "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },
         "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "format": { "type": "string", "enum": ["jsonl", "csv", "parquet", "avro", "orc"] },
@@ -51,14 +59,14 @@
           "properties": {
             "provider": { "type": "object", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
             "identity": { "type": "string", "minLength": 1, "maxLength": 512 },
-            "cloud": { "type": "string", "enum": ["aws", "azure", "gcp"] },
+            "cloud": { "$ref": "/schemas/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud" },
             "region": { "type": "string", "minLength": 1, "maxLength": 128 }
           },
           "required": ["provider", "identity"],
           "dependencies": { "cloud": ["region"], "region": ["cloud"] },
           "additionalProperties": false
         },
-        "reader_compatibility": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 128 }, "uniqueItems": true }
+        "reader_compatibility": { "type": "array", "items": { "$ref": "/schemas/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem" }, "uniqueItems": true }
       },
       "required": ["pattern", "transport", "orchestration", "destination_modes"],
       "allOf": [

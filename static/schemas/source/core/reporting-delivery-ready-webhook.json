@@ -19,7 +19,7 @@
     "readiness": { "type": "string", "enum": ["available", "delivered"] },
     "finality": { "$ref": "/schemas/enums/reporting-finality.json" },
     "data_through": { "type": ["string", "null"], "format": "date-time" },
-    "feed_purpose": { "type": "string", "enum": ["pacing", "analytics", "billing"] }
+    "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" }
   },
   "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "account_id", "delivery_config_id", "delivery_config_version", "feed_purpose", "reporting_revision_id", "reporting_materialization_id", "readiness", "finality", "data_through"],
   "x-adcp-validation": {

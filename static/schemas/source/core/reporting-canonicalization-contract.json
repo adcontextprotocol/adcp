@@ -5,6 +5,14 @@
   "x-status": "experimental",
   "description": "Executable, immutable contract for producing the canonical logical-report bytes hashed by reporting-canonical-content-digest.json. The fetched document uses application/vnd.adcp.reporting-canonicalization+json and is verified by SHA-256 before parsing.",
   "type": "object",
+  "definitions": {
+    "ReportingPrimaryKey": {
+      "title": "Reporting Primary Key",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
   "properties": {
     "contract_version": { "type": "string", "const": "1.0" },
     "media_type": { "type": "string", "const": "application/vnd.adcp.reporting-canonicalization+json" },
@@ -12,7 +20,7 @@
     "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact row schema to which this contract applies." },
     "primary_keys": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 128 },
+      "items": { "$ref": "#/definitions/ReportingPrimaryKey" },
       "minItems": 1,
       "uniqueItems": true,
       "description": "Ordered scalar fields used to sort rows and reject duplicate logical rows. This MUST equal the offering's primary_keys."
