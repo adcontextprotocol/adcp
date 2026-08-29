@@ -18,6 +18,10 @@ const releaseDocsWorkflow = fs.readFileSync(
   path.join(repoRoot, '.github/workflows/release-docs.yml'),
   'utf8'
 );
+const schemaPrWorkflowConfig = YAML.parse(fs.readFileSync(
+  path.join(repoRoot, '.github/workflows/validate-schema-bundle.yml'),
+  'utf8'
+));
 const workflowConfig = YAML.parse(workflow);
 const eolReleaseBranches = ['2.5-maintenance', '2.6.x'];
 const activeWorkflowPaths = [
@@ -60,6 +64,12 @@ const changesetsActionImplementation = fs.readFileSync(
   'utf8'
 );
 const changesetsActionContract = YAML.parse(changesetsActionContractSource);
+
+assert.deepStrictEqual(
+  schemaPrWorkflowConfig.on.pull_request.paths,
+  ['static/schemas/source/**'],
+  'Schema PR bundle validation must run only for canonical schema source changes.'
+);
 
 assert.strictEqual(
   crypto.createHash('sha256').update(changesetsActionContractSource).digest('hex'),
