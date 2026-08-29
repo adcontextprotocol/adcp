@@ -102,7 +102,10 @@ describe('strict router eval', () => {
       { message: 'route failure safely', source: 'channel' },
       { observer },
     );
-    expect(plan).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+    expect(plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
+    });
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(observer).toHaveBeenCalledWith(expect.objectContaining({
       requestedProvider: 'openai',

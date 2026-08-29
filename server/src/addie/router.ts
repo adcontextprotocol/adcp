@@ -50,6 +50,7 @@ import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
   requiresPrecision as checkPrecision,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from "./tool-sets.js";
 
 /**
@@ -962,7 +963,7 @@ export function parseRouterResponse(response: string): ParsedPlan {
       // which can ask for clarification with full context and tools
       return {
         action: "respond",
-        tool_sets: ["knowledge"],
+        tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
         confidence: "suggest" as ConfidenceTier,
         reason: parsed.reason || "Needs clarification",
       };
@@ -989,14 +990,14 @@ export function parseRouterResponse(response: string): ParsedPlan {
   } catch {
     logger.warn(
       { responseBytes: Buffer.byteLength(response, "utf8") },
-      "Router: Failed to parse response, using knowledge fallback",
+      "Router: Failed to parse response, using safe knowledge fallback",
     );
-    // On parse error, default to respond with knowledge tools (safe fallback)
+    // On parse error, retain the pre-split safe read-only knowledge domains.
     return {
       action: "respond",
-      tool_sets: ["knowledge"],
+      tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
       confidence: "high",
-      reason: "Parse error - defaulting to knowledge tools",
+      reason: "Parse error - defaulting to safe knowledge tools",
     };
   }
 }
@@ -1245,12 +1246,12 @@ export class AddieRouter {
         { category },
         "Router: Failed to generate execution plan",
       );
-      // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
+      // On error, retain the pre-split safe read-only knowledge domains.
       const fallbackPlan: ExecutionPlan = {
         action: "respond",
-        tool_sets: ["knowledge"],
+        tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
         confidence: "high",
-        reason: "Router error - defaulting to knowledge tools",
+        reason: "Router error - defaulting to safe knowledge tools",
         decision_method: "llm",
         latency_ms: Date.now() - startTime,
       };

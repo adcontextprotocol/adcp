@@ -52,6 +52,18 @@ export const ALWAYS_AVAILABLE_ADMIN_TOOLS = [
 ];
 
 /**
+ * Safe read-only domains used when intent routing cannot provide a narrower
+ * selection. This preserves the documentation, community, and schema access
+ * that the pre-split knowledge set provided without enabling GitHub mutation
+ * workflows through the broader github set.
+ */
+export const SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS = [
+  "knowledge",
+  "community_research",
+  "schema_reference",
+] as const;
+
+/**
  * Tools excluded from ALWAYS_AVAILABLE in public channels
  * to prevent enrollment pitching where it doesn't belong
  */

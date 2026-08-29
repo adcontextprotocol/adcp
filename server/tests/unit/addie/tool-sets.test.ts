@@ -5,6 +5,7 @@ import {
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
   LEGACY_ADMIN_TOOLS,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
   buildUnavailableSetsHint,
   getToolsForSets,
@@ -243,6 +244,20 @@ describe('getToolsForSets', () => {
       expect(community).not.toContain('search_docs');
       expect(schemas).toContain('validate_json');
       expect(schemas).not.toContain('search_docs');
+    });
+
+    it('preserves safe pre-split research tools when routing is unavailable', () => {
+      const fallback = getToolsForSets(
+        [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
+        false,
+        false,
+      );
+
+      expect(fallback).toContain('search_docs');
+      expect(fallback).toContain('search_slack');
+      expect(fallback).toContain('validate_json');
+      expect(fallback).not.toContain('draft_github_issue');
+      expect(fallback).not.toContain('create_github_issue');
     });
 
     it('cuts the global member surface to six escape hatches', () => {
