@@ -406,12 +406,14 @@ describe('AddieToolExecutionLedger', () => {
       },
     }));
 
-    for await (const event of executeAddieToolCalls([call()], execute, ledger.sequence)) {
-      ledger.recordCustomEvent(event, customResults);
+    const events = [];
+    for await (const event of ledger.executeCustomCalls([call()], execute, customResults)) {
+      events.push(event.type);
     }
 
     expect(providerExecutions[0]?.execution.sequence).toBe(1);
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'call_1' }), 2);
+    expect(events).toEqual(['start', 'end']);
     expect(ledger.sequence).toBe(2);
     expect(ledger.toolsUsed).toEqual(['web_search', 'lookup']);
     expect(ledger.executions.map(({ sequence }) => sequence)).toEqual([1, 2]);
@@ -420,28 +422,32 @@ describe('AddieToolExecutionLedger', () => {
     ]);
   });
 
-  it('rejects a custom completion without its matching start event', () => {
+  it('rejects a custom completion whose execution sequence does not match', async () => {
     const ledger = new AddieToolExecutionLedger();
-    expect(() => ledger.recordCustomEvent({
-      type: 'end',
-      call: call(),
-      sequence: 1,
-      executed: {
-        result: {
-          type: 'tool_result',
-          toolCallId: 'call_1',
-          toolName: 'lookup',
-          content: 'result',
-        },
-        execution: {
-          tool_name: 'lookup',
-          parameters: {},
-          result: 'result',
-          is_error: false,
-          duration_ms: 0,
-          sequence: 1,
-        },
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => ({
+      result: {
+        type: 'tool_result' as const,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        content: 'result',
       },
-    }, [])).toThrow('Custom-tool completion does not match its start event');
+      execution: {
+        tool_name: toolCall.name,
+        parameters: toolCall.input,
+        result: 'result',
+        is_error: false,
+        duration_ms: 0,
+        sequence: sequence + 1,
+      },
+    }));
+    const consume = async () => {
+      for await (const _event of ledger.executeCustomCalls([call()], execute, [])) {
+        // Consume the full turn so the mismatched completion is validated.
+      }
+    };
+
+    await expect(consume()).rejects.toThrow(
+      'Custom-tool completion does not match its start event',
+    );
   });
 });
