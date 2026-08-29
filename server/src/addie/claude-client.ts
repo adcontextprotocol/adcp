@@ -1459,9 +1459,9 @@ export class AddieClaudeClient {
       const llmStart = Date.now();
       let response: ModelResponse;
       let reusedEmptyResponse = false;
-      const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
+      const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
+      const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
       try {
         const invokeProvider = async (exactlyOnce: boolean) => {
           invocationAttempt++;
@@ -1470,8 +1470,8 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools,
             modelMessages,
-            modelLoop.emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
-            isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+            recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
+            recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
             false,
             iteration === 1 && invocationTools.length > 0
               ? options?.initialToolChoice
@@ -1498,7 +1498,7 @@ export class AddieClaudeClient {
         // A replay is an exactly-once paid experiment. A timeout can occur
         // after provider acceptance, so neither our outer retry helper nor the
         // Anthropic SDK may submit the request again.
-        response = options?.executionMode === 'replay' || isEmptyResponseRecovery
+        response = options?.executionMode === 'replay' || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),
@@ -1506,11 +1506,10 @@ export class AddieClaudeClient {
             'processMessage',
           );
         if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
-        if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
+        modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
       } catch (error) {
-        const fallbackResponse = isEmptyResponseRecovery
-          ? modelLoop.emptyResponseRecovery.takeFallback()
-          : null;
+        const fallbackResponse = modelLoop.emptyResponseRecovery
+          .fallbackAfterInvocationFailure(recoveryInvocation);
         if (fallbackResponse) {
           // The empty end_turn was a valid terminal response. Recovery is
           // best-effort: if its one extra call fails, retain that terminal and
@@ -2049,22 +2048,22 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
-          const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
+          const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
           try {
-            const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
+            const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
               effectiveModel,
               systemBlocks,
               invocationTools,
               modelMessages,
               false,
-              isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
               true,
               iteration === 1 && invocationTools.length > 0
                 ? options?.initialToolChoice
                 : undefined,
             );
-            const provider = isEmptyResponseRecovery
+            const provider = recoveryInvocation.requiresExactlyOnce
               ? this.exactlyOnceAnthropicProvider
               : this.anthropicProvider;
             currentResponse = await activeTurn.invoke(
@@ -2090,11 +2089,10 @@ export class AddieClaudeClient {
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
-            if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
+            modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
           } catch (streamError) {
-            const fallbackResponse = isEmptyResponseRecovery
-              ? modelLoop.emptyResponseRecovery.takeFallback()
-              : null;
+            const fallbackResponse = modelLoop.emptyResponseRecovery
+              .fallbackAfterInvocationFailure(recoveryInvocation);
             if (fallbackResponse) {
               // See the non-streaming path: recovery is an optional UX
               // improvement, not a reason to discard the valid first terminal.

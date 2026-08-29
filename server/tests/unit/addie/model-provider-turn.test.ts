@@ -183,7 +183,14 @@ describe('EmptyResponseRecoveryState', () => {
     expect(state.toolsAllowed).toBe(true);
     expect(state.schedule('post_tool', original)).toBe(false);
 
-    state.resolve();
+    const invocation = state.prepareInvocation();
+    expect(invocation).toEqual({
+      isRecovery: true,
+      toolsAllowed: true,
+      requiresExactlyOnce: true,
+    });
+    expect(Object.isFrozen(invocation)).toBe(true);
+    state.completeInvocation(invocation);
     expect(state.pending).toBe(false);
     expect(state.hasAttempted('initial')).toBe(true);
     expect(state.schedule('initial', original)).toBe(false);
@@ -194,7 +201,7 @@ describe('EmptyResponseRecoveryState', () => {
     const original = response('stop', []);
 
     state.schedule('initial', original);
-    expect(state.takeFallback()).toBe(original);
+    expect(state.fallbackAfterInvocationFailure(state.prepareInvocation())).toBe(original);
     expect(state.pending).toBe(false);
   });
 
@@ -206,9 +213,27 @@ describe('EmptyResponseRecoveryState', () => {
     expect(state.toolsAllowed).toBe(false);
     expect(state.postToolAttempted).toBe(true);
 
-    state.resolve();
+    const invocation = state.prepareInvocation();
+    expect(invocation).toEqual({
+      isRecovery: true,
+      toolsAllowed: false,
+      requiresExactlyOnce: true,
+    });
+    state.completeInvocation(invocation);
     expect(state.toolsAllowed).toBe(false);
     expect(state.schedule('post_tool', original)).toBe(false);
+  });
+
+  it('leaves normal invocations retryable and without a fallback', () => {
+    const state = new EmptyResponseRecoveryState();
+    const invocation = state.prepareInvocation();
+
+    expect(invocation).toEqual({
+      isRecovery: false,
+      toolsAllowed: true,
+      requiresExactlyOnce: false,
+    });
+    expect(state.fallbackAfterInvocationFailure(invocation)).toBeNull();
   });
 });
 
@@ -293,7 +318,9 @@ describe('ModelTurnLoopState', () => {
       initialEligible: true,
       postToolEligible: false,
     })).toBe('initial');
-    loop.emptyResponseRecovery.resolve();
+    loop.emptyResponseRecovery.completeInvocation(
+      loop.emptyResponseRecovery.prepareInvocation(),
+    );
 
     loop.startNext();
     loop.acceptResponse(empty);
@@ -302,7 +329,9 @@ describe('ModelTurnLoopState', () => {
       initialEligible: false,
       postToolEligible: true,
     })).toBe('post_tool');
-    loop.emptyResponseRecovery.resolve();
+    loop.emptyResponseRecovery.completeInvocation(
+      loop.emptyResponseRecovery.prepareInvocation(),
+    );
 
     loop.startNext();
     loop.acceptResponse(empty);
