@@ -88,6 +88,20 @@ function googleResponse(overrides: Record<string, unknown> = {}): GenerateConten
 }
 
 describe('OpenAIResponsesProvider', () => {
+  it.each([
+    [{ type: 'auto' as const }, 'auto'],
+    [{ type: 'required' as const }, 'required'],
+    [{ type: 'tool' as const, name: 'search_docs' }, { type: 'function', name: 'search_docs' }],
+  ])('translates canonical %o tool choice', (toolChoice, expected) => {
+    const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
+    const prepared = provider.prepare(request(OPENAI_ROUTER_MODEL, {
+      tools: [{ name: 'search_docs', description: 'Search.', inputSchema: { type: 'object' } }],
+      toolChoice,
+    }));
+
+    expect(prepared.providerRequest).toMatchObject({ tool_choice: expected });
+  });
+
   it('builds a frozen, store-free structured-output request', () => {
     const provider = new OpenAIResponsesProvider('unused', {} as OpenAIResponsesTransport);
     const prepared = provider.prepare(request(OPENAI_ROUTER_MODEL, {
@@ -396,6 +410,25 @@ describe('OpenAIResponsesProvider', () => {
 });
 
 describe('GoogleGenerateContentProvider', () => {
+  it.each([
+    [{ type: 'auto' as const }, 'VALIDATED', ['search_docs', 'get_doc']],
+    [{ type: 'required' as const }, 'ANY', ['search_docs', 'get_doc']],
+    [{ type: 'tool' as const, name: 'search_docs' }, 'ANY', ['search_docs']],
+  ])('translates canonical %o tool choice', (toolChoice, mode, allowedFunctionNames) => {
+    const provider = new GoogleGenerateContentProvider('unused', {} as GoogleGenerateContentTransport);
+    const prepared = provider.prepare(request(GOOGLE_ROUTER_MODEL, {
+      tools: [
+        { name: 'search_docs', description: 'Search.', inputSchema: { type: 'object' } },
+        { name: 'get_doc', description: 'Read.', inputSchema: { type: 'object' } },
+      ],
+      toolChoice,
+    }));
+
+    expect(prepared.providerRequest).toMatchObject({
+      config: { toolConfig: { functionCallingConfig: { mode, allowedFunctionNames } } },
+    });
+  });
+
   it('disables SDK retries in the default transport', () => {
     googleGenAIConstructor.mockClear();
     new GoogleGenerateContentProvider('test-key');

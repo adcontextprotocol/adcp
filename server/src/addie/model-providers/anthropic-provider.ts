@@ -592,6 +592,11 @@ export class AnthropicModelProvider implements ModelProvider {
         ...(block.cacheHint === 'ephemeral' && { cache_control: { type: 'ephemeral' } }),
       })),
       tools,
+      ...(request.toolChoice && {
+        tool_choice: request.toolChoice.type === 'tool'
+          ? { type: 'tool', name: request.toolChoice.name }
+          : { type: request.toolChoice.type === 'required' ? 'any' : 'auto' },
+      }),
       messages: toAnthropicMessages(request.messages),
       betas: ['web-search-2025-03-05'],
     } satisfies AnthropicRequest));

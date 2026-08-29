@@ -185,12 +185,19 @@ export interface ModelOutputSchema {
   strict?: boolean;
 }
 
+/** Canonical custom/provider-tool selection policy translated only by adapters. */
+export type ModelToolChoice =
+  | { type: 'auto' }
+  | { type: 'required' }
+  | { type: 'tool'; name: string };
+
 export interface ModelRequest {
   model: string;
   system: ModelSystemBlock[];
   messages: ModelMessage[];
   tools: ModelToolDefinition[];
   providerTools?: ModelProviderTool[];
+  toolChoice?: ModelToolChoice;
   outputSchema?: ModelOutputSchema;
   reasoning?: { effort: ModelReasoningEffort };
   maxOutputTokens: number;

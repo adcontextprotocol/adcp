@@ -70,6 +70,19 @@ export function validateModelCapabilities(
       throw new Error('Custom tool name collides with provider tool: web_search');
     }
   }
+  if (request.toolChoice) {
+    if (request.tools.length === 0 && (request.providerTools?.length ?? 0) === 0) {
+      throw new Error('Model tool choice requires at least one tool');
+    }
+    if (request.toolChoice.type === 'tool') {
+      if (!request.toolChoice.name.trim()) {
+        throw new Error('Named model tool choice requires a name');
+      }
+      if (!toolNames.has(request.toolChoice.name)) {
+        throw new Error(`Named model tool choice is unavailable: ${request.toolChoice.name}`);
+      }
+    }
+  }
 
   const requireCapability = (
     required: boolean,
