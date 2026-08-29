@@ -88,7 +88,7 @@ import type {
   ProposalPurchase,
   RefineProposalsRequest,
 } from '@adcp/sdk';
-import { CreativeAssetSchema, CreativeManifestSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
+import { CreativeAssetSchema, GetProductsRequestSchema } from '@adcp/sdk/schemas';
 import { verifyGovernedServiceAuthorization } from './governance-verify.js';
 import { getCanonicalBase } from './canonical-base.js';
 import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
@@ -10973,24 +10973,24 @@ function jsonPointerPath(pointer: string): Array<string | number> {
 }
 
 async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
-  if (manifest.format_kind === 'seller_rendered_stateful_display'
-    || manifest.format_kind === 'coordinated_placements'
-    || manifest.component_assets !== undefined) {
-    const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', manifest);
-    return result.errors.map(issue => ({
-      rule: 'schema',
-      field: schemaIssueField(jsonPointerPath(issue.instancePath)),
-      expected: issue.message ?? 'valid creative manifest',
-      predicted: issue.keyword,
-    }));
-  }
-  const parsed = CreativeManifestSchema.safeParse(manifest);
-  if (parsed.success) return [];
-  return parsed.error.issues.map(issue => ({
+  // The protocol JSON Schema is authoritative. SDK 14 beta.15's generated
+  // Zod snapshot accidentally intersects macro-bearing URL strings with
+  // object-only branches, which rejects valid DAAST and tracker assets.
+  // WHATWG URL parsing accepts the Unicode full-stop variants as DNS label
+  // separators, while AJV's URI format check does not. Normalize only the
+  // schema-validation copy so the later URL safety checks still inspect the
+  // caller's original value.
+  const schemaValue = JSON.parse(JSON.stringify(manifest, (_key, value: unknown) => (
+    typeof value === 'string' && value.includes('://')
+      ? value.replace(/[。．｡]/g, '.')
+      : value
+  ))) as typeof manifest;
+  const result = await validateProtocolSchema('/schemas/core/creative-manifest.json', schemaValue);
+  return result.errors.map(issue => ({
     rule: 'schema',
-    field: schemaIssueField(issue.path.filter((part): part is string | number => typeof part === 'string' || typeof part === 'number')),
-    expected: issue.message,
-    predicted: issue.code,
+    field: schemaIssueField(jsonPointerPath(issue.instancePath)),
+    expected: issue.message ?? 'valid creative manifest',
+    predicted: issue.keyword,
   }));
 }
 

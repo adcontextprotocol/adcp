@@ -69,6 +69,8 @@ import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
 import {
   supportsSellerGovernanceDiscovery,
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
   type TrainingContext,
 } from '../../src/training-agent/types.js';
 import {
@@ -114,7 +116,7 @@ const VALID_PRICING_MODELS = [
 ] as const;
 
 const TEST_AGENT_URL = 'http://localhost:3000/api/training-agent';
-const CURRENT_ADCP_VERSION = '3.2-beta.6';
+const CURRENT_ADCP_VERSION = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open', authenticatedAgentUrl: 'https://buyer.example' };
 
@@ -2667,6 +2669,27 @@ describe('validate_input handler', () => {
 
     expect(result.results).toEqual([
       { target: { kind: 'canonical', id: 'image' }, result_kind: 'validated_pass' },
+    ]);
+  });
+
+  it('accepts protocol-valid macro-bearing URL assets under SDK beta.15', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        format_kind: 'audio_daast',
+        assets: {
+          daast_tag: {
+            asset_type: 'daast',
+            delivery_type: 'url',
+            url: 'https://daast.acme.example/tag.xml',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'audio_daast' }],
+    });
+
+    expect(result.results).toEqual([
+      { target: { kind: 'canonical', id: 'audio_daast' }, result_kind: 'validated_pass' },
     ]);
   });
 
@@ -16117,7 +16140,7 @@ describe('get_adcp_capabilities handler', () => {
 
     expect(result.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
+      supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
       idempotency: { supported: true, replay_ttl_seconds: 86400 },
     });
     expect(result.adcp_version).toBe('3.0');
@@ -17241,7 +17264,7 @@ describe('MCP Tasks protocol', () => {
         code: -32602,
         data: {
           adcp_version: '99.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
+          supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
           supported_majors: [3],
           context: { correlation_id: 'task-version-unsupported' },
           adcp_error: {
@@ -21546,7 +21569,7 @@ describe('AdCP protocol compliance', () => {
     expect(parsed.adcp_version).toBe('3.0');
     expect(parsed.adcp).toMatchObject({
       major_versions: [3],
-      supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
+      supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
     });
   });
 
@@ -21611,7 +21634,7 @@ describe('AdCP protocol compliance', () => {
       details: {
         adcp_version: '4.0',
         adcp_major_version: 4,
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
+        supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
         supported_majors: [3],
       },
     });
@@ -21632,7 +21655,7 @@ describe('AdCP protocol compliance', () => {
       field: 'adcp_version',
       details: {
         adcp_version: '3.1-beta',
-        supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', CURRENT_ADCP_VERSION],
+        supported_versions: [...TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS],
         supported_majors: [3],
       },
     });

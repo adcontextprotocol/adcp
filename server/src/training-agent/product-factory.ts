@@ -39,7 +39,7 @@ type CanonicalFormatProjection = {
   params: ProductFormatDeclaration['params'];
 };
 type TrainingProduct = Omit<Product,
-  'product_card' | 'product_card_detailed' | 'collections' | 'installments'
+  'product_card' | 'product_card_detailed' | 'collections' | 'installments' | 'audience_activation'
 > & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;

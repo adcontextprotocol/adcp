@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { pathToFileURL } = require('node:url');
@@ -9,6 +10,41 @@ async function loadInstalledSingleAgentClients() {
     (await import('@adcp/sdk')).SingleAgentClient,
   ];
 }
+
+function currentTrainingAgentAdcpVersion() {
+  const source = fs.readFileSync(path.resolve(
+    __dirname,
+    '..',
+    'server/src/training-agent/types.ts',
+  ), 'utf8');
+  const match = source.match(/TRAINING_AGENT_CURRENT_ADCP_VERSION\s*=\s*'([^']+)'/);
+  assert.ok(match, 'training-agent current AdCP version must remain an explicit release pin');
+  return match[1];
+}
+
+test('installed SDK bundles the training-agent current AdCP version', async () => {
+  const currentVersion = currentTrainingAgentAdcpVersion();
+  for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
+    assert.doesNotThrow(() => sdk.resolveAdcpVersion(currentVersion));
+    assert.ok(
+      sdk.listBundledAdcpVersions().includes(sdk.resolveAdcpVersion(currentVersion)),
+      `${currentVersion} must resolve to an installed SDK schema bundle`,
+    );
+  }
+});
+
+test('training agent registers its retained beta.6 release bundle', async () => {
+  const retainedVersion = '3.2-beta.6';
+  const schemaRoot = path.resolve(__dirname, '..', 'dist/schemas/3.2.0-beta.6');
+  const cjsTesting = require('@adcp/sdk/testing');
+  const esmTesting = await import('@adcp/sdk/testing');
+  cjsTesting.registerExternalSchemaRoot(retainedVersion, schemaRoot);
+  esmTesting.registerExternalSchemaRoot(retainedVersion, schemaRoot);
+
+  assert.doesNotThrow(() => require('@adcp/sdk').resolveAdcpVersion(retainedVersion));
+  const esmSdk = await import('@adcp/sdk');
+  assert.doesNotThrow(() => esmSdk.resolveAdcpVersion(retainedVersion));
+});
 
 async function runScopedCapabilityCase(SingleAgentClient, supportedVersion, methodName) {
   const client = new SingleAgentClient({

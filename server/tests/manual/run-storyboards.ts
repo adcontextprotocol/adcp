@@ -41,6 +41,7 @@ import {
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
 import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -102,12 +103,20 @@ if (shardIndex !== undefined && shardCount !== undefined && (shardIndex < 0 || s
 const shard = shardIndex === undefined || shardCount === undefined
   ? undefined
   : { index: shardIndex, count: shardCount };
+const installedSdkVersion = readFileSync(
+  join(process.cwd(), 'node_modules', '@adcp', 'sdk', 'ADCP_VERSION'),
+  'utf8',
+).trim();
+const installedSdkSchemaRoot = join(
+  process.cwd(),
+  'node_modules', '@adcp', 'sdk', 'dist', 'lib', 'schemas-data', installedSdkVersion,
+);
 const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
   ? {
       complianceDir: process.env.ADCP_COMPLIANCE_DIR,
       ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
     }
-  : undefined;
+  : { schemaRoot: installedSdkSchemaRoot };
 const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
@@ -121,7 +130,7 @@ const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
   : releasedComplianceVersion === undefined
-    ? '3.2-beta.6'
+    ? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
