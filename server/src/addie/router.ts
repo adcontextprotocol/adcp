@@ -268,7 +268,6 @@ export const ROUTING_RULES = {
         "signup",
         "account",
         "profile",
-        "working group",
         "api key",
         "api keys",
         "api token",
@@ -278,10 +277,24 @@ export const ROUTING_RULES = {
         "update_my_profile",
         "get_company_listing",
         "update_company_listing",
+      ],
+      description: "AgenticAdvertising.org membership, profile, and account management",
+    },
+    community_groups: {
+      patterns: [
+        "working group",
+        "committee",
+        "council",
+        "join group",
+        "group post",
+      ],
+      tools: [
         "list_working_groups",
         "join_working_group",
+        "get_my_working_groups",
+        "list_committee_documents",
       ],
-      description: "AgenticAdvertising.org membership and API key management",
+      description: "Working-group, committee, and council participation",
     },
     find_help: {
       patterns: [
@@ -541,7 +554,7 @@ export function buildRoutingPrompt(ctx: RoutingContext): string {
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
-- If they ask about membership features, include the "member" tool set`;
+- If they ask about membership or account features, include the "member_profile" tool set`;
   }
   if (isAAOAdmin) {
     conditionalRules += `
@@ -627,9 +640,10 @@ ${
 - Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_testing"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_testing"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
-- Questions about member profile, working groups, account → ["member"]
+- Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
+- Working groups, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Managing or checking brand-registry canonical documents, including reciprocal brand.json assertions → ["directory"], not ["agent_testing"]
+- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"] or ["agent_testing"]
 - Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]. Do not use it for brand-registry canonical documents
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
@@ -637,7 +651,7 @@ ${
 - Submitting or reviewing articles/perspectives, reading a Google Doc for publication, or generating, regenerating, or checking the cover illustration for a member's post → ["publishing"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
 - Searching for an existing explanatory diagram/image, or substantive concept explanations that materially benefit from a visual → ["illustrations"]. Never use this set for an article/perspective cover; those always use ["publishing"]
-- Questions about tracked working-group documents or member brand guidelines → ["knowledge", "member"]
+- Questions about tracked working-group documents → ["knowledge", "community_groups"]. Questions about the current member's company listing or brand profile → ["member_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
     ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'

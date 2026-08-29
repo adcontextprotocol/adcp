@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(58);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(58);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(60);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(60);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member', 'directory', 'agent_testing', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_testing', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content', 'publishing', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'billing', 'events', 'meetings',
@@ -154,7 +154,7 @@ describe('strict router eval', () => {
       'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(57);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(59);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -389,12 +389,12 @@ describe('strict router eval', () => {
     };
     const first = {
       ...base,
-      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
+      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
       scores: { actionExact: false, toolsExact: false, privilegeLeak: false, invalidToolSet: false, confidenceExact: true, depthExact: true, emojiExact: true },
     };
     const second = {
       ...base,
-      plan: { ...first.plan, tool_sets: ['member', 'knowledge'], reason: 'two' },
+      plan: { ...first.plan, tool_sets: ['member_profile', 'knowledge'], reason: 'two' },
       scores: first.scores,
     };
     const summary = summarizeRouterEval([first, second]);

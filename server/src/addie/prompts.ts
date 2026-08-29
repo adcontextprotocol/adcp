@@ -168,7 +168,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - get_github_issue: Read a specific issue or pull request by number or URL. It supports \`adcontextprotocol/*\` and \`prebid/*\`; pass the repository as \`owner/name\`.`,
   },
   {
-    selectedToolSets: ['member'],
+    selectedToolSets: ['member_profile', 'member'],
     text: `### Member account and organization self-service
 Direct members to the dashboard instead of escalating actions they can complete themselves:
 
@@ -249,7 +249,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - Never register the public test agent or a buyer agent. Buyer agents are clients that call seller agents; direct their builders to the client SDKs and public test agent instead.`,
   },
   {
-    selectedToolSets: ['directory'],
+    selectedToolSets: ['brand_registry'],
     text: `### Brand-registry operations
 - research_brand: Research a brand by domain and save enrichment data.
 - resolve_brand: Resolve a domain to its canonical brand identity from brand.json.
@@ -259,7 +259,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.`,
   },
   {
-    selectedToolSets: ['directory'],
+    selectedToolSets: ['brand_registry'],
     requiredToolNames: [
       'publish_brand_canonical_document',
       'add_to_brand_refs',
@@ -335,7 +335,7 @@ For protocol behavior and structure, verify with these authoritative sources bef
 Use these tools instead of recalling schema details from memory. Never invent a schema path or silently rewrite the user's JSON before validation.`,
   },
   {
-    selectedToolSets: ['member'],
+    selectedToolSets: ['community_groups', 'member'],
     text: `### Working-group operations
 - list_working_groups: Show available groups
 - get_working_group: Get details about a specific group
@@ -375,7 +375,7 @@ Use these tools instead of recalling schema details from memory. Never invent a 
 - update_topic_subscriptions: Update meeting topic subscriptions`,
   },
   {
-    selectedToolSets: ['member'],
+    selectedToolSets: ['member_profile', 'member'],
     text: `### Member profile and company-listing operations
 - get_my_profile / update_my_profile: Show or update the person's profile.
 - get_company_listing / update_company_listing: Show or update the organization's directory entry.
@@ -404,7 +404,8 @@ The directory lists member organizations, not individual people. For vendors, im
 - Add, update, or delete committee documents only with the corresponding leader or admin permission.`,
   },
   {
-    selectedToolSets: ['member'],
+    selectedToolSets: ['publishing', 'member'],
+    requiredToolNames: ['list_perspectives', 'attach_content_asset', 'draft_social_posts'],
     text: `### Member content operations
 - list_perspectives: Browse community articles.
 - attach_content_asset: Attach a cover image or PDF only after a perspective is published.

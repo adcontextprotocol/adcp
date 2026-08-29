@@ -20,14 +20,16 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **knowledge** — search_docs, get_doc, search_repos
 - **community_research** — search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file
 - **schema_reference** — validate_json, get_schema, list_schemas, compare_schema_versions
-- **member** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge, list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, list_perspectives, create_working_group_post, attach_content_asset, bookmark_resource, draft_social_posts, list_committee_documents
-- **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain, research_brand, resolve_brand, save_brand, list_brands, list_missing_brands, upload_brand_logo, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification
+- **member_profile** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
+- **community_groups** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, create_working_group_post, bookmark_resource, list_committee_documents
+- **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain
+- **brand_registry** — research_brand, resolve_brand, save_brand, list_brands, list_missing_brands, upload_brand_logo, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification
 - **agent_testing** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, test_adcp_agent, evaluate_agent_quality, grade_agent_signing, diagnose_agent_auth, compare_media_kit, test_rfp_response, test_io_execution, validate_agent, resolve_property, save_property, list_properties, list_missing_properties, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **publishing** — propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration
+- **publishing** — propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration, list_perspectives, attach_content_asset, draft_social_posts
 - **github** — draft_github_issue, create_github_issue, get_github_issue, list_github_issues
 - **illustrations** — search_image_library
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal

@@ -178,6 +178,11 @@ COPY --from=builder /app/skills ./skills
 COPY --from=builder /app/.agents ./.agents
 COPY --from=builder /app/.claude/agents ./.claude/agents
 
+# Re-run the compiled runtime-asset guard after final-image assembly. The
+# builder check catches source-vs-dist path drift; this check also catches a
+# missing COPY or .dockerignore regression before the image can deploy.
+RUN npm run verify:training-agent-runtime
+
 # Copy pre-cloned repos (warm cache for Addie)
 COPY --from=repos /repos ./.addie-repos
 
