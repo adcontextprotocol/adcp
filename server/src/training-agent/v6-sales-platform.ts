@@ -470,7 +470,9 @@ function buildTrainingCtx(
   const requestInput = ctx?.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
     ? ctx.input as Record<string, unknown>
     : undefined;
-  const requestVersion = requestInput ? resolveServedAdcpVersion(requestInput) : undefined;
+  const carriesVersionEnvelope = requestInput !== undefined
+    && (requestInput.adcp_version !== undefined || requestInput.adcp_major_version !== undefined);
+  const requestVersion = carriesVersionEnvelope ? resolveServedAdcpVersion(requestInput) : undefined;
   const servedAdcpVersion = ctx?.servedAdcpVersion
     ?? (requestVersion?.ok ? requestVersion.servedVersion : undefined);
   const legacySessionBrandDomain = storyboardCompat?.version === '3.0'
