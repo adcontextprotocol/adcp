@@ -243,8 +243,12 @@ function parseVerdict(text: string): FixedTraceJudgeVerdict | null {
 }
 
 function responseText(response: ModelResponse): string | null {
-  if (response.content.length === 0 || response.content.some((content) => content.type !== 'text')) return null;
-  return response.content.map((content) => content.type === 'text' ? content.text : '').join('');
+  const text = response.content.filter((content) => content.type === 'text');
+  if (
+    text.length === 0
+    || response.content.some((content) => content.type !== 'text' && content.type !== 'provider_state')
+  ) return null;
+  return text.map((content) => content.text).join('');
 }
 
 function estimatedCost(usage: ModelUsage, pricing: FixedTraceBudgetPricing): number {

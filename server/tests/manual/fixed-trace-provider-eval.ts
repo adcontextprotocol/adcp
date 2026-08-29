@@ -217,7 +217,7 @@ function providerPlans(
         provider: budgetedGeneration,
         model: ModelConfig.primary,
         reasoningEffort: 'provider_default',
-        maxOutputTokens: 300,
+        maxOutputTokens: 900,
         timeoutMs: 60_000,
         pricing: PRICING.anthropicGeneration,
       },
