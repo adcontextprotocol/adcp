@@ -21,6 +21,13 @@
           "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
         },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+        },
         "active": {
           "type": "boolean",
           "description": "True permits use. False suspends the destination: the seller MUST stop initiating new deliveries to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered."
@@ -46,7 +53,13 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["jsonl", "csv", "parquet", "avro", "orc"]
+            "enum": [
+              "jsonl",
+              "csv",
+              "parquet",
+              "avro",
+              "orc"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true,
@@ -56,7 +69,16 @@
           "$ref": "/schemas/core/reporting-verification-profile-set.json"
         }
       },
-      "required": ["pattern", "destination_id", "active", "provider", "transport", "location", "accepted_formats", "accepted_verification_profiles"],
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "location",
+        "accepted_formats",
+        "accepted_verification_profiles"
+      ],
       "additionalProperties": false
     },
     {
@@ -74,6 +96,13 @@
           "maxLength": 64,
           "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
           "type": "boolean",
@@ -100,7 +129,15 @@
           "$ref": "/schemas/core/reporting-verification-profile-set.json"
         }
       },
-      "required": ["pattern", "destination_id", "active", "provider", "transport", "location", "accepted_verification_profiles"],
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "location",
+        "accepted_verification_profiles"
+      ],
       "additionalProperties": false
     },
     {
@@ -118,6 +155,13 @@
           "maxLength": 64,
           "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
           "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
         },
         "active": {
           "type": "boolean",
@@ -147,7 +191,16 @@
           "$ref": "/schemas/core/reporting-verification-profile-set.json"
         }
       },
-      "required": ["pattern", "destination_id", "active", "provider", "transport", "access_mode", "recipient", "accepted_verification_profiles"],
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "access_mode",
+        "recipient",
+        "accepted_verification_profiles"
+      ],
       "additionalProperties": false
     }
   ],
@@ -159,6 +212,7 @@
     "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, secret query parameters, and secret fragments in any field, including forms the schema pattern cannot express such as userinfo-style 'key:secret@host' prefixes inside an otherwise valid locator. The schema pattern is a transport guard, not the enforcement boundary; sellers MUST screen canonicalized values. Exchange access through provider-native control planes or out of band.",
     "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
     "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
-    "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered."
+    "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
+    "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
   }
 }

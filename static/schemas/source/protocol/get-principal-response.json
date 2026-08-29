@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/get-principal-response.json",
   "title": "Get Principal Response",
   "x-status": "experimental",
-  "description": "Result of reading the authenticated principal's standing configuration. Current responses return the complete credential-free configuration with its version. Unconfigured responses indicate the authenticated caller has no persisted connection. Failed responses deliberately cannot carry connection identifiers, versions, or configuration state.",
+  "description": "Result of reading the authenticated principal's standing configuration. Current responses return the complete credential-free configuration with its version. Unconfigured responses indicate the authenticated caller has no persisted principal record. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {
@@ -28,7 +28,12 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 255,
-              "description": "Seller-issued opaque identifier for this authenticated caller relationship. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "principal_kind": {
+              "type": "string",
+              "enum": ["buyer_agent", "operator"],
+              "description": "Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
             },
             "configuration_version": {
               "type": "string",
@@ -40,7 +45,7 @@
               "$ref": "/schemas/core/principal-state.json"
             }
           },
-          "required": ["kind", "principal_id", "configuration_version", "configuration"],
+          "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
           "additionalProperties": false
         },
         {
@@ -106,12 +111,13 @@
   },
   "examples": [
     {
-      "description": "Current connection configuration with a superseded generation",
+      "description": "Current principal configuration with a superseded generation",
       "data": {
         "status": "completed",
         "result": {
           "kind": "current",
           "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "principal_kind": "buyer_agent",
           "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
           "configuration": {
             "notification_configs": [],
@@ -137,7 +143,7 @@
       }
     },
     {
-      "description": "Caller has no persisted connection",
+      "description": "Caller has no persisted principal record",
       "data": {
         "status": "completed",
         "result": {

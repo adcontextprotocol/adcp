@@ -226,6 +226,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -248,6 +249,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [{
@@ -271,6 +273,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -289,7 +292,7 @@ describe('sync_principal contract', () => {
     }), false);
   });
 
-  it('makes failed result arms incapable of leaking connection state', () => {
+  it('makes failed result arms incapable of leaking principal state', () => {
     assert.equal(validateResponse({
       status: 'failed',
       result: {
@@ -303,7 +306,7 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_connection',
+        principal_id: 'leaked_principal',
         configuration_version: 'leaked_version',
       },
     }), false);
@@ -416,6 +419,7 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'current',
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -445,9 +449,91 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_connection',
+        principal_id: 'leaked_principal',
       },
     }), false);
+  });
+
+  it('accepts caller-eligible event types and rejects media-buy-anchored ones', async () => {
+    const validateNotificationConfig = await compile('/schemas/core/agent-notification-config.json');
+    const base = {
+      subscriber_id: 'buyer-events',
+      url: 'https://buyer.example/webhooks/adcp',
+    };
+
+    for (const eventTypes of [
+      ['capabilities.changed'],
+      ['principal.changed'],
+      ['capabilities.changed', 'principal.changed', 'creative.status_changed', 'account.change_recorded'],
+    ]) {
+      assert.equal(validateNotificationConfig({ ...base, event_types: eventTypes }), true,
+        JSON.stringify(validateNotificationConfig.errors));
+    }
+
+    for (const mediaBuyType of ['scheduled', 'final', 'delayed', 'adjusted', 'window_update', 'impairment']) {
+      assert.equal(validateNotificationConfig({ ...base, event_types: [mediaBuyType] }), false, mediaBuyType);
+    }
+
+    assert.equal(validateNotificationConfig({
+      ...base,
+      event_types: ['capabilities.changed'],
+      include_future_event_types: true,
+    }), true, JSON.stringify(validateNotificationConfig.errors));
+  });
+
+  it('round-trips declarations with a seller-computed accepted intersection', async () => {
+    const validateWebhook = await compile('/schemas/core/principal-changed-webhook.json');
+
+    const declarations = {
+      async_adcp_versions: ['3.2'],
+      webhook_signing_algorithms: ['ed25519', 'ecdsa-p256-sha256'],
+      experimental_features: ['protocol.principal'],
+    };
+
+    assert.equal(validateRequest({
+      idempotency_key: '528f1f06-e2a7-49b9-bd13-c953f35a1c49',
+      configuration: { declarations },
+    }), true, JSON.stringify(validateRequest.errors));
+
+    // {} is the documented clear form for the declarations section.
+    assert.equal(validateRequest({
+      idempotency_key: '528f1f06-e2a7-49b9-bd13-c953f35a1c49',
+      configuration: { declarations: {} },
+    }), true, JSON.stringify(validateRequest.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: {
+        kind: 'current',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
+        configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
+        configuration: {
+          declarations: {
+            declared: declarations,
+            accepted: {
+              async_adcp_versions: ['3.2'],
+              webhook_signing_algorithms: ['ed25519'],
+            },
+          },
+        },
+      },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateWebhook({
+      idempotency_key: '9f2c1e57-3f6a-4f4e-9f0d-2a45b7c6e881',
+      notification_id: 'conn_txn_01K4D0Z3M8Q0V5T2C9XWJ7R4BA',
+      notification_type: 'principal.changed',
+      fired_at: '2026-08-29T12:00:05Z',
+      subscriber_id: 'buyer-events',
+      agent_url: 'https://sales.streamhaus.example/adcp',
+      changed_at: '2026-08-29T12:00:03Z',
+      reason: 'declarations_intersection_changed',
+    }), true, JSON.stringify(validateWebhook.errors));
+
+    const request = readSchema('/schemas/protocol/sync-principal-request.json');
+    assert.match(request['x-adcp-validation'].declarations_intersection, /UNSUPPORTED_FEATURE/);
+    assert.match(request['x-adcp-validation'].caller_level_account_events, /fire time/);
   });
 
   it('couples suspension state to inactive configuration in both directions', () => {

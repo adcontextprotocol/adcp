@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/agent-notification-config.json",
   "title": "Agent Notification Config",
-  "description": "Caller-scoped agent-level webhook subscription for notifications whose lifecycle belongs to the seller agent itself rather than to one account, media buy, creative, or other account-scoped resource. The initial agent-level event type is capabilities.changed, registered through the task declared by get_adcp_capabilities.adcp.capability_changes.notifications.registration_task: sync_principal when the broader connection surface is supported, or the specialized sync_agent_notification_configs compatibility task. Both tasks operate on one underlying caller-scoped subscriber set. This surface is intentionally separate from account-level notification_configs[]: a registry or buyer can subscribe before it has an account, and one fire invalidates the agent-wide get_adcp_capabilities cache. The persisted set is scoped to the authenticated caller or registry identity, so one caller's declarative replacement cannot clear another caller's subscribers. As with other AdCP webhooks, the default signing scheme is the RFC 9421 webhook profile against the seller's brand.json agents[] JWKS; the optional authentication block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in authentication.credentials are write-only and MUST NOT be echoed on reads. Sellers MUST verify endpoint control before activating a new or changed active agent-level notification config; delivery-time SSRF validation still applies to every fire.",
+  "description": "Caller-scoped agent-level webhook subscription. Caller-anchored event types (capabilities.changed, principal.changed) always fire principal-wide; account-anchored event types may also be listed here and fire with fire-time authorization scoping over the caller's currently authorized accounts. Registration goes through the task declared by get_adcp_capabilities.adcp.capability_changes.notifications.registration_task: sync_principal when the broader principal surface is supported, or the specialized sync_agent_notification_configs compatibility task. Both tasks operate on one underlying caller-scoped subscriber set. This surface is intentionally separate from account-level notification_configs[]: a registry or buyer can subscribe before it has an account, and one fire invalidates the agent-wide get_adcp_capabilities cache. The persisted set is scoped to the authenticated caller or registry identity, so one caller's declarative replacement cannot clear another caller's subscribers. As with other AdCP webhooks, the default signing scheme is the RFC 9421 webhook profile against the seller's brand.json agents[] JWKS; the optional authentication block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in authentication.credentials are write-only and MUST NOT be echoed on reads. Sellers MUST verify endpoint control before activating a new or changed active agent-level notification config; delivery-time SSRF validation still applies to every fire.",
   "type": "object",
   "properties": {
     "subscriber_id": {
@@ -19,15 +19,33 @@
     },
     "event_types": {
       "type": "array",
-      "description": "Agent-level notification types this subscriber wishes to receive on the registered `url`. The initial and currently only agent-level event type is `capabilities.changed`. Sellers MUST NOT fire other event types against this endpoint, and MUST reject account-anchored or media-buy-anchored notification types on this surface rather than silently dropping them.",
+      "description": "Notification types this subscriber wishes to receive on the registered `url`. Caller-anchored types (`capabilities.changed`, `principal.changed`) always fire principal-wide. Account-anchored types (such as `creative.status_changed` or `account.change_recorded`) are also accepted here: each fire then covers only accounts the authenticated caller is authorized for at fire time — the subscription is standing, the authorization is evaluated per fire, and losing account authority silently stops that account's fires. Media-buy-anchored types are rejected on this surface; their per-buy cadence configuration stays on `push_notification_config`. Caller-level and account-level subscriptions to the same event are independent — both fire, and receivers dedupe by the event's logical `notification_id`.",
       "items": {
-        "type": "string",
-        "enum": [
-          "capabilities.changed"
+        "allOf": [
+          {
+            "$ref": "/schemas/enums/notification-type.json"
+          },
+          {
+            "not": {
+              "enum": [
+                "scheduled",
+                "final",
+                "delayed",
+                "adjusted",
+                "window_update",
+                "impairment"
+              ]
+            }
+          }
         ]
       },
       "minItems": 1,
       "uniqueItems": true
+    },
+    "include_future_event_types": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the seller also fires caller-eligible notification types added to the enum by later AdCP versions, as if they were listed in event_types. Explicit opt-in only — there is deliberately no wildcard event type, so subscribers that do not set this never receive types they did not enumerate. Receivers setting this MUST tolerate unknown notification_type values."
     },
     "authentication": {
       "type": "object",

@@ -481,7 +481,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["notification_configs", "reporting_destinations"]
+                "enum": ["notification_configs", "reporting_destinations", "declarations"]
               },
               "minItems": 1,
               "uniqueItems": true,
@@ -552,7 +552,32 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 86400,
-              "description": "Advertised upper bound, in seconds, between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination."
+              "description": "Advertised upper bound, in seconds, between a committed destination suspension or revocation — or a subscriber deactivation — and the halt of new deliveries and fires."
+            },
+            "caller_event_types": {
+              "type": "array",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/enums/notification-type.json"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "scheduled",
+                        "final",
+                        "delayed",
+                        "adjusted",
+                        "window_update",
+                        "impairment"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Notification types this seller can emit against caller-level subscribers, so buyers select from the offering instead of probing by rejection. Account-anchored entries fire with fire-time authorization scoping. When absent, only capabilities.changed is assumed. A caller-level subscriber requesting a type outside this set fails the sync request with UNSUPPORTED_FEATURE."
             },
             "optimistic_concurrency": {
               "type": "boolean",

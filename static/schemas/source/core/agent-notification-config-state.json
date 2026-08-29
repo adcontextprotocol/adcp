@@ -18,11 +18,30 @@
     "event_types": {
       "type": "array",
       "items": {
-        "type": "string",
-        "enum": ["capabilities.changed"]
+        "allOf": [
+          {
+            "$ref": "/schemas/enums/notification-type.json"
+          },
+          {
+            "not": {
+              "enum": [
+                "scheduled",
+                "final",
+                "delayed",
+                "adjusted",
+                "window_update",
+                "impairment"
+              ]
+            }
+          }
+        ]
       },
       "minItems": 1,
       "uniqueItems": true
+    },
+    "include_future_event_types": {
+      "type": "boolean",
+      "description": "Echoed from the desired configuration when set."
     },
     "authentication": {
       "type": "object",
