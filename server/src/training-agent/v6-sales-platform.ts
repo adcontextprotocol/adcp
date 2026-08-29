@@ -1235,7 +1235,7 @@ export class TrainingSalesPlatform
       );
       const args = this.storyboardCompat?.version === '3.0'
         ? withResolvedAccountScope(requestWithRawSelectors, ctx.account, this.storyboardCompat)
-        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
       const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
