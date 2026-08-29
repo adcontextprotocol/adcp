@@ -17,6 +17,7 @@ import {
   type RouterModelObservation,
   type RoutingContext,
 } from './router.js';
+import { SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
 
 const logger = createLogger('addie-router-canary-runtime');
 const LUNA_INPUT_MICROS_PER_TOKEN = 0.2;
@@ -86,9 +87,9 @@ export async function loadRouterCanaryMetadata<T>(
 function safeKnowledgePlan(): ExecutionPlan {
   return {
     action: 'respond',
-    tool_sets: ['knowledge'],
+    tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
     confidence: 'high',
-    reason: 'Router provider fallback failed - defaulting to knowledge tools',
+    reason: 'Router provider fallback failed - defaulting to safe knowledge tools',
     decision_method: 'llm',
   };
 }

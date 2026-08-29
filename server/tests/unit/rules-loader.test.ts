@@ -280,18 +280,22 @@ describe('Addie tool reference', () => {
     expect(buildAddieStableToolReference()).not.toContain('**Billing Support (for members):**');
   });
 
-  it('scopes roadmap and file-handling guidance to knowledge requests', () => {
-    const knowledge = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['knowledge'], false, false),
-      selectedToolSetNames: ['knowledge'],
+  it('scopes roadmap and file-handling guidance to their routed research domains', () => {
+    const github = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['github'], false, false),
+      selectedToolSetNames: ['github'],
+    });
+    const community = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['community_research'], false, false),
+      selectedToolSetNames: ['community_research'],
     });
     const events = buildAddieToolReference({
       availableToolNames: getToolsForSets(['events'], false, false),
       selectedToolSetNames: ['events'],
     });
 
-    expect(knowledge).toContain('### GitHub roadmap research');
-    expect(knowledge).toContain('### Slack file handling');
+    expect(github).toContain('### GitHub roadmap research');
+    expect(community).toContain('### Slack file handling');
     expect(events).not.toContain('### GitHub roadmap research');
     expect(events).not.toContain('### Slack file handling');
   });
@@ -362,19 +366,43 @@ describe('Addie tool reference', () => {
     expect(withConditionalTools).toContain('### Property-list enrichment');
   });
 
-  it('requires exact knowledge tools before advertising conditional guidance', () => {
-    const knowledgeTools = getToolsForSets(['knowledge'], false, false);
+  it('requires exact routed research tools before advertising conditional guidance', () => {
+    const communityTools = getToolsForSets(['community_research'], false, false);
+    const githubTools = getToolsForSets(['github'], false, false);
     const withoutSlackFile = buildAddieToolReference({
-      availableToolNames: knowledgeTools.filter(name => name !== 'read_slack_file'),
-      selectedToolSetNames: ['knowledge'],
+      availableToolNames: communityTools.filter(name => name !== 'read_slack_file'),
+      selectedToolSetNames: ['community_research'],
     });
     const withoutGithubList = buildAddieToolReference({
-      availableToolNames: knowledgeTools.filter(name => name !== 'list_github_issues'),
-      selectedToolSetNames: ['knowledge'],
+      availableToolNames: githubTools.filter(name => name !== 'list_github_issues'),
+      selectedToolSetNames: ['github'],
     });
 
     expect(withoutSlackFile).not.toContain('### Slack file handling');
     expect(withoutGithubList).not.toContain('### GitHub roadmap research');
+  });
+
+  it('scopes protocol, community, and schema guidance to separate domains', () => {
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+    const community = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['community_research'], false, false),
+      selectedToolSetNames: ['community_research'],
+    });
+    const schemas = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['schema_reference'], false, false),
+      selectedToolSetNames: ['schema_reference'],
+    });
+
+    expect(knowledge).toContain('### Knowledge search operations');
+    expect(knowledge).not.toContain('### Community and industry research');
+    expect(knowledge).not.toContain('### Versioned schema operations');
+    expect(community).toContain('### Community and industry research');
+    expect(community).not.toContain('### Knowledge search operations');
+    expect(schemas).toContain('### Versioned schema operations');
+    expect(schemas).not.toContain('### Knowledge search operations');
   });
 
   it('loads certification safety guidance only with the complete routed workflow', () => {
