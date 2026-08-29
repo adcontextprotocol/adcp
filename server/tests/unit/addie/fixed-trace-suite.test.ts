@@ -127,7 +127,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v4');
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v5');
     expect(FIXED_TRACE_SUITE).toHaveLength(11);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -204,6 +204,13 @@ describe('fixed cross-provider trace suite', () => {
     const smartPunctuation = passingObservation(toolErrorTrace);
     smartPunctuation.output = 'The search failed, so I can’t verify the official wording.';
     expect(gradeFixedTrace(toolErrorTrace, smartPunctuation)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
+    });
+
+    const reachFailure = passingObservation(toolErrorTrace);
+    reachFailure.output = "I couldn't reach documentation search in this session.";
+    expect(gradeFixedTrace(toolErrorTrace, reachFailure)).toMatchObject({
       deterministicPass: true,
       answerPass: true,
     });
