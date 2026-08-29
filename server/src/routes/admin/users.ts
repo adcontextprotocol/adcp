@@ -16,6 +16,7 @@ import {
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { bumpAuthorizationEpochs } from '../../db/authorization-epoch-db.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -1208,6 +1209,11 @@ export function createAdminUsersRouter(): Router {
         [credId, newIdentity.rows[0].id]
       );
 
+      // The detached credential stops routing to the host, so any session
+      // issued before this commit must lose that routing on every instance,
+      // not just the one handling this request.
+      await bumpAuthorizationEpochs(client, [userId, credId]);
+
       // Audit log
       const auditOrg = await client.query<{ workos_organization_id: string }>(
         `SELECT workos_organization_id FROM organization_memberships
@@ -1350,10 +1356,34 @@ export function createAdminUsersRouter(): Router {
     // prior partial promote, manual SQL, etc.). Just set the target as
     // primary; nothing to move forward.
     if (!currentPrimaryId) {
-      await pool.query(
-        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
-        [newPrimaryId]
-      );
+      const repairClient = await pool.connect();
+      try {
+        await repairClient.query('BEGIN');
+        await repairClient.query(
+          `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
+          [newPrimaryId]
+        );
+        // Same transaction as the primary flip: a bump that commits
+        // separately leaves a window where the routing changed but stale
+        // sessions still validate. Every credential on the identity is
+        // bumped, not just the new primary — the flip changes where each
+        // sibling's canonical reads land.
+        const repairBound = await repairClient.query<{ workos_user_id: string }>(
+          `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
+          [identityId]
+        );
+        await bumpAuthorizationEpochs(repairClient, [
+          newPrimaryId,
+          ...repairBound.rows.map((row) => row.workos_user_id),
+        ]);
+        await repairClient.query('COMMIT');
+      } catch (err) {
+        await repairClient.query('ROLLBACK').catch(() => undefined);
+        logger.error({ err, userId, newPrimaryId }, 'Promote: orphan-primary repair failed');
+        return res.status(500).json({ error: 'Failed to promote credential' });
+      } finally {
+        repairClient.release();
+      }
       logger.info(
         { adminEmail, userId, newPrimaryId, identityId, recovered_orphan: true },
         'Promote: identity had no current primary; set target as primary directly'
