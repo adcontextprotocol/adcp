@@ -203,7 +203,7 @@
       "type": "object",
       "properties": {
         "protocol_version": { "type": "string", "const": "unreleased" },
-        "source_revision": { "type": "string", "const": "adcontextprotocol/adcp@cbddfd9efc7b979e02f2b475be61cdf8a259dedd" },
+        "source_revision": { "type": "string", "const": "adcontextprotocol/adcp@514ebc7fe5372d422c121ffe3c7f935b11e45558" },
         "promoted_from": { "type": "string", "const": "adcontextprotocol/adcp-client@43f7660ce1be17073d1207ee0168ae8343941be8" },
         "schema_ids": {
           "type": "array",
