@@ -8,6 +8,7 @@
   "definitions": {
     "ReportCalendarTimezoneBasis": {
       "title": "Report Calendar Timezone Basis",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["utc", "account_timezone", "configured_timezone"]
     }

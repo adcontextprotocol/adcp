@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingDeliveryConfigLifecycleState": {
       "title": "Reporting Delivery Configuration Lifecycle State",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["pending_validation", "pending_setup", "ready", "action_required", "inactive"]
     }

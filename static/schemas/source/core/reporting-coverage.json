@@ -8,12 +8,14 @@
   "definitions": {
     "ReportingMediaBuyId": {
       "title": "Reporting Media Buy ID",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "minLength": 1,
       "x-entity": "media_buy"
     },
     "ReportingPackageId": {
       "title": "Reporting Package ID",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "minLength": 1,
       "x-entity": "package"

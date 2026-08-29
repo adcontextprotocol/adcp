@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingFeedPurpose": {
       "title": "Reporting Feed Purpose",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["pacing", "analytics", "billing"],
       "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."

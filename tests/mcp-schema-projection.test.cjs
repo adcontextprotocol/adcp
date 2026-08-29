@@ -29,6 +29,7 @@ const {
   buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
+  inlineMarkedModelContextDefinitions,
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
@@ -276,6 +277,58 @@ test('model-context pruning removes only unreachable root definitions', () => {
     },
   });
   assert.deepEqual(source.$defs.Removed, { type: 'integer' });
+});
+
+test('model-context presentation inlines only definitions marked as codegen indirection', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      named: {
+        $ref: '#/$defs/Named',
+        description: 'Field-specific guidance.',
+      },
+      retained: { $ref: '#/$defs/Retained' },
+      nested: { $ref: '#/$defs/External/$defs/NestedNamed' },
+    },
+    $defs: {
+      Named: {
+        title: 'Stable SDK Type',
+        type: 'string',
+        minLength: 1,
+        'x-adcp-model-context-inline': true,
+      },
+      Retained: { type: 'object', properties: { value: { type: 'string' } } },
+      External: {
+        type: 'object',
+        $defs: {
+          NestedNamed: {
+            type: 'string',
+            maxLength: 8,
+            'x-adcp-model-context-inline': true,
+          },
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(inlineMarkedModelContextDefinitions(source), {
+    type: 'object',
+    properties: {
+      named: {
+        title: 'Stable SDK Type',
+        type: 'string',
+        minLength: 1,
+        description: 'Field-specific guidance.',
+      },
+      retained: { $ref: '#/$defs/Retained' },
+      nested: { type: 'string', maxLength: 8 },
+    },
+    $defs: {
+      Retained: { type: 'object', properties: { value: { type: 'string' } } },
+      External: { type: 'object' },
+    },
+  });
+  assert.ok(source.$defs.Named['x-adcp-model-context-inline']);
 });
 
 test('draft-07 projection converts dialect-specific keywords without tightening', () => {

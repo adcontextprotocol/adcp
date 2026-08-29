@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingPrimaryKey": {
       "title": "Reporting Primary Key",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "minLength": 1,
       "maxLength": 128

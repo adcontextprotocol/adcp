@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingScheduleAlignment": {
       "title": "Reporting Schedule Alignment",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["utc", "account_timezone", "billing_cycle"],
       "description": "Calendar used to establish exact period boundaries. The obligation echoes resolved timestamps and source timezone."

@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingOrchestration": {
       "title": "Reporting Orchestration",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["producer_managed", "consumer_managed"],
       "description": "Party responsible for starting, configuring, and monitoring the delivery operation. Independent of destination ownership and the service that moves the data."

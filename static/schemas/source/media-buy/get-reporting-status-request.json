@@ -9,6 +9,7 @@
   "definitions": {
     "ReportingStatusView": {
       "title": "Reporting Status View",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["summary", "periods", "revision"],
       "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."

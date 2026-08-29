@@ -7,11 +7,13 @@
   "definitions": {
     "CapabilityReportingDeliveryMethod": {
       "title": "Capability Reporting Delivery Method",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["webhook", "offline"]
     },
     "BudgetCappingTimezoneBasis": {
       "title": "Budget Capping Timezone Basis",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["account", "fixed"]
     }

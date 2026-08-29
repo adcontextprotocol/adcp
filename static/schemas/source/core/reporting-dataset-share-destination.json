@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingCloud": {
       "title": "Reporting Cloud",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "enum": ["aws", "azure", "gcp"]
     }

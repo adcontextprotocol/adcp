@@ -8,6 +8,7 @@
   "definitions": {
     "ReportingReaderCompatibilityItem": {
       "title": "Reporting Reader Compatibility Item",
+      "x-adcp-model-context-inline": true,
       "type": "string",
       "minLength": 1,
       "maxLength": 128
