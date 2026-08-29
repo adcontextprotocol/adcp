@@ -806,7 +806,7 @@ function projectTenantCapabilities(
     }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
-        capabilities_version: 'training-agent-3.2-beta.8',
+        capabilities_version: `training-agent-${TRAINING_AGENT_CURRENT_ADCP_VERSION}`,
         last_modified: '2026-08-24T00:00:00.000Z',
         cache_ttl_seconds: 300,
         notifications: {

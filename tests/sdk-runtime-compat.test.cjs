@@ -11,30 +11,50 @@ async function loadInstalledSingleAgentClients() {
   ];
 }
 
-function currentTrainingAgentAdcpVersion() {
+function trainingAgentAdcpVersion(constantName) {
   const source = fs.readFileSync(path.resolve(
     __dirname,
     '..',
     'server/src/training-agent/types.ts',
   ), 'utf8');
-  const match = source.match(/TRAINING_AGENT_CURRENT_ADCP_VERSION\s*=\s*'([^']+)'/);
-  assert.ok(match, 'training-agent current AdCP version must remain an explicit release pin');
+  const match = source.match(new RegExp(`${constantName}\\s*=\\s*'([^']+)'`));
+  assert.ok(match, `${constantName} must remain an explicit release pin`);
   return match[1];
 }
 
-test('installed SDK bundles the training-agent current AdCP version', async () => {
-  const currentVersion = currentTrainingAgentAdcpVersion();
+function installedSdkAdcpVersion() {
+  return fs.readFileSync(path.resolve(
+    __dirname,
+    '..',
+    'node_modules/@adcp/sdk/ADCP_VERSION',
+  ), 'utf8').trim();
+}
+
+function canonicalAdcpVersion(version) {
+  const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?((?:-(?:beta|rc)\.\d+)?)$/);
+  assert.ok(match, `invalid AdCP release version: ${version}`);
+  return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
+}
+
+test('training-agent current AdCP version exactly matches the installed SDK schema release', async () => {
+  const currentVersion = trainingAgentAdcpVersion('TRAINING_AGENT_CURRENT_ADCP_VERSION');
+  const sdkVersion = installedSdkAdcpVersion();
   for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
-    assert.doesNotThrow(() => sdk.resolveAdcpVersion(currentVersion));
+    const resolvedVersion = sdk.resolveAdcpVersion(currentVersion);
+    assert.equal(
+      canonicalAdcpVersion(resolvedVersion),
+      canonicalAdcpVersion(sdkVersion),
+      `training-agent current ${currentVersion} must track the installed SDK schema ${sdkVersion}`,
+    );
     assert.ok(
-      sdk.listBundledAdcpVersions().includes(sdk.resolveAdcpVersion(currentVersion)),
+      sdk.listBundledAdcpVersions().includes(resolvedVersion),
       `${currentVersion} must resolve to an installed SDK schema bundle`,
     );
   }
 });
 
 test('training agent registers its retained beta.6 release bundle', async () => {
-  const retainedVersion = '3.2-beta.6';
+  const retainedVersion = trainingAgentAdcpVersion('SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION');
   const schemaRoot = path.resolve(__dirname, '..', 'dist/schemas/3.2.0-beta.6');
   const cjsTesting = require('@adcp/sdk/testing');
   const esmTesting = await import('@adcp/sdk/testing');
