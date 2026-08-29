@@ -10973,9 +10973,6 @@ function jsonPointerPath(pointer: string): Array<string | number> {
 }
 
 async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
-  // The protocol JSON Schema is authoritative. SDK 14 beta.15's generated
-  // Zod snapshot accidentally intersects macro-bearing URL strings with
-  // object-only branches, which rejects valid DAAST and tracker assets.
   // WHATWG URL parsing accepts the Unicode full-stop variants as DNS label
   // separators, while AJV's URI format check does not. Normalize only the
   // schema-validation copy so the later URL safety checks still inspect the

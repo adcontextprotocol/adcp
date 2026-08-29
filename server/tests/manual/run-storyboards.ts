@@ -103,21 +103,11 @@ if (shardIndex !== undefined && shardCount !== undefined && (shardIndex < 0 || s
 const shard = shardIndex === undefined || shardCount === undefined
   ? undefined
   : { index: shardIndex, count: shardCount };
-const installedSdkVersion = readFileSync(
-  join(process.cwd(), 'node_modules', '@adcp', 'sdk', 'ADCP_VERSION'),
-  'utf8',
-).trim();
-const installedSdkSchemaRoot = join(
-  process.cwd(),
-  'node_modules', '@adcp', 'sdk', 'dist', 'lib', 'schemas-data', installedSdkVersion,
-);
-const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
-  ? {
-      complianceDir: process.env.ADCP_COMPLIANCE_DIR,
-      ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
-    }
-  : { schemaRoot: installedSdkSchemaRoot };
-const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
+const complianceOptions = {
+  ...(process.env.ADCP_COMPLIANCE_DIR && { complianceDir: process.env.ADCP_COMPLIANCE_DIR }),
+  ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
+};
+const releasedComplianceVersion = complianceOptions.complianceDir
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
@@ -231,10 +221,6 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
 
 const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
-    'sales/media_buy_seller/create_media_buy_async_lifecycle',
-    'SDK 14 beta.15 still writes the submitted handoff to a task registry partition that get_task_status cannot read back under the storyboard account (adcontextprotocol/adcp-client#2703). The create_media_buy submitted arm remains graded separately. Remove when framework task reads preserve the handoff account partition.',
-  ],
-  [
     'sales/creative/creative_lifecycle_webhooks',
     'The packaged storyboard runner does not expose its expect_webhook pseudo-task to runStoryboard and starts account notification setup before proving the sales tenant supports creative lifecycle notifications. Remove when runner-owned webhook steps and prerequisite gating execute inside the harness.',
   ],
@@ -281,14 +267,6 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
   [
     'brand/security_baseline',
     'The packaged SDK auth-probe allowlist has no read-only empty-input brand task. Remove when the SDK accepts list_accounts (or a brand read) as a security_baseline probe.',
-  ],
-  [
-    'brand/brand/signed_response_envelope_vectors',
-    'SDK 14 beta.15 enforces requires_contract for probe and replay pseudo-steps but not ordinary comply_test_controller steps, so this opt-in storyboard executes without signed_responses_runner and fails UNKNOWN_SCENARIO. Remove when adcontextprotocol/adcp-client#2755 ships.',
-  ],
-  [
-    'brand/brand/single_side_trust_extension',
-    'Same SDK 14 beta.15 requires_contract gap as signed_response_envelope_vectors: ordinary comply_test_controller steps execute without single_side_trust_runner. Remove when adcontextprotocol/adcp-client#2755 ships.',
   ],
   [
     'si/security_baseline',

@@ -2,11 +2,10 @@
  * Addie auth grader tools.
  *
  * `diagnose_agent_auth` wraps the public `runAuthDiagnosis` export from
- * `@adcp/sdk/auth`. `grade_agent_signing` shells out to the CLI's
- * `grade request-signing` subcommand because the underlying
- * `gradeRequestSigning` function isn't yet on the package's public export
- * surface — follow-up issue tracks promoting it. The same CLI is what users
- * would run locally, so shelling out also exercises the path they hit.
+ * `@adcp/sdk/auth`. `grade_agent_signing` uses the public request-signing
+ * grader types while executing the bundled CLI in a bounded child process.
+ * The subprocess preserves a hard total-runtime ceiling in addition to the
+ * SDK's per-probe timeout.
  *
  * Hosted Addie only probes public HTTPS endpoints and always skips the
  * rate-abuse/live-side-effect path. Operators who need private dev loops or
@@ -18,6 +17,10 @@ import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
 import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/sdk/auth';
+import type {
+  GradeReport,
+  VectorGradeResult,
+} from '@adcp/sdk/testing/storyboard/request-signing';
 import type { AddieTool } from '../types.js';
 import type { AgentConfig } from '@adcp/sdk/types';
 import { createLogger } from '../../logger.js';
@@ -37,17 +40,19 @@ const execFileAsync = promisify(execFile);
 // which would pull a fresh tarball from the registry on every call — a
 // live supply-chain hole if a malicious release ever shipped.
 //
-// The package's `exports` map blocks importing `@adcp/sdk/package.json`,
-// so we resolve the main entry (which IS in exports) and walk up to the
-// package root. Tied to the package layout (main = `dist/lib/index.js`);
-// upstream changing that requires a major bump per semver, so the walk-up
-// distance is stable enough for now.
+// Beta.16 publicly exports package.json, so resolve the declared bin without
+// depending on the package's internal dist/ layout.
 const requireFromHere = createRequire(import.meta.url);
 const ADCP_CLIENT_BIN = (() => {
-  const mainEntry = requireFromHere.resolve('@adcp/sdk');
-  // .../node_modules/@adcp/sdk/dist/lib/index.js → .../node_modules/@adcp/sdk
-  const pkgRoot = path.resolve(mainEntry, '..', '..', '..');
-  return path.join(pkgRoot, 'bin', 'adcp.js');
+  const packageJsonPath = requireFromHere.resolve('@adcp/sdk/package.json');
+  const sdkPackage = requireFromHere(packageJsonPath) as {
+    bin?: string | Record<string, string>;
+  };
+  const declaredBin = typeof sdkPackage.bin === 'string'
+    ? sdkPackage.bin
+    : sdkPackage.bin?.adcp;
+  if (!declaredBin) throw new Error('@adcp/sdk package does not declare the adcp CLI bin');
+  return path.resolve(path.dirname(packageJsonPath), declaredBin);
 })();
 
 const logger = createLogger('addie-auth-grader-tools');
@@ -274,12 +279,9 @@ export function createAuthGraderToolHandlers(callerId: string): Map<
     const urlError = await validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    // Run the bundled @adcp/sdk CLI's `grade request-signing --json`.
-    // The underlying `gradeRequestSigning` isn't on the package's public
-    // export surface yet, so we shell out — but we shell out to the CLI
-    // installed in node_modules under the version pinned by package.json,
-    // not via `npx @latest`. Same path, exit code, and report shape the
-    // user would hit locally.
+    // Run the bundled @adcp/sdk CLI's `grade request-signing --json` in a
+    // bounded child process. The CLI path comes from the package's public
+    // package.json export and is pinned by package.json, never `npx @latest`.
     //
     // Transport defaults to `mcp` rather than the CLI's `raw` default:
     // every Addie-grade-able agent today is MCP-style (JSON-RPC tools/call),
@@ -392,42 +394,6 @@ export function createAuthGraderToolHandlers(callerId: string): Map<
   });
 
   return handlers;
-}
-
-/**
- * Mirror of `@adcp/sdk`'s `GradeReport` / `VectorGradeResult` types. We
- * parse the CLI's `--json` stdout into this shape rather than importing the
- * upstream type because the type lives behind the same internal subpath the
- * runtime export does. Keep field names in sync with
- * `@adcp/sdk/dist/lib/testing/storyboard/request-signing/grader.d.ts`.
- * Verified against the package version pinned by this repository; move to a
- * public type import once the upstream package promotes it.
- */
-interface VectorGradeResult {
-  vector_id: string;
-  kind: 'positive' | 'negative';
-  passed: boolean;
-  skipped?: boolean;
-  skip_reason?: string;
-  actual_error_code?: string;
-  expected_error_code?: string;
-  http_status: number;
-  diagnostic?: string;
-  probe_duration_ms: number;
-}
-
-interface GradeReport {
-  agent_url: string;
-  harness_mode: 'black_box';
-  live_endpoint_warning: boolean;
-  contract_loaded: boolean;
-  positive: VectorGradeResult[];
-  negative: VectorGradeResult[];
-  passed: boolean;
-  passed_count: number;
-  failed_count: number;
-  skipped_count: number;
-  total_duration_ms: number;
 }
 
 function formatGradeReport(report: GradeReport): string {
