@@ -67,7 +67,11 @@ describe('seller-managed control durable jobs', () => {
     await expect(registry.create({
       tool: 'control_media_buy', accountId: INPUT.accountId,
       ownerScope: INPUT.ownerScope, overrideTaskId: INPUT.taskId,
-    })).resolves.toEqual({ taskId: INPUT.taskId });
+    })).resolves.toMatchObject({
+      taskId: INPUT.taskId,
+      accountId: INPUT.accountId,
+      ownerScope: INPUT.ownerScope,
+    });
     await registry.authorizeSellerManagedReplay({
       taskId: INPUT.taskId,
       accountId: INPUT.accountId,
@@ -76,12 +80,31 @@ describe('seller-managed control durable jobs', () => {
     await expect(registry.create({
       tool: 'control_media_buy', accountId: INPUT.accountId,
       ownerScope: 'session:new-connection', overrideTaskId: INPUT.taskId,
-    })).resolves.toEqual({ taskId: INPUT.taskId });
+    })).resolves.toMatchObject({
+      taskId: INPUT.taskId,
+      accountId: INPUT.accountId,
+      ownerScope: 'session:new-connection',
+    });
     expect(await registry.getTask(INPUT.taskId, {
       accountId: INPUT.accountId,
       ownerScope: 'session:new-connection',
     })).toMatchObject({
       ownerScope: 'session:new-connection',
+    });
+    await registry.updateProgress(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:new-connection',
+    }, { message: 'reconnected' });
+    await registry.complete(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:new-connection',
+    }, { status: 'completed' });
+    expect(await registry.getTask(INPUT.taskId, {
+      accountId: INPUT.accountId,
+      ownerScope: 'session:new-connection',
+    })).toMatchObject({
+      status: 'completed',
+      result: { status: 'completed' },
     });
     expect(await registry.list?.({
       accountId: INPUT.accountId,
@@ -110,7 +133,11 @@ describe('seller-managed control durable jobs', () => {
     await expect(registry.create({
       tool: 'control_media_buy', accountId: INPUT.accountId,
       ownerScope: 'session:replacement', overrideTaskId: INPUT.taskId,
-    })).resolves.toEqual({ taskId: INPUT.taskId });
+    })).resolves.toMatchObject({
+      taskId: INPUT.taskId,
+      accountId: INPUT.accountId,
+      ownerScope: 'session:replacement',
+    });
     expect(await registry.getTask(INPUT.taskId, {
       accountId: INPUT.accountId,
       ownerScope: 'session:replacement',

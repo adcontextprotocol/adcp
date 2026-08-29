@@ -35,7 +35,11 @@ import type {
   ComplyBudgetSimulation,
   SeededProductAvailability,
 } from './types.js';
-import { supportsAccountChangeFeed, supportsGetProductsRejected } from './types.js';
+import {
+  supportsAccountChangeFeed,
+  supportsGetProductsRejected,
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+} from './types.js';
 import {
   findSessionsMatching,
   findSessionMatching,
@@ -1585,7 +1589,7 @@ function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')
+  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? scenarios
     : scenarios.filter(s => s !== 'expire_account_change_cursor');
 }
@@ -1909,7 +1913,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return handleForceTaskCompletion(completionScope, rawArgs);
   }
   if (scenario === 'expire_account_change_cursor') {
-    if (!supportsAccountChangeFeed(ctx.servedAdcpVersion ?? '3.2-beta.6')) {
+    if (!supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)) {
       return {
         success: false,
         error: 'UNKNOWN_SCENARIO',
