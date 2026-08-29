@@ -103,6 +103,82 @@ export interface AddieProviderToolExecution {
   execution: ToolExecution;
 }
 
+/**
+ * Canonical execution ledger shared by delivery adapters. It owns tool order,
+ * global sequence numbering, and completed execution history while callers
+ * retain control of delivery-specific logs and stream events.
+ */
+export class AddieToolExecutionLedger {
+  private currentSequence = 0;
+  private pendingCustomSequence: number | null = null;
+  private readonly usedToolNames: string[] = [];
+  private readonly completedExecutions: ToolExecution[] = [];
+
+  get sequence(): number {
+    return this.currentSequence;
+  }
+
+  get toolsUsed(): readonly string[] {
+    return this.usedToolNames;
+  }
+
+  get executions(): readonly ToolExecution[] {
+    return this.completedExecutions;
+  }
+
+  recordProviderResults(
+    provider: Pick<ModelProvider, 'id' | 'deriveProviderToolReceipt'>,
+    calls: readonly ModelProviderToolCallContent[],
+    results: readonly ModelProviderToolResultContent[],
+    executionMode: AddieExecutionMode,
+  ): AddieProviderToolExecution[] {
+    if (this.pendingCustomSequence !== null) {
+      throw new Error('Cannot record provider tools during a custom-tool execution');
+    }
+    const recorded = recordProviderToolResults(provider, calls, results, {
+      executionMode,
+      startingSequence: this.currentSequence,
+    });
+    for (const entry of recorded) {
+      if (entry.execution.sequence !== this.currentSequence + 1) {
+        throw new Error('Provider tool execution sequence is not contiguous');
+      }
+      this.currentSequence = entry.execution.sequence;
+      this.usedToolNames.push(entry.execution.tool_name);
+      this.completedExecutions.push(entry.execution);
+    }
+    return recorded;
+  }
+
+  recordCustomEvent(
+    event: AddieToolExecutionEvent,
+    turnResults: ModelToolResultContent[],
+  ): void {
+    if (event.type === 'start') {
+      if (this.pendingCustomSequence !== null) {
+        throw new Error('Previous custom-tool execution has not completed');
+      }
+      if (event.sequence !== this.currentSequence + 1) {
+        throw new Error('Custom-tool execution sequence is not contiguous');
+      }
+      this.currentSequence = event.sequence;
+      this.pendingCustomSequence = event.sequence;
+      this.usedToolNames.push(event.call.name);
+      return;
+    }
+
+    if (
+      this.pendingCustomSequence !== event.sequence
+      || event.executed.execution.sequence !== event.sequence
+    ) {
+      throw new Error('Custom-tool completion does not match its start event');
+    }
+    turnResults.push(event.executed.result);
+    this.completedExecutions.push(event.executed.execution);
+    this.pendingCustomSequence = null;
+  }
+}
+
 interface RegisteredTool {
   definition: AddieTool;
   handler?: ToolHandler;
