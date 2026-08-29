@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { createLogger } from '../logger.js';
 import {
   AdcpError,
   type DecisioningPlatform,
@@ -71,6 +72,8 @@ import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
 } from './seller-managed-control-jobs.js';
+
+const logger = createLogger('training-agent-v6-sales-platform');
 
 interface TrainingSalesMeta {
   brand_domain?: string;
@@ -872,14 +875,24 @@ export function legacyGetProductsHandler(
           registryNamespace: taskRegistryNamespaceForTenant('sales'),
         };
         const completion = (async () => {
+          let result: Record<string, unknown>;
           try {
-            const result = await waitForForcedTaskCompletion(taskId, completionScope);
+            result = await waitForForcedTaskCompletion(taskId, completionScope);
             await taskRegistry.complete(taskId, taskRef, result);
-            if (
-              pushConfig
-              && typeof pushConfig.url === 'string'
-              && ctx.emitWebhook
-            ) {
+          } catch (error) {
+            await taskRegistry.fail(taskId, taskRef, {
+              code: 'SERVICE_UNAVAILABLE',
+              recovery: 'transient',
+              message: error instanceof Error ? error.message : 'Async get_products failed',
+            });
+            return;
+          }
+          if (
+            pushConfig
+            && typeof pushConfig.url === 'string'
+            && ctx.emitWebhook
+          ) {
+            try {
               await ctx.emitWebhook({
                 url: pushConfig.url,
                 delivery_id: `get_products.${account.id}.${taskId}.completed`,
@@ -897,13 +910,11 @@ export function legacyGetProductsHandler(
                   result,
                 },
               });
+            } catch (error) {
+              // Completion is authoritative. Webhook delivery has its own
+              // retry/recovery semantics and must never regress the task.
+              logger.warn({ err: error, taskId }, 'Async get_products completion webhook failed');
             }
-          } catch (error) {
-            await taskRegistry.fail(taskId, taskRef, {
-              code: 'SERVICE_UNAVAILABLE',
-              recovery: 'transient',
-              message: error instanceof Error ? error.message : 'Async get_products failed',
-            });
           }
         })();
         taskRegistry._registerBackground(taskId, taskRef, completion);
