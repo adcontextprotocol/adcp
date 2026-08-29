@@ -260,6 +260,11 @@ describe('fixed trace artifact runner', () => {
     expect(exactKnowledge.toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
     expect(mixedRoute.toolChoice).toBeUndefined();
     expect(noBoundary.toolChoice).toBeUndefined();
+    expect(exactKnowledge.system[0]?.text).not.toContain('# Knowledge');
+    expect(exactKnowledge.system[1]?.text).toContain('# Knowledge');
+    expect(exactKnowledge.system[1]?.text).toContain('## Knowledge Search First');
+    expect(exactKnowledge.system.at(-1)?.text).toContain('# Constraints');
+    expect(exactKnowledge.system.at(-1)?.text).toContain('# Response Style');
   });
 
   it('stops at the surface decision without dispatching generation', async () => {
