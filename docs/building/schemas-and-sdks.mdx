@@ -76,7 +76,7 @@ When creating a dependent SDK pull request:
 3. Put the full protocol commit and bundle SHA-256 in the dependent pull request body.
 4. After every protocol force-push or rebase, use the new head-SHA URL, regenerate, and confirm the old commit no longer appears in generated metadata or the pull request description.
 
-The workflow's TypeScript and Python jobs are the executable reference for the current generator commands. Scoped generation is intentionally separate: this check validates the complete bundle so generator failures cannot be hidden by a file filter.
+The preview workflow is intentionally triggered only by changes under `static/schemas/source/**`. Once triggered, its TypeScript and Python jobs validate the complete bundle rather than only the changed schema files. Changes limited to compliance sources, the OpenAPI registry, or build tooling remain covered by their normal CI checks but do not publish a schema preview bundle.
 
 ## Where to go next
 

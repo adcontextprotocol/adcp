@@ -3,6 +3,8 @@ name: Validate schema PR bundle
 on:
   pull_request:
     branches: [main]
+    # Preview artifacts are only for changes to canonical schema sources.
+    # Compliance, OpenAPI, and build-tool changes remain covered by normal CI.
     paths:
       - 'static/schemas/source/**'
 
