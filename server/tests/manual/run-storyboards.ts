@@ -232,7 +232,7 @@ const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = ne
 const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
     'sales/media_buy_seller/create_media_buy_async_lifecycle',
-    'The packaged framework writes the submitted handoff to a task registry partition that get_task_status cannot read back under the storyboard account. The create_media_buy submitted arm remains graded separately. Remove when framework task reads preserve the handoff account partition.',
+    'SDK 14 beta.15 still writes the submitted handoff to a task registry partition that get_task_status cannot read back under the storyboard account (adcontextprotocol/adcp-client#2703). The create_media_buy submitted arm remains graded separately. Remove when framework task reads preserve the handoff account partition.',
   ],
   [
     'sales/creative/creative_lifecycle_webhooks',
@@ -279,24 +279,16 @@ const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, strin
     'The localization storyboard begins capability steps before enforcing its required list_creatives tool. The stateless creative-builder tenant intentionally does not serve a creative library, so this scenario must be not applicable. Remove when required_tools gating happens before execution.',
   ],
   [
-    'creative-builder/creative_transformers',
-    'The packaged response validator treats JSON-valued transformer parameter defaults and option values as object-only, rejecting valid string and number values permitted by transformer-param.json. Remove when list-transformers-response validation preserves the JSON value union.',
-  ],
-  [
-    'creative-builder/creative_transformers/governance_denied',
-    'The packaged response validator treats JSON-valued transformer parameter defaults as object-only, so discovery fails before the governance-denial assertion can use the selected transformer. Remove when list-transformers-response validation preserves the JSON value union.',
-  ],
-  [
     'brand/security_baseline',
     'The packaged SDK auth-probe allowlist has no read-only empty-input brand task. Remove when the SDK accepts list_accounts (or a brand read) as a security_baseline probe.',
   ],
   [
     'brand/brand/signed_response_envelope_vectors',
-    'This opt-in storyboard is advertised only by agents that declare the signed-response-envelope runner contract. The training agent does not declare it, but capability resolution currently schedules the storyboard anyway. Remove when scenario-contract gating marks it not applicable.',
+    'SDK 14 beta.15 enforces requires_contract for probe and replay pseudo-steps but not ordinary comply_test_controller steps, so this opt-in storyboard executes without signed_responses_runner and fails UNKNOWN_SCENARIO. Remove when adcontextprotocol/adcp-client#2755 ships.',
   ],
   [
     'brand/brand/single_side_trust_extension',
-    'This opt-in storyboard is advertised only by agents that declare the single-side trust-extension runner contract. The training agent does not declare it, but capability resolution currently schedules the storyboard anyway. Remove when scenario-contract gating marks it not applicable.',
+    'Same SDK 14 beta.15 requires_contract gap as signed_response_envelope_vectors: ordinary comply_test_controller steps execute without single_side_trust_runner. Remove when adcontextprotocol/adcp-client#2755 ships.',
   ],
   [
     'si/security_baseline',
@@ -324,14 +316,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
   [
     'governance_delivery_monitor/check_governance_drift',
     'The packaged runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
-  ],
-  [
-    'creative_transformers/build_variants',
-    'The beta.12 packaged storyboard response validator still rejects the BuildCreativeVariantSuccess creatives[]/variants[] arm emitted by the training agent, so the runner cannot promote the produced build_variant_id into later storyboard context. The previously cited adcp-client#2105 tracked a different schema-bundle API and is closed; remove this skip when the build_variants response schema-grades under the packaged SDK.',
-  ],
-  [
-    'creative_transformers/refine_variant',
-    'Same beta.12 blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',

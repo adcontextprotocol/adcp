@@ -17130,10 +17130,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow
       // / completed_views_buy_flow — read this field and grade
-      // not_applicable when missing. adcp-client#1818 will auto-derive
-      // from product-level metric_optimization.supported_metrics once
-      // the SDK ships the seller-level field; until then this is a
-      // manual declaration.
+      // not_applicable when missing. adcontextprotocol/adcp-client#1818
+      // derives the union when an adopter supplies a static productCatalog;
+      // this dynamic reference handler declares the same honest union.
       supported_optimization_metrics: ['clicks', 'views', 'completed_views', 'engagements', 'reach'],
       execution: {
         targeting: {

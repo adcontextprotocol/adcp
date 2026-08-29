@@ -2,7 +2,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { pathToFileURL } = require('node:url');
 
 async function loadInstalledSingleAgentClients() {
   return [
@@ -23,11 +22,7 @@ function trainingAgentAdcpVersion(constantName) {
 }
 
 function installedSdkAdcpVersion() {
-  return fs.readFileSync(path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@adcp/sdk/ADCP_VERSION',
-  ), 'utf8').trim();
+  return require('@adcp/sdk').ADCP_VERSION;
 }
 
 function canonicalAdcpVersion(version) {
@@ -149,12 +144,7 @@ test('installed SDK uses request-local scoped capabilities for get_products adap
 });
 
 test('installed 3.1 SDK accepts the additive flat advertiser natural-key response', async () => {
-  const schemasPath = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js',
-  );
-  const { SyncAccountsResponseSchema } = await import(pathToFileURL(schemasPath).href);
+  const { SyncAccountsResponseSchema } = await import('@adcp/sdk/schemas');
   const parsed = SyncAccountsResponseSchema.safeParse({
     status: 'completed',
     accounts: [{
