@@ -629,7 +629,7 @@ ${
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Managing or checking brand-registry canonical documents, including reciprocal brand.json assertions → ["directory"], not ["agent_testing"]
+- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"] or ["agent_testing"]
 - Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]. Do not use it for brand-registry canonical documents
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]

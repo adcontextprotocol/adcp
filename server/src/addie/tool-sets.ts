@@ -254,9 +254,10 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     name: "directory",
     // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
     // Anonymous web/MCP users get only the DIRECTORY_TOOLS subset (read-only public lookups).
-    // This set adds member-scoped tools (search_members, request_introduction) and brand tools.
+    // This set adds member-scoped search and introduction tools, but deliberately
+    // excludes brand-registry mutations and canonical-document workflows.
     description:
-      "The searchable partner/vendor directory — find partners, vendors, consultants, service providers, and member organizations. Also: request introductions, browse the member directory, research brands, look up brand assets, and find registry gaps",
+      "Search the member, agent, and publisher directory for organizations, partners, vendors, consultants, service providers, and introductions",
     tools: [
       "search_members",
       "request_introduction",
@@ -267,6 +268,14 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "get_agent",
       "list_publishers",
       "lookup_domain",
+    ],
+  },
+
+  brand_registry: {
+    name: "brand_registry",
+    description:
+      "Research and manage brand-registry entries, logos, canonical brand documents, reciprocal brand.json assertions, and registry gaps",
+    tools: [
       "research_brand",
       "resolve_brand",
       "save_brand",

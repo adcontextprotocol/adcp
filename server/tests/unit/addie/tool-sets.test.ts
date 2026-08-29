@@ -126,8 +126,8 @@ describe('getToolsForSets', () => {
   });
 
   describe('brand canonical-document workflow', () => {
-    it('routes the complete publish, reciprocity, notification, and logo surface', () => {
-      expect(getToolsForSets(['directory'], false, false)).toEqual(
+    it('routes the complete publish, reciprocity, notification, and logo surface separately from directory lookup', () => {
+      expect(getToolsForSets(['brand_registry'], false, false)).toEqual(
         expect.arrayContaining([
           'upload_brand_logo',
           'publish_brand_canonical_document',
@@ -136,6 +136,8 @@ describe('getToolsForSets', () => {
           'notify_pending_verification',
         ]),
       );
+      expect(getToolsForSets(['directory'], false, false)).not.toContain('save_brand');
+      expect(getToolsForSets(['directory'], false, false)).not.toContain('publish_brand_canonical_document');
     });
   });
 
@@ -217,6 +219,8 @@ describe('getToolsForSets', () => {
       ['knowledge', 3],
       ['community_research', 6],
       ['schema_reference', 4],
+      ['directory', 9],
+      ['brand_registry', 10],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
