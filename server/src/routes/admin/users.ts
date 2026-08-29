@@ -1365,8 +1365,17 @@ export function createAdminUsersRouter(): Router {
         );
         // Same transaction as the primary flip: a bump that commits
         // separately leaves a window where the routing changed but stale
-        // sessions still validate.
-        await bumpAuthorizationEpochs(repairClient, [newPrimaryId]);
+        // sessions still validate. Every credential on the identity is
+        // bumped, not just the new primary — the flip changes where each
+        // sibling's canonical reads land.
+        const repairBound = await repairClient.query<{ workos_user_id: string }>(
+          `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
+          [identityId]
+        );
+        await bumpAuthorizationEpochs(repairClient, [
+          newPrimaryId,
+          ...repairBound.rows.map((row) => row.workos_user_id),
+        ]);
         await repairClient.query('COMMIT');
       } catch (err) {
         await repairClient.query('ROLLBACK').catch(() => undefined);

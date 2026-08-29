@@ -116,6 +116,24 @@ describe('Authorization epoch (migration 565)', () => {
     expect(await getAuthorizationFingerprint([secondaryId])).toBe(`${secondaryId}:2`);
   });
 
+  it('bumps every bound credential on promotion, not just the successor', async () => {
+    // Three credentials on one identity. Deleting the primary promotes the
+    // longest-bound secondary; the third credential's canonical routing moves
+    // to that successor too, so its sessions must be revalidated as well.
+    const primaryId = await insertUser('fanout_primary');
+    const successorId = await insertUser('fanout_successor');
+    const bystanderId = await insertUser('fanout_bystander');
+    await mergeUsers(primaryId, successorId, primaryId);
+    await mergeUsers(primaryId, bystanderId, primaryId);
+
+    const bystanderBefore = await getAuthorizationFingerprint([bystanderId]);
+
+    const promoted = await promoteSecondaryIfPrimaryDeleted(primaryId);
+
+    expect(promoted).toEqual({ promotedUserId: successorId });
+    expect(await getAuthorizationFingerprint([bystanderId])).not.toBe(bystanderBefore);
+  });
+
   it('leaves the fingerprint untouched when mergeUsers rolls back', async () => {
     const secondaryId = await insertUser('rollback_secondary');
     const missingPrimaryId = `${TEST_USER_PREFIX}rollback_missing_primary`;

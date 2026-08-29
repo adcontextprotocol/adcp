@@ -104,9 +104,20 @@ export async function promoteSecondaryIfPrimaryDeleted(
     );
 
     // The primary flipped: every session bound to this identity now routes
-    // through a different credential. Bump in this transaction so stale
-    // sessions on other instances lose their pre-promotion authority.
-    await bumpAuthorizationEpochs(client, [workosUserId, successorId]);
+    // through a different credential, including secondaries that were not
+    // promoted — their canonical target moves from the deleted primary to
+    // the successor. Bump all of them in this transaction so stale sessions
+    // on other instances lose their pre-promotion routing. The deleted
+    // user's binding is still present here; the CASCADE fires later.
+    const boundCredentials = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
+      [identityId],
+    );
+    await bumpAuthorizationEpochs(client, [
+      workosUserId,
+      successorId,
+      ...boundCredentials.rows.map((row) => row.workos_user_id),
+    ]);
 
     await client.query('COMMIT');
 
