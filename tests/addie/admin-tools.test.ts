@@ -1189,8 +1189,9 @@ describe("community mirror review handlers", () => {
 
   beforeEach(() => {
     vi.unstubAllGlobals();
-    process.env.ADMIN_API_KEY = "test-admin-key";
-    process.env.BASE_URL = "https://registry.example";
+    vi.unstubAllEnvs();
+    vi.stubEnv('ADMIN_API_KEY', 'test-admin-key');
+    vi.stubEnv('BASE_URL', 'https://registry.example');
   });
 
   it("lists the moderator queue through the protected registry API", async () => {
