@@ -11,6 +11,7 @@
  */
 
 import { getPool } from './client.js';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 
@@ -101,6 +102,11 @@ export async function promoteSecondaryIfPrimaryDeleted(
         WHERE workos_user_id = $1 AND identity_id = $2`,
       [successorId, identityId],
     );
+
+    // The primary flipped: every session bound to this identity now routes
+    // through a different credential. Bump in this transaction so stale
+    // sessions on other instances lose their pre-promotion authority.
+    await bumpAuthorizationEpochs(client, [workosUserId, successorId]);
 
     await client.query('COMMIT');
 

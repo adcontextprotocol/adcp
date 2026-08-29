@@ -9,6 +9,7 @@
  */
 
 import { getPool } from './client.js';
+import { bumpAuthorizationEpochs } from './authorization-epoch-db.js';
 import { createLogger } from '../logger.js';
 const logger = createLogger('user-merge-db');
 
@@ -683,6 +684,22 @@ export async function mergeUsers(
           AND om.email IS DISTINCT FROM u.email`,
       [primaryUserId]
     );
+
+    // Bump the persisted authorization epoch for every credential now bound
+    // to this identity, in this transaction. The binding change alters which
+    // credential each session routes through, so any session issued before
+    // the commit must lose its pre-change authority on every instance — the
+    // in-process cache eviction below only covers the instance that ran the
+    // merge.
+    const boundCredentials = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
+      [primaryIdentityId]
+    );
+    await bumpAuthorizationEpochs(client, [
+      primaryUserId,
+      secondaryUserId,
+      ...boundCredentials.rows.map((row) => row.workos_user_id),
+    ]);
 
     // =====================================================
     // 5. Audit log
