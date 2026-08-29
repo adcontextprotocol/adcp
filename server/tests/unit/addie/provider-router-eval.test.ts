@@ -145,7 +145,7 @@ describe('strict router eval', () => {
     expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(58);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member', 'directory', 'agent_testing', 'agent_conformance',
+      'knowledge', 'member', 'directory', 'brand_registry', 'agent_testing', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content', 'publishing', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'billing', 'events', 'meetings',

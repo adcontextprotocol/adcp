@@ -322,18 +322,24 @@ describe('Addie tool reference', () => {
     expect(testing).not.toContain('### Seller-agent monitoring');
   });
 
-  it('scopes brand guidance to directory requests', () => {
+  it('scopes brand guidance to brand-registry requests', () => {
     const directory = buildAddieToolReference({
       availableToolNames: getToolsForSets(['directory'], false, false),
       selectedToolSetNames: ['directory'],
+    });
+    const brandRegistry = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['brand_registry'], false, false),
+      selectedToolSetNames: ['brand_registry'],
     });
     const testing = buildAddieToolReference({
       availableToolNames: getToolsForSets(['agent_testing'], false, false),
       selectedToolSetNames: ['agent_testing'],
     });
 
-    expect(directory).toContain('### Brand-registry operations');
+    expect(directory).not.toContain('### Brand-registry operations');
     expect(directory).not.toContain('### Property-registry operations');
+    expect(brandRegistry).toContain('### Brand-registry operations');
+    expect(brandRegistry).not.toContain('### Member-directory operations');
     expect(testing).not.toContain('### Brand-registry operations');
   });
 
@@ -472,14 +478,14 @@ describe('Addie tool reference', () => {
   });
 
   it('loads brand canonical guidance only with the complete routed workflow', () => {
-    const directoryTools = getToolsForSets(['directory'], false, false);
+    const directoryTools = getToolsForSets(['brand_registry'], false, false);
     const complete = buildAddieToolReference({
       availableToolNames: directoryTools,
-      selectedToolSetNames: ['directory'],
+      selectedToolSetNames: ['brand_registry'],
     });
     const missingCheck = buildAddieToolReference({
       availableToolNames: directoryTools.filter(name => name !== 'check_mutual_assertion'),
-      selectedToolSetNames: ['directory'],
+      selectedToolSetNames: ['brand_registry'],
     });
 
     expect(complete).toContain('### Brand canonical-document operations');

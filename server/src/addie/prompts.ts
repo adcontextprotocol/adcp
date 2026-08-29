@@ -249,7 +249,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - Never register the public test agent or a buyer agent. Buyer agents are clients that call seller agents; direct their builders to the client SDKs and public test agent instead.`,
   },
   {
-    selectedToolSets: ['directory'],
+    selectedToolSets: ['brand_registry'],
     text: `### Brand-registry operations
 - research_brand: Research a brand by domain and save enrichment data.
 - resolve_brand: Resolve a domain to its canonical brand identity from brand.json.
@@ -259,7 +259,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - upload_brand_logo: Queue an explicitly supplied logo URL for moderator review. Respect verified-owner restrictions and do not treat the pending URL as approved.`,
   },
   {
-    selectedToolSets: ['directory'],
+    selectedToolSets: ['brand_registry'],
     requiredToolNames: [
       'publish_brand_canonical_document',
       'add_to_brand_refs',
