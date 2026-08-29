@@ -141,6 +141,7 @@ export async function executeFixedTraceToolLoop(
 ): Promise<FixedTraceToolLoopResult> {
   const request = snapshotRequest(initialRequest);
   validateInitialRequest(request);
+  const { toolChoice: initialToolChoice, ...requestWithoutToolChoice } = request;
   const registered = registerFixtures(trace, definitions);
   const iterationLimit = safeIterationLimit(trace, options.maxIterations);
   const handlers = new Map<string, ToolHandler>();
@@ -179,12 +180,16 @@ export async function executeFixedTraceToolLoop(
     const activeTurn = modelLoop.beginNext();
     const iteration = activeTurn.iteration;
     const response = await activeTurn.invoke(provider, {
-      ...request,
+      ...requestWithoutToolChoice,
       messages,
       tools: buildModelToolDefinitions(
         [...registered.values()].map((entry) => entry.definition),
       ),
       providerTools: [],
+      // Production's official-docs profile forces search_docs only on the
+      // first turn. Requiring it again after the fixture result would create
+      // a duplicate call and make replay diverge from the live loop.
+      ...(iteration === 1 && initialToolChoice ? { toolChoice: initialToolChoice } : {}),
     }, {
       signal: options.signal,
       beforeDispatch: async (prepared) => {

@@ -292,6 +292,9 @@ export function buildFixedTraceGenerationRequest(
 ): ModelRequest {
   const availableToolNames = definitions.map((definition) => definition.name);
   const selectedToolSets = route.action === 'respond' ? route.tool_sets ?? [] : [];
+  const exactKnowledgeRoute = selectedToolSets.length === 1
+    && selectedToolSets[0] === 'knowledge';
+  const hasOfficialDocsToolBoundary = availableToolNames.includes('search_docs');
   return {
     model: config.model,
     system: [
@@ -311,6 +314,9 @@ export function buildFixedTraceGenerationRequest(
     ],
     messages: messagesForTrace(trace),
     tools: [],
+    ...(exactKnowledgeRoute && hasOfficialDocsToolBoundary
+      ? { toolChoice: { type: 'tool' as const, name: 'search_docs' } }
+      : {}),
     ...reasoningRequest(config.reasoningEffort),
     maxOutputTokens: config.maxOutputTokens,
     requestMetadata: {
