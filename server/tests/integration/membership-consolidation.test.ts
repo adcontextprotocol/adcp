@@ -11,12 +11,13 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { Pool } from 'pg';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { findSupersededMembershipOrganizations } from '../../src/db/membership-consolidation-db.js';
+import { findSupersededMemberships } from '../../src/db/membership-consolidation-db.js';
 
 const TEST_USER_PREFIX = 'user_consolidation_test_';
 const TEST_ORG_PREFIX = 'org_consolidation_test_';
+const TEST_WG_PREFIX = 'wg-consolidation-test-';
 
-describe('findSupersededMembershipOrganizations', () => {
+describe('findSupersededMemberships', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -38,6 +39,10 @@ describe('findSupersededMembershipOrganizations', () => {
     await pool.query(`DELETE FROM organization_memberships WHERE workos_user_id LIKE $1`, [
       `${TEST_USER_PREFIX}%`,
     ]);
+    await pool.query(`DELETE FROM working_group_memberships WHERE workos_user_id LIKE $1`, [
+      `${TEST_USER_PREFIX}%`,
+    ]);
+    await pool.query(`DELETE FROM working_groups WHERE slug LIKE $1`, [`${TEST_WG_PREFIX}%`]);
     await pool.query(`DELETE FROM users WHERE workos_user_id LIKE $1`, [`${TEST_USER_PREFIX}%`]);
   }
 
@@ -63,15 +68,32 @@ describe('findSupersededMembershipOrganizations', () => {
     return orgId;
   }
 
+  async function insertWorkingGroup(suffix: string): Promise<string> {
+    const result = await pool.query<{ id: string }>(
+      `INSERT INTO working_groups (name, slug) VALUES ($1, $2) RETURNING id`,
+      [`Consolidation Test ${suffix}`, `${TEST_WG_PREFIX}${suffix}`]
+    );
+    return result.rows[0].id;
+  }
+
+  async function insertWorkingGroupMembership(userId: string, workingGroupId: string) {
+    await pool.query(
+      `INSERT INTO working_group_memberships (working_group_id, workos_user_id, user_email)
+       VALUES ($1, $2, $3)`,
+      [workingGroupId, userId, `${userId}@consolidation.test`]
+    );
+  }
+
   it('reports the organizations both credentials belong to', async () => {
     const targetId = await insertUser('overlap_target');
     const sourceId = await insertUser('overlap_source');
     await insertMembership(targetId, 'shared');
     await insertMembership(sourceId, 'shared');
 
-    expect(await findSupersededMembershipOrganizations(sourceId, targetId)).toEqual([
-      `${TEST_ORG_PREFIX}shared`,
-    ]);
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [`${TEST_ORG_PREFIX}shared`],
+      workingGroupIds: [],
+    });
   });
 
   it('ignores memberships that would move forward intact', async () => {
@@ -80,7 +102,10 @@ describe('findSupersededMembershipOrganizations', () => {
     await insertMembership(targetId, 'target_only');
     await insertMembership(sourceId, 'source_only');
 
-    expect(await findSupersededMembershipOrganizations(sourceId, targetId)).toEqual([]);
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [],
+    });
   });
 
   it('reports only the overlap when the source holds both kinds', async () => {
@@ -90,9 +115,10 @@ describe('findSupersededMembershipOrganizations', () => {
     await insertMembership(sourceId, 'mixed_shared');
     await insertMembership(sourceId, 'mixed_solo');
 
-    expect(await findSupersededMembershipOrganizations(sourceId, targetId)).toEqual([
-      `${TEST_ORG_PREFIX}mixed_shared`,
-    ]);
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [`${TEST_ORG_PREFIX}mixed_shared`],
+      workingGroupIds: [],
+    });
   });
 
   it('is directional — the reverse check is independent', async () => {
@@ -100,8 +126,54 @@ describe('findSupersededMembershipOrganizations', () => {
     const sourceId = await insertUser('directional_source');
     await insertMembership(sourceId, 'directional_solo');
 
-    expect(await findSupersededMembershipOrganizations(sourceId, targetId)).toEqual([]);
-    expect(await findSupersededMembershipOrganizations(targetId, sourceId)).toEqual([]);
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [],
+    });
+    expect(await findSupersededMemberships(targetId, sourceId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [],
+    });
+  });
+
+  it('reports working groups both credentials belong to', async () => {
+    const targetId = await insertUser('wg_target');
+    const sourceId = await insertUser('wg_source');
+    const sharedGroupId = await insertWorkingGroup('shared');
+    await insertWorkingGroupMembership(targetId, sharedGroupId);
+    await insertWorkingGroupMembership(sourceId, sharedGroupId);
+
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [sharedGroupId],
+    });
+  });
+
+  it('ignores a working group only the source belongs to', async () => {
+    const targetId = await insertUser('wg_solo_target');
+    const sourceId = await insertUser('wg_solo_source');
+    const groupId = await insertWorkingGroup('solo');
+    await insertWorkingGroupMembership(sourceId, groupId);
+
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [],
+    });
+  });
+
+  it('reports an organization and a working group overlap together', async () => {
+    const targetId = await insertUser('both_target');
+    const sourceId = await insertUser('both_source');
+    await insertMembership(targetId, 'both_shared');
+    await insertMembership(sourceId, 'both_shared');
+    const sharedGroupId = await insertWorkingGroup('both');
+    await insertWorkingGroupMembership(targetId, sharedGroupId);
+    await insertWorkingGroupMembership(sourceId, sharedGroupId);
+
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [`${TEST_ORG_PREFIX}both_shared`],
+      workingGroupIds: [sharedGroupId],
+    });
   });
 
   it('returns nothing when the source holds no memberships', async () => {
@@ -109,6 +181,9 @@ describe('findSupersededMembershipOrganizations', () => {
     const sourceId = await insertUser('empty_source');
     await insertMembership(targetId, 'empty_target_only');
 
-    expect(await findSupersededMembershipOrganizations(sourceId, targetId)).toEqual([]);
+    expect(await findSupersededMemberships(sourceId, targetId)).toEqual({
+      organizationIds: [],
+      workingGroupIds: [],
+    });
   });
 });
