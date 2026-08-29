@@ -60,7 +60,7 @@ fixtures:
       name: "Outcome Target Planning Video"
       description: "Compliance fixture: fixed-price video inventory for reverse-forecast planning."
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "outcome_target_video_30s"
           format_kind: "video_hosted"

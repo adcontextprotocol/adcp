@@ -60,7 +60,7 @@ fixtures:
             duration_ms_exact: 30000
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_15s"
           format_kind: "video_hosted"
