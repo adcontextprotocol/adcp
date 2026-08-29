@@ -46,6 +46,7 @@ import type {
   ModelMessageContent,
   ModelRequest,
   ModelResponse,
+  ModelToolChoice,
   ModelToolCallContent,
   ModelToolDefinition,
   ModelToolResultContent,
@@ -679,6 +680,8 @@ export interface ProcessMessageOptions {
   allowedToolNames?: readonly string[];
   /** Router-selected capability sets used to scope prompt guidance/catalog. */
   selectedToolSetNames?: readonly string[];
+  /** Optional first-turn tool requirement chosen by trusted orchestration. */
+  initialToolChoice?: ModelToolChoice;
   /** Dedicated key for HMACing private invocation payloads in evaluation provenance. */
   invocationHashKey?: string;
   /** Caller-owned HMAC domain separator. Must be supplied with invocationHashKey. */
@@ -1247,6 +1250,7 @@ export class AddieClaudeClient {
     providerWebSearchEnabled: boolean,
     maxOutputTokens?: number,
     streaming = false,
+    toolChoice?: ModelToolChoice,
   ): ModelRequest {
     const safeMaxOutputTokens = !streaming && /^claude-sonnet-5(?:-|$)/.test(effectiveModel)
       ? Math.min(
@@ -1265,6 +1269,7 @@ export class AddieClaudeClient {
       })),
       messages,
       tools,
+      ...(toolChoice && { toolChoice }),
       ...(providerWebSearchEnabled && { providerTools: [{ type: 'web_search' as const }] }),
       ...(controls.output_config?.effort === 'medium' && {
         reasoning: { effort: 'medium' as const },
@@ -1298,6 +1303,9 @@ export class AddieClaudeClient {
       prepared.modelTools,
       prepared.modelMessages,
       prepared.requestWebSearchEnabled,
+      undefined,
+      false,
+      options?.initialToolChoice,
     );
     const providerRequest = this.anthropicProvider.prepare(modelRequest)
       .providerRequest as unknown as PreparedProviderRequest;
@@ -1486,6 +1494,10 @@ export class AddieClaudeClient {
             modelMessages,
             modelLoop.emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
             isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+            false,
+            iteration === 1 && invocationTools.length > 0
+              ? options?.initialToolChoice
+              : undefined,
           );
           const provider = exactlyOnce
             ? this.exactlyOnceAnthropicProvider
@@ -2075,6 +2087,9 @@ export class AddieClaudeClient {
               false,
               isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
               true,
+              iteration === 1 && invocationTools.length > 0
+                ? options?.initialToolChoice
+                : undefined,
             );
             const provider = isEmptyResponseRecovery
               ? this.exactlyOnceAnthropicProvider

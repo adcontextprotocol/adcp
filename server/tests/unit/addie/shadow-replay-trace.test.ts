@@ -80,6 +80,7 @@ function captureInput(identity = createShadowReplayCaptureIdentity({
       requestContext: 'request-context-sentinel',
       disableServerTools: true,
       allowedToolNames: [...OFFICIAL_DOCS_ALLOWED_TOOLS],
+      initialToolChoice: { type: 'tool', name: 'search_docs' },
     },
     effectiveModel: 'claude-test',
     selectedToolSets: ['knowledge'],

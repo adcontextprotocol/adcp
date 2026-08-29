@@ -309,6 +309,7 @@ function officialDocsInvocation(): ChannelResponseInvocation {
       requestContext: 'Synthetic public fixture context.',
       disableServerTools: true,
       allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+      initialToolChoice: { type: 'tool', name: 'search_docs' },
       maxIterations: 4,
     },
     effectiveModel: 'claude-example-chat',
@@ -470,6 +471,7 @@ describe('verified official docs replay generation', () => {
           executionMode: 'replay',
           disableServerTools: true,
           allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+          initialToolChoice: { type: 'tool', name: 'search_docs' },
           maxIterations: 4,
         });
         expect(requestTools.tools).toEqual([]);

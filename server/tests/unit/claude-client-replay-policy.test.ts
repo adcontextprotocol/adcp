@@ -465,6 +465,7 @@ describe('AddieClaudeClient replay execution policy', () => {
       uncapped: true as const,
       disableServerTools: true,
       allowedToolNames: ['search_docs', 'get_doc'] as const,
+      initialToolChoice: { type: 'tool' as const, name: 'search_docs' },
       invocationHashKey: 'exact-provider-boundary-key',
       invocationHashDomain: 'official-docs-test:v1',
     };
@@ -475,15 +476,21 @@ describe('AddieClaudeClient replay execution policy', () => {
     expect(client.hasRegisteredTools(options.allowedToolNames)).toBe(true);
     expect(prepared.tool_schemas.map(({ name }) => name)).toEqual(['search_docs', 'get_doc']);
 
-    sdkState.nonStreamingResponses.push(textResponse());
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'tool-1', name: 'search_docs', input: { value: 'current question' } }]),
+      textResponse(),
+    );
     const actual: InvocationPreparedSnapshot[] = [];
     await client.processMessage(
       'current question', undefined, scopedTools, { systemPrompt: 'system' },
       { ...options, onInvocationPrepared: (snapshot) => actual.push(snapshot) },
     );
-    expect(actual).toEqual([prepared]);
+    expect(actual).toHaveLength(2);
+    expect(actual[0]).toEqual(prepared);
     expect((sdkState.calls[0].tools as Array<{ name: string }>).map(({ name }) => name))
       .toEqual(['search_docs', 'get_doc']);
+    expect(sdkState.calls[0].tool_choice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(sdkState.calls[1]).not.toHaveProperty('tool_choice');
     expect(prepared.message_payloads).toHaveLength(1);
     expect(prepared.provider_request_sha256).toBe(invocationHmac(
       options.invocationHashKey,
