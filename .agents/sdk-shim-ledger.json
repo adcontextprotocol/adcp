@@ -65,7 +65,7 @@
     "kind": "sdk_generated_validator_bypass",
     "status": "temporary",
     "owner": "compliance",
-    "upstream": "adcontextprotocol/adcp-client#2738",
+    "upstream": "adcontextprotocol/adcp-client#2746",
     "problem": "SDK 14 beta.15 generates macro-bearing URL schemas as an impossible intersection of object-only unions with strings, rejecting valid DAAST and pixel-tracker assets.",
     "localBehavior": "The current storyboard runner resolves the staged SDK JSON Schema bundle and passes it through the public schemaRoot option instead of using the broken generated Zod snapshot.",
     "removalCondition": "Remove when a published SDK generates valid string-based macro-bearing URL validators and the current creative storyboard lane passes without an explicit staged schemaRoot.",
