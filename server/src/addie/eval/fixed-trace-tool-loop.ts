@@ -18,6 +18,7 @@ import {
   type ToolHandler,
 } from '../model-providers/tool-orchestration.js';
 import type {
+  FixedTraceBoundaryReason,
   FixedTraceCase,
   FixedTraceToolFixture,
   FixedTraceToolObservation,
@@ -25,18 +26,7 @@ import type {
 
 const MAX_ITERATIONS = 8;
 
-export type FixedTraceToolLoopReason =
-  | 'duplicate_tool_definition'
-  | 'duplicate_tool_call'
-  | 'fixture_definition_mismatch'
-  | 'iteration_limit_exceeded'
-  | 'preexisting_tool_state'
-  | 'provider_tool_not_allowed'
-  | 'provider_continuation_not_allowed'
-  | 'tool_call_limit_exceeded'
-  | 'tool_input_invalid'
-  | 'tool_schema_invalid'
-  | 'unknown_tool_call';
+export type FixedTraceToolLoopReason = FixedTraceBoundaryReason;
 
 export class FixedTraceToolLoopBoundaryError extends Error {
   constructor(readonly reason: FixedTraceToolLoopReason) {
