@@ -1,0 +1,98 @@
+name: Publish schema PR bundle
+
+on:
+  workflow_run:
+    workflows: ['Validate schema PR bundle']
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    name: Publish immutable PR bundle
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: schema-pr-bundle-${{ github.event.workflow_run.head_sha }}
+          path: bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload immutable artifact tuple to R2
+        env:
+          BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          if [[ -z "${R2_ACCOUNT_ID:-}" || -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+            echo "::error::Missing R2 publication credentials"
+            exit 1
+          fi
+          (
+            cd bundle
+            shasum -a 256 -c latest.tgz.sha256
+          )
+          node -e "const fs=require('node:fs'); const p=require('./bundle/latest.tgz.provenance.json'); const digest=fs.readFileSync('./bundle/latest.tgz.sha256','utf8').trim().split(/\s+/)[0]; if (p.source_repository !== 'adcontextprotocol/adcp') throw new Error('Unexpected protocol provenance repository'); if (p.source_commit !== process.env.PR_HEAD_SHA) throw new Error('Protocol provenance does not match PR head'); if (p.bundle_sha256 !== digest) throw new Error('Protocol provenance digest does not match checksum')"
+
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          prefix="protocol/pr/${PR_HEAD_SHA}"
+
+          upload_immutable() {
+            local source="$1"
+            local key="$2"
+            local content_type="$3"
+            local existing
+            local head_error
+            existing="$(mktemp)"
+            head_error="$(mktemp)"
+
+            if aws s3api head-object --bucket "${BUCKET}" --key "${key}" --endpoint-url "${endpoint}" --region auto --no-cli-pager >/dev/null 2>"${head_error}"; then
+              aws s3 cp "s3://${BUCKET}/${key}" "${existing}" --endpoint-url "${endpoint}" --region auto --no-progress --only-show-errors
+              if ! cmp -s "${source}" "${existing}"; then
+                echo "::error::R2 object ${key} exists with different bytes; refusing overwrite"
+                exit 1
+              fi
+              echo "Verified existing immutable object ${key}"
+              return
+            fi
+
+            if ! grep -Eq '(404|Not Found)' "${head_error}"; then
+              cat "${head_error}" >&2
+              echo "::error::Could not safely determine whether R2 object ${key} exists"
+              exit 1
+            fi
+
+            aws s3 cp "${source}" "s3://${BUCKET}/${key}" \
+              --endpoint-url "${endpoint}" \
+              --region auto \
+              --no-progress \
+              --only-show-errors \
+              --no-guess-mime-type \
+              --cache-control 'public, max-age=86400' \
+              --content-type "${content_type}"
+          }
+
+          upload_immutable bundle/latest.tgz "${prefix}/latest.tgz" 'application/gzip'
+          upload_immutable bundle/latest.tgz.sha256 "${prefix}/latest.tgz.sha256" 'text/plain; charset=utf-8'
+          upload_immutable bundle/latest.tgz.provenance.json "${prefix}/latest.tgz.provenance.json" 'application/json; charset=utf-8'
+
+          {
+            echo '### Immutable PR bundle'
+            echo
+            echo "- Bundle: https://adcontextprotocol.org/${prefix}/latest.tgz"
+            echo "- Checksum: https://adcontextprotocol.org/${prefix}/latest.tgz.sha256"
+            echo "- Provenance: https://adcontextprotocol.org/${prefix}/latest.tgz.provenance.json"
+          } >> "${GITHUB_STEP_SUMMARY}"

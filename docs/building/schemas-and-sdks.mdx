@@ -45,6 +45,39 @@ Publishers declare their agent endpoints and authorization scopes in `adagents.j
 
 For the full authorization type reference and worked examples, see [Authorization Patterns](/docs/governance/property/adagents#authorization-patterns) in the governance docs.
 
+## Validate an unreleased schema in both SDKs
+
+Schema-changing pull requests build a deterministic protocol bundle and run both the TypeScript and Python generators against it. The check records three machine-readable values in `latest.tgz.provenance.json`: the protocol commit, the bundle SHA-256, and the published-version label. A passing SDK job therefore identifies the exact protocol input it consumed.
+
+For same-repository pull requests, the workflow also publishes an immutable tuple keyed by the full head commit:
+
+```text
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz.sha256
+https://adcontextprotocol.org/protocol/pr/<commit-sha>/latest.tgz.provenance.json
+```
+
+These bundles are unsigned development artifacts. Verify the checksum and provenance before using one, and never use a PR bundle in production.
+
+Preview bundles are retained for 90 days by default and removed by a daily cleanup job. Maintainers can change the window with the `SCHEMA_PR_BUNDLE_RETENTION_DAYS` repository variable. Rerun the protocol validation workflow to recreate an expired bundle for a still-current commit.
+
+To reproduce the artifact locally after committing the protocol inputs, run:
+
+```bash
+scripts/build-schema-pr-bundle.sh
+```
+
+The script derives both the source commit and deterministic timestamp from `HEAD`, refuses uncommitted bundle inputs, and writes the same three files under `dist/protocol/`.
+
+When creating a dependent SDK pull request:
+
+1. Copy the three artifact URLs from the protocol workflow summary.
+2. Regenerate with the SDK repository's supported local-bundle input and commit its provenance metadata with the generated output.
+3. Put the full protocol commit and bundle SHA-256 in the dependent pull request body.
+4. After every protocol force-push or rebase, use the new head-SHA URL, regenerate, and confirm the old commit no longer appears in generated metadata or the pull request description.
+
+The workflow's TypeScript and Python jobs are the executable reference for the current generator commands. Scoped generation is intentionally separate: this check validates the complete bundle so generator failures cannot be hidden by a file filter.
+
 ## Where to go next
 
 <CardGroup cols={2}>

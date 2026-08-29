@@ -49,6 +49,36 @@ const PACKAGE_JSON = path.join(ROOT, 'package.json');
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
 
+const SOURCE_REPOSITORY = 'adcontextprotocol/adcp';
+
+function resolveBuildMetadata(env = process.env, now = new Date()) {
+  let generatedAt = now.toISOString();
+  let archiveMtime;
+
+  if (env.SOURCE_DATE_EPOCH !== undefined) {
+    if (!/^\d+$/.test(env.SOURCE_DATE_EPOCH)) {
+      throw new Error('SOURCE_DATE_EPOCH must be an integer number of seconds since the Unix epoch');
+    }
+    archiveMtime = new Date(Number(env.SOURCE_DATE_EPOCH) * 1000);
+    if (Number.isNaN(archiveMtime.getTime())) {
+      throw new Error('SOURCE_DATE_EPOCH is outside the supported date range');
+    }
+    generatedAt = archiveMtime.toISOString();
+  }
+
+  const sourceCommit = env.ADCP_PROTOCOL_COMMIT_SHA;
+  if (sourceCommit !== undefined && !/^[0-9a-f]{40}$/.test(sourceCommit)) {
+    throw new Error('ADCP_PROTOCOL_COMMIT_SHA must be a lowercase 40-character Git commit SHA');
+  }
+
+  return {
+    generatedAt,
+    archiveMtime,
+    sourceCommit,
+    sourceRepository: SOURCE_REPOSITORY
+  };
+}
+
 function getVersion() {
   return JSON.parse(fs.readFileSync(PACKAGE_JSON, 'utf8')).version;
 }
@@ -81,6 +111,40 @@ function walk(dir, base = dir) {
     else out.push(path.relative(base, full));
   }
   return out;
+}
+
+function archiveEntries(stagingRoot, rootDirName) {
+  const entries = [];
+
+  function visit(relativePath) {
+    entries.push(relativePath);
+    const absolutePath = path.join(stagingRoot, relativePath);
+    if (!fs.statSync(absolutePath).isDirectory()) return;
+
+    for (const name of fs.readdirSync(absolutePath).sort()) {
+      visit(path.join(relativePath, name));
+    }
+  }
+
+  visit(rootDirName);
+  return entries;
+}
+
+function pinGeneratedAt(filePath, generatedAt) {
+  if (!fs.existsSync(filePath)) return;
+  const document = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if (typeof document.generated_at !== 'string') return;
+  document.generated_at = generatedAt;
+  fs.writeFileSync(filePath, JSON.stringify(document, null, 2) + '\n');
+}
+
+function pinPublishedVersion(filePath, publishedVersion) {
+  if (!fs.existsSync(filePath)) return;
+  const document = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  if ('published_version' in document) document.published_version = publishedVersion;
+  if ('adcp_version' in document) document.adcp_version = publishedVersion;
+  if (typeof document.baseUrl === 'string') document.baseUrl = `/schemas/${publishedVersion}`;
+  fs.writeFileSync(filePath, JSON.stringify(document, null, 2) + '\n');
 }
 
 function writeBundleReadme(bundleDir, version, isDev) {
@@ -160,21 +224,55 @@ ship with a major bump.
   fs.writeFileSync(path.join(bundleDir, 'README.md'), readme);
 }
 
-async function buildTarball(label, stagingRoot, rootDirName, outFile) {
+async function buildTarball(label, stagingRoot, rootDirName, outFile, metadata) {
   await tar.create(
     {
       gzip: { level: 9 },
       file: outFile,
       cwd: stagingRoot,
-      portable: true
+      portable: true,
+      noDirRecurse: true,
+      ...(metadata.archiveMtime ? { mtime: metadata.archiveMtime } : {})
     },
-    [rootDirName]
+    archiveEntries(stagingRoot, rootDirName)
   );
   const size = fs.statSync(outFile).size;
   console.log(`   ✓ ${label}: ${outFile.replace(ROOT + '/', '')} (${(size / 1024).toFixed(1)} KB)`);
 }
 
-function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = false) {
+function writeIntegritySidecars(tarballPath, metadata, publishedVersion) {
+  const digest = sha256(tarballPath);
+  const tarballName = path.basename(tarballPath);
+  const provenancePath = `${tarballPath}.provenance.json`;
+  fs.writeFileSync(`${tarballPath}.sha256`, `${digest}  ${tarballName}\n`);
+
+  if (metadata.sourceCommit) {
+    fs.writeFileSync(
+      provenancePath,
+      JSON.stringify({
+        schema_version: 1,
+        source_repository: metadata.sourceRepository,
+        source_commit: metadata.sourceCommit,
+        source_date: metadata.generatedAt,
+        published_version: publishedVersion,
+        bundle_file: tarballName,
+        bundle_sha256: digest
+      }, null, 2) + '\n'
+    );
+  } else {
+    fs.rmSync(provenancePath, { force: true });
+  }
+}
+
+function stageBundle(
+  bundleParent,
+  version,
+  schemasSource,
+  rootDirName,
+  metadata,
+  isDev = false,
+  publishedVersion = version
+) {
   if (fs.existsSync(bundleParent)) fs.rmSync(bundleParent, { recursive: true, force: true });
   ensureDir(bundleParent);
   const bundleDir = path.join(bundleParent, rootDirName);
@@ -182,6 +280,10 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
 
   const schemasDst = path.join(bundleDir, 'schemas');
   copyTree(schemasSource, schemasDst);
+  pinGeneratedAt(path.join(schemasDst, 'manifest.json'), metadata.generatedAt);
+  if (publishedVersion !== version) {
+    pinPublishedVersion(path.join(schemasDst, 'index.json'), publishedVersion);
+  }
 
   const complianceSource = path.join(DIST_COMPLIANCE, version);
   if (!fs.existsSync(complianceSource)) {
@@ -189,6 +291,10 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
   }
   const complianceDst = path.join(bundleDir, 'compliance');
   copyTree(complianceSource, complianceDst);
+  pinGeneratedAt(path.join(complianceDst, 'index.json'), metadata.generatedAt);
+  if (publishedVersion !== version) {
+    pinPublishedVersion(path.join(complianceDst, 'index.json'), publishedVersion);
+  }
   assertCompliancePackagedRefs(complianceDst, 'Compliance packaged-reference lint failed for staged protocol bundle');
 
   if (fs.existsSync(OPENAPI_FILE)) {
@@ -224,9 +330,15 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
   // (ComplianceIndex.adcp_version). Both carry full semver; distinct from the
   // wire field in core/version-envelope.json (release-precision).
   const manifest = {
-    published_version: version,
-    adcp_version: version,
-    generated_at: new Date().toISOString(),
+    published_version: publishedVersion,
+    adcp_version: publishedVersion,
+    generated_at: metadata.generatedAt,
+    ...(metadata.sourceCommit ? {
+      source: {
+        repository: metadata.sourceRepository,
+        commit_sha: metadata.sourceCommit
+      }
+    } : {}),
     root_dir: rootDirName,
     contents: {
       schemas: fs.existsSync(schemasDst),
@@ -247,6 +359,7 @@ function stageBundle(bundleParent, version, schemasSource, rootDirName, isDev = 
 
 async function main() {
   const version = getVersion();
+  const metadata = resolveBuildMetadata();
 
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating protocol tarball for AdCP v${version}`
@@ -274,19 +387,19 @@ async function main() {
     console.log(`📋 Staging bundle for ${version}`);
     const versionStage = path.join(stagingRoot, version);
     const versionRoot = `adcp-${version}`;
-    const manifest = stageBundle(versionStage, version, versionSchemas, versionRoot);
+    const manifest = stageBundle(versionStage, version, versionSchemas, versionRoot, metadata);
     console.log(`   ✓ manifest: ${manifest.file_count} files, root: ${manifest.root_dir}`);
 
     const versionTar = path.join(OUT_DIR, `${version}.tgz`);
-    await buildTarball(`version tarball`, versionStage, versionRoot, versionTar);
-    fs.writeFileSync(versionTar + '.sha256', `${sha256(versionTar)}  ${version}.tgz\n`);
+    await buildTarball(`version tarball`, versionStage, versionRoot, versionTar, metadata);
+    writeIntegritySidecars(versionTar, metadata, version);
 
     console.log(`📋 Staging latest bundle (mirrors release)`);
     const latestStage = path.join(stagingRoot, 'latest');
-    stageBundle(latestStage, version, versionSchemas, versionRoot, true);
+    stageBundle(latestStage, version, versionSchemas, versionRoot, metadata, true);
     const latestTar = path.join(OUT_DIR, `latest.tgz`);
-    await buildTarball(`latest tarball`, latestStage, versionRoot, latestTar);
-    fs.writeFileSync(latestTar + '.sha256', `${sha256(latestTar)}  latest.tgz\n`);
+    await buildTarball(`latest tarball`, latestStage, versionRoot, latestTar, metadata);
+    writeIntegritySidecars(latestTar, metadata, version);
 
     console.log(`📝 Staging dist/protocol/${version}.tgz for git commit`);
     try {
@@ -302,12 +415,15 @@ async function main() {
   } else {
     console.log(`📋 Staging latest bundle`);
     const latestStage = path.join(stagingRoot, 'latest');
-    const latestRoot = `adcp-latest`;
-    const manifest = stageBundle(latestStage, 'latest', latestSchemas, latestRoot, true);
+    // PR bundles retain release-compatible internal naming so current SDK
+    // sync commands can consume them under the package semver. The external
+    // object remains commit-addressed and is never presented as a release.
+    const latestRoot = metadata.sourceCommit ? `adcp-${version}` : `adcp-latest`;
+    const manifest = stageBundle(latestStage, 'latest', latestSchemas, latestRoot, metadata, true, version);
     console.log(`   ✓ manifest: ${manifest.file_count} files, root: ${manifest.root_dir}`);
     const latestTar = path.join(OUT_DIR, `latest.tgz`);
-    await buildTarball(`latest tarball`, latestStage, latestRoot, latestTar);
-    fs.writeFileSync(latestTar + '.sha256', `${sha256(latestTar)}  latest.tgz\n`);
+    await buildTarball(`latest tarball`, latestStage, latestRoot, latestTar, metadata);
+    writeIntegritySidecars(latestTar, metadata, version);
   }
 
   fs.rmSync(stagingRoot, { recursive: true, force: true });
@@ -323,7 +439,18 @@ async function main() {
   console.log(`   /protocol/latest.tgz         - Development bundle`);
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  archiveEntries,
+  buildTarball,
+  pinGeneratedAt,
+  pinPublishedVersion,
+  resolveBuildMetadata,
+  writeIntegritySidecars
+};
