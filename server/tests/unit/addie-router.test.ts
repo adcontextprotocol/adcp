@@ -1196,13 +1196,13 @@ describeWithApi('AddieRouter.route (LLM)', () => {
 
     // Harvin — DM — test my agent
     // Prod: 16 msg thread of confusion because tools weren't available
-    it('should route agent testing requests to agent_testing', async () => {
+    it('should route agent testing requests to agent_validation', async () => {
       const plan = await routeAsMember(
         'test https://david-five-kappa.vercel.app/api/ad-mcp'
       );
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('agent_testing');
+        expect(plan.tool_sets).toContain('agent_validation');
       }
     }, 15000);
 

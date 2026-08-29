@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
 import {
+  AGENT_VALIDATION_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   LEGACY_ADMIN_TOOLS,
+  LEGACY_AGENT_TESTING_TOOLS,
   LEGACY_MEMBER_TOOLS,
   MEMBER_PROFILE_TOOLS,
+  PROPERTY_CATALOG_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
   buildUnavailableSetsHint,
@@ -114,9 +117,9 @@ describe('getToolsForSets', () => {
     });
   });
 
-  describe('property catalog workflow', () => {
-    it('routes the complete audit, enrichment, catalog, and dispute surface', () => {
-      expect(getToolsForSets(['agent_testing'], false, false)).toEqual(
+  describe('bounded agent and property domains', () => {
+    it('routes the complete property audit, enrichment, catalog, and dispute surface', () => {
+      expect(getToolsForSets(['property_catalog'], false, false)).toEqual(
         expect.arrayContaining([
           'check_property_list',
           'enhance_property',
@@ -125,6 +128,49 @@ describe('getToolsForSets', () => {
           'dispute_catalog_entry',
         ]),
       );
+    });
+
+    it('keeps agent validation and property-catalog workflows isolated', () => {
+      const validation = getToolsForSets(['agent_validation'], false, false);
+      const property = getToolsForSets(['property_catalog'], false, false);
+
+      expect(validation).toEqual(expect.arrayContaining([
+        'validate_adagents',
+        'check_publisher_authorization',
+        'evaluate_agent_quality',
+        'grade_agent_signing',
+      ]));
+      expect(validation).not.toContain('resolve_property');
+      expect(validation).not.toContain('dispute_catalog_entry');
+      expect(property).toContain('resolve_property');
+      expect(property).toContain('dispute_catalog_entry');
+      expect(property).not.toContain('evaluate_agent_quality');
+      expect(property).not.toContain('diagnose_agent_auth');
+    });
+
+    it('preserves the exact legacy union without exposing it to new router plans', () => {
+      expect(AGENT_VALIDATION_TOOLS).toHaveLength(12);
+      expect(PROPERTY_CATALOG_TOOLS).toHaveLength(9);
+      expect(LEGACY_AGENT_TESTING_TOOLS).toHaveLength(21);
+      expect(new Set(LEGACY_AGENT_TESTING_TOOLS).size).toBe(21);
+      expect(TOOL_SETS.agent_testing.tools).toEqual(LEGACY_AGENT_TESTING_TOOLS);
+      expect(TOOL_SETS.agent_testing.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('agent_testing')).toBe(false);
+      expect(getValidToolSetNames(false).has('agent_validation')).toBe(true);
+      expect(getValidToolSetNames(false).has('property_catalog')).toBe(true);
+    });
+
+    it('keeps the old combined set callable only as a continuity shim', () => {
+      const tools = getToolsForSets(['agent_testing'], false, false);
+      expect(tools).toEqual(expect.arrayContaining([
+        'evaluate_agent_quality',
+        'resolve_property',
+        'dispute_catalog_entry',
+      ]));
+      expect(buildUnavailableSetsHint([], false)).not.toContain('**agent_testing**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **agent_validation**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **property_catalog**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **agent_testing**');
     });
   });
 
@@ -226,6 +272,8 @@ describe('getToolsForSets', () => {
       ['schema_reference', 4],
       ['directory', 9],
       ['brand_registry', 10],
+      ['agent_validation', 12],
+      ['property_catalog', 9],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
