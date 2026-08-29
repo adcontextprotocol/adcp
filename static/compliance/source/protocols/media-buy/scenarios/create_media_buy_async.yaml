@@ -89,7 +89,7 @@ fixtures:
   products:
     - product_id: "async_signed_io_q2"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"

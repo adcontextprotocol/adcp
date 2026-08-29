@@ -87,7 +87,7 @@ fixtures:
             height: 250
     - product_id: "outdoor_video_auction"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"

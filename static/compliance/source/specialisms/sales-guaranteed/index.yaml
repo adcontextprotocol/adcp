@@ -115,7 +115,7 @@ fixtures:
             height: 250
     - product_id: "video_outdoor_non_guaranteed"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"
@@ -124,7 +124,7 @@ fixtures:
     # Guaranteed products used by the main storyboard phases (hardcoded in sample_requests).
     - product_id: "sports_preroll_q2_guaranteed"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"
