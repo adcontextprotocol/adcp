@@ -51,7 +51,7 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Partner Directory': ['directory'],
   'Meeting Tool Selection': ['meetings'],
   'Capability Questions: Search docs/aao/ First': GLOBAL_BEHAVIOR_SECTION,
-  'Honest Reporting After Search': ['knowledge', 'schema_reference'],
+  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory', 'member'],
   'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
   'Compliance Controller Skip Framing': ['agent_validation', 'agent_conformance'],
   'Publisher and Agent Setup Diagnosis': ['agent_validation', 'property_catalog'],

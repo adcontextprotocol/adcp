@@ -155,6 +155,8 @@ describe('Rules Loader', () => {
   it('loads only behavior sections relevant to the selected route domains', () => {
     const knowledgeRules = loadRules({ selectedToolSetNames: ['knowledge'] });
     const meetingRules = loadRules({ selectedToolSetNames: ['meetings'] });
+    const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
+    const memberRules = loadRules({ selectedToolSetNames: ['member'] });
 
     expect(knowledgeRules).toContain('# Knowledge');
     expect(knowledgeRules).toContain('## Spec Feedback Response Pattern');
@@ -166,6 +168,11 @@ describe('Rules Loader', () => {
     expect(meetingRules).toContain('## Meeting Tool Selection');
     expect(meetingRules).toContain('## Post-Exploration Channel Summary');
     expect(meetingRules).not.toContain('## Knowledge Search First');
+
+    expect(directoryRules).toContain('## Honest Reporting After Search');
+    expect(directoryRules).toContain('Registry visibility is not registry completeness');
+    expect(memberRules).toContain('## Honest Reporting After Search');
+    expect(memberRules).toContain('Registry visibility is not registry completeness');
   });
 
   it('separates cacheable core rules from route-specific rules', () => {
