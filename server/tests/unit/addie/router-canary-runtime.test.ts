@@ -4,7 +4,10 @@ import type {
   RouterCanaryOutcome,
 } from '../../../src/addie/router-canary.js';
 import { ROUTER_CANARY_MAX_REQUEST_BYTES } from '../../../src/addie/router-canary.js';
-import { routeWithRouterCanary } from '../../../src/addie/router-canary-runtime.js';
+import {
+  loadRouterCanaryMetadata,
+  routeWithRouterCanary,
+} from '../../../src/addie/router-canary-runtime.js';
 import type {
   AddieRouter,
   ExecutionPlan,
@@ -116,6 +119,30 @@ function baseDependencies(overrides: Partial<Parameters<typeof routeWithRouterCa
 }
 
 describe('Luna router canary runtime', () => {
+  it('fails closed when live channel metadata outlasts its sub-deadline', async () => {
+    const clearScheduledTimeout = vi.fn();
+    const result = await loadRouterCanaryMetadata(
+      () => new Promise<never>(() => undefined),
+      {
+        timeoutMs: 10,
+        scheduleTimeout: (callback) => setTimeout(callback, 0),
+        clearScheduledTimeout,
+      },
+    );
+    expect(result).toBeNull();
+    expect(clearScheduledTimeout).toHaveBeenCalledOnce();
+  });
+
+  it('returns live metadata and clears its pending timeout', async () => {
+    const clearScheduledTimeout = vi.fn();
+    const metadata = { is_private: false };
+    await expect(loadRouterCanaryMetadata(() => Promise.resolve(metadata), {
+      timeoutMs: 10,
+      clearScheduledTimeout,
+    })).resolves.toBe(metadata);
+    expect(clearScheduledTimeout).toHaveBeenCalledOnce();
+  });
+
   it('uses an admitted strict candidate and records its bounded outcome', async () => {
     const candidateRoute = vi.fn(routeReturning(candidatePlan, observation('openai')));
     const record = vi.fn().mockResolvedValue({

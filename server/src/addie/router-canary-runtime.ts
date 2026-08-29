@@ -21,6 +21,7 @@ import {
 const logger = createLogger('addie-router-canary-runtime');
 const LUNA_INPUT_MICROS_PER_TOKEN = 0.2;
 const LUNA_OUTPUT_MICROS_PER_TOKEN = 1.2;
+export const ROUTER_CANARY_METADATA_TIMEOUT_MS = 750;
 
 type RouterRoute = AddieRouter['route'];
 
@@ -51,6 +52,35 @@ export interface RouterCanaryRuntimeDependencies {
   scheduleTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearScheduledTimeout?: (timeout: ReturnType<typeof setTimeout>) => void;
   yieldForObserver?: () => Promise<void>;
+}
+
+/** Fail closed before the minimum candidate deadline if live metadata hangs. */
+export async function loadRouterCanaryMetadata<T>(
+  loader: () => Promise<T | null>,
+  dependencies: {
+    timeoutMs?: number;
+    scheduleTimeout?: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
+    clearScheduledTimeout?: (timeout: ReturnType<typeof setTimeout>) => void;
+  } = {},
+): Promise<T | null> {
+  const timeoutMs = dependencies.timeoutMs ?? ROUTER_CANARY_METADATA_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 999) {
+    throw new Error('Invalid router canary metadata timeout');
+  }
+  const schedule = dependencies.scheduleTimeout ?? setTimeout;
+  const clear = dependencies.clearScheduledTimeout ?? clearTimeout;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutResult = new Promise<null>((resolve) => {
+    timeout = schedule(() => resolve(null), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve().then(loader).catch(() => null),
+      timeoutResult,
+    ]);
+  } finally {
+    if (timeout !== undefined) clear(timeout);
+  }
 }
 
 function safeKnowledgePlan(): ExecutionPlan {

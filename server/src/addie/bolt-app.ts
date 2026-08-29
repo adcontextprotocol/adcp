@@ -173,7 +173,10 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
-import { routeWithRouterCanary } from './router-canary-runtime.js';
+import {
+  loadRouterCanaryMetadata,
+  routeWithRouterCanary,
+} from './router-canary-runtime.js';
 import { selectRouterCanaryCohort } from './router-canary.js';
 import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
@@ -4802,8 +4805,9 @@ async function handleChannelMessage({
       });
       const routerPlanPromise = canaryCandidate?.selected && addieLunaRouter
         ? (async () => {
-            const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
-              .catch(() => null);
+            const currentChannel = await loadRouterCanaryMetadata(
+              () => getChannelInfo(channelId, { forceRefresh: true }),
+            );
             const result = await routeWithRouterCanary({
               channelId,
               opportunityId: event.ts,
