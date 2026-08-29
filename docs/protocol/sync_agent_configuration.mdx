@@ -6,8 +6,9 @@ description: "Synchronize authenticated caller-scoped webhooks and reusable repo
 
 `sync_agent_configuration` establishes durable configuration for the relationship between one authenticated caller and one AdCP seller agent. It is the buyer-to-seller configuration half of capability negotiation:
 
-- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the agent can support.
+- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the agent can support, including its objective reporting delivery offering.
 - `sync_agent_configuration` states which supported connection resources this caller wants to use.
+- [`get_agent_configuration`](/docs/protocol/get_agent_configuration) reads current caller-scoped state, its version, and destination setup progress without mutation.
 - [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and domain tasks authorize and configure work for particular advertiser accounts.
 
 The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Caller identity comes from authenticated transport.
@@ -45,11 +46,27 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
     "agent_configuration": {
       "supported": true,
       "sync_task": "sync_agent_configuration",
+      "read_task": "get_agent_configuration",
       "supported_sections": [
         "notification_configs",
         "reporting_destinations"
       ],
       "max_reporting_destinations": 16,
+      "reporting_destination_offerings": [
+        {
+          "pattern": "file_transfer",
+          "transports": ["s3"],
+          "formats": ["parquet", "csv"],
+          "verification_profiles": ["manifest_checksums", "canonical_digest"]
+        },
+        {
+          "pattern": "dataset_share",
+          "transports": ["delta_sharing"],
+          "access_modes": ["databricks_to_databricks", "open_sharing"],
+          "verification_profiles": ["native_commit"]
+        }
+      ],
+      "suspension_interval_seconds": 900,
       "optimistic_concurrency": true
     }
   },
@@ -57,7 +74,7 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
 }
 ```
 
-Unsupported sections are rejected, not ignored.
+Unsupported sections are rejected, not ignored. `reporting_destination_offerings` is the seller's objective delivery offering: a buyer selects a compatible pattern, transport, format, access mode, and verification-profile intersection from it *before* submitting, instead of discovering support through rejections. A destination outside the offering fails the whole request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature); a destination inside the offering that fails provider-side setup is reported per destination as `validating`, `action_required`, or `rejected` inside an applied response.
 
 ## Synchronization semantics
 
@@ -71,12 +88,15 @@ Unsupported sections are rejected, not ignored.
 For each submitted section:
 
 - The array is complete desired state for that section.
-- `[]` clears the section for new use.
+- Omitting a previously present entry removes it; for reporting destinations, removal is [revocation](#suspension-and-revocation).
+- `[]` clears the whole section.
 - An omitted section remains unchanged.
-- All submitted sections apply atomically, or none do.
-- `dry_run: true` returns `result.kind: validated` with the would-be action, without persistence, grants, endpoint challenges, connection IDs, destination references, or configuration versions.
+- All submitted sections apply atomically, or none do. Sections are validated and authorized in full before any proof challenge or grant is issued, so a failed request leaves no external side effects.
+- `dry_run: true` returns `result.kind: validated` with the would-be action, without persistence, grants, endpoint challenges, connection IDs, destination references, or configuration versions. Dry-run outcomes and warnings are computed solely against the caller's own state and never reveal what other principals have registered.
 
-When `expected_configuration_version` is present, the seller applies a new operation only if it equals the current opaque version. A stale version returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without mutation. This prevents two services using the same principal from silently overwriting each other. Retries of one logical request reuse both its `idempotency_key` and body. The seller resolves an exact idempotent replay before evaluating the version fence, so a lost successful response remains replayable after the persisted version advances.
+When `expected_configuration_version` is present, the seller applies a new operation only if it equals the current opaque version. A stale version returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without mutation. This prevents two services using the same principal from silently overwriting each other. Read the current version with [`get_agent_configuration`](/docs/protocol/get_agent_configuration) before a guarded replacement — never write blind to discover it. Retries of one logical request reuse both its `idempotency_key` and body. The seller resolves an exact idempotent replay before evaluating the version fence, so a lost successful response remains replayable after the persisted version advances. Idempotency records are scoped to the stable principal; a key first seen under a different principal starts a new operation, never a replay.
+
+`configuration_version` advances on every successful mutation of the shared underlying state — through this task or through [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) — and never on seller-driven setup-state transitions such as a destination becoming `ready`.
 
 ## Reusable reporting destinations
 
@@ -136,16 +156,40 @@ The response returns a seller-issued `destination_ref` and one of these states:
 | State | Meaning |
 |---|---|
 | `validating` | Automated ownership or access validation is in progress. |
-| `ready` | The destination is eligible for a new authorized account/feed binding. |
-| `action_required` | A typed provider-native setup action must be completed. |
-| `inactive` | New bindings are disabled. Existing caller-owned data is not deleted. |
+| `ready` | The pattern-specific proof succeeded. The destination is eligible for a new authorized account/feed binding. |
+| `action_required` | A typed provider-native setup action must be completed. The `setup` object names it. |
+| `inactive` | The caller suspended the destination (`active: false`). New deliveries halt; existing caller-owned data is not deleted. |
 | `rejected` | The coordinates or requested path cannot be used. |
 
-`destination_ref` is not a bearer capability. It identifies one immutable destination generation for the same authenticated principal. Exact replays preserve the reference; changing provider, transport, normalized coordinates or recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and produces a new reference. Sellers retain older references for existing account bindings and reporting history. Every use still checks account authorization separately, and unknown, cross-principal, and unauthorized references fail indistinguishably.
+`destination_ref` is not a bearer capability. It identifies one immutable destination generation for the same authenticated principal. Exact replays preserve the reference; changing provider, transport, normalized coordinates or recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and produces a new reference. Superseded references stay resolvable for existing account bindings and retained reporting history, and remain enumerable to their owner through `prior_destination_refs` on [`get_agent_configuration`](/docs/protocol/get_agent_configuration). Every use still checks account authorization separately, and unknown, cross-principal, and unauthorized references fail indistinguishably.
+
+### Destination lifecycle
+
+The typical flow for a destination that needs provider-native setup:
+
+1. **Register.** The caller syncs the destination. The seller validates it against its advertised offering, issues `destination_ref`, and returns `state: "action_required"` with a typed `setup` object — for example `{"action": "grant_access"}` for a BigQuery dataset the seller's published principal cannot yet reach, or `{"action": "accept_share"}` for a dataset share awaiting recipient activation.
+2. **Complete provider-native setup.** The caller performs the action in the provider's control plane: grants the seller's principal on the bucket or dataset, accepts the share as the named recipient, or writes the seller-named proof object. Credentials never transit AdCP.
+3. **Poll the read task.** The caller polls [`get_agent_configuration`](/docs/protocol/get_agent_configuration) until the destination reaches `ready`. Reading never mutates state or the version. Resubmitting the identical section under a fresh `idempotency_key` is also safe — it returns `action: "unchanged"` and preserves `destination_ref` — but the read task is the intended poll mechanism.
+4. **Bind.** Account-scoped reporting configuration references the `ready` destination by `destination_ref`, subject to its own authorization.
+
+What `ready` asserts is pattern-specific:
+
+- **`file_transfer`** — the caller proved control of the normalized location through a seller-verifiable challenge, *and* the seller successfully wrote and read back a probe object under the prefix. A grant that exists but was never exercised is not `ready`.
+- **`warehouse_materialization`** — the seller verified, through access it was actually granted, that it can create and commit into the locator.
+- **`dataset_share`** — the named recipient affirmatively completed the provider's acceptance or activation step and the provider reports the recipient able to read the share. Access modes that grant to a bare identifier with no acceptance step require an equivalent recipient-initiated proof, such as a recipient read of a seller-published proof dataset. Grant creation alone never produces `ready`, and because provider grant propagation can lag, account-level delivery readiness additionally requires consumer-read verification as defined by managed reporting delivery.
+
+### Suspension and revocation
+
+Destination deactivation is a delivery control, not just a registration flag:
+
+- **Suspend** — resubmit the destination with `active: false`. The seller stops initiating new deliveries to *every generation* of that `destination_id` within its advertised `suspension_interval_seconds` and marks affected account bindings with a typed `destination_suspended` issue. Resubmitting with `active: true` lifts the suspension without new proof when nothing else changed.
+- **Revoke** — omit the destination from the submitted `reporting_destinations` array (or submit `[]` to revoke all). Revocation has every suspension effect, removes the destination from current state, and retains its generations under `retired_destinations` for audit and reporting history. Reusing a retired `destination_id` requires fresh registration and proof and produces a new generation.
+
+One suspension or revocation cuts delivery for every account bound to the destination — a compromised bucket does not require per-account unwinding. Neither operation deletes data already delivered, and neither revokes provider-side grants the caller manages in its own control plane.
 
 ### Account consolidation
 
-A consolidated destination can receive reporting from many seller accounts. The destination registration proves where this caller may receive data; it does not prove which data the caller may receive. The managed reporting delivery specification supplies that second authorization by binding an account-scoped feed configuration to the reusable `destination_ref`. Consolidated files, rows, and partitions must retain seller and account identity so downstream consumers can reconcile them independently.
+A consolidated destination can receive reporting from many seller accounts. The destination registration proves where this caller may receive data; it does not prove which data the caller may receive. The managed reporting delivery specification ([RFC #6911](https://github.com/adcontextprotocol/adcp/issues/6911)) supplies that second authorization by binding an account-scoped feed configuration to the reusable `destination_ref`. Consolidated files, rows, and partitions must retain seller and account identity so downstream consumers can reconcile them independently.
 
 ## Verification profiles
 
@@ -159,11 +203,29 @@ This is an allowed set, not a claim that every feed may use the weakest member. 
 
 ## Secrets and proof
 
-AdCP carries destination coordinates and recipient identifiers, never provider credentials. Private keys, passwords, bearer profiles, signed URLs, and cloud credentials are exchanged through provider-native control planes or an out-of-band onboarding channel.
+AdCP carries destination coordinates and recipient identifiers, never provider credentials. Private keys, passwords, bearer profiles, signed URLs, and cloud credentials are exchanged through provider-native control planes or an out-of-band onboarding channel. The schema pattern on `location` is a transport guard, not the enforcement boundary: sellers additionally screen canonicalized values for credential shapes the pattern cannot express, such as userinfo-style `key:secret@host` prefixes inside an otherwise valid locator.
 
-Before a destination becomes `ready`, the seller proves destination or recipient control and binds that proof to the authenticated principal, seller agent, destination ID, normalized coordinates, and accepted delivery contract. A changed proof-bound tuple requires fresh proof and a new immutable destination reference; replacement never mutates the meaning of a reference already used by an account configuration.
+Before proof binding and uniqueness comparison, sellers canonicalize coordinates per transport — Unicode NFC, lowercase scheme and host authority, no default ports, canonical path separators — and reject locators or recipient identities whose host authority is not ASCII after canonicalization. Proof binds to the canonical form, so cosmetic variations of the same coordinates cannot evade the fresh-proof requirement.
+
+Before a destination becomes `ready`, the seller completes the [pattern-specific proof](#destination-lifecycle) and binds it to the authenticated principal, seller agent, destination ID, normalized coordinates, and accepted delivery contract. A changed proof-bound tuple requires fresh proof and a new immutable destination reference; replacement never mutates the meaning of a reference already used by an account configuration.
 
 For `notification_configs`, the endpoint proof and webhook-signing rules are identical to [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs). Implementations exposing both tasks maintain one underlying caller-scoped subscriber set.
+
+## Errors
+
+Failed responses carry `result.kind: "failed"` with structured errors and deliberately cannot carry a connection ID, version, or configuration state.
+
+| Code | When | Recovery |
+|---|---|---|
+| [`AUTH_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-auth-required) | Anonymous or unstable caller identity. | Authenticate as a stable principal, then retry. |
+| [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Schema violation, duplicate `destination_id`, credential-shaped `location` or recipient, or oversize section. | Fix the request; do not retry unchanged. |
+| [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Section not in `supported_sections`, destination outside `reporting_destination_offerings`, or `expected_configuration_version` sent to a seller advertising `optimistic_concurrency: false`. | Re-read capabilities and select from the advertised offering. |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | `expected_configuration_version` is stale. Nothing was mutated. | Read the current version with [`get_agent_configuration`](/docs/protocol/get_agent_configuration), reconcile, and resubmit under a new `idempotency_key`. |
+| [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | An `idempotency_key` was reused with a different body. | Use a fresh key for the new logical operation. |
+| [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/verification/compliance-catalog#error-code-idempotency-in-flight) | The original operation for this key is still executing. | Retry the identical request after a short delay. |
+| [`IDEMPOTENCY_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-idempotency-expired) | The retention window for this key elapsed. | Read current state, then resubmit as a new operation if still needed. |
+
+Provider-side setup failures for in-offering destinations are not request errors: they surface as `validating`, `action_required`, or `rejected` destination states inside an applied response.
 
 ## Compatibility
 

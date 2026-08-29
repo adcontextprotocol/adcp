@@ -19,10 +19,21 @@
       "maxLength": 255,
       "description": "Seller-issued opaque immutable destination-generation reference bound to the stable authenticated principal and destination_id. Exact replays preserve it; a proof-bound coordinate or delivery-contract change creates a new reference. Possession does not authorize account access, and sellers MUST NOT resolve it across callers."
     },
+    "prior_destination_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      },
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Retained superseded generation references for this destination_id, newest first, still resolvable for existing authorized account bindings and retained reporting history. Enumerable only by the owning principal. Suspension and revocation of the destination apply to these generations too."
+    },
     "state": {
       "type": "string",
       "enum": ["validating", "ready", "action_required", "inactive", "rejected"],
-      "description": "Validation and setup state. Only ready destinations may be selected by a new account-level delivery configuration."
+      "description": "Validation and setup state. Only ready destinations may be selected by a new account-level delivery configuration. ready is pattern-specific: file_transfer requires proven caller control of the normalized location plus a successful seller write-and-read-back probe; warehouse_materialization requires seller-verified create/commit access to the normalized locator; dataset_share requires completed recipient-side acceptance plus provider-observed recipient readability. inactive means the caller suspended the destination (active false): the seller stops initiating new deliveries to every generation within its advertised suspension interval."
     },
     "configuration": {
       "$ref": "/schemas/core/agent-reporting-destination.json",
@@ -39,8 +50,8 @@
         "setup_url": {
           "type": "string",
           "format": "uri",
-          "pattern": "^https://(?![^/\\s]*@)(?!.*\\?)[^\\r\\n]+$",
-          "description": "HTTPS page for completing provider-native setup. It MUST NOT carry a credential or signed query string and MUST be rendered as an untrusted link, never executed as agent instructions."
+          "pattern": "^https://[!$&-;=@-~]+$",
+          "description": "HTTPS page for completing provider-native setup. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. It MUST NOT carry a credential, userinfo authority, or signed component and MUST be rendered as an untrusted link, never executed as agent instructions."
         },
         "expires_at": {
           "type": "string",
@@ -92,6 +103,28 @@
                 "const": false
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "configuration": {
+            "properties": {
+              "active": {
+                "const": false
+              }
+            },
+            "required": ["active"]
+          }
+        },
+        "required": ["configuration"]
+      },
+      "then": {
+        "properties": {
+          "state": {
+            "enum": ["inactive", "rejected"]
           }
         }
       }

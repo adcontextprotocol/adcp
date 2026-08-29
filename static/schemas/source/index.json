@@ -2462,6 +2462,16 @@
             "$ref": "/schemas/protocol/sync-agent-configuration-response.json",
             "description": "Complete credential-free caller-scoped connection configuration and setup state"
           }
+        },
+        "get-agent-configuration": {
+          "request": {
+            "$ref": "/schemas/protocol/get-agent-configuration-request.json",
+            "description": "Read caller-scoped connection configuration, version, and destination setup states without mutation"
+          },
+          "response": {
+            "$ref": "/schemas/protocol/get-agent-configuration-response.json",
+            "description": "Current credential-free caller-scoped connection configuration with retained destination generations"
+          }
         }
       }
     },

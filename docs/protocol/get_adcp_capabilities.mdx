@@ -142,17 +142,20 @@ Sellers that do not support replay dedup declare it explicitly:
 
 #### agent_configuration
 
-Declares support for authenticated caller-scoped connection configuration. This is not a second capability document: `get_adcp_capabilities` still describes seller facts, while [`sync_agent_configuration`](/docs/protocol/sync_agent_configuration) carries one caller's desired webhooks and reusable reporting destinations.
+Declares support for authenticated caller-scoped connection configuration. This is not a second capability document: `get_adcp_capabilities` still describes seller facts, while [`sync_agent_configuration`](/docs/protocol/sync_agent_configuration) carries one caller's desired webhooks and reusable reporting destinations, and [`get_agent_configuration`](/docs/protocol/get_agent_configuration) reads them back.
 
 | Field | Type | Description |
 |---|---|---|
 | `supported` | boolean | Always `true` when the block is present. |
 | `sync_task` | string | Always `sync_agent_configuration`. |
+| `read_task` | string | Always `get_agent_configuration`. Side-effect-free read of caller-scoped state and version. |
 | `supported_sections` | string[] | Any of `notification_configs` and `reporting_destinations`. |
 | `max_reporting_destinations` | integer | Required when reporting destinations are supported. Portable schema maximum is 64; a seller may advertise a lower limit. |
-| `optimistic_concurrency` | boolean | Whether the seller enforces `expected_configuration_version`. |
+| `reporting_destination_offerings` | object[] | Required when reporting destinations are supported. Objective per-pattern offering — transports, file formats, dataset-share access modes, and verification profiles — so buyers select compatible destinations without submit-and-reject probing. |
+| `suspension_interval_seconds` | integer | Required when reporting destinations are supported. Upper bound between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination. |
+| `optimistic_concurrency` | boolean | Whether the seller enforces `expected_configuration_version`. When `false`, a request carrying the fence is rejected rather than silently ignored. |
 
-Agents exposing this block MUST list `protocol.agent_configuration` in `experimental_features`. Account authorization remains separate; a ready reusable destination does not grant access to any advertiser account.
+Agents exposing this block MUST list `protocol.agent_configuration` in `experimental_features` and expose both declared tasks. Account authorization remains separate; a ready reusable destination does not grant access to any advertiser account.
 
 #### capability_changes
 

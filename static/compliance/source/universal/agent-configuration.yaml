@@ -2,25 +2,32 @@ id: agent_configuration
 version: "1.0.0"
 title: "Agent connection configuration"
 category: schema_validation
-summary: "Validates the experimental stable-principal-scoped configuration surface, including capability discovery, NO_AUTH rejection, and dry-run reusable destination setup."
+summary: "Validates the experimental stable-principal-scoped configuration surface: capability discovery, NO_AUTH rejection, dry-run setup, applied lifecycle with readback, idempotent replay, and section clearing."
 track: core
 required_tools:
   - sync_agent_configuration
+  - get_agent_configuration
 
 narrative: |
   `sync_agent_configuration` synchronizes durable resources owned by the stable
-  authenticated caller's relationship with one agent. The request cannot
-  assert its own caller identity. The principal may be a delegated human user
-  acting through an interactive client or an autonomous workload; this task
-  does not require the former to register as a buyer agent. A ready reporting
-  destination does not grant authority over an advertiser account.
+  authenticated caller's relationship with one agent, and
+  `get_agent_configuration` reads them back without mutation. The request
+  cannot assert its own caller identity. The principal may be a delegated
+  human user acting through an interactive client or an autonomous workload;
+  this task does not require the former to register as a buyer agent. A ready
+  reporting destination does not grant authority over an advertiser account.
   Implementations must advertise the experimental surface, reject anonymous
-  mutation, and keep dry-run free of persistence, access grants, and endpoint
-  challenges.
+  mutation, keep dry-run free of persistence, access grants, and endpoint
+  challenges, and give applied state a consistent read/replay story: an
+  applied sync, its idempotent replay, and a subsequent read all describe the
+  same connection, version, and destination generation.
 
-  Multi-principal isolation, delegated-user continuity, destination proof, key
-  rotation, account binding, and optimistic-concurrency races require
-  implementation-specific fixtures or a future controller-backed storyboard.
+  The applied phases use a deliberately suspended (`active: false`) file
+  destination so the lifecycle is exercised without an outbound ownership
+  challenge. Multi-principal isolation, delegated-user continuity, destination
+  proof completion, key rotation, account binding, suspension-halt timing, and
+  optimistic-concurrency races require implementation-specific fixtures or a
+  future controller-backed storyboard.
 
 agent:
   interaction_model: any
@@ -79,6 +86,10 @@ phases:
             path: "adcp.agent_configuration.sync_task"
             value: "sync_agent_configuration"
             description: "Capability points to the implemented sync task"
+          - check: field_value
+            path: "adcp.agent_configuration.read_task"
+            value: "get_agent_configuration"
+            description: "Capability points to the side-effect-free read task"
           - check: field_contains
             path: "experimental_features[*]"
             value: "protocol.agent_configuration"
@@ -179,3 +190,241 @@ phases:
             path: "context.correlation_id"
             value: "agent_configuration--dry_run"
             description: "Correlation context is echoed"
+
+  - id: applied_lifecycle
+    title: "Apply, read back, and idempotently replay a destination"
+    depends_on: ["dry_run_destination"]
+    narrative: |
+      A suspended destination applies without an ownership challenge. The
+      applied response, a get_agent_configuration read, and an exact
+      idempotent replay must all describe the same connection, configuration
+      version, and immutable destination generation, and the replay must not
+      advance the version.
+
+    steps:
+      - id: apply_suspended_destination
+        title: "Apply one suspended file destination"
+        task: sync_agent_configuration
+        schema_ref: "protocol/sync-agent-configuration-request.json"
+        response_schema_ref: "protocol/sync-agent-configuration-response.json"
+        doc_ref: "/protocol/sync_agent_configuration"
+        stateful: true
+        context_outputs:
+          - name: agent_configuration_connection_id
+            path: "result.connection_id"
+          - name: agent_configuration_version
+            path: "result.configuration_version"
+          - name: agent_configuration_destination_ref
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+        expected: |
+          Persist the section and return the applied connection state: a
+          connection_id, an opaque configuration_version, and one suspended
+          destination carrying a seller-issued destination_ref with state
+          inactive.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#agent_configuration_apply"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "agent_configuration--apply"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Non-dry-run sync persists and reports applied"
+          - check: field_value
+            path: "result.dry_run"
+            value: false
+            description: "Applied responses assert dry_run false"
+          - check: field_present
+            path: "result.connection_id"
+            description: "Applied responses carry the seller-issued connection handle"
+          - check: field_present
+            path: "result.configuration_version"
+            description: "Applied responses carry the opaque configuration version"
+          - check: field_value
+            path: "result.configuration.reporting_destinations[0].destination_id"
+            value: "compliance-archive"
+            description: "Readback echoes the caller's destination_id"
+          - check: field_present
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            description: "The seller issued an immutable destination generation reference"
+          - check: field_value
+            path: "result.configuration.reporting_destinations[0].state"
+            value: "inactive"
+            description: "A destination applied with active false reads back suspended, never ready"
+
+      - id: read_back_applied_configuration
+        title: "Read the applied configuration without mutation"
+        task: get_agent_configuration
+        schema_ref: "protocol/get-agent-configuration-request.json"
+        response_schema_ref: "protocol/get-agent-configuration-response.json"
+        doc_ref: "/protocol/get_agent_configuration"
+        depends_on: ["apply_suspended_destination"]
+        stateful: true
+        expected: |
+          Return kind current with the same connection_id,
+          configuration_version, and destination_ref the applied sync
+          reported. Reading advances nothing.
+
+        sample_request:
+          context:
+            correlation_id: "agent_configuration--read_back"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The caller's persisted connection is readable"
+          - check: field_equals_context
+            path: "result.connection_id"
+            context_key: "agent_configuration_connection_id"
+            description: "Read returns the same connection the sync created"
+          - check: field_equals_context
+            path: "result.configuration_version"
+            context_key: "agent_configuration_version"
+            description: "A side-effect-free read does not advance the version"
+          - check: field_equals_context
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            context_key: "agent_configuration_destination_ref"
+            description: "Read resolves the same immutable destination generation"
+
+      - id: replay_apply_idempotently
+        title: "Replay the applied sync with its original key and body"
+        task: sync_agent_configuration
+        schema_ref: "protocol/sync-agent-configuration-request.json"
+        response_schema_ref: "protocol/sync-agent-configuration-response.json"
+        doc_ref: "/protocol/sync_agent_configuration"
+        depends_on: ["read_back_applied_configuration"]
+        stateful: true
+        expected: |
+          Resolve the idempotent replay: the same applied outcome, the same
+          connection_id and configuration_version, and the same
+          destination_ref. The replay must not create a second generation or
+          advance the version.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#agent_configuration_apply"
+          configuration:
+            reporting_destinations:
+              - pattern: file_transfer
+                destination_id: "compliance-archive"
+                active: false
+                provider:
+                  domain: "object-store.example"
+                transport: "s3"
+                location: "s3://pinnacle-reporting/compliance/"
+                accepted_formats: ["parquet"]
+                accepted_verification_profiles: ["manifest_checksums"]
+          context:
+            correlation_id: "agent_configuration--replay"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Replay resolves to the stored applied outcome"
+          - check: field_equals_context
+            path: "result.connection_id"
+            context_key: "agent_configuration_connection_id"
+            description: "Replay reports the original connection"
+          - check: field_equals_context
+            path: "result.configuration_version"
+            context_key: "agent_configuration_version"
+            description: "Replay does not advance the configuration version"
+          - check: field_equals_context
+            path: "result.configuration.reporting_destinations[0].destination_ref"
+            context_key: "agent_configuration_destination_ref"
+            description: "Exact replay preserves the destination generation"
+
+  - id: clear_section
+    title: "Clear the section and observe revocation in readback"
+    depends_on: ["applied_lifecycle"]
+    narrative: |
+      Submitting an empty reporting_destinations array revokes every
+      destination in the section. The applied response reports cleared and a
+      subsequent read shows no current destinations.
+
+    steps:
+      - id: clear_reporting_destinations
+        title: "Submit [] to revoke all reporting destinations"
+        task: sync_agent_configuration
+        schema_ref: "protocol/sync-agent-configuration-request.json"
+        response_schema_ref: "protocol/sync-agent-configuration-response.json"
+        doc_ref: "/protocol/sync_agent_configuration"
+        stateful: true
+        expected: |
+          Apply the empty section atomically, report action cleared, and
+          return zero current reporting destinations.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#agent_configuration_clear"
+          configuration:
+            reporting_destinations: []
+          context:
+            correlation_id: "agent_configuration--clear"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Clearing is a persisted mutation"
+          - check: field_value
+            path: "result.action"
+            value: "cleared"
+            description: "Every submitted section was [], so the action is cleared"
+          - check: array_length
+            path: "result.configuration.reporting_destinations"
+            value: 0
+            description: "No current destinations remain after revocation"
+
+      - id: read_after_clear
+        title: "Read back the cleared section"
+        task: get_agent_configuration
+        schema_ref: "protocol/get-agent-configuration-request.json"
+        response_schema_ref: "protocol/get-agent-configuration-response.json"
+        doc_ref: "/protocol/get_agent_configuration"
+        depends_on: ["clear_reporting_destinations"]
+        stateful: true
+        expected: |
+          Return kind current with zero current reporting destinations. The
+          connection itself persists.
+
+        sample_request:
+          context:
+            correlation_id: "agent_configuration--read_after_clear"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-agent-configuration-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The connection persists after the section is cleared"
+          - check: field_equals_context
+            path: "result.connection_id"
+            context_key: "agent_configuration_connection_id"
+            description: "Clearing a section does not recreate the connection"
+          - check: array_length
+            path: "result.configuration.reporting_destinations"
+            value: 0
+            description: "Readback confirms the section is empty"

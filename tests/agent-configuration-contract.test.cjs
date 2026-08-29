@@ -60,13 +60,27 @@ describe('sync_agent_configuration contract', () => {
   let validateResponse;
   let validateDestination;
   let validateCapabilities;
+  let validateReadRequest;
+  let validateReadResponse;
+  let validateDestinationState;
 
   before(async () => {
-    [validateRequest, validateResponse, validateDestination, validateCapabilities] = await Promise.all([
+    [
+      validateRequest,
+      validateResponse,
+      validateDestination,
+      validateCapabilities,
+      validateReadRequest,
+      validateReadResponse,
+      validateDestinationState,
+    ] = await Promise.all([
       compile('/schemas/protocol/sync-agent-configuration-request.json'),
       compile('/schemas/protocol/sync-agent-configuration-response.json'),
       compile('/schemas/core/agent-reporting-destination.json'),
       compile('/schemas/protocol/get-adcp-capabilities-response.json'),
+      compile('/schemas/protocol/get-agent-configuration-request.json'),
+      compile('/schemas/protocol/get-agent-configuration-response.json'),
+      compile('/schemas/core/agent-reporting-destination-state.json'),
     ]);
   });
 
@@ -139,15 +153,31 @@ describe('sync_agent_configuration contract', () => {
       credentials: {},
     }), false);
 
-    assert.equal(validateDestination({
-      ...fileDestination,
-      location: 's3://access-key:secret@pinnacle-reporting/adcp/',
-    }), false);
+    // Structural guard: query strings, fragments, percent-encoding, and
+    // whitespace cannot appear in a locator.
+    for (const location of [
+      'https://object-store.example/archive?X-Amz-Signature=secret',
+      's3://pinnacle-reporting/adcp/#token=secret',
+      's3://access-key:secret%40pinnacle-reporting/adcp/',
+      's3://pinnacle-reporting/ad cp/',
+    ]) {
+      assert.equal(validateDestination({ ...fileDestination, location }), false, location);
+    }
 
+    // Legitimate authority-embedded '@' locators (Azure ABFSS) validate; the
+    // userinfo credential shape is screened at runtime, not by the pattern.
     assert.equal(validateDestination({
       ...fileDestination,
-      location: 'https://object-store.example/archive?X-Amz-Signature=secret',
-    }), false);
+      transport: 'azure_blob',
+      location: 'abfss://container@account.dfs.core.windows.net/adcp',
+    }), true, JSON.stringify(validateDestination.errors));
+
+    const destination = readSchema('/schemas/core/agent-reporting-destination.json');
+    assert.match(destination['x-adcp-validation'].secret_rejection, /key:secret@host/);
+    assert.match(destination['x-adcp-validation'].normalization, /canonicalize/);
+    for (const pattern of destination.oneOf.map(branch => branch.properties.location?.pattern).filter(Boolean)) {
+      assert.doesNotMatch(pattern, /\(\?/, 'location patterns must stay RE2-compatible (no lookaheads)');
+    }
 
     assert.equal(validateDestination({
       ...warehouseDestination,
@@ -158,6 +188,21 @@ describe('sync_agent_configuration contract', () => {
       ...shareDestination,
       recipient: { identity: 'recipient', cloud: 'aws' },
     }), false);
+  });
+
+  it('defines per-pattern proof, suspension, and revocation as normative rules', () => {
+    const destination = readSchema('/schemas/core/agent-reporting-destination.json');
+    const rules = destination['x-adcp-validation'];
+
+    assert.match(rules.proof_file_transfer, /write-probe|written and read back/);
+    assert.match(rules.proof_warehouse_materialization, /create and commit/);
+    assert.match(rules.proof_dataset_share, /recipient-side acceptance/);
+    assert.match(rules.proof_dataset_share, /grant creation alone MUST NOT produce ready/i);
+    assert.match(rules.suspension_and_revocation, /stop initiating new deliveries/);
+    assert.match(rules.suspension_and_revocation, /revokes/);
+
+    const state = readSchema('/schemas/core/agent-reporting-destination-state.json');
+    assert.match(state.properties.state.description, /recipient readability/);
   });
 
   it('uses caller destination_id as a semantic uniqueness key', () => {
@@ -294,8 +339,29 @@ describe('sync_agent_configuration contract', () => {
         agent_configuration: {
           supported: true,
           sync_task: 'sync_agent_configuration',
+          read_task: 'get_agent_configuration',
           supported_sections: ['notification_configs', 'reporting_destinations'],
           max_reporting_destinations: 16,
+          reporting_destination_offerings: [
+            {
+              pattern: 'file_transfer',
+              transports: ['s3'],
+              formats: ['parquet'],
+              verification_profiles: ['manifest_checksums', 'canonical_digest'],
+            },
+            {
+              pattern: 'warehouse_materialization',
+              transports: ['bigquery'],
+              verification_profiles: ['native_commit', 'canonical_digest'],
+            },
+            {
+              pattern: 'dataset_share',
+              transports: ['delta_sharing'],
+              access_modes: ['open_sharing'],
+              verification_profiles: ['native_commit'],
+            },
+          ],
+          suspension_interval_seconds: 900,
           optimistic_concurrency: true,
         },
         capability_changes: {
@@ -326,5 +392,79 @@ describe('sync_agent_configuration contract', () => {
       },
     };
     assert.equal(validateCapabilities(withoutAgentConfiguration), false);
+  });
+
+  it('provides a side-effect-free read task that rejects body identity', () => {
+    assert.equal(validateReadRequest({}), true, JSON.stringify(validateReadRequest.errors));
+
+    for (const assertedIdentity of [
+      { connection_id: 'conn_someone_else' },
+      { principal_id: 'someone-else' },
+    ]) {
+      assert.equal(validateReadRequest(assertedIdentity), false);
+    }
+
+    const request = readSchema('/schemas/protocol/get-agent-configuration-request.json');
+    assert.match(request['x-adcp-validation'].read_only, /MUST NOT mutate/);
+    assert.match(request['x-adcp-validation'].read_only, /do not advance the version/);
+    assert.match(request['x-adcp-validation'].principal_isolation, /unconfigured/);
+  });
+
+  it('reads back current state, retained generations, and an unconfigured arm without leaks', () => {
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: {
+        kind: 'current',
+        connection_id: 'conn_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
+        configuration: {
+          notification_configs: [],
+          reporting_destinations: [{
+            destination_id: warehouseDestination.destination_id,
+            destination_ref: 'dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV',
+            prior_destination_refs: ['dest_01K4C5A2M9XPZ0T4B7QCW3JHRD'],
+            state: 'ready',
+            configuration: warehouseDestination,
+          }],
+          retired_destinations: [{
+            destination_id: 'old-archive',
+            destination_refs: ['dest_01K4C4XYZ0A9E6Y3N1FQ1T8YKA'],
+            revoked_at: '2026-08-29T00:00:00Z',
+          }],
+        },
+      },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: { kind: 'unconfigured' },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'failed',
+      result: {
+        kind: 'failed',
+        errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
+        connection_id: 'leaked_connection',
+      },
+    }), false);
+  });
+
+  it('couples suspension state to inactive configuration in both directions', () => {
+    const validateState = validateDestinationState;
+
+    assert.equal(validateState({
+      destination_id: warehouseDestination.destination_id,
+      destination_ref: 'dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV',
+      state: 'ready',
+      configuration: { ...warehouseDestination, active: false },
+    }), false, 'active:false must not read back as ready');
+
+    assert.equal(validateState({
+      destination_id: warehouseDestination.destination_id,
+      destination_ref: 'dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV',
+      state: 'inactive',
+      configuration: { ...warehouseDestination, active: false },
+    }), true, JSON.stringify(validateState.errors));
   });
 });
