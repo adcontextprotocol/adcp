@@ -1041,6 +1041,8 @@ export interface RouterRouteOptions {
   observer?: (observation: RouterModelObservation) => void | Promise<void>;
   /** Used by a higher-level canary boundary so it can invoke the fallback provider. */
   failureMode?: 'safe_fallback' | 'throw';
+  /** Cancels the provider request without changing the default fallback behavior. */
+  signal?: AbortSignal;
 }
 
 export interface AddieRouterProviderOptions {
@@ -1121,6 +1123,7 @@ export class AddieRouter {
           beforeDispatch: (prepared) => {
             primaryInvocation = prepared;
           },
+          signal: options.signal,
         }),
         this.provider.id,
       );
