@@ -497,10 +497,12 @@ describe('getToolSetDescriptionsForRouter', () => {
   describe('non-admin user', () => {
     const descriptions = getToolSetDescriptionsForRouter(false);
 
-    it('should include knowledge, member, directory sets', () => {
+    it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member');
+      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('community_groups');
       expect(descriptions).toContain('directory');
+      expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
 
     it('should NOT include admin set', () => {
@@ -542,8 +544,10 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should still include non-admin sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member');
+      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('community_groups');
       expect(descriptions).toContain('directory');
+      expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
   });
 });
@@ -661,7 +665,7 @@ describe('getToolsForSets', () => {
   });
 
   it('should combine multiple sets', () => {
-    const tools = getToolsForSets(['knowledge', 'member'], false);
+    const tools = getToolsForSets(['knowledge', 'member_profile'], false);
     expect(tools).toContain('search_docs');
     expect(tools).toContain('get_my_profile');
   });
@@ -913,7 +917,7 @@ describe('parseRouterResponse', () => {
   });
 
   it('should handle markdown-wrapped JSON', () => {
-    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member"],"confidence":"suggest","reason":"test"}\n```');
+    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_profile"],"confidence":"suggest","reason":"test"}\n```');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
       expect(plan.confidence).toBe('suggest');
@@ -1227,7 +1231,7 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
         expect(plan.confidence).toBe('high');
-        expect(plan.tool_sets).toContain('member');
+        expect(plan.tool_sets).toContain('community_groups');
       }
     }, 15000);
 

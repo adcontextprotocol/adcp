@@ -4,7 +4,10 @@ import {
   ADMIN_DOMAIN_TOOL_SETS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
+  COMMUNITY_GROUP_TOOLS,
   LEGACY_ADMIN_TOOLS,
+  LEGACY_MEMBER_TOOLS,
+  MEMBER_PROFILE_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
   buildUnavailableSetsHint,
@@ -213,7 +216,9 @@ describe('getToolsForSets', () => {
 
   describe('bounded member-facing domains', () => {
     it.each([
-      ['publishing', 9],
+      ['member_profile', 7],
+      ['community_groups', 11],
+      ['publishing', 12],
       ['github', 4],
       ['illustrations', 1],
       ['knowledge', 3],
@@ -224,6 +229,50 @@ describe('getToolsForSets', () => {
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
+    });
+
+    it('preserves the exact legacy member surface without exposing it to new router plans', () => {
+      expect(MEMBER_PROFILE_TOOLS).toHaveLength(7);
+      expect(COMMUNITY_GROUP_TOOLS).toHaveLength(11);
+      expect(LEGACY_MEMBER_TOOLS).toHaveLength(21);
+      expect(new Set(LEGACY_MEMBER_TOOLS).size).toBe(21);
+      expect(TOOL_SETS.member.tools).toEqual(LEGACY_MEMBER_TOOLS);
+      expect(TOOL_SETS.member.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('member')).toBe(false);
+      expect(getValidToolSetNames(false).has('member_profile')).toBe(true);
+      expect(getValidToolSetNames(false).has('community_groups')).toBe(true);
+    });
+
+    it('keeps profile, community-group, and publishing workflows isolated', () => {
+      const profile = getToolsForSets(['member_profile'], false, false);
+      const groups = getToolsForSets(['community_groups'], false, false);
+      const publishing = getToolsForSets(['publishing'], false, false);
+
+      expect(profile).toContain('get_my_profile');
+      expect(profile).not.toContain('join_working_group');
+      expect(profile).not.toContain('draft_social_posts');
+      expect(groups).toContain('join_working_group');
+      expect(groups).toContain('bookmark_resource');
+      expect(groups).not.toContain('get_my_profile');
+      expect(groups).not.toContain('attach_content_asset');
+      expect(publishing).toContain('list_perspectives');
+      expect(publishing).toContain('attach_content_asset');
+      expect(publishing).toContain('draft_social_posts');
+      expect(publishing).not.toContain('get_my_profile');
+      expect(publishing).not.toContain('join_working_group');
+    });
+
+    it('keeps the legacy member set callable only as a continuity shim', () => {
+      const tools = getToolsForSets(['member'], false, false);
+      expect(tools).toEqual(expect.arrayContaining([
+        'get_my_profile',
+        'join_working_group',
+        'draft_social_posts',
+      ]));
+      expect(buildUnavailableSetsHint([], false)).not.toContain('**member**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **member_profile**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **community_groups**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **member**');
     });
 
     it('routes GitHub issue tools without exposing them globally', () => {

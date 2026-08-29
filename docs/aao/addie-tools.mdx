@@ -104,9 +104,9 @@ Compare two schema versions to show what changed. Use this when users ask about 
 
 *Source: `server/src/addie/mcp/schema-tools.ts`*
 
-## member
+## member_profile
 
-Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.
+Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim
 
 ### `get_my_profile`
 
@@ -151,6 +151,10 @@ Issue a DNS TXT challenge so the caller's selected organization can claim a bran
 Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+## community_groups
+
+Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents
 
 ### `list_working_groups`
 
@@ -200,21 +204,9 @@ Get the current user's council interest signups. Shows which councils they've ex
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-### `list_perspectives`
-
-List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
 ### `create_working_group_post`
 
 Create a post in a working group on behalf of the current user. The user must be a member of the working group. Supports article, link, and discussion post types.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `attach_content_asset`
-
-Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -223,12 +215,6 @@ Attach a file (image, PDF) to a published perspective. Fetches from a URL and st
 Save a useful web resource to the knowledge base for future reference. Use this when you find valuable external content during web search that would be helpful for future questions. The content will be fetched, summarized, and indexed.
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
-
-### `draft_social_posts`
-
-Draft social media posts for the member based on an article or topic. In 'suggest' mode, find recent articles worth posting about and pitch them with member-specific angles. In 'draft' mode, generate 2 LinkedIn options and 1 X/Twitter option personalized to the member's company, role, and expertise. Use when a member asks for help writing a social post, or asks what they should be posting about. Do NOT use for general social media strategy advice or questions about social platforms.
-
-*Source: `server/src/addie/mcp/social-draft-tools.ts`*
 
 ### `list_committee_documents`
 
@@ -682,6 +668,24 @@ Check if a perspective article has an editorial illustration and whether the aut
 Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
 
 *Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `list_perspectives`
+
+List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `attach_content_asset`
+
+Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `draft_social_posts`
+
+Draft social media posts for the member based on an article or topic. In 'suggest' mode, find recent articles worth posting about and pitch them with member-specific angles. In 'draft' mode, generate 2 LinkedIn options and 1 X/Twitter option personalized to the member's company, role, and expertise. Use when a member asks for help writing a social post, or asks what they should be posting about. Do NOT use for general social media strategy advice or questions about social platforms.
+
+*Source: `server/src/addie/mcp/social-draft-tools.ts`*
 
 ## github
 

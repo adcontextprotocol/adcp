@@ -129,6 +129,7 @@ function extractToolsFromFile(filePath: string): ExtractedTool[] {
 function extractToolSets(filePath: string): ExtractedToolSet[] {
   const sf = parseFile(filePath);
   const sets: ExtractedToolSet[] = [];
+  const arrayConstants = new Map<string, string[]>();
   const objectArrayConstants = new Map<string, Map<string, string[]>>();
 
   function unwrap(node: ts.Node): ts.Node {
@@ -145,6 +146,13 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
     for (const el of unwrapped.elements) {
       const t = literalText(el);
       if (t) out.push(t);
+      if (
+        ts.isSpreadElement(el)
+        && ts.isIdentifier(el.expression)
+      ) {
+        const values = arrayConstants.get(el.expression.text);
+        if (values) out.push(...values);
+      }
       if (
         ts.isSpreadElement(el)
         && ts.isPropertyAccessExpression(el.expression)
@@ -166,6 +174,11 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
       const initializer = unwrap(declaration.initializer);
+      if (ts.isArrayLiteralExpression(initializer)) {
+        const values = readArrayOfStrings(initializer);
+        if (values.length > 0) arrayConstants.set(declaration.name.text, values);
+        continue;
+      }
       if (!ts.isObjectLiteralExpression(initializer)) continue;
       const entries = new Map<string, string[]>();
       for (const property of initializer.properties) {
