@@ -103,7 +103,9 @@ describe('executeFixedTraceToolLoop', () => {
     expect(create.mock.calls[1][0].messages[2].content).toEqual([{
       type: 'tool_result',
       tool_use_id: 'tool_1',
-      content: 'Official docs: AdCP uses task-based interactions between agents.',
+      content: expect.stringMatching(
+        /<tool_result_evidence status="ok">\nOfficial docs: AdCP uses task-based interactions between agents\.\n<\/tool_result_evidence>/,
+      ),
     }]);
     expect(result.text).toBe('AdCP uses task-based interactions.');
     expect(result.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
