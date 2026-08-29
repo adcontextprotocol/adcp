@@ -94,7 +94,8 @@ async function dispatchV5(
   delete cleanInput[TRAINING_TASK_OWNER_SCOPE_FIELD];
   const assertedAccount = cleanInput.account;
   if (
-    principal.startsWith('static:')
+    scenario === 'force_audience_status'
+    && principal.startsWith('static:')
     && assertedAccount !== null
     && typeof assertedAccount === 'object'
     && !Array.isArray(assertedAccount)
