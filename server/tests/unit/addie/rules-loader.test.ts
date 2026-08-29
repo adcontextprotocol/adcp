@@ -20,6 +20,7 @@ describe('Addie rules loader', () => {
   it('loadResponseStyle() returns the response-style.md content', () => {
     const style = loadResponseStyle();
     expect(style).toContain('# Response Style');
+    expect(style).toContain('## Evidence Boundaries Override Style');
     expect(style).toContain('## Concise and Helpful');
   });
 

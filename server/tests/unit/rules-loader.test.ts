@@ -28,6 +28,8 @@ describe('Rules Loader', () => {
   it('loadResponseStyle() returns the response-style.md content', () => {
     const style = loadResponseStyle();
     expect(style).toContain('# Response Style');
+    expect(style).toContain('## Evidence Boundaries Override Style');
+    expect(style).toContain('Those style rules apply only when no lookup was attempted');
     expect(style).toContain('## Concise and Helpful');
     expect(style).toContain('## Naming Conventions');
   });
@@ -91,6 +93,16 @@ describe('Rules Loader', () => {
     expect(rules).toContain('call each knowledge tool at most once');
     expect(rules).toContain('do not name or link a supposedly relevant page unless the result supplied it');
     expect(rules).toContain('is source-specific and is not part of this exception');
+  });
+
+  it('places the lookup evidence override in the final response-style block', () => {
+    const rules = loadRules();
+    const style = loadResponseStyle();
+
+    expect(rules).toContain('treat its returned content as the evidence boundary for the answer');
+    expect(style).toContain('returned facts are the complete evidence boundary');
+    expect(style).toContain('Do not use factual material from the Knowledge rules');
+    expect(style).toContain('If the lookup is empty or fails, lead with the short limitation');
   });
 
   it('routes Prebid Sales Agent build questions to the owning project without guessing', () => {

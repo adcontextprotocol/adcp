@@ -45,9 +45,9 @@
     "rules_bytes": 151667,
     "tool_reference_bytes": 37062,
     "complete_offline_tool_reference_bytes": 37468,
-    "response_style_bytes": 8009,
-    "system_prompt_bytes": 196752,
-    "system_prompt_sha256": "7d349960a57c958104d66bbf2e5736c1d4e016872f9efbfc0667a265985651b5"
+    "response_style_bytes": 9053,
+    "system_prompt_bytes": 197796,
+    "system_prompt_sha256": "edfc14840ef49c916f481a387112785299608429c2b2a108d3596705ee1f276c"
   },
   "catalog": {
     "missing_runtime_tool_count": 0,
@@ -17468,7 +17468,7 @@
       "prompt_catalog_tools_missing_runtime": -2,
       "always_available_tools": 0,
       "tool_reference_bytes": -6731,
-      "system_prompt_bytes": -5279,
+      "system_prompt_bytes": -4235,
       "maximum_slack_member_tools": 6,
       "maximum_slack_admin_tools": 3,
       "maximum_slack_public_tools": -4,
