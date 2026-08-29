@@ -2,7 +2,7 @@ id: agent_configuration
 version: "1.0.0"
 title: "Agent connection configuration"
 category: schema_validation
-summary: "Validates the experimental transport-principal-scoped configuration surface, including capability discovery, NO_AUTH rejection, and dry-run reusable destination setup."
+summary: "Validates the experimental stable-principal-scoped configuration surface, including capability discovery, NO_AUTH rejection, and dry-run reusable destination setup."
 track: core
 required_tools:
   - sync_agent_configuration
@@ -10,14 +10,17 @@ required_tools:
 narrative: |
   `sync_agent_configuration` synchronizes durable resources owned by the stable
   authenticated caller's relationship with one agent. The request cannot
-  assert its own caller identity, and a ready reporting destination does not
-  grant authority over an advertiser account. Implementations must advertise
-  the experimental surface, reject anonymous mutation, and keep dry-run free
-  of persistence, access grants, and endpoint challenges.
+  assert its own caller identity. The principal may be a delegated human user
+  acting through an interactive client or an autonomous workload; this task
+  does not require the former to register as a buyer agent. A ready reporting
+  destination does not grant authority over an advertiser account.
+  Implementations must advertise the experimental surface, reject anonymous
+  mutation, and keep dry-run free of persistence, access grants, and endpoint
+  challenges.
 
-  Multi-principal isolation, destination proof, key rotation, account binding,
-  and optimistic-concurrency races require implementation-specific fixtures
-  or a future controller-backed storyboard.
+  Multi-principal isolation, delegated-user continuity, destination proof, key
+  rotation, account binding, and optimistic-concurrency races require
+  implementation-specific fixtures or a future controller-backed storyboard.
 
 agent:
   interaction_model: any
@@ -28,7 +31,7 @@ agent:
 
 caller:
   role: buyer_agent
-  example: "Compliance test harness"
+  example: "Compliance test harness acting as a stable authenticated principal"
 
 prerequisites:
   description: |

@@ -115,6 +115,20 @@ describe('sync_agent_configuration contract', () => {
     }
   });
 
+  it('defines delegated users and workloads as principals without requiring agent registration', () => {
+    const request = readSchema('/schemas/protocol/sync-agent-configuration-request.json');
+    const rules = request['x-adcp-validation'];
+
+    assert.match(request.description, /does not register a buyer agent/);
+    assert.match(rules.stable_principal, /delegated human user/);
+    assert.match(rules.stable_principal, /autonomous workload/);
+    assert.match(rules.stable_principal, /MUST NOT require registration/);
+    assert.match(rules.stable_principal, /shared service identity/);
+    assert.match(rules.credential_rotation, /same stable principal/);
+    assert.match(rules.principal_isolation, /explicitly authorized administrative operation/);
+    assert.match(rules.account_authority, /independently authorize the account-scoped feed binding/);
+  });
+
   it('keeps every destination variant atomic and rejects secret-shaped schema fields', () => {
     for (const destination of [fileDestination, warehouseDestination, shareDestination]) {
       assert.equal(validateDestination(destination), true, JSON.stringify(validateDestination.errors));
