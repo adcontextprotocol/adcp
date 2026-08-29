@@ -514,15 +514,19 @@ describe('stripe-sub-reflected-in-org-row', () => {
 
   /**
    * `for await ... of stripe.subscriptions.list(...)` consumes the auto-paginating
-   * iterator. Mock returns an async-iterable. First call ⇒ active subs, second ⇒ trialing.
+   * iterator. Mock returns an async-iterable. First call ⇒ active subs,
+   * second ⇒ trialing, third ⇒ past_due.
    */
-  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = []): void {
+  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = [], pastDueSubs: unknown[] = []): void {
     mockStripeSubsList
       .mockImplementationOnce(() => ({
         async *[Symbol.asyncIterator]() { for (const s of activeSubs) yield s; },
       }))
       .mockImplementationOnce(() => ({
         async *[Symbol.asyncIterator]() { for (const s of trialingSubs) yield s; },
+      }))
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of pastDueSubs) yield s; },
       }));
   }
 
@@ -1012,13 +1016,16 @@ describe('stripe-sub-reflected-in-org-row partial-truth', () => {
     };
   }
 
-  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = []): void {
+  function mockSubsListWith(activeSubs: unknown[], trialingSubs: unknown[] = [], pastDueSubs: unknown[] = []): void {
     mockStripeSubsList
       .mockImplementationOnce(() => ({
         async *[Symbol.asyncIterator]() { for (const s of activeSubs) yield s; },
       }))
       .mockImplementationOnce(() => ({
         async *[Symbol.asyncIterator]() { for (const s of trialingSubs) yield s; },
+      }))
+      .mockImplementationOnce(() => ({
+        async *[Symbol.asyncIterator]() { for (const s of pastDueSubs) yield s; },
       }));
   }
 
