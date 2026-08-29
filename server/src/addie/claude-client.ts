@@ -61,9 +61,9 @@ import {
   ModelTurnLoopState,
 } from './model-providers/model-turn.js';
 import {
+  AddieToolExecutionLedger,
   createAddieToolExecutor,
   executeAddieToolCalls,
-  recordProviderToolResults,
   type AddieExecutionMode,
   type ToolExecution,
   type ToolExecutionPolicy,
@@ -456,7 +456,7 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
  * Returns a flag reason if the text claims to have completed an action
  * but no corresponding tool was actually called AND succeeded.
  */
-export function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectHallucinatedAction(text: string, toolExecutions: readonly ToolExecution[]): string | null {
   for (const { pattern, expectedTools } of HALLUCINATION_PATTERNS) {
     if (pattern.test(text)) {
       // Check that a matching tool was called AND succeeded (not just called)
@@ -478,7 +478,7 @@ export function detectHallucinatedAction(text: string, toolExecutions: ToolExecu
  * drop, and the signature failure mode behind silent invoice-tool failures.
  * Returns a reason string when this happens so the caller can flag + log it.
  */
-export function detectEmptyTurn(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectEmptyTurn(text: string, toolExecutions: readonly ToolExecution[]): string | null {
   if (text.length > 0) return null;
   const successful = toolExecutions.filter(t => !t.is_error).length;
   if (successful > 0) return null;
@@ -494,7 +494,7 @@ export const ADDIE_EMPTY_RESPONSE_FALLBACK = EMPTY_RESPONSE_FALLBACK;
  * final text is a bad chat UX because most surfaces do not render raw tool
  * results to the user.
  */
-export function detectEmptyResponse(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectEmptyResponse(text: string, toolExecutions: readonly ToolExecution[]): string | null {
   if (text.trim().length > 0) return null;
 
   const strictReason = detectEmptyTurn(text, toolExecutions);
@@ -508,7 +508,7 @@ export function detectEmptyResponse(text: string, toolExecutions: ToolExecution[
 function applyResponsePipelineWithEmptyMonitoring(
   question: string,
   rawText: string,
-  toolExecutions: ToolExecution[],
+  toolExecutions: readonly ToolExecution[],
 ): { text: string; reason: string | null } {
   const stripped = stripBannedRituals(rawText);
   const reason = detectEmptyResponse(stripped, toolExecutions);
@@ -551,7 +551,7 @@ interface FinalizedAssistantText {
 function finalizeAssistantText(
   question: string,
   rawText: string,
-  toolExecutions: ToolExecution[],
+  toolExecutions: readonly ToolExecution[],
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
   const processed = applyResponsePipelineWithEmptyMonitoring(question, rawText, toolExecutions);
@@ -566,8 +566,8 @@ function finalizeAssistantText(
 
 function reportEmptyResponseFallback(
   reason: string,
-  toolsUsed: string[],
-  toolExecutions: ToolExecution[],
+  toolsUsed: readonly string[],
+  toolExecutions: readonly ToolExecution[],
   options: ProcessMessageOptions | undefined,
   source: 'processMessage' | 'processMessageStream',
   model: string,
@@ -801,8 +801,8 @@ function localModelExecution(
 function providerUnavailableResponse(
   availability: ProviderAvailability,
   requestedModel: string,
-  toolsUsed: string[] = [],
-  toolExecutions: ToolExecution[] = [],
+  toolsUsed: readonly string[] = [],
+  toolExecutions: readonly ToolExecution[] = [],
   certificationReserveUsed = false,
 ): AddieResponse {
   const baseMessage = formatProviderUnavailableMessage(availability);
@@ -1376,9 +1376,9 @@ export class AddieClaudeClient {
       }
     }
 
-    const toolsUsed: string[] = [];
-    const toolExecutions: ToolExecution[] = [];
-    let executionSequence = 0;
+    const executionLedger = new AddieToolExecutionLedger();
+    const toolsUsed = executionLedger.toolsUsed;
+    const toolExecutions = executionLedger.executions;
 
     // Timing metrics
     const timingStart = Date.now();
@@ -1459,9 +1459,9 @@ export class AddieClaudeClient {
       const llmStart = Date.now();
       let response: ModelResponse;
       let reusedEmptyResponse = false;
-      const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
+      const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
+      const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
       try {
         const invokeProvider = async (exactlyOnce: boolean) => {
           invocationAttempt++;
@@ -1470,8 +1470,8 @@ export class AddieClaudeClient {
             systemBlocks,
             invocationTools,
             modelMessages,
-            modelLoop.emptyResponseRecovery.toolsAllowed && requestWebSearchEnabled,
-            isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+            recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
+            recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
             false,
             iteration === 1 && invocationTools.length > 0
               ? options?.initialToolChoice
@@ -1498,7 +1498,7 @@ export class AddieClaudeClient {
         // A replay is an exactly-once paid experiment. A timeout can occur
         // after provider acceptance, so neither our outer retry helper nor the
         // Anthropic SDK may submit the request again.
-        response = options?.executionMode === 'replay' || isEmptyResponseRecovery
+        response = options?.executionMode === 'replay' || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),
@@ -1506,11 +1506,10 @@ export class AddieClaudeClient {
             'processMessage',
           );
         if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
-        if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
+        modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
       } catch (error) {
-        const fallbackResponse = isEmptyResponseRecovery
-          ? modelLoop.emptyResponseRecovery.takeFallback()
-          : null;
+        const fallbackResponse = modelLoop.emptyResponseRecovery
+          .fallbackAfterInvocationFailure(recoveryInvocation);
         if (fallbackResponse) {
           // The empty end_turn was a valid terminal response. Recovery is
           // best-effort: if its one extra call fails, retain that terminal and
@@ -1574,19 +1573,13 @@ export class AddieClaudeClient {
 
       // Provider results may accompany a terminal, provider-continuation, or
       // mixed custom-tool turn. Record them once at the normalized boundary.
-      const providerToolExecutions = recordProviderToolResults(
+      const providerToolExecutions = executionLedger.recordProviderResults(
         this.anthropicProvider,
         turn.providerToolCalls,
         turn.providerToolResults,
-        {
-          executionMode: options?.executionMode ?? 'production',
-          startingSequence: executionSequence,
-        },
+        options?.executionMode ?? 'production',
       );
       for (const recorded of providerToolExecutions) {
-        executionSequence = recorded.execution.sequence;
-        toolsUsed.push(recorded.execution.tool_name);
-        toolExecutions.push(recorded.execution);
         logger.debug(
           {
             toolName: recorded.execution.tool_name,
@@ -1645,8 +1638,8 @@ export class AddieClaudeClient {
         }
         return {
           text,
-          tools_used: toolsUsed,
-          tool_executions: toolExecutions,
+          tools_used: [...toolsUsed],
+          tool_executions: [...toolExecutions],
           flagged: true,
           flag_reason: `Response truncated: ${response.providerFinishReason}`,
           active_rule_ids: undefined,
@@ -1742,8 +1735,8 @@ export class AddieClaudeClient {
 
         return {
           text,
-          tools_used: toolsUsed,
-          tool_executions: toolExecutions,
+          tools_used: [...toolsUsed],
+          tool_executions: [...toolExecutions],
           flagged: !!flagReason,
           flag_reason: flagReason ?? undefined,
           active_rule_ids: undefined,
@@ -1768,9 +1761,9 @@ export class AddieClaudeClient {
         for await (const event of executeAddieToolCalls(
           turn.toolCalls,
           executeToolCall,
-          executionSequence,
+          executionLedger.sequence,
         )) {
-          executionSequence = event.sequence;
+          executionLedger.recordCustomEvent(event, toolResults);
           if (event.type === 'start') {
             hasExecutedCustomTool = true;
             logger.debug(
@@ -1780,10 +1773,6 @@ export class AddieClaudeClient {
               },
               'Addie: Calling tool',
             );
-            toolsUsed.push(event.call.name);
-          } else {
-            toolResults.push(event.executed.result);
-            toolExecutions.push(event.executed.execution);
           }
         }
 
@@ -1806,8 +1795,8 @@ export class AddieClaudeClient {
     }
     return {
       text: "I'm having trouble completing that request. Could you try rephrasing?",
-      tools_used: toolsUsed,
-      tool_executions: toolExecutions,
+      tools_used: [...toolsUsed],
+      tool_executions: [...toolExecutions],
       flagged: true,
       flag_reason: 'Max tool iterations reached',
       active_rule_ids: undefined,
@@ -1917,9 +1906,9 @@ export class AddieClaudeClient {
       }, 30_000);
     }
 
-    const toolsUsed: string[] = [];
-    const toolExecutions: ToolExecution[] = [];
-    let executionSequence = 0;
+    const executionLedger = new AddieToolExecutionLedger();
+    const toolsUsed = executionLedger.toolsUsed;
+    const toolExecutions = executionLedger.executions;
     let logicalText = '';
     let totalReceivedDeltas = 0;
     let streamErrorEmitted = false;
@@ -2049,22 +2038,22 @@ export class AddieClaudeClient {
         let receivedDeltaCount = 0;
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
-          const isEmptyResponseRecovery = modelLoop.emptyResponseRecovery.pending;
+          const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
           try {
-            const invocationTools = modelLoop.emptyResponseRecovery.toolsAllowed ? modelTools : [];
+            const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
               effectiveModel,
               systemBlocks,
               invocationTools,
               modelMessages,
               false,
-              isEmptyResponseRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+              recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
               true,
               iteration === 1 && invocationTools.length > 0
                 ? options?.initialToolChoice
                 : undefined,
             );
-            const provider = isEmptyResponseRecovery
+            const provider = recoveryInvocation.requiresExactlyOnce
               ? this.exactlyOnceAnthropicProvider
               : this.anthropicProvider;
             currentResponse = await activeTurn.invoke(
@@ -2090,11 +2079,10 @@ export class AddieClaudeClient {
             if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
-            if (isEmptyResponseRecovery) modelLoop.emptyResponseRecovery.resolve();
+            modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
           } catch (streamError) {
-            const fallbackResponse = isEmptyResponseRecovery
-              ? modelLoop.emptyResponseRecovery.takeFallback()
-              : null;
+            const fallbackResponse = modelLoop.emptyResponseRecovery
+              .fallbackAfterInvocationFailure(recoveryInvocation);
             if (fallbackResponse) {
               // See the non-streaming path: recovery is an optional UX
               // improvement, not a reason to discard the valid first terminal.
@@ -2235,19 +2223,13 @@ export class AddieClaudeClient {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
 
-        const providerToolExecutions = recordProviderToolResults(
+        const providerToolExecutions = executionLedger.recordProviderResults(
           this.anthropicProvider,
           turn.providerToolCalls,
           turn.providerToolResults,
-          {
-            executionMode: options?.executionMode ?? 'production',
-            startingSequence: executionSequence,
-          },
+          options?.executionMode ?? 'production',
         );
         for (const recorded of providerToolExecutions) {
-          executionSequence = recorded.execution.sequence;
-          toolsUsed.push(recorded.execution.tool_name);
-          toolExecutions.push(recorded.execution);
           yield {
             type: 'tool_start',
             tool_name: recorded.execution.tool_name,
@@ -2326,8 +2308,8 @@ export class AddieClaudeClient {
             type: 'done',
             response: {
               text: finalized.text,
-              tools_used: toolsUsed,
-              tool_executions: toolExecutions,
+              tools_used: [...toolsUsed],
+              tool_executions: [...toolExecutions],
               flagged: true,
               flag_reason: `Response truncated: ${currentResponse.providerFinishReason}`,
               active_rule_ids: undefined,
@@ -2408,8 +2390,8 @@ export class AddieClaudeClient {
             type: 'done',
             response: {
               text: finalText,
-              tools_used: toolsUsed,
-              tool_executions: toolExecutions,
+              tools_used: [...toolsUsed],
+              tool_executions: [...toolExecutions],
               flagged: !!flagReason,
               flag_reason: flagReason ?? undefined,
               active_rule_ids: undefined,
@@ -2438,9 +2420,9 @@ export class AddieClaudeClient {
           for await (const event of executeAddieToolCalls(
             turn.toolCalls,
             executeToolCall,
-            executionSequence,
+            executionLedger.sequence,
           )) {
-            executionSequence = event.sequence;
+            executionLedger.recordCustomEvent(event, toolResults);
             if (event.type === 'start') {
               logger.debug(
                 {
@@ -2449,15 +2431,12 @@ export class AddieClaudeClient {
                 },
                 'Addie Stream: Calling tool',
               );
-              toolsUsed.push(event.call.name);
               yield {
                 type: 'tool_start',
                 tool_name: event.call.name,
                 parameters: this.recordedToolParameters(options, event.call.input),
               };
             } else {
-              toolResults.push(event.executed.result);
-              toolExecutions.push(event.executed.execution);
               yield {
                 type: 'tool_end',
                 tool_name: event.call.name,
@@ -2507,8 +2486,8 @@ export class AddieClaudeClient {
         type: 'done',
         response: {
           text: finalizedMaxIter.text,
-          tools_used: toolsUsed,
-          tool_executions: toolExecutions,
+          tools_used: [...toolsUsed],
+          tool_executions: [...toolExecutions],
           flagged: true,
           flag_reason: 'Max tool iterations reached',
           active_rule_ids: undefined,

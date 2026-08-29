@@ -4,8 +4,10 @@ import type {
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
   ModelToolCallContent,
+  ModelToolResultContent,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
+  AddieToolExecutionLedger,
   BLOCKED_TOOL_RESULT,
   createAddieToolExecutor,
   executeAddieToolCalls,
@@ -358,5 +360,88 @@ describe('recordProviderToolResults', () => {
       [providerResult],
       { executionMode: 'production', startingSequence: 0 },
     )).toThrow('Provider tool result does not match selected provider');
+  });
+});
+
+describe('AddieToolExecutionLedger', () => {
+  const providerCall: ModelProviderToolCallContent = {
+    type: 'provider_tool_call',
+    provider: 'anthropic',
+    id: 'server_1',
+    name: 'web_search',
+    inputKeys: ['query'],
+  };
+  const providerResult: ModelProviderToolResultContent = {
+    type: 'provider_tool_result',
+    provider: 'anthropic',
+    toolCallId: 'server_1',
+    name: 'web_search',
+    resultCount: 1,
+    isError: false,
+  };
+
+  it('owns one contiguous ledger across provider-managed and custom tools', async () => {
+    const ledger = new AddieToolExecutionLedger();
+    const providerExecutions = ledger.recordProviderResults(
+      { id: 'anthropic' },
+      [providerCall],
+      [providerResult],
+      'production',
+    );
+    const customResults: ModelToolResultContent[] = [];
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => ({
+      result: {
+        type: 'tool_result' as const,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        content: 'custom result',
+      },
+      execution: {
+        tool_name: toolCall.name,
+        parameters: toolCall.input,
+        result: 'custom result',
+        is_error: false,
+        duration_ms: 1,
+        sequence,
+      },
+    }));
+
+    for await (const event of executeAddieToolCalls([call()], execute, ledger.sequence)) {
+      ledger.recordCustomEvent(event, customResults);
+    }
+
+    expect(providerExecutions[0]?.execution.sequence).toBe(1);
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'call_1' }), 2);
+    expect(ledger.sequence).toBe(2);
+    expect(ledger.toolsUsed).toEqual(['web_search', 'lookup']);
+    expect(ledger.executions.map(({ sequence }) => sequence)).toEqual([1, 2]);
+    expect(customResults).toEqual([
+      expect.objectContaining({ toolCallId: 'call_1', content: 'custom result' }),
+    ]);
+  });
+
+  it('rejects a custom completion without its matching start event', () => {
+    const ledger = new AddieToolExecutionLedger();
+    expect(() => ledger.recordCustomEvent({
+      type: 'end',
+      call: call(),
+      sequence: 1,
+      executed: {
+        result: {
+          type: 'tool_result',
+          toolCallId: 'call_1',
+          toolName: 'lookup',
+          content: 'result',
+        },
+        execution: {
+          tool_name: 'lookup',
+          parameters: {},
+          result: 'result',
+          is_error: false,
+          duration_ms: 0,
+          sequence: 1,
+        },
+      },
+    }, [])).toThrow('Custom-tool completion does not match its start event');
   });
 });

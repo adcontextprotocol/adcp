@@ -45,6 +45,15 @@ export function appendModelTurnContinuation(
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
 
+export interface EmptyResponseRecoveryInvocation {
+  /** Whether this invocation is the optional recovery sample. */
+  isRecovery: boolean;
+  /** Recovery after tool use is permanently text-only. */
+  toolsAllowed: boolean;
+  /** Recovery must never be transparently submitted more than once. */
+  requiresExactlyOnce: boolean;
+}
+
 export interface EmptyResponseRecoveryEligibility {
   /** Evaluation/replay preserve the first empty terminal exactly. */
   allowInitial: boolean;
@@ -98,6 +107,15 @@ export class EmptyResponseRecoveryState {
     return kind === 'initial' ? this.attemptedInitial : this.attemptedPostTool;
   }
 
+  /** Snapshot the recovery policy for one provider invocation. */
+  prepareInvocation(): Readonly<EmptyResponseRecoveryInvocation> {
+    return Object.freeze({
+      isRecovery: this.pending,
+      toolsAllowed: this.toolsAllowed,
+      requiresExactlyOnce: this.pending,
+    });
+  }
+
   schedule(kind: EmptyResponseRecoveryKind, response: ModelResponse): boolean {
     if (this.pending || this.hasAttempted(kind)) return false;
     if (kind === 'initial') {
@@ -109,11 +127,14 @@ export class EmptyResponseRecoveryState {
     return true;
   }
 
-  resolve(): void {
-    this.fallbackResponse = null;
+  completeInvocation(invocation: EmptyResponseRecoveryInvocation): void {
+    if (invocation.isRecovery) this.fallbackResponse = null;
   }
 
-  takeFallback(): ModelResponse | null {
+  fallbackAfterInvocationFailure(
+    invocation: EmptyResponseRecoveryInvocation,
+  ): ModelResponse | null {
+    if (!invocation.isRecovery) return null;
     const response = this.fallbackResponse;
     this.fallbackResponse = null;
     return response;
