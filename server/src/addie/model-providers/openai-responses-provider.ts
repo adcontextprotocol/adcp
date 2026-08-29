@@ -161,6 +161,11 @@ function toOpenAIRequest(request: ModelRequest): ResponseCreateParamsNonStreamin
     truncation: 'disabled',
     parallel_tool_calls: false,
     tools: request.tools.map(toOpenAITool),
+    ...(request.toolChoice && {
+      tool_choice: request.toolChoice.type === 'tool'
+        ? { type: 'function' as const, name: request.toolChoice.name }
+        : request.toolChoice.type,
+    }),
     text: request.outputSchema
       ? {
           format: {

@@ -144,7 +144,7 @@ async function ensureStripeReflectionEscalation(
         { escalationId: escalation.id, organizationId: violation.subject_id },
         'Stripe reflection escalation persisted but no escalation channel is configured',
       );
-      return { ensured: true, notified: false, error: false };
+      return { ensured: true, notified: false, error: true };
     }
 
     const sent = await sendChannelMessage(

@@ -88,7 +88,7 @@ function isReflected(org: OrgRow): boolean {
 export const stripeSubReflectedInOrgRowInvariant: Invariant = {
   name: 'stripe-sub-reflected-in-org-row',
   description:
-    'Every membership subscription that is active or trialing in Stripe is fully reflected in the org row for its linked customer — entitled status PLUS populated stripe_subscription_id and tier-resolving product fields. Catches missed webhooks (Lina-class) and partial-truth rows where status was set manually but Stripe data never synced (Adzymic-class).',
+    'Every membership subscription that is active, trialing, or past_due in Stripe is fully reflected in the org row for its linked customer — entitled status PLUS populated stripe_subscription_id and tier-resolving product fields. Catches missed webhooks (Lina-class) and partial-truth rows where status was set manually but Stripe data never synced (Adzymic-class).',
   severity: 'critical',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
     const { pool, stripe, logger } = ctx;
@@ -112,7 +112,7 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
     // through to the Stripe Dashboard by id to know who to link.
     const memberSubs: Stripe.Subscription[] = [];
     const productCache = new Map<string, Stripe.Product | Stripe.DeletedProduct>();
-    for (const status of ['active', 'trialing'] as const) {
+    for (const status of ['active', 'trialing', 'past_due'] as const) {
       for await (const sub of stripe.subscriptions.list({
         status,
         limit: 100,
