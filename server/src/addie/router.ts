@@ -637,7 +637,7 @@ ${
     ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n'
     : ""
 }IMPORTANT: Select tool SETS based on the user's INTENT:
-- Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure
+- Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure. "What do the official docs say about package identifiers?" → exactly ["knowledge"]
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_validation"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_validation"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
@@ -672,6 +672,7 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_validation"]
 - Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
+- Current date or time from the trusted request context → respond with []. Never ignore a direct date/time question
 - General questions needing no tools → []
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
