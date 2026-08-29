@@ -192,21 +192,46 @@ describe('Addie tool reference', () => {
   });
 
   it('scopes community and content guidance to their selected sets', () => {
-    const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member'], false, false),
-      selectedToolSetNames: ['member'],
+    const profile = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member_profile'], false, false),
+      selectedToolSetNames: ['member_profile'],
+    });
+    const groups = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['community_groups'], false, false),
+      selectedToolSetNames: ['community_groups'],
+    });
+    const publishing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing'], false, false),
+      selectedToolSetNames: ['publishing'],
     });
     const meetings = buildAddieToolReference({
       availableToolNames: getToolsForSets(['meetings'], false, false),
       selectedToolSetNames: ['meetings'],
     });
 
-    expect(member).toContain('### Working-group operations');
-    expect(member).toContain('### Member profile and company-listing operations');
-    expect(member).toContain('### Member content operations');
-    expect(member).not.toContain('### Meeting operations');
+    expect(profile).toContain('### Member profile and company-listing operations');
+    expect(profile).not.toContain('### Working-group operations');
+    expect(profile).not.toContain('### Member content operations');
+    expect(groups).toContain('### Working-group operations');
+    expect(groups).not.toContain('### Member profile and company-listing operations');
+    expect(groups).not.toContain('### Member content operations');
+    expect(publishing).toContain('### Member content operations');
+    expect(publishing).not.toContain('### Working-group operations');
+    expect(profile).not.toContain('### Meeting operations');
     expect(meetings).toContain('### Meeting operations');
     expect(meetings).not.toContain('### Member profile and company-listing operations');
+  });
+
+  it('retains all member guidance for the hidden legacy continuity set', () => {
+    const legacy = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['member'], false, false),
+      selectedToolSetNames: ['member'],
+    });
+
+    expect(legacy).toContain('### Member account and organization self-service');
+    expect(legacy).toContain('### Member profile and company-listing operations');
+    expect(legacy).toContain('### Working-group operations');
+    expect(legacy).toContain('### Member content operations');
   });
 
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
@@ -250,8 +275,8 @@ describe('Addie tool reference', () => {
 
   it('scopes account self-service guidance to member requests', () => {
     const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member'], false, false),
-      selectedToolSetNames: ['member'],
+      availableToolNames: getToolsForSets(['member_profile'], false, false),
+      selectedToolSetNames: ['member_profile'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
@@ -516,8 +541,8 @@ describe('Addie tool reference', () => {
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {
     const member = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member'], false, false),
-      selectedToolSetNames: ['member'],
+      availableToolNames: getToolsForSets(['member_profile'], false, false),
+      selectedToolSetNames: ['member_profile'],
     });
     const events = buildAddieToolReference({
       availableToolNames: getToolsForSets(['events'], false, false),

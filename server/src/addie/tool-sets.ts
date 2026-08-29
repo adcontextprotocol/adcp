@@ -174,6 +174,45 @@ export const LEGACY_ADMIN_TOOLS = [
   ...LEGACY_ADMIN_OUTREACH_TOOLS,
 ];
 
+/** Bounded member account/profile surface for new router plans. */
+export const MEMBER_PROFILE_TOOLS = [
+  "get_my_profile",
+  "update_my_profile",
+  "get_company_listing",
+  "update_company_listing",
+  "update_company_logo",
+  "request_brand_domain_challenge",
+  "verify_brand_domain_challenge",
+] as const;
+
+/** Bounded group participation and community contribution surface. */
+export const COMMUNITY_GROUP_TOOLS = [
+  "list_working_groups",
+  "get_working_group",
+  "join_working_group",
+  "request_working_group_invitation",
+  "get_my_working_groups",
+  "express_council_interest",
+  "withdraw_council_interest",
+  "get_my_council_interests",
+  "create_working_group_post",
+  "bookmark_resource",
+  "list_committee_documents",
+] as const;
+
+const LEGACY_MEMBER_CONTENT_TOOLS = [
+  "list_perspectives",
+  "attach_content_asset",
+  "draft_social_posts",
+] as const;
+
+/** Exact compatibility union for plans created before the member-domain split. */
+export const LEGACY_MEMBER_TOOLS = [
+  ...MEMBER_PROFILE_TOOLS,
+  ...COMMUNITY_GROUP_TOOLS,
+  ...LEGACY_MEMBER_CONTENT_TOOLS,
+];
+
 /**
  * Tool set definitions
  */
@@ -215,39 +254,29 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  member_profile: {
+    name: "member_profile",
+    description:
+      "Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim",
+    tools: [...MEMBER_PROFILE_TOOLS],
+  },
+
+  community_groups: {
+    name: "community_groups",
+    description:
+      "Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents",
+    tools: [...COMMUNITY_GROUP_TOOLS],
+  },
+
+  // Compatibility only: a plan already carrying the old `member` set can
+  // finish without losing profile, group, or member-content tools. New router
+  // prompts select the bounded member_profile, community_groups, or publishing
+  // domains instead.
   member: {
     name: "member",
-    // NOTE: propose_content, get_my_content, and set_outreach_preference are
-    // intentionally NOT listed here — neither in the description nor the tools
-    // array. They live in ALWAYS_AVAILABLE_TOOLS and are reachable in every
-    // conversation. Duplicating them here caused Sonnet to hallucinate that
-    // content submission/retrieval and outreach preferences were unavailable
-    // when the router didn't pick `member`. See #2998.
-    description:
-      "Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.",
-    tools: [
-      "get_my_profile",
-      "update_my_profile",
-      "get_company_listing",
-      "update_company_listing",
-      "update_company_logo",
-      "request_brand_domain_challenge",
-      "verify_brand_domain_challenge",
-      "list_working_groups",
-      "get_working_group",
-      "join_working_group",
-      "request_working_group_invitation",
-      "get_my_working_groups",
-      "express_council_interest",
-      "withdraw_council_interest",
-      "get_my_council_interests",
-      "list_perspectives",
-      "create_working_group_post",
-      "attach_content_asset",
-      "bookmark_resource",
-      "draft_social_posts",
-      "list_committee_documents",
-    ],
+    description: "Legacy monolithic member compatibility surface",
+    tools: [...LEGACY_MEMBER_TOOLS],
+    routerVisible: false,
   },
 
   directory: {
@@ -382,6 +411,9 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "read_google_doc",
       "check_illustration_status",
       "generate_perspective_illustration",
+      "list_perspectives",
+      "attach_content_asset",
+      "draft_social_posts",
     ],
   },
 

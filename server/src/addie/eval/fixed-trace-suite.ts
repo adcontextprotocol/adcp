@@ -214,7 +214,7 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     category: 'member_context',
     privacy: 'synthetic',
     request: { source: 'dm', message: 'Show me my member profile.', nowUtc: NOW, isAdmin: false },
-    routing: { action: 'respond', toolSets: ['member'] },
+    routing: { action: 'respond', toolSets: ['member_profile'] },
     toolFixtures: [{ name: 'get_my_profile', effect: 'read', resultStatus: 'ok', result: 'Synthetic member profile: display name is Sample Member; profile is complete.' }],
     expectation: {
       terminalStatuses: ['complete'], requiredTools: ['get_my_profile'], allowedTools: ['get_my_profile'], forbiddenTools: ['search_members'], mutationAuthorization: 'none',

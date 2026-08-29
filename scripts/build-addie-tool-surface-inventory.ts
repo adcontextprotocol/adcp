@@ -447,6 +447,24 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ],
   }));
 
+  const legacyMemberAllowed = new Set(toolSets.getToolsForSets(['member'], false, false));
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_member_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_member_compatibility',
+    selectedToolSets: ['member'],
+    allowedToolNames: [...legacyMemberAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyMemberAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_member_domain_split',
+      'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
   for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
       .filter(([, set]) => set.routerVisible !== false)
