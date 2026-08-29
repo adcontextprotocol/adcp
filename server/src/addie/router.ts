@@ -629,7 +629,10 @@ ${
 - Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
-- Content workflows, GitHub issues, proposals → ["content"]
+- Committee documents and news-source proposals → ["content"]
+- Submitting or reviewing articles/perspectives, reading a Google Doc for publication, or managing a published cover illustration → ["publishing"]
+- Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]
+- Explicit diagram/image requests, or substantive explanations that materially benefit from a visual → ["illustrations"]
 - Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin

@@ -25,6 +25,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
+- **publishing** — propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration
+- **github** — draft_github_issue, create_github_issue, get_github_issue
+- **illustrations** — search_image_library
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
 - **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
@@ -43,7 +46,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 
 ### Always available
 
-escalate_to_admin, get_escalation_status, get_account_link, capture_learning, set_outreach_preference, search_image_library, draft_github_issue, create_github_issue, get_github_issue, propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration
+escalate_to_admin, get_escalation_status, get_account_link, capture_learning, set_outreach_preference
 
 ### Always available (admin)
 

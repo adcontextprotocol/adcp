@@ -117,9 +117,12 @@ function profile(input: {
   providerToolCount?: number;
   route?: string;
   selectedToolSets?: string[];
+  allowedToolNames?: readonly string[];
   conditionalMaximums?: string[];
 }): Profile {
-  const combined = [...input.globalTools, ...(input.requestTools ?? [])];
+  const allowed = input.allowedToolNames ? new Set(input.allowedToolNames) : null;
+  const combined = [...input.globalTools, ...(input.requestTools ?? [])]
+    .filter((tool) => !allowed || allowed.has(tool.name));
   const seen = new Map<string, string>();
   const overriddenNames = new Set<string>();
   const conflictingNames = new Set<string>();
@@ -136,7 +139,11 @@ function profile(input: {
     }
     seen.set(tool.name, rendered);
   }
-  const merged = mergeAddieToolDefinitions(input.globalTools, input.requestTools);
+  const merged = mergeAddieToolDefinitions(
+    input.globalTools,
+    input.requestTools,
+    input.allowedToolNames,
+  );
   const wire = buildAddieWireTools(merged);
   const orderedNames = merged.map((tool) => tool.name);
   const renderedWire = JSON.stringify(wire);
@@ -317,6 +324,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         audience: surface.audience,
         route: setName,
         selectedToolSets: selectedSets,
+        allowedToolNames: [...allowed],
         globalTools,
         requestTools: routedRequest,
         // Non-streaming calls additionally expose Anthropic web search. The
@@ -353,6 +361,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'all_valid_sets_maximum',
       selectedToolSets: selectedAllValidSets,
+      allowedToolNames: [...allAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => allAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -381,6 +390,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'router_unavailable',
       selectedToolSets: fallbackSets,
+      allowedToolNames: [...fallbackAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => fallbackAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -406,6 +416,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         audience: surface.audience,
         route: 'certification_session',
         selectedToolSets: certificationSets,
+        allowedToolNames: [...certificationAllowed],
         globalTools,
         requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
         providerToolCount: 1,
@@ -425,6 +436,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     audience: 'admin_dm',
     route: 'legacy_admin_compatibility',
     selectedToolSets: ['admin'],
+    allowedToolNames: [...legacyAdminAllowed],
     globalTools,
     requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
     providerToolCount: 1,
@@ -453,6 +465,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: 'system_channel_admin',
       route: `system_role_${systemRole}_all_valid_sets_maximum`,
       selectedToolSets: selectedSets,
+      allowedToolNames: [...allowed],
       globalTools,
       requestTools: adminRequest.filter((tool) => allowed.has(tool.name)),
       providerToolCount: 1,

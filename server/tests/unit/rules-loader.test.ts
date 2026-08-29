@@ -209,6 +209,45 @@ describe('Addie tool reference', () => {
     expect(meetings).not.toContain('### Member profile and company-listing operations');
   });
 
+  it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
+    const publishing = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['publishing'], false, false),
+      selectedToolSetNames: ['publishing'],
+    });
+    const github = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['github'], false, false),
+      selectedToolSetNames: ['github'],
+    });
+    const illustrations = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['illustrations'], false, false),
+      selectedToolSetNames: ['illustrations'],
+    });
+    const knowledge = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['knowledge'], false, false),
+      selectedToolSetNames: ['knowledge'],
+    });
+
+    expect(publishing).toContain('### Content submission and review safety');
+    expect(publishing).toContain('### Google Docs publishing chain');
+    expect(github).toContain('### GitHub issue workflows');
+    expect(github).toContain('create_github_issue');
+    expect(illustrations).toContain('### Image library');
+    expect(knowledge).not.toContain('### Content submission and review safety');
+    expect(knowledge).not.toContain('### GitHub issue workflows');
+    expect(knowledge).not.toContain('### Image library');
+  });
+
+  it('omits the Google Docs publishing chain when its conditional reader is unavailable', () => {
+    const tools = getToolsForSets(['publishing'], false, false);
+    const reference = buildAddieToolReference({
+      availableToolNames: tools.filter(name => name !== 'read_google_doc'),
+      selectedToolSetNames: ['publishing'],
+    });
+
+    expect(reference).toContain('### Content submission and review safety');
+    expect(reference).not.toContain('### Google Docs publishing chain');
+  });
+
   it('scopes account self-service guidance to member requests', () => {
     const member = buildAddieToolReference({
       availableToolNames: getToolsForSets(['member'], false, false),
@@ -436,6 +475,9 @@ describe('Addie tool reference', () => {
     expect(stable).not.toContain('MUST call start_certification_module IMMEDIATELY');
     expect(stable).not.toContain('### Sponsored Intelligence conversations');
     expect(stable).not.toContain('send_to_si_agent for EVERY user message');
+    expect(stable).not.toContain('### Content submission and review safety');
+    expect(stable).not.toContain('### GitHub issue workflows');
+    expect(stable).not.toContain('### Image library');
   });
 
   it('does not advertise neighboring domain mutations in scoped guidance', () => {

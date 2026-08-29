@@ -41,7 +41,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+    })).toEqual(['certification', 'knowledge', 'illustrations']);
   });
 
   it('applies the certification override when the router is unavailable', () => {
@@ -50,7 +50,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+    })).toEqual(['certification', 'knowledge', 'illustrations']);
   });
 
   it('does not treat a non-DM certification context as a routing override', () => {
