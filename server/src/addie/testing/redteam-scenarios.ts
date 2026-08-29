@@ -330,7 +330,7 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     id: 'aao-listing-1',
     category: 'aao-self-knowledge',
     question: 'My adagents.json is published and valid but my properties are not showing up in the registry. Help me diagnose.',
-    concept: 'behaviors.md — Publisher and Agent Setup Diagnosis + agent_testing tools',
+    concept: 'behaviors.md — Publisher and Agent Setup Diagnosis with agent and property diagnostics',
     // Accept any concrete diagnostic move. Don't require a specific tool name —
     // for an anonymous user, Addie may not be able to call validate_adagents
     // (the handler is auth-gated even though the tool name is registered).

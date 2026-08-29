@@ -638,13 +638,14 @@ ${
     : ""
 }IMPORTANT: Select tool SETS based on the user's INTENT:
 - Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure
-- Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_testing"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_testing"]
+- Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_validation"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_validation"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
 - Working groups, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
-- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"] or ["agent_testing"]
-- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]. Do not use it for brand-registry canonical documents
+- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_validation"], or ["property_catalog"]
+- Testing or validating an AdCP agent implementation, endpoint, authorization, signing, OAuth, RFP response, or IO execution → ["agent_validation"]
+- Auditing, resolving, enriching, browsing, or disputing publisher property-registry or catalog entries → ["property_catalog"]. For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_validation", "property_catalog"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]
@@ -669,7 +670,7 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 - Brand-logo review, registry gaps, community mirrors, ownership transfers, or orphaned brands → ["admin_brands"]
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
-- Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
+- Multiple intents? Include multiple sets: ["knowledge", "agent_validation"]
 - Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
 - General questions needing no tools → []
 

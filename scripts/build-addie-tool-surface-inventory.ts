@@ -465,6 +465,27 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ],
   }));
 
+  const legacyAgentTestingAllowed = new Set(
+    toolSets.getToolsForSets(['agent_testing'], false, false),
+  );
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_agent_testing_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_agent_testing_compatibility',
+    selectedToolSets: ['agent_testing'],
+    allowedToolNames: [...legacyAgentTestingAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyAgentTestingAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_agent_property_split',
+      'google_docs_configured',
+      'conformance_socket_enabled',
+      'nonstreaming_web_search',
+    ],
+  }));
+
   for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
       .filter(([, set]) => set.routerVisible !== false)

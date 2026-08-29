@@ -344,9 +344,9 @@ Send the SHOULD-level notification email to the house's contact.email when a lea
 
 *Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
 
-## agent_testing
+## agent_validation
 
-Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can't see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.
+Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.
 
 ### `validate_adagents`
 
@@ -419,6 +419,10 @@ Test whether a buyer agent can execute a real IO or proposal through the publish
 Validate if an agent is authorized for a publisher domain by checking their /.well-known/adagents.json file.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
+
+## property_catalog
+
+Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.
 
 ### `resolve_property`
 

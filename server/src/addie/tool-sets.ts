@@ -213,6 +213,41 @@ export const LEGACY_MEMBER_TOOLS = [
   ...LEGACY_MEMBER_CONTENT_TOOLS,
 ];
 
+/** Bounded publisher and agent implementation validation surface. */
+export const AGENT_VALIDATION_TOOLS = [
+  "validate_adagents",
+  "resolve_brand",
+  "get_agent_status",
+  "check_publisher_authorization",
+  "test_adcp_agent",
+  "evaluate_agent_quality",
+  "grade_agent_signing",
+  "diagnose_agent_auth",
+  "compare_media_kit",
+  "test_rfp_response",
+  "test_io_execution",
+  "validate_agent",
+] as const;
+
+/** Bounded property-registry audit, enrichment, and catalog surface. */
+export const PROPERTY_CATALOG_TOOLS = [
+  "resolve_property",
+  "save_property",
+  "list_properties",
+  "list_missing_properties",
+  "check_property_list",
+  "enhance_property",
+  "resolve_catalog",
+  "browse_catalog",
+  "dispute_catalog_entry",
+] as const;
+
+/** Exact compatibility union for plans created before the agent/property split. */
+export const LEGACY_AGENT_TESTING_TOOLS = [
+  ...AGENT_VALIDATION_TOOLS,
+  ...PROPERTY_CATALOG_TOOLS,
+];
+
 /**
  * Tool set definitions
  */
@@ -318,33 +353,28 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  agent_validation: {
+    name: "agent_validation",
+    description:
+      'Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.',
+    tools: [...AGENT_VALIDATION_TOOLS],
+  },
+
+  property_catalog: {
+    name: "property_catalog",
+    description:
+      'Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.',
+    tools: [...PROPERTY_CATALOG_TOOLS],
+  },
+
+  // Compatibility only: a plan already carrying the old `agent_testing` set
+  // can finish without losing agent-validation or property-catalog tools. New
+  // router prompts select the bounded domains above.
   agent_testing: {
     name: "agent_testing",
-    description:
-      'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can\'t see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.',
-    tools: [
-      "validate_adagents",
-      "resolve_brand",
-      "get_agent_status",
-      "check_publisher_authorization",
-      "test_adcp_agent",
-      "evaluate_agent_quality",
-      "grade_agent_signing",
-      "diagnose_agent_auth",
-      "compare_media_kit",
-      "test_rfp_response",
-      "test_io_execution",
-      "validate_agent",
-      "resolve_property",
-      "save_property",
-      "list_properties",
-      "list_missing_properties",
-      "check_property_list",
-      "enhance_property",
-      "resolve_catalog",
-      "browse_catalog",
-      "dispute_catalog_entry",
-    ],
+    description: "Legacy combined agent-testing and property-catalog compatibility surface",
+    tools: [...LEGACY_AGENT_TESTING_TOOLS],
+    routerVisible: false,
   },
 
   agent_conformance: {

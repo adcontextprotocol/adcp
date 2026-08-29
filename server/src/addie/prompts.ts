@@ -199,20 +199,19 @@ The public protocol roadmap is https://github.com/orgs/adcontextprotocol/project
 Admins manage roadmap entries by setting the Protocol and Kind fields and moving the item between statuses. Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap; volunteers should contact the relevant working group in Slack.`,
   },
   {
-    selectedToolSets: ['agent_testing'],
+    selectedToolSets: ['agent_validation', 'agent_testing'],
     text: `### Publisher and agent testing
-These tools diagnose publisher and agent setup. When someone has verification or property issues, use them together to find which step in the setup chain is missing (brand.json → adagents.json → agent authorization → property resolution).
+These tools diagnose publisher and agent setup. When someone has verification, authorization, signing, OAuth, or endpoint issues, use them together to find which step in the setup chain is missing (brand.json → adagents.json → agent authorization → live agent behavior).
 
 - validate_adagents: Check a domain's adagents.json configuration. Start here for any publisher setup issue.
 - resolve_brand: Check if a domain has brand.json set up. If not, they need the brand builder (https://agenticadvertising.org/brand).
 - check_publisher_authorization: Verify that a publisher has authorized a specific agent URL.
 - get_agent_status: Read cached agent health, capabilities, and the latest comply verdict. For a live retest, use evaluate_agent_quality.
-- resolve_property: Check whether a publisher domain's properties are in the registry.
 - test_rfp_response: Ask for publisher_response before calling; it is the highest-value comparison input.
 - test_io_execution: Set execute=true only when the user wants to submit the generated create_media_buy request.`,
   },
   {
-    selectedToolSets: ['agent_testing'],
+    selectedToolSets: ['agent_validation', 'agent_testing'],
     requiredToolNames: [
       'recommend_storyboards',
       'get_storyboard_detail',
@@ -273,7 +272,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - notify_pending_verification: Use only after check_mutual_assertion returns leaf_only with the published house contact. Respect its feature flag and rate limit.`,
   },
   {
-    selectedToolSets: ['agent_testing'],
+    selectedToolSets: ['property_catalog', 'agent_testing'],
     text: `### Property-registry operations
 The registry combines publisher-controlled adagents.json entries with revision-tracked hosted enrichment and community contributions. Publisher-controlled entries cannot be community-edited.
 
@@ -283,13 +282,13 @@ The registry combines publisher-controlled adagents.json entries with revision-t
 - list_missing_properties: Show demand for domains that are not yet registered.`,
   },
   {
-    selectedToolSets: ['agent_testing'],
+    selectedToolSets: ['property_catalog', 'agent_testing'],
     requiredToolNames: ['check_property_list', 'enhance_property'],
     text: `### Property-list enrichment
 Use check_property_list to audit the supplied domains and surface its report_url. Unknown domains appear in the assess bucket. Run enhance_property on those domains one at a time; it assesses publisher legitimacy and submits qualifying entries for registry review.`,
   },
   {
-    selectedToolSets: ['agent_testing'],
+    selectedToolSets: ['property_catalog', 'agent_testing'],
     requiredToolNames: ['resolve_catalog', 'browse_catalog', 'dispute_catalog_entry'],
     text: `### Property catalog operations
 - resolve_catalog: Add or refresh a publisher domain in the property catalog after checking its live declarations.
@@ -297,7 +296,7 @@ Use check_property_list to audit the supplied domains and surface its report_url
 - dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
   },
   {
-    selectedToolSets: ['knowledge', 'agent_testing', 'agent_conformance', 'adcp_operations'],
+    selectedToolSets: ['knowledge', 'agent_validation', 'agent_testing', 'agent_conformance', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
 
