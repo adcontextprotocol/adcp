@@ -1,9 +1,12 @@
 import { createHmac } from 'node:crypto';
 import type { QueryResultRow } from 'pg';
 import { query as defaultQuery } from '../db/client.js';
+import { createLogger } from '../logger.js';
 import { FIXED_TRACE_ROLLOUT_POLICY_VERSION } from './eval/fixed-trace-rollout.js';
 import { OPENAI_ROUTER_MODEL } from './model-providers/openai-responses-provider.js';
 import { ROUTER_SHADOW_PROMOTION_POLICY_VERSION } from './router-shadow.js';
+
+const logger = createLogger('addie-router-canary');
 
 export const ROUTER_CANARY_POLICY_VERSION = 'addie-router-luna-canary:v1';
 export const ROUTER_CANARY_PRICING_VERSION = 'openai-gpt-5.6-luna-2026-08-26';
@@ -395,6 +398,9 @@ export async function admitRouterCanary(
       requestedModel: OPENAI_ROUTER_MODEL,
     };
   } catch {
+    // Do not attach the database error or cohort input: either could contain
+    // details outside this aggregate-only observability boundary.
+    logger.error('Router canary admission ledger unavailable');
     return { status: 'not_admitted', reason: 'ledger_unavailable' };
   }
 }
