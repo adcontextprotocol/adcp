@@ -55,7 +55,7 @@ const shareDestination = {
   accepted_verification_profiles: ['native_commit'],
 };
 
-describe('sync_agent_configuration contract', () => {
+describe('sync_principal contract', () => {
   let validateRequest;
   let validateResponse;
   let validateDestination;
@@ -74,12 +74,12 @@ describe('sync_agent_configuration contract', () => {
       validateReadResponse,
       validateDestinationState,
     ] = await Promise.all([
-      compile('/schemas/protocol/sync-agent-configuration-request.json'),
-      compile('/schemas/protocol/sync-agent-configuration-response.json'),
+      compile('/schemas/protocol/sync-principal-request.json'),
+      compile('/schemas/protocol/sync-principal-response.json'),
       compile('/schemas/core/agent-reporting-destination.json'),
       compile('/schemas/protocol/get-adcp-capabilities-response.json'),
-      compile('/schemas/protocol/get-agent-configuration-request.json'),
-      compile('/schemas/protocol/get-agent-configuration-response.json'),
+      compile('/schemas/protocol/get-principal-request.json'),
+      compile('/schemas/protocol/get-principal-response.json'),
       compile('/schemas/core/agent-reporting-destination-state.json'),
     ]);
   });
@@ -130,7 +130,7 @@ describe('sync_agent_configuration contract', () => {
   });
 
   it('defines delegated users and workloads as principals without requiring agent registration', () => {
-    const request = readSchema('/schemas/protocol/sync-agent-configuration-request.json');
+    const request = readSchema('/schemas/protocol/sync-principal-request.json');
     const rules = request['x-adcp-validation'];
 
     assert.match(request.description, /does not register a buyer agent/);
@@ -210,7 +210,7 @@ describe('sync_agent_configuration contract', () => {
     const duplicateIds = destinations.length !== new Set(destinations.map(item => item.destination_id)).size;
     assert.equal(duplicateIds, true);
 
-    const request = readSchema('/schemas/protocol/sync-agent-configuration-request.json');
+    const request = readSchema('/schemas/protocol/sync-principal-request.json');
     assert.match(request['x-adcp-validation'].atomic_sections, /uniqueness/);
 
     const destination = readSchema('/schemas/core/agent-reporting-destination.json');
@@ -225,7 +225,7 @@ describe('sync_agent_configuration contract', () => {
         kind: 'applied',
         action: 'updated',
         dry_run: false,
-        connection_id: 'conn_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -247,7 +247,7 @@ describe('sync_agent_configuration contract', () => {
         kind: 'applied',
         action: 'updated',
         dry_run: false,
-        connection_id: 'conn_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [{
@@ -270,7 +270,7 @@ describe('sync_agent_configuration contract', () => {
         kind: 'applied',
         action: 'updated',
         dry_run: false,
-        connection_id: 'conn_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -303,7 +303,7 @@ describe('sync_agent_configuration contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        connection_id: 'leaked_connection',
+        principal_id: 'leaked_connection',
         configuration_version: 'leaked_version',
       },
     }), false);
@@ -336,10 +336,10 @@ describe('sync_agent_configuration contract', () => {
       adcp: {
         major_versions: [3],
         idempotency: { supported: true, replay_ttl_seconds: 86400 },
-        agent_configuration: {
+        principal: {
           supported: true,
-          sync_task: 'sync_agent_configuration',
-          read_task: 'get_agent_configuration',
+          sync_task: 'sync_principal',
+          read_task: 'get_principal',
           supported_sections: ['notification_configs', 'reporting_destinations'],
           max_reporting_destinations: 16,
           reporting_destination_offerings: [
@@ -369,13 +369,13 @@ describe('sync_agent_configuration contract', () => {
           cache_ttl_seconds: 3600,
           notifications: {
             supported: true,
-            registration_task: 'sync_agent_configuration',
+            registration_task: 'sync_principal',
             event_types: ['capabilities.changed'],
           },
         },
       },
       supported_protocols: ['media_buy'],
-      experimental_features: ['protocol.agent_configuration'],
+      experimental_features: ['protocol.principal'],
       webhook_signing: { supported: true },
     };
 
@@ -404,7 +404,7 @@ describe('sync_agent_configuration contract', () => {
       assert.equal(validateReadRequest(assertedIdentity), false);
     }
 
-    const request = readSchema('/schemas/protocol/get-agent-configuration-request.json');
+    const request = readSchema('/schemas/protocol/get-principal-request.json');
     assert.match(request['x-adcp-validation'].read_only, /MUST NOT mutate/);
     assert.match(request['x-adcp-validation'].read_only, /do not advance the version/);
     assert.match(request['x-adcp-validation'].principal_isolation, /unconfigured/);
@@ -415,7 +415,7 @@ describe('sync_agent_configuration contract', () => {
       status: 'completed',
       result: {
         kind: 'current',
-        connection_id: 'conn_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -445,7 +445,7 @@ describe('sync_agent_configuration contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        connection_id: 'leaked_connection',
+        principal_id: 'leaked_connection',
       },
     }), false);
   });

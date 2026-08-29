@@ -770,9 +770,9 @@
           "$ref": "/schemas/core/agent-notification-config-state.json",
           "description": "Credential-free response readback for an agent-level webhook subscriber"
         },
-        "agent-configuration-state": {
-          "$ref": "/schemas/core/agent-configuration-state.json",
-          "description": "Credential-free caller-scoped connection configuration returned by sync_agent_configuration"
+        "principal-state": {
+          "$ref": "/schemas/core/principal-state.json",
+          "description": "Credential-free caller-scoped connection configuration returned by sync_principal"
         },
         "agent-reporting-destination": {
           "$ref": "/schemas/core/agent-reporting-destination.json",
@@ -2453,23 +2453,23 @@
             "description": "Applied agent-level webhook subscriber set with credentials redacted"
           }
         },
-        "sync-agent-configuration": {
+        "sync-principal": {
           "request": {
-            "$ref": "/schemas/protocol/sync-agent-configuration-request.json",
+            "$ref": "/schemas/protocol/sync-principal-request.json",
             "description": "Declaratively synchronize caller-scoped webhooks and reusable reporting destinations"
           },
           "response": {
-            "$ref": "/schemas/protocol/sync-agent-configuration-response.json",
+            "$ref": "/schemas/protocol/sync-principal-response.json",
             "description": "Complete credential-free caller-scoped connection configuration and setup state"
           }
         },
-        "get-agent-configuration": {
+        "get-principal": {
           "request": {
-            "$ref": "/schemas/protocol/get-agent-configuration-request.json",
+            "$ref": "/schemas/protocol/get-principal-request.json",
             "description": "Read caller-scoped connection configuration, version, and destination setup states without mutation"
           },
           "response": {
-            "$ref": "/schemas/protocol/get-agent-configuration-response.json",
+            "$ref": "/schemas/protocol/get-principal-response.json",
             "description": "Current credential-free caller-scoped connection configuration with retained destination generations"
           }
         }

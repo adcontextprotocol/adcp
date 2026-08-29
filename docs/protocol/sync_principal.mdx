@@ -1,40 +1,45 @@
 ---
-title: sync_agent_configuration
+title: sync_principal
 description: "Synchronize authenticated caller-scoped webhooks and reusable reporting destinations with an AdCP agent."
-"og:title": "AdCP — sync_agent_configuration"
+"og:title": "AdCP — sync_principal"
 ---
 
-`sync_agent_configuration` establishes durable configuration for the relationship between one authenticated caller and one AdCP seller agent. It is the buyer-to-seller configuration half of capability negotiation:
+A **principal** is the durable party behind an authenticated caller — a buyer agent, or an operator-side identity. `sync_principal` replaces the principal's standing configuration with one AdCP seller agent: webhooks, reusable reporting destinations, and its position in capability negotiation. The three tiers of the hierarchy:
 
-- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the agent can support, including its objective reporting delivery offering.
-- `sync_agent_configuration` states which supported connection resources this caller wants to use.
-- [`get_agent_configuration`](/docs/protocol/get_agent_configuration) reads current caller-scoped state, its version, and destination setup progress without mutation.
-- [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and domain tasks authorize and configure work for particular advertiser accounts.
+| Tier | Entity | Surface |
+|---|---|---|
+| 1 | **Principal** — who you are, resolved from authenticated transport | `sync_principal` / [`get_principal`](/docs/protocol/get_principal) |
+| 2 | The principal's standing configuration with this seller | carried on the principal record |
+| 3 | **Accounts** — principal × advertiser authority, feeds, schedules | [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and domain tasks |
 
-The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Caller identity comes from authenticated transport.
+[`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) states what the seller can support; `sync_principal` states which of it this principal uses; account-level tasks authorize work for particular advertisers.
+
+The task does not register a buyer agent and does not accept a buyer-agent URL or identity in its body. Who the principal is comes only from authenticated transport.
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
-**Request schema:** [`/schemas/latest/protocol/sync-agent-configuration-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-configuration-request.json)
+**Request schema:** [`/schemas/latest/protocol/sync-principal-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-principal-request.json)
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
-**Response schema:** [`/schemas/latest/protocol/sync-agent-configuration-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-agent-configuration-response.json)
+**Response schema:** [`/schemas/latest/protocol/sync-principal-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/sync-principal-response.json)
 
 ## Identity and authority
 
-The seller resolves the configuration owner from a stable authenticated principal. That principal can represent either:
+The principal is a party, in the same sense the protocol already bills and authorizes parties. It comes in two kinds:
 
-- A person acting through an interactive delegated client such as Claude, ChatGPT, or the seller's UI. The authorization-server-issued user subject owns the connection; the client application is actor context, not the owner.
-- An autonomous buyer agent or backend service. Its registered workload, OAuth client-credentials subject, server-side API-key owner, verified signed-request identity, or equivalent machine principal owns the connection.
+- **A buyer agent** authenticating as itself — its registered workload, OAuth client-credentials subject, server-side API-key owner, verified signed-request identity, or equivalent machine principal. The operators an agent acts for are agent-scoped labels within its own principal space, asserted the same way `operator_identity` is on accounts; they confer no identity across agents.
+- **An operator-side identity** — a person at the operator authenticated as themselves. The client application they act through (Claude, ChatGPT, the seller's UI) is the instrument, never the owner. A person using ChatGPT therefore configures under their own login at the seller; nothing about ChatGPT is registered.
 
-Therefore, a person using Claude to configure delivery to their S3 bucket does **not** have to register Claude or themselves as a buyer agent. They do have to authenticate as a stable delegated user, authorize the relevant advertiser account separately, and complete the destination's provider-native access or control proof. If an interactive client presents only one shared service identity and does not propagate a stable user delegation, the seller cannot safely create user-owned configuration; the client must first complete an account-linking or delegated-authorization flow.
+Whether "the operator's identity" means individual users or one org-level service identity is the seller's authorization design. Separate credentials become one principal only through explicit administrative linking — never inferred from org membership, matching operator labels, or matching domains, because that inference is a cross-party takeover path. Sellers MUST NOT link, dedupe, or grant authority across principals based on matching operator identifiers.
 
-Request-body fields, a raw signing key ID, an API-key fingerprint, an access token, a session ID, and a bucket URL are not owner identifiers. A verified JWKS key proves which key signed a request; it does not by itself prove authority to act for an advertiser account.
+If an interactive client presents only one shared service credential for all its users, the seller cannot isolate user-owned configuration — one user's sync could read or erase another's — so it MUST refuse to persist configuration under it until the client completes delegated authorization or account linking. Anonymous and shared-credential callers own nothing durable, at this layer or the account layer.
 
-Key rotation or token renewal preserves the configuration only when the seller maps the new credential to the same stable principal. Two principals cannot merge their configurations by claiming the same `connection_id`, URL, or destination. Administrative principal linking occurs through a separately authorized onboarding process.
+The model composes across hops. A buyer agent → Interchange → seller chain is two independent principal relationships: Interchange is the (agent) principal at the seller, and the buyer agent is the (agent) principal at Interchange. A person using Claude to buy through Interchange is an operator principal at Interchange. No hop sees through the next; each holds its own counterparty accountable, and end-to-end reconciliation happens at the data layer, where rows and partitions carry seller and account identity.
 
-The response's `connection_id` is a seller-issued audit and routing handle. It is not a credential and does not authorize any advertiser account.
+Request-body fields, a raw signing key ID, an API-key fingerprint, an access token, a session ID, and a bucket URL are not owner identifiers. A verified JWKS key proves which key signed a request; it does not by itself prove authority to act for an advertiser account. Key rotation or token renewal preserves the configuration only when the seller maps the new credential to the same stable principal.
 
-In the normal call sequence, a client reads capabilities first, calls `sync_agent_configuration` when advertised, and then configures or authorizes advertiser accounts. A destination can be registered before account setup, but it cannot receive account data until a later account-scoped feed binding succeeds.
+The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
+
+In the normal call sequence, a client reads capabilities first, calls `sync_principal` when advertised, and then configures or authorizes advertiser accounts. A destination can be registered before account setup, but it cannot receive account data until a later account-scoped feed binding succeeds.
 
 ## Discovery
 
@@ -43,10 +48,10 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
 ```json
 {
   "adcp": {
-    "agent_configuration": {
+    "principal": {
       "supported": true,
-      "sync_task": "sync_agent_configuration",
-      "read_task": "get_agent_configuration",
+      "sync_task": "sync_principal",
+      "read_task": "get_principal",
       "supported_sections": [
         "notification_configs",
         "reporting_destinations"
@@ -70,7 +75,7 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
       "optimistic_concurrency": true
     }
   },
-  "experimental_features": ["protocol.agent_configuration"]
+  "experimental_features": ["protocol.principal"]
 }
 ```
 
@@ -94,7 +99,7 @@ For each submitted section:
 - All submitted sections apply atomically, or none do. Sections are validated and authorized in full before any proof challenge or grant is issued, so a failed request leaves no external side effects.
 - `dry_run: true` returns `result.kind: validated` with the would-be action, without persistence, grants, endpoint challenges, connection IDs, destination references, or configuration versions. Dry-run outcomes and warnings are computed solely against the caller's own state and never reveal what other principals have registered.
 
-When `expected_configuration_version` is present, the seller applies a new operation only if it equals the current opaque version. A stale version returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without mutation. This prevents two services using the same principal from silently overwriting each other. Read the current version with [`get_agent_configuration`](/docs/protocol/get_agent_configuration) before a guarded replacement — never write blind to discover it. Retries of one logical request reuse both its `idempotency_key` and body. The seller resolves an exact idempotent replay before evaluating the version fence, so a lost successful response remains replayable after the persisted version advances. Idempotency records are scoped to the stable principal; a key first seen under a different principal starts a new operation, never a replay.
+When `expected_configuration_version` is present, the seller applies a new operation only if it equals the current opaque version. A stale version returns [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) without mutation. This prevents two services using the same principal from silently overwriting each other. Read the current version with [`get_principal`](/docs/protocol/get_principal) before a guarded replacement — never write blind to discover it. Retries of one logical request reuse both its `idempotency_key` and body. The seller resolves an exact idempotent replay before evaluating the version fence, so a lost successful response remains replayable after the persisted version advances. Idempotency records are scoped to the stable principal; a key first seen under a different principal starts a new operation, never a replay.
 
 `configuration_version` advances on every successful mutation of the shared underlying state — through this task or through [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) — and never on seller-driven setup-state transitions such as a destination becoming `ready`.
 
@@ -161,7 +166,7 @@ The response returns a seller-issued `destination_ref` and one of these states:
 | `inactive` | The caller suspended the destination (`active: false`). New deliveries halt; existing caller-owned data is not deleted. |
 | `rejected` | The coordinates or requested path cannot be used. |
 
-`destination_ref` is not a bearer capability. It identifies one immutable destination generation for the same authenticated principal. Exact replays preserve the reference; changing provider, transport, normalized coordinates or recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and produces a new reference. Superseded references stay resolvable for existing account bindings and retained reporting history, and remain enumerable to their owner through `prior_destination_refs` on [`get_agent_configuration`](/docs/protocol/get_agent_configuration). Every use still checks account authorization separately, and unknown, cross-principal, and unauthorized references fail indistinguishably.
+`destination_ref` is not a bearer capability. It identifies one immutable destination generation for the same authenticated principal. Exact replays preserve the reference; changing provider, transport, normalized coordinates or recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and produces a new reference. Superseded references stay resolvable for existing account bindings and retained reporting history, and remain enumerable to their owner through `prior_destination_refs` on [`get_principal`](/docs/protocol/get_principal). Every use still checks account authorization separately, and unknown, cross-principal, and unauthorized references fail indistinguishably.
 
 ### Destination lifecycle
 
@@ -169,7 +174,7 @@ The typical flow for a destination that needs provider-native setup:
 
 1. **Register.** The caller syncs the destination. The seller validates it against its advertised offering, issues `destination_ref`, and returns `state: "action_required"` with a typed `setup` object — for example `{"action": "grant_access"}` for a BigQuery dataset the seller's published principal cannot yet reach, or `{"action": "accept_share"}` for a dataset share awaiting recipient activation.
 2. **Complete provider-native setup.** The caller performs the action in the provider's control plane: grants the seller's principal on the bucket or dataset, accepts the share as the named recipient, or writes the seller-named proof object. Credentials never transit AdCP.
-3. **Poll the read task.** The caller polls [`get_agent_configuration`](/docs/protocol/get_agent_configuration) until the destination reaches `ready`. Reading never mutates state or the version. Resubmitting the identical section under a fresh `idempotency_key` is also safe — it returns `action: "unchanged"` and preserves `destination_ref` — but the read task is the intended poll mechanism.
+3. **Poll the read task.** The caller polls [`get_principal`](/docs/protocol/get_principal) until the destination reaches `ready`. Reading never mutates state or the version. Resubmitting the identical section under a fresh `idempotency_key` is also safe — it returns `action: "unchanged"` and preserves `destination_ref` — but the read task is the intended poll mechanism.
 4. **Bind.** Account-scoped reporting configuration references the `ready` destination by `destination_ref`, subject to its own authorization.
 
 What `ready` asserts is pattern-specific:
@@ -220,7 +225,7 @@ Failed responses carry `result.kind: "failed"` with structured errors and delibe
 | [`AUTH_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-auth-required) | Anonymous or unstable caller identity. | Authenticate as a stable principal, then retry. |
 | [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request) | Schema violation, duplicate `destination_id`, credential-shaped `location` or recipient, or oversize section. | Fix the request; do not retry unchanged. |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Section not in `supported_sections`, destination outside `reporting_destination_offerings`, or `expected_configuration_version` sent to a seller advertising `optimistic_concurrency: false`. | Re-read capabilities and select from the advertised offering. |
-| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | `expected_configuration_version` is stale. Nothing was mutated. | Read the current version with [`get_agent_configuration`](/docs/protocol/get_agent_configuration), reconcile, and resubmit under a new `idempotency_key`. |
+| [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) | `expected_configuration_version` is stale. Nothing was mutated. | Read the current version with [`get_principal`](/docs/protocol/get_principal), reconcile, and resubmit under a new `idempotency_key`. |
 | [`IDEMPOTENCY_CONFLICT`](/docs/building/verification/compliance-catalog#error-code-idempotency-conflict) | An `idempotency_key` was reused with a different body. | Use a fresh key for the new logical operation. |
 | [`IDEMPOTENCY_IN_FLIGHT`](/docs/building/verification/compliance-catalog#error-code-idempotency-in-flight) | The original operation for this key is still executing. | Retry the identical request after a short delay. |
 | [`IDEMPOTENCY_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-idempotency-expired) | The retention window for this key elapsed. | Read current state, then resubmit as a new operation if still needed. |
@@ -229,6 +234,6 @@ Provider-side setup failures for in-offering destinations are not request errors
 
 ## Compatibility
 
-[`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) remains the specialized compatibility task for agents that only support capability-change subscribers. When `capability_changes.notifications.registration_task` is `sync_agent_configuration`, clients manage those subscribers through the `notification_configs` section here.
+[`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) remains the specialized compatibility task for agents that only support capability-change subscribers. When `capability_changes.notifications.registration_task` is `sync_principal`, clients manage those subscribers through the `notification_configs` section here.
 
 The broader task does not turn [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) into caller-specific state. Capabilities remain cacheable seller facts; connection configuration remains authenticated caller state.

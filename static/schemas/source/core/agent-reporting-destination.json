@@ -3,7 +3,7 @@
   "$id": "/schemas/core/agent-reporting-destination.json",
   "title": "Agent Reporting Destination",
   "x-status": "experimental",
-  "description": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. Exactly one delivery pattern per destination; pattern is the discriminator and matches the managed reporting delivery pattern vocabulary. It does not grant account authority: account/reporting configuration separately binds authorized data to the seller-issued destination_ref. Sellers key ownership to the stable transport principal, never a signing key, token, or request-body identity. Credentials, private keys, bearer profiles, signed URLs, and embedded passwords are forbidden. Sellers implementing this schema advertise protocol.agent_configuration.",
+  "description": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. Exactly one delivery pattern per destination; pattern is the discriminator and matches the managed reporting delivery pattern vocabulary. It does not grant account authority: account/reporting configuration separately binds authorized data to the seller-issued destination_ref. Sellers key ownership to the stable transport principal, never a signing key, token, or request-body identity. Credentials, private keys, bearer profiles, signed URLs, and embedded passwords are forbidden. Sellers implementing this schema advertise protocol.principal.",
   "oneOf": [
     {
       "title": "File transfer destination",

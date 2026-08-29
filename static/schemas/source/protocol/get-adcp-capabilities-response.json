@@ -65,7 +65,7 @@
       "if": {
         "properties": {
           "adcp": {
-            "required": ["agent_configuration"]
+            "required": ["principal"]
           }
         },
         "required": ["adcp"]
@@ -73,7 +73,7 @@
       "then": {
         "properties": {
           "experimental_features": {
-            "contains": { "const": "protocol.agent_configuration" }
+            "contains": { "const": "protocol.principal" }
           }
         },
         "required": ["experimental_features"]
@@ -84,7 +84,7 @@
         "properties": {
           "adcp": {
             "properties": {
-              "agent_configuration": {
+              "principal": {
                 "properties": {
                   "supported_sections": {
                     "contains": { "const": "notification_configs" }
@@ -93,7 +93,7 @@
                 "required": ["supported_sections"]
               }
             },
-            "required": ["agent_configuration"]
+            "required": ["principal"]
           }
         },
         "required": ["adcp"]
@@ -107,7 +107,7 @@
                   "notifications": {
                     "properties": {
                       "supported": { "const": true },
-                      "registration_task": { "const": "sync_agent_configuration" }
+                      "registration_task": { "const": "sync_principal" }
                     },
                     "required": ["supported", "registration_task"]
                   }
@@ -129,7 +129,7 @@
                 "properties": {
                   "notifications": {
                     "properties": {
-                      "registration_task": { "const": "sync_agent_configuration" }
+                      "registration_task": { "const": "sync_principal" }
                     },
                     "required": ["registration_task"]
                   }
@@ -146,7 +146,7 @@
         "properties": {
           "adcp": {
             "properties": {
-              "agent_configuration": {
+              "principal": {
                 "properties": {
                   "supported_sections": {
                     "contains": { "const": "notification_configs" }
@@ -155,7 +155,7 @@
                 "required": ["supported_sections"]
               }
             },
-            "required": ["agent_configuration"]
+            "required": ["principal"]
           }
         }
       }
@@ -459,10 +459,10 @@
             }
           ]
         },
-        "agent_configuration": {
+        "principal": {
           "type": "object",
           "x-status": "experimental",
-          "description": "Caller-scoped durable connection configuration accepted by this agent. This is the buyer-to-seller configuration half of negotiation, not a second seller capability document: the seller advertises its objective offering here, while each authenticated caller submits its desired webhooks and reusable destinations through sync_agent_configuration and reads them back through get_agent_configuration. Per-account authority and feed selection remain in account/reporting configuration. Sellers exposing this block MUST list protocol.agent_configuration in experimental_features.",
+          "description": "Caller-scoped durable connection configuration accepted by this agent. This is the buyer-to-seller configuration half of negotiation, not a second seller capability document: the seller advertises its objective offering here, while each authenticated caller submits its desired webhooks and reusable destinations through sync_principal and reads them back through get_principal. Per-account authority and feed selection remain in account/reporting configuration. Sellers exposing this block MUST list protocol.principal in experimental_features.",
           "properties": {
             "supported": {
               "type": "boolean",
@@ -470,11 +470,11 @@
             },
             "sync_task": {
               "type": "string",
-              "const": "sync_agent_configuration"
+              "const": "sync_principal"
             },
             "read_task": {
               "type": "string",
-              "const": "get_agent_configuration",
+              "const": "get_principal",
               "description": "Side-effect-free task returning the caller's current connection configuration and version."
             },
             "supported_sections": {
@@ -576,8 +576,8 @@
             }
           ],
           "x-adcp-validation": {
-            "notification_registration": "When capability_changes.notifications.registration_task is sync_agent_configuration, supported_sections MUST contain notification_configs. Supporting notification_configs requires the same webhook signing, endpoint proof, and stable-principal controls as sync_agent_notification_configs, and a seller exposing both tasks MUST keep accepting sync_agent_notification_configs while notifications.supported is true.",
-            "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_agent_configuration and get_agent_configuration when this block is present.",
+            "notification_registration": "When capability_changes.notifications.registration_task is sync_principal, supported_sections MUST contain notification_configs. Supporting notification_configs requires the same webhook signing, endpoint proof, and stable-principal controls as sync_agent_notification_configs, and a seller exposing both tasks MUST keep accepting sync_agent_notification_configs while notifications.supported is true.",
+            "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_principal and get_principal when this block is present.",
             "offering_boundary": "Requests are rejected atomically for schema violations, authorization failures, unsupported sections, and out-of-offering destinations. In-offering destinations that fail provider-side setup are reported per destination as validating, action_required, or rejected inside an applied response, never as a failed request."
           },
           "additionalProperties": false
@@ -605,7 +605,7 @@
             },
             "notifications": {
               "type": "object",
-              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with the declared registration_task; sync_agent_configuration is preferred when the broader connection surface is available, while sync_agent_notification_configs remains the specialized compatibility task. Each capabilities.changed fire is a small invalidation payload, and consumers repair by re-reading get_adcp_capabilities.",
+              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with the declared registration_task; sync_principal is preferred when the broader connection surface is available, while sync_agent_notification_configs remains the specialized compatibility task. Each capabilities.changed fire is a small invalidation payload, and consumers repair by re-reading get_adcp_capabilities.",
               "oneOf": [
                 {
                   "title": "CapabilityChangeNotificationsSupported",
@@ -617,7 +617,7 @@
                     },
                     "registration_task": {
                       "type": "string",
-                      "enum": ["sync_agent_notification_configs", "sync_agent_configuration"],
+                      "enum": ["sync_agent_notification_configs", "sync_principal"],
                       "description": "Task consumers call to manage their caller-scoped agent-level subscriber set."
                     },
                     "event_types": {
@@ -2769,7 +2769,7 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_agent_configuration.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {

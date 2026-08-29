@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/protocol/get-agent-configuration-response.json",
-  "title": "Get Agent Configuration Response",
+  "$id": "/schemas/protocol/sync-principal-response.json",
+  "title": "Sync Principal Response",
   "x-status": "experimental",
-  "description": "Result of reading caller-scoped agent connection configuration. Current responses return the complete credential-free configuration with its version. Unconfigured responses indicate the authenticated caller has no persisted connection. Failed responses deliberately cannot carry connection identifiers, versions, or configuration state.",
+  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. Failed responses deliberately cannot carry connection identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {
@@ -17,14 +17,23 @@
     "result": {
       "oneOf": [
         {
-          "title": "Current agent configuration",
+          "title": "Applied principal configuration",
           "type": "object",
           "properties": {
             "kind": {
               "type": "string",
-              "const": "current"
+              "const": "applied"
             },
-            "connection_id": {
+            "action": {
+              "type": "string",
+              "enum": ["updated", "unchanged", "cleared"],
+              "description": "Persisted outcome for the submitted sections, computed solely against the caller's own prior state. cleared applies only when every submitted section was []; any other change is updated; unchanged means no submitted section differed."
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": false
+            },
+            "principal_id": {
               "type": "string",
               "minLength": 1,
               "maxLength": 255,
@@ -34,29 +43,51 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 255,
-              "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_agent_configuration replacement."
+              "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
             },
             "configuration": {
-              "$ref": "/schemas/core/agent-configuration-state.json"
+              "$ref": "/schemas/core/principal-state.json"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
             }
           },
-          "required": ["kind", "connection_id", "configuration_version", "configuration"],
+          "required": ["kind", "action", "dry_run", "principal_id", "configuration_version", "configuration"],
           "additionalProperties": false
         },
         {
-          "title": "Unconfigured agent connection",
+          "title": "Validated principal dry run",
           "type": "object",
           "properties": {
             "kind": {
               "type": "string",
-              "const": "unconfigured"
+              "const": "validated"
+            },
+            "action": {
+              "type": "string",
+              "enum": ["would_update", "would_be_unchanged", "would_clear"]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": true
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "maxItems": 16
             }
           },
-          "required": ["kind"],
+          "required": ["kind", "action", "dry_run"],
           "additionalProperties": false
         },
         {
-          "title": "Failed agent configuration read",
+          "title": "Failed principal sync",
           "type": "object",
           "properties": {
             "kind": {
@@ -106,12 +137,14 @@
   },
   "examples": [
     {
-      "description": "Current connection configuration with a superseded generation",
+      "description": "Connection configuration updated",
       "data": {
         "status": "completed",
         "result": {
-          "kind": "current",
-          "connection_id": "conn_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "kind": "applied",
+          "action": "updated",
+          "dry_run": false,
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
           "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
           "configuration": {
             "notification_configs": [],
@@ -119,7 +152,6 @@
               {
                 "destination_id": "analytics-warehouse",
                 "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
-                "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
                 "state": "ready",
                 "configuration": {
                   "pattern": "warehouse_materialization",
@@ -133,15 +165,6 @@
               }
             ]
           }
-        }
-      }
-    },
-    {
-      "description": "Caller has no persisted connection",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "unconfigured"
         }
       }
     }
