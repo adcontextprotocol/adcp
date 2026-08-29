@@ -11,6 +11,7 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelRequest,
+  ModelRespondOptions,
   ModelResponse,
   NormalizedModelEvent,
   PreparedModelInvocation,
@@ -59,13 +60,15 @@ function fakeRouterProvider(
     error?: Error;
     providerId?: ModelProvider['id'];
   } = {},
-): ModelProvider & { requests: ModelRequest[] } {
+): ModelProvider & { requests: ModelRequest[]; signals: Array<AbortSignal | undefined> } {
   const requests: ModelRequest[] = [];
+  const signals: Array<AbortSignal | undefined> = [];
   const providerId = options.providerId ?? 'anthropic';
   return {
     id: providerId,
     capabilities: ROUTER_CAPABILITIES,
     requests,
+    signals,
     prepare(request: ModelRequest): PreparedModelInvocation {
       return {
         provider: providerId,
@@ -74,8 +77,15 @@ function fakeRouterProvider(
         providerRequest: {},
       };
     },
-    async *respond(request: ModelRequest): AsyncIterable<NormalizedModelEvent> {
+    async *respond(
+      request: ModelRequest,
+      respondOptions?: ModelRespondOptions,
+    ): AsyncIterable<NormalizedModelEvent> {
       requests.push(request);
+      signals.push(respondOptions?.signal);
+      if (respondOptions?.signal?.aborted) {
+        throw respondOptions.signal.reason ?? new Error('aborted');
+      }
       if (options.error) throw options.error;
       const response: ModelResponse = {
         provider: providerId,
@@ -751,6 +761,23 @@ describe('AddieRouter.route', () => {
       tool_sets: ['knowledge'],
       model: 'gpt-5.6-luna',
     });
+  });
+
+  it('forwards an abort signal so a canary boundary can enforce its deadline', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"ignore","reason":"not needed"}',
+    }]);
+    const subject = new AddieRouter('unused', provider, undefined, { strictOutput: true });
+    const controller = new AbortController();
+    const deadlineError = new Error('router_canary_timeout');
+    controller.abort(deadlineError);
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }, {
+      failureMode: 'throw',
+      signal: controller.signal,
+    })).rejects.toBe(deadlineError);
+    expect(provider.signals).toEqual([controller.signal]);
   });
 
   it.each([
