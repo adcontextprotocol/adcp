@@ -188,6 +188,17 @@ describe('strict router eval', () => {
     expect(admin).not.toContain('- **admin**:');
     expect(getValidToolSetNames(true).has('admin')).toBe(false);
     expect(nonAdmin).toContain('Exact bare acknowledgments');
+    expect(nonAdmin).toContain('Do not respond merely to disclaim expertise or recommend a professional');
+    expect(nonAdmin).toContain('A requirement that mentions an identifier or asset is still conceptual');
+    expect(nonAdmin).toContain('a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit');
+    expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
+    expect(admin).toContain('always select exactly ["events", "admin_events"]');
+  });
+
+  it('routes equivalent conceptual protocol requirements to the same retrieval domain', () => {
+    const channelCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'channel-protocol')!;
+    const mentionCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'mention-protocol')!;
+    expect(mentionCase.expected.toolSets).toEqual(channelCase.expected.toolSets);
   });
 
   it('accepts exact plans and rejects fallback-shaped, unauthorized, or extra-field output', () => {

@@ -624,12 +624,13 @@ ${
     ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n'
     : ""
 }IMPORTANT: Select tool SETS based on the user's INTENT:
-- Questions about AdCP, protocols, or implementation → ["knowledge"]
-- AdCP schema fields or structure → ["knowledge", "schema_reference"]; validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, combine ["schema_reference", "agent_testing"] and add ["knowledge"] only when separate protocol documentation is requested
+- Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure
+- Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_testing"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_testing"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about member profile, working groups, account → ["member"]
-- Looking for companies/vendors/service providers/implementation partners or managing brand-registry canonical documents → ["directory"]
-- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
+- Looking for companies/vendors/service providers/implementation partners → ["directory"]
+- Managing or checking brand-registry canonical documents, including reciprocal brand.json assertions → ["directory"], not ["agent_testing"]
+- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]. Do not use it for brand-registry canonical documents
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]
@@ -643,7 +644,7 @@ ${isAAOAdmin
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
-${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → ["events", "admin_events"]
+${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
 - Listing all members with payment/product/invoice status, organization domains, roles, profiles, or duplicate organizations → ["admin_organizations"]
@@ -655,7 +656,7 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
-- Open or unsettled multi-stakeholder governance questions may combine ["knowledge", "community_research"] to distinguish documented rules from current discussion
+- Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
 - General questions needing no tools → []
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
@@ -664,13 +665,14 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 Use these for short social messages with some context. Exact bare acknowledgments
 such as "thanks" remain in the ignore category below.
 ${reactList}
+- Community introductions, announcements, and positive social updates with no question or request → react, not ignore. Example: "We hosted a meetup last week and had a great time"
 
 ## Messages to Ignore
+- Regardless of message source, ignore requests outside Addie's expertise such as legal, HR, medical, or unrelated general advice. Do not respond merely to disclaim expertise or recommend a professional
 - Simple acknowledgments: ok, got it, cool, thanks, etc.
 - Casual conversation unrelated to AdCP or AgenticAdvertising.org
 - Messages clearly directed at specific people (e.g., start with "<@USERID> ..." in Slack format)
 - Off-topic discussions
-- Community introductions, announcements, or social updates where the author is NOT asking a question and NOT requesting help from Addie — even if the topic relates to AdCP or events. Examples: "Hi everyone, I'm James from X, looking forward to the event", "We hosted an AdCP meetup last week", "Will register for the summit". React to these with an emoji instead.
 - Open questions to the channel ("does anyone know...", "has anyone tried...", "thoughts on...") — these are addressed to humans, not Addie
 - Opinion polls or community discussion prompts ("what do you all think about...", "what does everyone think about...") — even when the topic involves ad tech standards, IAB guidelines, or industry news. Exception: if the question is specifically about an AdCP protocol detail or schema that only Addie's docs can answer, apply the Channel Response Policy criteria above instead
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
@@ -714,7 +716,7 @@ ${
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
      - "suggest": The topic relates to AdCP but the answer is NOT definitively in Addie's docs — it's an open question, evolving standard, policy/governance decision, commercial/business terms not yet codified, or something a specific person/working group is better positioned to answer. Addie can point to the right people or group. Examples: "who pays the signal provider?", "does an AI impression count?", "what's the governance model?"
      - "low": Adjacent to Addie's domain but she has no verified answer and no specific person to point to.
-   - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
+   - Set "requires_depth": true only when the user needs extended reasoning about protocol design, schema architecture, multi-part implementation analysis, standards or RFC/roadmap research, multi-stakeholder governance, or a follow-up that continues an existing technical protocol explanation thread. Set it to false for standalone straightforward requirement lookups, drafting an issue, executing an otherwise bounded tool action (including running a conformance suite), a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit. "Inspect the schema fields and then validate my implementation against them" is multi-part and requires depth; "What about reporting?" after an explanation of media buying continues the technical thread and also requires depth.
 
 Respond with ONLY the JSON object, no other text.`;
 }

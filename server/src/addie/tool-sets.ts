@@ -481,7 +481,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   admin_events: {
     name: "admin_events",
     description:
-      "Administer events: create or update events, manage registrations, check a person's status, and send invitations (admin only)",
+      "Admin mutation companion for the events set: create or update events, manage registrations, check a person's status, and send invitations; always select together with events (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_events],
     adminOnly: true,
   },
