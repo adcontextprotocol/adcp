@@ -1,4 +1,4 @@
-import { describe, test, expect, vi } from 'vitest';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 import type Stripe from 'stripe';
 import type { MockedClass } from 'vitest';
 
@@ -9,6 +9,10 @@ vi.mock('stripe', () => {
 });
 
 describe('Webhook Security', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   describe('Stripe webhook signature verification', () => {
     test('webhook endpoint requires raw body for signature verification', () => {
       // This test documents that the webhook endpoint MUST receive
@@ -24,8 +28,8 @@ describe('Webhook Security', () => {
     });
 
     test('rejects webhook with invalid signature', async () => {
-      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
@@ -53,8 +57,8 @@ describe('Webhook Security', () => {
     });
 
     test('accepts webhook with valid signature', async () => {
-      process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
-      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+      vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test');
+      vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_mock');
 
       const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
 
@@ -98,16 +102,10 @@ describe('Webhook Security', () => {
       // Document that STRIPE_WEBHOOK_SECRET is required
       // Without it, webhooks cannot be verified and should be rejected
 
-      const originalEnv = process.env.STRIPE_WEBHOOK_SECRET;
-      delete process.env.STRIPE_WEBHOOK_SECRET;
+      vi.stubEnv('STRIPE_WEBHOOK_SECRET', undefined as unknown as string);
 
       // The webhook endpoint should check for this and return 500
       expect(process.env.STRIPE_WEBHOOK_SECRET).toBeUndefined();
-
-      // Restore
-      if (originalEnv) {
-        process.env.STRIPE_WEBHOOK_SECRET = originalEnv;
-      }
     });
   });
 
