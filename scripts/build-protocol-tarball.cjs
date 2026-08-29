@@ -130,21 +130,42 @@ function archiveEntries(stagingRoot, rootDirName) {
   return entries;
 }
 
+function updateJsonFile(filePath, update) {
+  let fd;
+  try {
+    fd = fs.openSync(filePath, 'r+');
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+
+  try {
+    const document = JSON.parse(fs.readFileSync(fd, 'utf8'));
+    if (!update(document)) return;
+
+    const output = JSON.stringify(document, null, 2) + '\n';
+    fs.ftruncateSync(fd, 0);
+    fs.writeSync(fd, output, 0, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 function pinGeneratedAt(filePath, generatedAt) {
-  if (!fs.existsSync(filePath)) return;
-  const document = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  if (typeof document.generated_at !== 'string') return;
-  document.generated_at = generatedAt;
-  fs.writeFileSync(filePath, JSON.stringify(document, null, 2) + '\n');
+  updateJsonFile(filePath, document => {
+    if (typeof document.generated_at !== 'string') return false;
+    document.generated_at = generatedAt;
+    return true;
+  });
 }
 
 function pinPublishedVersion(filePath, publishedVersion) {
-  if (!fs.existsSync(filePath)) return;
-  const document = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  if ('published_version' in document) document.published_version = publishedVersion;
-  if ('adcp_version' in document) document.adcp_version = publishedVersion;
-  if (typeof document.baseUrl === 'string') document.baseUrl = `/schemas/${publishedVersion}`;
-  fs.writeFileSync(filePath, JSON.stringify(document, null, 2) + '\n');
+  updateJsonFile(filePath, document => {
+    if ('published_version' in document) document.published_version = publishedVersion;
+    if ('adcp_version' in document) document.adcp_version = publishedVersion;
+    if (typeof document.baseUrl === 'string') document.baseUrl = `/schemas/${publishedVersion}`;
+    return true;
+  });
 }
 
 function writeBundleReadme(bundleDir, version, isDev) {
