@@ -24,7 +24,7 @@
     "server/src/addie/email-conversation-handler.ts": "091feb8569d9d254351c2c37b11747e34d3e5f6777bc362e5de750c05568a4a5",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
-    "server/src/addie/tool-sets.ts": "b6af1acf8cf852b44fd30973ab8c0b7d7dfa46c427d9f1f503761ac11486b012"
+    "server/src/addie/tool-sets.ts": "2f616ea495ecf1d330a15114ed8e6820a6e91bdcd5fed4c413cd08532449e56e"
   },
   "routed": {
     "tool_set_count": 28,
