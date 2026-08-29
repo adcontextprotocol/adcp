@@ -201,8 +201,12 @@ function toGoogleRequest(request: ModelRequest): GenerateContentParameters {
         }],
         toolConfig: {
           functionCallingConfig: {
-            mode: FunctionCallingConfigMode.VALIDATED,
-            allowedFunctionNames: request.tools.map((tool) => tool.name),
+            mode: request.toolChoice?.type === 'required' || request.toolChoice?.type === 'tool'
+              ? FunctionCallingConfigMode.ANY
+              : FunctionCallingConfigMode.VALIDATED,
+            allowedFunctionNames: request.toolChoice?.type === 'tool'
+              ? [request.toolChoice.name]
+              : request.tools.map((tool) => tool.name),
           },
         },
       }),
