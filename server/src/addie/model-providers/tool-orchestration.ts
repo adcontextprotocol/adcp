@@ -150,7 +150,18 @@ export class AddieToolExecutionLedger {
     return recorded;
   }
 
-  recordCustomEvent(
+  async *executeCustomCalls(
+    calls: readonly ModelToolCallContent[],
+    execute: AddieToolExecutor,
+    turnResults: ModelToolResultContent[],
+  ): AsyncGenerator<AddieToolExecutionEvent> {
+    for await (const event of executeAddieToolCalls(calls, execute, this.currentSequence)) {
+      this.recordCustomEvent(event, turnResults);
+      yield event;
+    }
+  }
+
+  private recordCustomEvent(
     event: AddieToolExecutionEvent,
     turnResults: ModelToolResultContent[],
   ): void {

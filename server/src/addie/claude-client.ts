@@ -63,7 +63,6 @@ import {
 import {
   AddieToolExecutionLedger,
   createAddieToolExecutor,
-  executeAddieToolCalls,
   type AddieExecutionMode,
   type ToolExecution,
   type ToolExecutionPolicy,
@@ -1758,12 +1757,11 @@ export class AddieClaudeClient {
       if (stopAction === 'execute_tools') {
         const toolResults: ModelToolResultContent[] = [];
 
-        for await (const event of executeAddieToolCalls(
+        for await (const event of executionLedger.executeCustomCalls(
           turn.toolCalls,
           executeToolCall,
-          executionLedger.sequence,
+          toolResults,
         )) {
-          executionLedger.recordCustomEvent(event, toolResults);
           if (event.type === 'start') {
             hasExecutedCustomTool = true;
             logger.debug(
@@ -2417,12 +2415,11 @@ export class AddieClaudeClient {
           logicalText += iterationText;
           const toolResults: ModelToolResultContent[] = [];
 
-          for await (const event of executeAddieToolCalls(
+          for await (const event of executionLedger.executeCustomCalls(
             turn.toolCalls,
             executeToolCall,
-            executionLedger.sequence,
+            toolResults,
           )) {
-            executionLedger.recordCustomEvent(event, toolResults);
             if (event.type === 'start') {
               logger.debug(
                 {
