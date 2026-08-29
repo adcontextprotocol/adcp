@@ -34,6 +34,7 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelRequest,
+  ModelResponse,
   PreparedModelInvocation,
 } from "./model-providers/model-provider.js";
 import {
@@ -718,6 +719,7 @@ Respond with ONLY the JSON object, no other text.`;
 export function buildRouterModelRequest(
   ctx: RoutingContext,
   model = ModelConfig.fast,
+  reasoning?: ModelRequest['reasoning'],
 ): ModelRequest {
   return {
     model,
@@ -728,6 +730,7 @@ export function buildRouterModelRequest(
     }],
     tools: [],
     maxOutputTokens: 300,
+    ...(reasoning && { reasoning }),
   };
 }
 
@@ -748,10 +751,17 @@ export function extractRouterResponseText(
 }
 
 function classifyRouterError(error: unknown):
+  | "invalid_json"
+  | "schema_invalid"
+  | "refusal"
+  | "truncated"
+  | "incomplete"
   | "unexpected_model_identity"
   | "invalid_provider_event_stream"
   | "unsupported_provider_capability"
   | "provider_error" {
+  if (error instanceof RouterPlanParseError) return error.category;
+  if (error instanceof RouterTerminalResponseError) return error.category;
   if (error instanceof UnexpectedModelIdentityError) {
     return "unexpected_model_identity";
   }
@@ -762,6 +772,13 @@ function classifyRouterError(error: unknown):
     return "unsupported_provider_capability";
   }
   return "provider_error";
+}
+
+class RouterTerminalResponseError extends Error {
+  constructor(readonly category: 'refusal' | 'truncated' | 'incomplete') {
+    super(`Router response was not terminal: ${category}`);
+    this.name = 'RouterTerminalResponseError';
+  }
 }
 
 /**
@@ -978,6 +995,24 @@ export function parseRouterResponse(response: string): ParsedPlan {
   }
 }
 
+function strictPlanToParsedPlan(plan: StrictRouterPlan): ParsedPlan {
+  if (plan.action === 'ignore') return { action: 'ignore', reason: plan.reason };
+  if (plan.action === 'react') {
+    if (!plan.emoji) throw new RouterPlanParseError('schema_invalid', 'React response has no emoji');
+    return { action: 'react', emoji: plan.emoji, reason: plan.reason };
+  }
+  if (!plan.tool_sets || !plan.confidence || typeof plan.requires_depth !== 'boolean') {
+    throw new RouterPlanParseError('schema_invalid', 'Respond response is incomplete');
+  }
+  return {
+    action: 'respond',
+    tool_sets: plan.tool_sets,
+    confidence: plan.confidence,
+    requires_depth: plan.requires_depth,
+    reason: plan.reason,
+  };
+}
+
 export interface RouterModelObservation {
   canonicalRequest: ModelRequest;
   primaryInvocation: PreparedModelInvocation | null;
@@ -1004,6 +1039,15 @@ export interface RouterRouteOptions {
    * It cannot change or delay the production decision.
    */
   observer?: (observation: RouterModelObservation) => void | Promise<void>;
+  /** Used by a higher-level canary boundary so it can invoke the fallback provider. */
+  failureMode?: 'safe_fallback' | 'throw';
+}
+
+export interface AddieRouterProviderOptions {
+  model?: string;
+  reasoning?: ModelRequest['reasoning'];
+  /** Reject malformed, incomplete, or unauthorized plans instead of normalizing them. */
+  strictOutput?: boolean;
 }
 
 function queueRouterObserver(
@@ -1030,16 +1074,23 @@ function queueRouterObserver(
 export class AddieRouter {
   private readonly provider: ModelProvider;
   private readonly providerHealth: ProviderHealthController;
+  private readonly model: string;
+  private readonly reasoning?: ModelRequest['reasoning'];
+  private readonly strictOutput: boolean;
 
   constructor(
     apiKey: string,
     provider?: ModelProvider,
     providerHealth: ProviderHealthController = new ProviderHealthController(),
+    options: AddieRouterProviderOptions = {},
   ) {
     this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
       maxRetries: 2,
     });
     this.providerHealth = providerHealth;
+    this.model = options.model ?? ModelConfig.fast;
+    this.reasoning = options.reasoning;
+    this.strictOutput = options.strictOutput ?? false;
   }
 
   /**
@@ -1053,8 +1104,12 @@ export class AddieRouter {
     options: RouterRouteOptions = {},
   ): Promise<ExecutionPlan> {
     const startTime = Date.now();
-    const canonicalRequest = deepFreezeRouterValue(buildRouterModelRequest(ctx));
+    const canonicalRequest = deepFreezeRouterValue(
+      buildRouterModelRequest(ctx, this.model, this.reasoning),
+    );
     let primaryInvocation: PreparedModelInvocation | null = null;
+    let primaryResponse: ModelResponse | null = null;
+    let rawResponseText: string | null = null;
 
     try {
       const availability = this.providerHealth.acquire(this.provider.id, 'router');
@@ -1069,11 +1124,24 @@ export class AddieRouter {
         }),
         this.provider.id,
       );
-      this.providerHealth.recordSuccess(this.provider.id, 'router');
-
+      primaryResponse = response;
       const text = extractRouterResponseText(response.content);
+      rawResponseText = text;
 
-      const parsedPlan = parseRouterResponse(text);
+      if (this.strictOutput && response.finishReason !== 'stop') {
+        throw new RouterTerminalResponseError(
+          response.finishReason === 'length'
+            ? 'truncated'
+            : response.finishReason === 'refusal'
+              ? 'refusal'
+              : 'incomplete',
+        );
+      }
+
+      const parsedPlan = this.strictOutput
+        ? strictPlanToParsedPlan(parseStrictRouterPlan(text, ctx.isAAOAdmin ?? false))
+        : parseRouterResponse(text);
+      this.providerHealth.recordSuccess(this.provider.id, 'router');
       const latencyMs = Date.now() - startTime;
 
       // Filter tool sets to only valid/permitted sets for this user
@@ -1107,7 +1175,7 @@ export class AddieRouter {
         latency_ms: latencyMs,
         tokens_input: response.usage.inputTokens,
         tokens_output: response.usage.outputTokens,
-        model: ModelConfig.fast,
+        model: this.model,
         requires_precision: requiresPrecisionMode,
         requires_depth: requiresDepthMode,
       };
@@ -1131,7 +1199,7 @@ export class AddieRouter {
 
       // Track for performance metrics (fire-and-forget, errors handled internally)
       void trackApiCall({
-        model: ModelConfig.fast,
+        model: this.model,
         purpose: ApiPurpose.ROUTER,
         tokens_input: response.usage.inputTokens,
         tokens_output: response.usage.outputTokens,
@@ -1148,7 +1216,7 @@ export class AddieRouter {
         finishReason: response.finishReason,
         primaryErrorCategory: null,
         requestedProvider: this.provider.id,
-        requestedModel: ModelConfig.fast,
+        requestedModel: this.model,
         returnedProvider: response.provider,
         returnedModel: response.model,
         inputTokens: response.usage.inputTokens,
@@ -1182,20 +1250,21 @@ export class AddieRouter {
         primaryInvocation,
         isAdmin: ctx.isAAOAdmin ?? false,
         productionPlan: fallbackPlan,
-        rawResponseText: null,
-        responseContent: [],
-        finishReason: null,
+        rawResponseText,
+        responseContent: primaryResponse?.content ?? [],
+        finishReason: primaryResponse?.finishReason ?? null,
         primaryErrorCategory: category,
         requestedProvider: this.provider.id,
-        requestedModel: ModelConfig.fast,
-        returnedProvider: null,
-        returnedModel: null,
-        inputTokens: null,
-        outputTokens: null,
-        cacheReadTokens: null,
-        cacheWriteTokens: null,
+        requestedModel: this.model,
+        returnedProvider: primaryResponse?.provider ?? null,
+        returnedModel: primaryResponse?.model ?? null,
+        inputTokens: primaryResponse?.usage.inputTokens ?? null,
+        outputTokens: primaryResponse?.usage.outputTokens ?? null,
+        cacheReadTokens: primaryResponse?.usage.cacheReadTokens ?? null,
+        cacheWriteTokens: primaryResponse?.usage.cacheWriteTokens ?? null,
         latencyMs: Date.now() - startTime,
       });
+      if (options.failureMode === 'throw') throw error;
       return fallbackPlan;
     }
   }
