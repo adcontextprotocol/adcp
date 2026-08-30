@@ -8191,14 +8191,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         if (error instanceof ComplianceRefreshRateLimitError) {
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(429).json({
-            error: error.message,
+            error: error.scope === 'agent'
+              ? 'Rate limit exceeded for this agent'
+              : 'Hourly refresh limit exceeded',
             retry_after: error.retryAfterSeconds,
           });
         }
         if (error instanceof ComplianceRefreshInProgressError) {
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(409).json({
-            error: error.message,
+            error: 'A refresh is already in progress for this agent',
             code: 'refresh_in_progress',
             retry_after: error.retryAfterSeconds,
           });
