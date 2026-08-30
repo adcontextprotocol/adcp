@@ -161,9 +161,19 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
     );
     expect(Number(pruned.rows[0].pruned_count)).toBe(1);
 
-    const remaining = await client.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM verification_profile_shadow_assessments`,
+    const expired = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM verification_profile_shadow_assessments
+       WHERE source_run_id = $1`,
+      [sourceRunId],
     );
-    expect(remaining.rows[0].count).toBe('0');
+    expect(expired.rows[0].count).toBe('0');
+
+    const recent = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM verification_profile_shadow_assessments
+       WHERE evaluated_at >= NOW() - INTERVAL '90 days'`,
+    );
+    expect(recent.rows[0].count).toBe('1');
   });
 });
