@@ -5,11 +5,11 @@ import { Pool, type PoolClient } from 'pg';
 
 const TEST_SCHEMA = `verification_profile_shadow_migration_test_${process.pid}`;
 const MIGRATION = readFileSync(
-  resolve(__dirname, '../../src/db/migrations/571_verification_profile_shadow_rollout.sql'),
+  resolve(__dirname, '../../src/db/migrations/572_verification_profile_shadow_rollout.sql'),
   'utf8',
 );
 
-describe.skipIf(!process.env.DATABASE_URL)('migration 571: verification profile shadow rollout', () => {
+describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile shadow rollout', () => {
   let pool: Pool;
   let client: PoolClient;
   let sourceRunId: string;
@@ -89,6 +89,36 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 571: verification profile 
     expect(names).not.toEqual(expect.arrayContaining([
       'request', 'response', 'request_jsonb', 'response_jsonb', 'auth', 'token', 'headers',
     ]));
+  });
+
+  it('accepts NULL recommended_profile for a production agent where both profiles are partial', async () => {
+    const run = await client.query<{ id: string }>(
+      'INSERT INTO agent_compliance_runs DEFAULT VALUES RETURNING id',
+    );
+    // deriveVerificationProfileShadowAssessment returns null when neither spec
+    // nor sandbox status is 'passing'; the CHECK must not reject that row.
+    await expect(client.query(
+      `INSERT INTO verification_profile_shadow_assessments (
+         source_run_id, agent_url, lifecycle_stage, policy_version,
+         current_public_status, proposed_spec_status, proposed_sandbox_status,
+         sandbox_eligible, recommended_profile, run_complete,
+         bundle_evidence_present, failing_bundle_count,
+         incomplete_bundle_count, sandbox_unresolved_bundle_count,
+         unattributed_failure_count,
+         selected_storyboard_count, applicable_phase_count,
+         controller_gap_phase_count, controller_gap_step_count,
+         controller_cascade_step_count, observed_failure_count,
+         sandbox_observable_failure_count, non_controller_gap_step_count,
+         controller_missing_storyboard_count, other_missing_storyboard_count,
+         mixed_controller_failure_phase_count
+       ) VALUES (
+         $1, 'https://seller.example.test/partial', 'production', 'verification-profiles-v1',
+         'partial', 'partial', 'partial', TRUE, NULL, TRUE,
+         TRUE, 2, 1, 0, 0,
+         10, 9, 1, 1, 2, 2, 1, 0, 1, 0, 0
+       )`,
+      [run.rows[0].id],
+    )).resolves.toBeDefined();
   });
 
   it('rejects Sandbox outcomes for a non-production lifecycle', async () => {
