@@ -488,6 +488,12 @@ describe('verified official docs replay generation', () => {
         if (decision?.allowed) await requestTools.handlers.get('search_docs')?.(input);
         return generatedResponse({
           tools_used: ['search_docs'],
+          usage: {
+            input_tokens: 123,
+            output_tokens: 45,
+            cache_read_input_tokens: 67,
+            cache_creation_input_tokens: 8,
+          },
           tool_executions: [{
             tool_name: 'search_docs',
             parameters: {},
@@ -508,6 +514,7 @@ describe('verified official docs replay generation', () => {
       client: fakeClient as never,
       getDocsFingerprint: () => 'docs-fingerprint',
       renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(350),
       createKnowledgeHandlers: createHandlers as never,
     });
 
@@ -520,6 +527,10 @@ describe('verified official docs replay generation', () => {
       outputBytes: expect.any(Number),
       inputTokens: 123,
       outputTokens: 45,
+      cacheReadTokens: 67,
+      cacheWriteTokens: 8,
+      usageAvailable: true,
+      latencyMs: 250,
     });
     expect(result.outputHmac).toMatch(/^[0-9a-f]{64}$/);
     expect(result.toolExecutions).toMatchObject([{
@@ -715,6 +726,44 @@ describe('verified official docs replay generation', () => {
     });
     expect(outputConsumer).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it('marks missing terminal usage incomplete instead of treating it as zero', async () => {
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.(officialDocsSnapshot());
+        return generatedResponse({ usage: undefined });
+      }),
+    };
+    const result = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(200),
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    });
+    expect(result).toMatchObject({
+      status: 'blocked',
+      reason: 'usage_unavailable',
+      usageAvailable: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 100,
+      blockedCapabilities: ['usage_unavailable'],
+    });
   });
 
   it('contains consumer failures behind a safe post-generation completion', async () => {

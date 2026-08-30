@@ -124,6 +124,7 @@ export interface VerifiedOfficialDocsReplayDependencies {
   getDocsFingerprint?: typeof getDocsCorpusFingerprint;
   createKnowledgeHandlers?: typeof createKnowledgeToolHandlers;
   renewLease?: () => Promise<boolean>;
+  monotonicNow?: () => number;
   outputConsumer?: (
     output: TrustedOfficialDocsReplayOutput,
   ) => Promise<ShadowReplayJudgeEvidence>;
@@ -607,6 +608,26 @@ function boundedUsage(value: number | undefined): number {
     : 0;
 }
 
+function hasCompleteUsage(
+  usage: AddieResponse['usage'],
+): usage is NonNullable<AddieResponse['usage']> {
+  if (!usage) return false;
+  const values = [
+    usage.input_tokens,
+    usage.output_tokens,
+    usage.cache_read_input_tokens ?? 0,
+    usage.cache_creation_input_tokens ?? 0,
+  ];
+  return values.every((value) => Number.isSafeInteger(value) && value >= 0);
+}
+
+function generationLatencyMs(startedAt: number, completedAt: number): number | null {
+  const duration = completedAt - startedAt;
+  return Number.isFinite(duration) && duration >= 0 && duration <= 900_000
+    ? Math.ceil(duration)
+    : null;
+}
+
 /**
  * Generate one non-user-visible answer from an already authorized and parity-
  * checked official-docs invocation. Raw questions, tool payloads/results, and
@@ -691,6 +712,8 @@ export async function executeVerifiedOfficialDocsReplay(
     });
   }
 
+  const monotonicNow = dependencies.monotonicNow ?? (() => performance.now());
+  const generationStartedAt = monotonicNow();
   let response: AddieResponse;
   try {
     response = await client.processMessage(
@@ -799,6 +822,7 @@ export async function executeVerifiedOfficialDocsReplay(
       },
     );
   } catch (error) {
+    const latencyMs = generationLatencyMs(generationStartedAt, monotonicNow());
     const reason = error instanceof OfficialDocsReplayBoundaryError
       ? error.reason
       : 'provider_execution_failed';
@@ -831,6 +855,10 @@ export async function executeVerifiedOfficialDocsReplay(
         : ['provider_execution_failed', 'usage_unavailable'],
       inputTokens: 0,
       outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      usageAvailable: false,
+      latencyMs,
     });
   }
 
@@ -892,6 +920,10 @@ export async function executeVerifiedOfficialDocsReplay(
   if (getFingerprint() !== input.docsCorpusFingerprint) {
     blockedCapabilities.add('docs_corpus_drift');
   }
+  const latencyMs = generationLatencyMs(generationStartedAt, monotonicNow());
+  const usageAvailable = hasCompleteUsage(response.usage);
+  if (!usageAvailable) blockedCapabilities.add('usage_unavailable');
+  if (latencyMs === null) blockedCapabilities.add('latency_unavailable');
 
   // The model output is never returned or persisted. Only evidence over the
   // exact bytes produced by the client leaves this scope.
@@ -901,6 +933,7 @@ export async function executeVerifiedOfficialDocsReplay(
   const completeFidelity = blocked.length === 0
     && invocations.length > 0
     && toolExecutions.every(({ disposition }) => disposition === 'live_read');
+  const usage = usageAvailable ? response.usage : undefined;
 
   const completion: VerifiedOfficialDocsReplayResult = {
     traceId: input.trace.traceId,
@@ -917,8 +950,12 @@ export async function executeVerifiedOfficialDocsReplay(
     invocations,
     toolExecutions,
     blockedCapabilities: blocked,
-    inputTokens: boundedUsage(response.usage?.input_tokens),
-    outputTokens: boundedUsage(response.usage?.output_tokens),
+    inputTokens: boundedUsage(usage?.input_tokens),
+    outputTokens: boundedUsage(usage?.output_tokens),
+    cacheReadTokens: boundedUsage(usage?.cache_read_input_tokens),
+    cacheWriteTokens: boundedUsage(usage?.cache_creation_input_tokens),
+    usageAvailable,
+    latencyMs,
   };
   if (!completeFidelity || !dependencies.outputConsumer) return completion;
 

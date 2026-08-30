@@ -34,11 +34,23 @@ const TRACE_KEY_VERSION = 'test-v1';
 const NOW = new Date('2026-08-25T08:00:00.000Z');
 const QUESTION = 'private.person@example.test secret-question-sentinel';
 const HUMAN_RESPONSE = 'A private exact human answer with enough substantive bytes.';
+const COMPLETE_GENERATION_USAGE = {
+  cacheReadTokens: 4,
+  cacheWriteTokens: 2,
+  usageAvailable: true,
+  latencyMs: 250,
+} as const;
+const UNAVAILABLE_GENERATION_USAGE = {
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  usageAvailable: false,
+  latencyMs: null,
+} as const;
 
 function snapshot(): InvocationPreparedSnapshot {
   return {
     execution_mode: 'production',
-    model: 'claude-test',
+    model: 'claude-sonnet-5',
     iteration: 1,
     attempt: 1,
     system_blocks: [{ index: 0, sha256: 'a'.repeat(64) }],
@@ -83,7 +95,7 @@ function captureInput(identity = createShadowReplayCaptureIdentity({
       allowedToolNames: [...OFFICIAL_DOCS_ALLOWED_TOOLS],
       initialToolChoice: { type: 'tool', name: 'search_docs' },
     },
-    effectiveModel: 'claude-test',
+    effectiveModel: 'claude-sonnet-5',
     selectedToolSets: ['knowledge'],
     isAdmin: false,
   };
@@ -606,11 +618,12 @@ describe('shadow replay trace authorization', () => {
     expect(runQuery.mock.calls[0][0]).toContain('parity_marked AS');
     expect(runQuery.mock.calls[0][0]).toContain('SET capture_parity_verified = TRUE');
     expect(runQuery.mock.calls[0][1][9]).toBe(100);
-    expect(runQuery.mock.calls[0][1].slice(10, 14)).toEqual([
+    expect(runQuery.mock.calls[0][1].slice(10, 15)).toEqual([
       'anthropic',
       trace.expected.effective_model,
       trace.expected.provider_request_hmac,
       CODE_VERSION,
+      'anthropic-standard-2026-08:claude-sonnet-5',
     ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
   });
@@ -630,12 +643,39 @@ describe('shadow replay trace authorization', () => {
     })).resolves.toBe('claimed');
     expect(runQuery.mock.calls[0][0]).toContain('requested_provider, model');
     expect(runQuery.mock.calls[0][0]).toContain('addie_code_version');
-    expect(runQuery.mock.calls[0][1].slice(10, 14)).toEqual([
+    expect(runQuery.mock.calls[0][1].slice(10, 15)).toEqual([
       target.provider,
       target.model,
       target.firstProviderRequestHmac,
       CODE_VERSION,
+      'google-gemini-3.7-flash-through-2026-12-31',
     ]);
+  });
+
+  it('does not claim a paid generation without an exact price table', async () => {
+    const { trace } = await authorizedTrace();
+    trace.expected.effective_model = 'claude-unreviewed';
+    const runQuery = vi.fn();
+    await expect(claimShadowReplayGeneration(trace, 1, {
+      query: runQuery as never,
+      now: NOW,
+    })).resolves.toBe('trace_unavailable');
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('does not claim Google generation after its introductory rate expires', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    await expect(claimShadowReplayGeneration(trace, 1, {
+      query: runQuery as never,
+      now: new Date('2027-01-01T00:00:00.000Z'),
+      target: {
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+        firstProviderRequestHmac: '9'.repeat(64),
+      },
+    })).resolves.toBe('trace_unavailable');
+    expect(runQuery).not.toHaveBeenCalled();
   });
 
   it('fails closed before SQL when the generation quota is not bounded', async () => {
@@ -721,6 +761,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 20,
       outputTokens: 10,
+      ...COMPLETE_GENERATION_USAGE,
       returnedProvider: 'google' as const,
       returnedModel: 'gemini-3.7-flash-20260801',
     };
@@ -742,6 +783,14 @@ describe('shadow replay trace authorization', () => {
       target.firstProviderRequestHmac,
       outcome.returnedProvider,
       outcome.returnedModel,
+    ]);
+    expect(runQuery.mock.calls[0][1].slice(47, 53)).toEqual([
+      COMPLETE_GENERATION_USAGE.cacheReadTokens,
+      COMPLETE_GENERATION_USAGE.cacheWriteTokens,
+      true,
+      COMPLETE_GENERATION_USAGE.latencyMs,
+      52,
+      'google-gemini-3.7-flash-through-2026-12-31',
     ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
   });
@@ -771,6 +820,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 20,
       outputTokens: 10,
+      ...COMPLETE_GENERATION_USAGE,
     }, {
       query: runQuery as never,
       now: NOW,
@@ -836,6 +886,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 1,
       outputTokens: 1,
+      ...COMPLETE_GENERATION_USAGE,
     }, {
       query: runQuery as never,
       now: NOW,
@@ -882,6 +933,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 1,
       outputTokens: 1,
+      ...COMPLETE_GENERATION_USAGE,
     }, {
       query: runQuery as never,
       now: NOW,
@@ -940,6 +992,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 1,
       outputTokens: 1,
+      ...COMPLETE_GENERATION_USAGE,
     }, {
       query: runQuery as never,
       now: NOW,
@@ -992,6 +1045,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: ['private:value'],
       inputTokens: 0,
       outputTokens: 0,
+      ...UNAVAILABLE_GENERATION_USAGE,
     }, { query: runQuery as never })).rejects.toThrow(
       'shadow_replay_generation_blocked_capability_invalid',
     );
@@ -1011,6 +1065,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: ['provider_identity_drift'],
       inputTokens: 0,
       outputTokens: 0,
+      ...UNAVAILABLE_GENERATION_USAGE,
       returnedProvider: 'google',
       returnedModel: null,
     }, { query: runQuery as never })).rejects.toThrow(
@@ -1032,8 +1087,41 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: ['provider_request_drift'],
       inputTokens: 0,
       outputTokens: 0,
+      ...UNAVAILABLE_GENERATION_USAGE,
     }, { query: runQuery as never, now: NOW })).resolves.toBe(true);
     expect(JSON.parse(runQuery.mock.calls[0][1][6] as string)).toEqual([]);
+  });
+
+  it('persists unavailable provider usage as null cost rather than zero cost', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'error',
+      reason: 'provider_execution_failed',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: trace.expected.provider_request_hmac!,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: ['provider_execution_failed', 'usage_unavailable'],
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      usageAvailable: false,
+      latencyMs: 500,
+    }, { query: runQuery as never, now: NOW })).resolves.toBe(true);
+    expect(runQuery.mock.calls[0][1].slice(47, 53)).toEqual([
+      0,
+      0,
+      false,
+      500,
+      null,
+      'anthropic-standard-2026-08:claude-sonnet-5',
+    ]);
   });
 
   it('rejects a success row whose signed first request or policy outcome is inconsistent', async () => {
@@ -1048,6 +1136,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 1,
       outputTokens: 1,
+      ...COMPLETE_GENERATION_USAGE,
     };
     await expect(completeShadowReplayGeneration(trace, {
       ...base,
@@ -1101,6 +1190,7 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: ['unapproved_tool'],
       inputTokens: 1,
       outputTokens: 1,
+      ...COMPLETE_GENERATION_USAGE,
     }, { query: runQuery as never })).rejects.toThrow(
       'shadow_replay_generation_tool_binding_invalid',
     );
@@ -1136,6 +1226,7 @@ describe('shadow replay trace authorization', () => {
       requested_model: 'gemini-3.7-flash',
       addie_code_version: '2026.08.109',
       execution_policy_version: 'official-docs-read-only:v1',
+      pricing_version: 'google-gemini-3.7-flash-through-2026-12-31',
       returned_provider: 'google',
       returned_model: 'gemini-3.7-flash-20260801',
       status: 'succeeded',
@@ -1143,6 +1234,13 @@ describe('shadow replay trace authorization', () => {
       count: 2,
       input_tokens: 100,
       output_tokens: 40,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      usage_complete_count: 2,
+      latency_count: 2,
+      estimated_cost_micros: '225',
+      latency_p50_ms: 900,
+      latency_p95_ms: 1_100,
     }];
     const runQuery = vi.fn(async () => ({ rows, rowCount: 1 }));
     await expect(getShadowReplayGenerationSummary(999, { query: runQuery as never }))
@@ -1151,6 +1249,11 @@ describe('shadow replay trace authorization', () => {
     expect(runQuery.mock.calls[0][0]).toContain('generation.requested_provider');
     expect(runQuery.mock.calls[0][0]).toContain('generation.addie_code_version');
     expect(runQuery.mock.calls[0][0]).toContain('generation.execution_policy_version');
+    expect(runQuery.mock.calls[0][0]).toContain('generation.pricing_version');
+    expect(runQuery.mock.calls[0][0]).toContain('generation.usage_complete');
+    expect(runQuery.mock.calls[0][0]).toContain('generation.estimated_cost_micros');
+    expect(runQuery.mock.calls[0][0]).toContain('COUNT(generation.latency_ms)');
+    expect(runQuery.mock.calls[0][0]).toContain('percentile_disc(0.95)');
     expect(runQuery.mock.calls[0][0]).toContain('trace.source_config_version_id');
     expect(runQuery.mock.calls[0][0]).not.toContain('question_hmac');
   });

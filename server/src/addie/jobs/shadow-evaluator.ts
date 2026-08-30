@@ -798,6 +798,10 @@ export async function runShadowEvaluatorJob(
           blockedCapabilities: boundaryReason ? [boundaryReason] : [],
           inputTokens: 0,
           outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          usageAvailable: false,
+          latencyMs: null,
           });
         let completed = false;
         try {

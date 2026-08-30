@@ -25,7 +25,7 @@ const MIGRATION_556_SQL = readFileSync(
   'utf8',
 );
 
-describe('migrations 552 through 567: shadow replay traces', () => {
+describe('migrations 552 through 568: shadow replay traces', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -234,14 +234,20 @@ describe('migrations 552 through 567: shadow replay traces', () => {
         'blocked_capabilities',
         'input_tokens',
         'output_tokens',
+        'pricing_version',
+        'usage_complete',
+        'cache_read_tokens',
+        'cache_write_tokens',
+        'latency_ms',
+        'estimated_cost_micros',
         'started_at',
         'heartbeat_at',
         'completed_at',
         'retained_until',
       ]),
     );
-    const generationConstraints = await pool.query<{ definition: string }>(
-      `SELECT pg_get_constraintdef(oid) AS definition
+    const generationConstraints = await pool.query<{ constraint_name: string; definition: string }>(
+      `SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS definition
        FROM pg_constraint
        WHERE conrelid = 'addie_shadow_replay_generations'::regclass`,
     );
@@ -257,6 +263,16 @@ describe('migrations 552 through 567: shadow replay traces', () => {
     expect(generationConstraints.rows.some(({ definition }) =>
       definition.includes('(returned_provider IS NULL)')
       && definition.includes('(returned_model IS NULL)'))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes('usage_complete')
+      && definition.includes('estimated_cost_micros IS NOT NULL'))).toBe(true);
+    expect(generationConstraints.rows.some(({ constraint_name, definition }) =>
+      constraint_name === 'shadow_replay_generation_new_success_evidence'
+      && definition.includes('pricing_version')
+      && definition.includes('legacy-unrecorded')
+      && definition.includes('status')
+      && definition.includes('succeeded')
+      && definition.includes('usage_complete'))).toBe(true);
 
     const judgmentColumns = await pool.query<{ column_name: string }>(
       `SELECT column_name
@@ -439,7 +455,7 @@ describe('migrations 552 through 567: shadow replay traces', () => {
            message_payload_hmacs, provider_request_hmac
          ) VALUES (
            gen_random_uuid(), 3, $1, $2, $3, $4, 'test-v1', 'read-only-v1',
-           $5, 'claude-example-chat', FALSE, FALSE, 1, $6, $6, $6, $6, $6,
+           $5, 'claude-sonnet-5', FALSE, FALSE, 1, $6, $6, $6, $6, $6,
            $6, $6, $6, '[]'::jsonb, '[]'::jsonb, $6,
            NOW() + INTERVAL '1 hour', NOW() + INTERVAL '7 days',
            'official_docs_v1', 'official-docs-policy:v1',
@@ -474,7 +490,7 @@ describe('migrations 552 through 567: shadow replay traces', () => {
       claimShadowReplayGeneration({
         ...trace,
         expected: {
-          effective_model: 'claude-example-chat',
+          effective_model: 'claude-sonnet-5',
           provider_request_hmac: String(index + 3).repeat(64),
         },
       } as never, 1, { query: concurrentQuery as never, now })));
@@ -504,7 +520,7 @@ describe('migrations 552 through 567: shadow replay traces', () => {
     const sameTraceAuthorization = {
       ...sameTrace,
       expected: {
-        effective_model: 'claude-example-chat',
+        effective_model: 'claude-sonnet-5',
         provider_request_hmac: '3'.repeat(64),
       },
     } as never;
@@ -535,9 +551,10 @@ describe('migrations 552 through 567: shadow replay traces', () => {
       requested_provider: string;
       model: string;
       addie_code_version: string;
+      pricing_version: string;
       first_provider_request_hmac: string;
     }>(
-      `SELECT requested_provider, model, addie_code_version,
+      `SELECT requested_provider, model, addie_code_version, pricing_version,
               first_provider_request_hmac
        FROM addie_shadow_replay_generations
        WHERE trace_id = $1`,
@@ -547,6 +564,7 @@ describe('migrations 552 through 567: shadow replay traces', () => {
       requested_provider: target.provider,
       model: target.model,
       addie_code_version: CODE_VERSION,
+      pricing_version: 'google-gemini-3.7-flash-through-2026-12-31',
       first_provider_request_hmac: target.firstProviderRequestHmac,
     });
   });

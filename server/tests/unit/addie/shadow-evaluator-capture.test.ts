@@ -684,6 +684,10 @@ describe('shadow evaluator capture-only orchestration', () => {
         blockedCapabilities: [],
         inputTokens: 0,
         outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        usageAvailable: false,
+        latencyMs: null,
       },
     );
     expect(fixture.completeCapture).not.toHaveBeenCalled();

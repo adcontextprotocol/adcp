@@ -17,6 +17,7 @@ import {
   canonicalOfficialDocsPlan,
   isOfficialDocsProfile,
 } from './shadow-replay-cohort.js';
+import { resolveShadowReplayPricing } from './shadow-replay-pricing.js';
 
 export const SHADOW_REPLAY_TRACE_CAPTURE_VERSION = 3 as const;
 export const SHADOW_REPLAY_TRACE_HASH_DOMAIN = 'addie-shadow-replay-trace:v3' as const;
@@ -160,6 +161,10 @@ export interface ShadowReplayGenerationCompletion {
   blockedCapabilities: string[];
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  usageAvailable: boolean;
+  latencyMs: number | null;
   returnedProvider?: ModelProviderId | null;
   returnedModel?: string | null;
 }
@@ -185,6 +190,7 @@ export interface ShadowReplayGenerationSummaryRow extends QueryResultRow {
   requested_model: string;
   addie_code_version: string;
   execution_policy_version: string;
+  pricing_version: string;
   returned_provider: ModelProviderId | null;
   returned_model: string | null;
   status: string;
@@ -192,6 +198,13 @@ export interface ShadowReplayGenerationSummaryRow extends QueryResultRow {
   count: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  usage_complete_count: number;
+  latency_count: number;
+  estimated_cost_micros: string;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
 }
 
 export type ShadowReplayJudgmentStatus = 'judged' | 'deterministic_failure' | 'skipped' | 'error';
@@ -1293,8 +1306,35 @@ function validateGenerationCompletion(
     throw new Error('shadow_replay_generation_output_bytes_invalid');
   }
   if (!Number.isInteger(outcome.inputTokens) || outcome.inputTokens < 0
-    || !Number.isInteger(outcome.outputTokens) || outcome.outputTokens < 0) {
+    || !Number.isInteger(outcome.outputTokens) || outcome.outputTokens < 0
+    || !Number.isInteger(outcome.cacheReadTokens) || outcome.cacheReadTokens < 0
+    || !Number.isInteger(outcome.cacheWriteTokens) || outcome.cacheWriteTokens < 0
+    || [
+      outcome.inputTokens,
+      outcome.outputTokens,
+      outcome.cacheReadTokens,
+      outcome.cacheWriteTokens,
+    ].some((value) => value > 2_147_483_647)) {
     throw new Error('shadow_replay_generation_usage_invalid');
+  }
+  if (typeof outcome.usageAvailable !== 'boolean'
+    || (!outcome.usageAvailable && (
+      outcome.inputTokens !== 0
+      || outcome.outputTokens !== 0
+      || outcome.cacheReadTokens !== 0
+      || outcome.cacheWriteTokens !== 0
+    ))) {
+    throw new Error('shadow_replay_generation_usage_completeness_invalid');
+  }
+  if (outcome.latencyMs !== null && (
+    !Number.isSafeInteger(outcome.latencyMs)
+    || outcome.latencyMs < 0
+    || outcome.latencyMs > 900_000
+  )) {
+    throw new Error('shadow_replay_generation_latency_invalid');
+  }
+  if (outcome.usageAvailable && outcome.latencyMs === null) {
+    throw new Error('shadow_replay_generation_latency_required');
   }
   if (outcome.invocations.length > 4
     || (outcome.status === 'succeeded' && outcome.invocations.length === 0)) {
@@ -1353,6 +1393,8 @@ function validateGenerationCompletion(
     outcome.blockedCapabilities.length > 0
     || outcome.toolExecutions.some(({ disposition }) => disposition !== 'live_read')
     || outcome.reason !== 'generation_succeeded'
+    || !outcome.usageAvailable
+    || outcome.latencyMs === null
   )) {
     throw new Error('shadow_replay_generation_success_inconsistent');
   }
@@ -1575,6 +1617,10 @@ export async function claimShadowReplayGeneration(
   }
   const target = resolveGenerationTarget(trace, dependencies.target);
   if (!target) return 'trace_unavailable';
+  const pricing = resolveShadowReplayPricing(target.provider, target.model);
+  if (!pricing || (pricing.validBefore && now >= pricing.validBefore)) {
+    return 'trace_unavailable';
+  }
   const boundedLimit = dailyLimit;
   const result = await runQuery<{ decision: ShadowReplayGenerationClaimDecision }>(
     `WITH eligible AS MATERIALIZED (
@@ -1594,11 +1640,11 @@ export async function claimShadowReplayGeneration(
      ), inserted AS (
        INSERT INTO addie_shadow_replay_generations (
          trace_id, execution_policy_version, requested_provider, model,
-         addie_code_version,
+         addie_code_version, pricing_version,
          quota_date, quota_slot, first_provider_request_hmac,
          started_at, heartbeat_at, retained_until
        )
-       SELECT eligible.trace_id, $8, $11, $12, $14,
+       SELECT eligible.trace_id, $8, $11, $12, $14, $15,
               ($9::timestamptz AT TIME ZONE 'UTC')::date, slot,
               $13, $9, $9, eligible.retained_until
        FROM eligible
@@ -1637,6 +1683,7 @@ export async function claimShadowReplayGeneration(
       target.model,
       target.firstProviderRequestHmac,
       CODE_VERSION,
+      pricing.version,
     ],
   );
   const decision = result.rows[0]?.decision ?? 'trace_unavailable';
@@ -1700,6 +1747,8 @@ export async function completeShadowReplayGeneration(
 ): Promise<boolean> {
   const target = resolveGenerationTarget(trace, dependencies.target);
   if (!target) throw new Error('shadow_replay_generation_target_invalid');
+  const pricing = resolveShadowReplayPricing(target.provider, target.model);
+  if (!pricing) throw new Error('shadow_replay_generation_pricing_unavailable');
   validateGenerationCompletion(trace, outcome, target);
   const runQuery = dependencies.query ?? query as QueryFn;
   const completedAt = dependencies.now ?? new Date();
@@ -1712,6 +1761,14 @@ export async function completeShadowReplayGeneration(
     : outcome.status === 'blocked'
       ? 'skipped'
       : 'error';
+  const estimatedCostMicros = outcome.usageAvailable
+    ? pricing.estimateCostMicros({
+      inputTokens: outcome.inputTokens,
+      outputTokens: outcome.outputTokens,
+      cacheReadTokens: outcome.cacheReadTokens,
+      cacheWriteTokens: outcome.cacheWriteTokens,
+    })
+    : null;
   const context = {
     shadow_eval_status: outcome.status === 'error' ? 'error' : 'skipped',
     shadow_eval_type: 'suppressed_opportunity',
@@ -1738,6 +1795,11 @@ export async function completeShadowReplayGeneration(
            blocked_capabilities = $9::jsonb,
            input_tokens = $10,
            output_tokens = $11,
+           cache_read_tokens = $48,
+           cache_write_tokens = $49,
+           usage_complete = $50,
+           latency_ms = $51,
+           estimated_cost_micros = $52,
            returned_provider = $46,
            returned_model = $47,
            completed_at = $12
@@ -1746,6 +1808,7 @@ export async function completeShadowReplayGeneration(
          AND generation.requested_provider = $43
          AND generation.model = $44
          AND generation.first_provider_request_hmac = $45
+         AND generation.pricing_version = $53
          AND EXISTS (
            SELECT 1 FROM addie_shadow_replay_traces trace
            WHERE trace.trace_id = generation.trace_id
@@ -1844,6 +1907,12 @@ export async function completeShadowReplayGeneration(
       target.firstProviderRequestHmac,
       outcome.returnedProvider ?? null,
       outcome.returnedModel ?? null,
+      outcome.cacheReadTokens,
+      outcome.cacheWriteTokens,
+      outcome.usageAvailable,
+      outcome.latencyMs,
+      estimatedCostMicros,
+      pricing.version,
     ],
   );
   return result.rows[0]?.completed === true;
@@ -1944,13 +2013,27 @@ export async function getShadowReplayGenerationSummary(
             generation.model AS requested_model,
             generation.addie_code_version,
             generation.execution_policy_version,
+            generation.pricing_version,
             generation.returned_provider,
             generation.returned_model,
             generation.status,
             generation.reason,
             COUNT(*)::integer AS count,
             COALESCE(SUM(generation.input_tokens), 0)::integer AS input_tokens,
-            COALESCE(SUM(generation.output_tokens), 0)::integer AS output_tokens
+            COALESCE(SUM(generation.output_tokens), 0)::integer AS output_tokens,
+            COALESCE(SUM(generation.cache_read_tokens), 0)::integer AS cache_read_tokens,
+            COALESCE(SUM(generation.cache_write_tokens), 0)::integer AS cache_write_tokens,
+            COUNT(*) FILTER (WHERE generation.usage_complete)::integer
+              AS usage_complete_count,
+            COUNT(generation.latency_ms)::integer AS latency_count,
+            COALESCE(SUM(generation.estimated_cost_micros), 0)::text
+              AS estimated_cost_micros,
+            percentile_disc(0.5) WITHIN GROUP (ORDER BY generation.latency_ms)
+              FILTER (WHERE generation.latency_ms IS NOT NULL)::double precision
+              AS latency_p50_ms,
+            percentile_disc(0.95) WITHIN GROUP (ORDER BY generation.latency_ms)
+              FILTER (WHERE generation.latency_ms IS NOT NULL)::double precision
+              AS latency_p95_ms
      FROM addie_shadow_replay_generations generation
      JOIN addie_shadow_replay_traces trace ON trace.trace_id = generation.trace_id
      WHERE generation.started_at >= NOW() - ($2::integer * INTERVAL '1 day')
@@ -1959,6 +2042,7 @@ export async function getShadowReplayGenerationSummary(
               trace.source_config_version_id, trace.effective_model,
               generation.requested_provider, generation.model,
               generation.addie_code_version, generation.execution_policy_version,
+              generation.pricing_version,
               generation.returned_provider,
               generation.returned_model, generation.status, generation.reason
      ORDER BY generation.requested_provider, generation.model,
