@@ -173,17 +173,8 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
-import {
-  loadRouterCanaryMetadata,
-  routeWithRouterCanary,
-} from './router-canary-runtime.js';
-import { selectRouterCanaryCohort } from './router-canary.js';
-import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
-import {
-  OPENAI_ROUTER_MODEL,
-  OpenAIResponsesProvider,
-} from './model-providers/openai-responses-provider.js';
+import { createProductionRouter } from './router-runtime.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
@@ -774,7 +765,6 @@ async function buildCurrentChannelCostOptions(
 
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
-let addieLunaRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
 let initialized = false;
 
@@ -807,23 +797,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize Claude client
   claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
-  // Initialize router (uses Haiku for fast classification)
-  addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
-
-  // Construct the strict candidate independently. Selection remains default-off
-  // and fail-closed in router-canary.ts; merely having an API key changes no traffic.
-  addieLunaRouter = openAiKey
-    ? new AddieRouter(
-        openAiKey,
-        new OpenAIResponsesProvider(openAiKey),
-        providerHealth,
-        {
-          model: OPENAI_ROUTER_MODEL,
-          reasoning: { effort: 'none' },
-          strictOutput: true,
-        },
-      )
-    : null;
+  const routerRuntime = createProductionRouter(anthropicKey, openAiKey, providerHealth);
+  addieRouter = routerRuntime.router;
+  if (routerRuntime.primaryProvider !== 'openai') {
+    logger.warn('Addie Bolt: OPENAI_API_KEY missing; using Haiku router fallback only');
+  }
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -4820,64 +4798,8 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
-      const canaryCandidate = addieLunaRouter && selectRouterCanaryCohort({
-        channelId,
-        opportunityId: event.ts,
-        // This only avoids a metadata fetch when the independent feature,
-        // evidence, config, allowlist, and sample gates are already closed.
-        // Paid-call admission rechecks live Slack metadata below.
-        channelIsPublic: true,
-        channelIsShared: false,
-      });
-      const shadowCandidate = selectRouterShadowCohort({
-        channelId,
-        opportunityId: event.ts,
-        // Final admission rechecks current Slack metadata inside the detached
-        // observer. These optimistic values only avoid scheduling work when
-        // the independent feature/config/sample gate is already closed.
-        channelIsPublic: true,
-        channelIsShared: false,
-      });
-      const routerPlanPromise = canaryCandidate?.selected && addieLunaRouter
-        ? (async () => {
-            const currentChannel = await loadRouterCanaryMetadata(
-              () => getChannelInfo(channelId, { forceRefresh: true }),
-            );
-            const result = await routeWithRouterCanary({
-              channelId,
-              opportunityId: event.ts,
-              channelIsPublic: currentChannel?.is_private === false,
-              channelIsShared: currentChannel === null
-                || currentChannel.is_shared
-                || currentChannel.is_org_shared
-                || currentChannel.is_pending_ext_shared === true,
-              routingContext: routingCtx,
-            }, {
-              candidateRoute: addieLunaRouter.route.bind(addieLunaRouter),
-              fallbackRoute: addieRouter.route.bind(addieRouter),
-            });
-            return result.plan;
-          })()
-        : addieRouter.route(routingCtx, {
-            ...(shadowCandidate.selected && {
-              observer: async (observation) => {
-                const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
-                  .catch(() => null);
-                await runRouterShadow({
-                  channelId,
-                  opportunityId: event.ts,
-                  channelIsPublic: currentChannel?.is_private === false,
-                  channelIsShared: currentChannel === null
-                    || currentChannel.is_shared
-                    || currentChannel.is_org_shared
-                    || currentChannel.is_pending_ext_shared === true,
-                  observation,
-                });
-              },
-            }),
-          });
       const [routerPlan, siResult] = await Promise.all([
-        routerPlanPromise,
+        addieRouter.route(routingCtx),
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;

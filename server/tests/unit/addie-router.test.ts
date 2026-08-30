@@ -17,6 +17,7 @@ import type {
   PreparedModelInvocation,
 } from '../../src/addie/model-providers/model-provider.js';
 import { ModelConfig } from '../../src/config/models.js';
+import { trackApiCall } from '../../src/addie/services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
   TOOL_SETS,
@@ -792,6 +793,98 @@ describe('AddieRouter.route', () => {
       tool_sets: ['knowledge'],
       model: 'gpt-5.6-luna',
     });
+  });
+
+  it('uses Haiku after strict Luna output failure and accounts for both calls', async () => {
+    vi.mocked(trackApiCall).mockClear();
+    const lunaProvider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
+      providerId: 'openai',
+    });
+    const haikuProvider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"fallback"}',
+    }]);
+    const haikuRouter = new AddieRouter('unused', haikuProvider);
+    const observer = vi.fn();
+    const subject = new AddieRouter('unused', lunaProvider, undefined, {
+      model: 'gpt-5.6-luna',
+      reasoning: { effort: 'none' },
+      strictOutput: true,
+      fallbackRouter: haikuRouter,
+    });
+
+    await expect(subject.route({ message: 'How does AdCP work?', source: 'dm' }, {
+      observer,
+    })).resolves.toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      reason: 'fallback',
+      model: ModelConfig.fast,
+    });
+
+    expect(lunaProvider.requests).toHaveLength(1);
+    expect(haikuProvider.requests).toHaveLength(1);
+    expect(trackApiCall).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(trackApiCall).mock.calls.map(([call]) => call.model)).toEqual([
+      'gpt-5.6-luna',
+      ModelConfig.fast,
+    ]);
+    await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
+    expect(observer.mock.calls[0][0]).toMatchObject({
+      requestedProvider: 'anthropic',
+      requestedModel: ModelConfig.fast,
+      primaryErrorCategory: null,
+    });
+  });
+
+  it('falls back when the Luna provider exceeds its hard deadline', async () => {
+    let primarySignal: AbortSignal | undefined;
+    const lunaProvider: ModelProvider = {
+      id: 'openai',
+      capabilities: ROUTER_CAPABILITIES,
+      prepare(request: ModelRequest): PreparedModelInvocation {
+        return {
+          provider: 'openai',
+          model: request.model,
+          capabilities: ROUTER_CAPABILITIES,
+          providerRequest: {},
+        };
+      },
+      async *respond(
+        _request: ModelRequest,
+        respondOptions?: ModelRespondOptions,
+      ): AsyncIterable<NormalizedModelEvent> {
+        primarySignal = respondOptions?.signal;
+        await new Promise<never>((_resolve, reject) => {
+          respondOptions?.signal?.addEventListener(
+            'abort',
+            () => reject(respondOptions.signal?.reason),
+            { once: true },
+          );
+        });
+      },
+    };
+    const haikuProvider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"ignore","reason":"fallback"}',
+    }]);
+    const subject = new AddieRouter('unused', lunaProvider, undefined, {
+      model: 'gpt-5.6-luna',
+      strictOutput: true,
+      fallbackRouter: new AddieRouter('unused', haikuProvider),
+      primaryDeadlineMs: 5,
+    });
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }))
+      .resolves.toMatchObject({ action: 'ignore', reason: 'fallback' });
+    expect(primarySignal?.aborted).toBe(true);
+    expect(haikuProvider.requests).toHaveLength(1);
+  });
+
+  it('rejects invalid primary deadlines', () => {
+    expect(() => new AddieRouter('unused', undefined, undefined, {
+      primaryDeadlineMs: 0,
+    })).toThrow('Invalid router primary deadline');
   });
 
   it('forwards an abort signal so a canary boundary can enforce its deadline', async () => {
