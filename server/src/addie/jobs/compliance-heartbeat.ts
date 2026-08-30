@@ -402,6 +402,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       // Record failure so stale passing data doesn't persist
       try {
+        // Recheck the fence before writing: comply() may have thrown while a
+        // concurrent owner refresh invalidated the lock. Without this guard the
+        // stale heartbeat failure would race with and overwrite the fresher result.
+        assertExecutionFence();
         const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
@@ -422,6 +426,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         });
 
         if (badgeEligibleAdcpVersions.length > 0) {
+          assertExecutionFence();
           const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
           const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
           const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
@@ -455,6 +460,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             }
           }
         } else if (runTargetSelection.confirmed) {
+          assertExecutionFence();
           const badgeResult = await revokeUnsupportedPublicBadges({
             complianceDb,
             agentUrl: agent.agent_url,
@@ -473,6 +479,11 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           }
         }
       } catch (recordError) {
+        // Fence-loss must not be swallowed here: re-throw so the outer handler
+        // can skip the agent cleanly without treating this as a record error.
+        if (recordError && typeof recordError === 'object' && 'code' in recordError && recordError.code === 'execution_fence_lost') {
+          throw recordError;
+        }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
