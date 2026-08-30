@@ -77,6 +77,7 @@
               { "properties": { "format_kind": { "type": "string", "const": "video_hosted" }, "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" } }, "required": ["format_kind"] },
               { "properties": { "format_kind": { "type": "string", "const": "video_vast" }, "params": { "$ref": "/schemas/formats/canonical/video_vast.json" } }, "required": ["format_kind"] },
               { "properties": { "format_kind": { "type": "string", "const": "audio_hosted" }, "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" } }, "required": ["format_kind"] },
+              { "properties": { "format_kind": { "type": "string", "const": "audio_vast" }, "params": { "$ref": "/schemas/formats/canonical/audio_vast.json" } }, "required": ["format_kind"] },
               { "properties": { "format_kind": { "type": "string", "const": "audio_daast" }, "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" } }, "required": ["format_kind"] },
               { "properties": { "format_kind": { "type": "string", "const": "sponsored_placement" }, "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" } }, "required": ["format_kind"] },
               { "properties": { "format_kind": { "type": "string", "const": "native_in_feed" }, "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" } }, "required": ["format_kind"] },

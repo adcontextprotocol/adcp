@@ -1,0 +1,67 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "streamhaus_vast_audio_30s",
+  "name": "StreamHaus VAST Audio (30s)",
+  "description": "VAST 4.1+ audio tag delivery for 30-second streaming inventory. The buyer supplies a VAST tag whose resolved Linear creative declares the audio ad type and an audio MediaFile.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "streamhaus.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": ["streaming_audio"],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 14
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 1440,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": [
+      "impressions",
+      "spend",
+      "completion_rate",
+      "completed_views",
+      "quartile_data"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_option_id": "streaming_audio_vast_30s",
+      "format_kind": "audio_vast",
+      "canonical_formats_only": true,
+      "params": {
+        "vast_versions": ["4.1", "4.2", "4.3"],
+        "duration_ms_exact": 30000,
+        "media_file_requirements": {
+          "mime_types": ["audio/mpeg", "audio/aac"],
+          "min_bitrate_kbps": 128
+        },
+        "max_wrapper_depth": 3,
+        "ssl_required": true,
+        "companion_image_required": false,
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "vast_tag",
+            "asset_type": "vast",
+            "required": true
+          },
+          {
+            "asset_group_id": "landing_page_url",
+            "asset_type": "url",
+            "required": false
+          }
+        ]
+      }
+    }
+  ]
+}

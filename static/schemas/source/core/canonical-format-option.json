@@ -40,7 +40,7 @@
     "experimental": { "type": "boolean", "default": false },
     "format_kind": {
       "type": "string",
-      "enum": ["image", "html5", "display_tag", "image_carousel", "video_hosted", "video_vast", "audio_hosted", "audio_daast", "sponsored_placement", "native_in_feed", "responsive_creative", "agent_placement", "custom"]
+      "enum": ["image", "html5", "display_tag", "image_carousel", "video_hosted", "video_vast", "audio_hosted", "audio_vast", "audio_daast", "sponsored_placement", "native_in_feed", "responsive_creative", "agent_placement", "custom"]
     },
     "params": { "type": "object", "additionalProperties": true },
     "format_shape": { "type": "string", "minLength": 1 },
