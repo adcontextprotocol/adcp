@@ -38,9 +38,12 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
+import { attemptStripeReconciliation } from "./billing/lazy-reconcile.js";
+import { isExpectedMembershipCheckoutSession } from "./billing/membership-checkout-attempt.js";
+import { withOrgIntakeLock } from "./billing/org-intake-lock.js";
 import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
+import { OrganizationDatabase, StripeCustomerConflictError, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
@@ -5758,13 +5761,33 @@ export class HTTPServer {
             }
 
             if (customerId && workosOrgId) {
+              const stripeClient = stripe;
+              await withOrgIntakeLock(workosOrgId, async () => {
+              const org = await orgDb.getOrganization(workosOrgId);
+              // A Checkout session is immutable and can be replayed long after
+              // an operator explicitly unlinks its customer. A session may
+              // mutate billing state only when it is still the server-recorded
+              // checkout generation, or when its exact customer is already
+              // linked (the buyer-agent payment-link flow). The same per-org
+              // lock wraps admin unlink, closing the check/mutation race.
+              const expectedMembershipCheckout = session.mode !== 'subscription'
+                || org?.stripe_customer_id === customerId
+                || await isExpectedMembershipCheckoutSession(workosOrgId, session.id);
+              if (!expectedMembershipCheckout) {
+                logger.warn(
+                  { customerId, workosOrgId, checkoutSessionId: session.id },
+                  'Ignoring unrecognized or invalidated membership checkout completion',
+                );
+                return;
+              }
+
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org. Do this
               // before linking the customer locally; otherwise an external
               // Stripe metadata failure can create a DB→Stripe invariant split.
               let customerMetadataReady = false;
               try {
-                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                const customerRaw = await stripeClient.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
                 if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
                 } else {
@@ -5776,7 +5799,7 @@ export class HTTPServer {
                     );
                   } else {
                     if (!stampedOrgId) {
-                      await stripe.customers.update(customerId, {
+                      await stripeClient.customers.update(customerId, {
                         metadata: { workos_organization_id: workosOrgId },
                       });
                       logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
@@ -5794,15 +5817,67 @@ export class HTTPServer {
               // customerEmail instead of customerId, causing Stripe to create
               // a new customer. Only link after the metadata pointer is in
               // place so the bidirectional invariant remains true.
-              const org = await orgDb.getOrganization(workosOrgId);
+              let linkedCustomerReady = org?.stripe_customer_id === customerId;
               if (org && !org.stripe_customer_id && customerMetadataReady) {
                 try {
                   await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  linkedCustomerReady = true;
                   logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to org from checkout.session.completed');
                 } catch (err) {
-                  logger.warn({ err, workosOrgId, customerId }, 'Could not link Stripe customer to org from checkout (possible conflict)');
+                  let isLinkConflict = err instanceof StripeCustomerConflictError;
+                  if (!isLinkConflict) {
+                    // setStripeCustomerId also uses a generic error when a
+                    // concurrent request linked the target org to a different
+                    // customer. Re-read to distinguish that safe conflict from
+                    // a transient DB failure that Stripe should retry.
+                    const currentOrg = await orgDb.getOrganization(workosOrgId);
+                    isLinkConflict = Boolean(
+                      currentOrg?.stripe_customer_id
+                      && currentOrg.stripe_customer_id !== customerId,
+                    );
+                  }
+                  if (!isLinkConflict) throw err;
+                  logger.warn(
+                    { err, workosOrgId, customerId },
+                    'Could not link Stripe customer to org from checkout due to a link conflict',
+                  );
                 }
               }
+
+              // Subscription events can arrive before checkout completion or
+              // occasionally miss delivery altogether. Once checkout has
+              // established the metadata-verified customer↔org link, use the
+              // existing guarded reconciliation path as an independent,
+              // idempotent recovery signal. Its updated_at compare-and-swap
+              // prevents this from overwriting a concurrent subscription
+              // webhook, and its membership-product filter prevents ancillary
+              // Stripe products from granting entitlement.
+              if (
+                session.mode === 'subscription' &&
+                org &&
+                customerMetadataReady &&
+                linkedCustomerReady
+              ) {
+                const reconciliation = await attemptStripeReconciliation(workosOrgId, {
+                  pool,
+                  stripe: stripeClient,
+                  logger,
+                });
+                if (reconciliation.healed) {
+                  invalidateMemberContextCache();
+                  logger.info(
+                    { workosOrgId, customerId, source: 'checkout.session.completed' },
+                    'Reconciled subscription state after checkout completion',
+                  );
+                } else if (reconciliation.reason === 'stripe_error') {
+                  // The checkout event is the independent recovery signal for
+                  // a missed subscription event. Do not acknowledge a
+                  // transient Stripe read failure or this backup path is lost
+                  // too; a 5xx asks Stripe to retry the idempotent handler.
+                  throw new Error('Transient Stripe failure during checkout subscription reconciliation');
+                }
+              }
+              });
             }
             break;
           }
