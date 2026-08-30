@@ -7693,10 +7693,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         try {
           const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
           const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
+          // adcp#6632 — rotate storyboard starting point so budget-limited
+          // refreshes cover different tracks on each run, matching heartbeat.
+          const storyboardStartOffset = await complianceDb.countComplianceRuns(agentUrl);
           const complyOptions = {
             test_session_id: testSessionId,
             timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
             userAgent: AAO_UA_COMPLIANCE,
+            storyboard_start_offset: storyboardStartOffset,
             ...(complianceAuth && { auth: complianceAuth }),
           };
           const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
