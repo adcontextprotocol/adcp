@@ -651,7 +651,7 @@ ${
 - Committee documents and news-source proposals → ["content"]
 - Submitting or reviewing articles/perspectives, reading a Google Doc for publication, or generating, regenerating, or checking the cover illustration for a member's post → ["publishing"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
-- Searching for an existing explanatory diagram/image, or substantive concept explanations that materially benefit from a visual → ["illustrations"]. Never use this set for an article/perspective cover; those always use ["publishing"]
+- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing"]
 - Questions about tracked working-group documents → ["knowledge", "community_groups"]. Questions about the current member's company listing or brand profile → ["member_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin

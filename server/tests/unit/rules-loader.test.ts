@@ -193,9 +193,12 @@ describe('Rules Loader', () => {
     expect(knowledgeRules).toContain('# Knowledge');
     expect(knowledgeRules).toContain('## Knowledge Search First');
     expect(knowledgeRules).not.toContain('## Verify Claims With Tools');
-    expect(knowledgeRules).toContain('# Current AdCP Context');
-    expect(knowledgeRules).toContain('# Expert Panel');
+    expect(knowledgeRules).not.toContain('# Current AdCP Context');
+    expect(knowledgeRules).not.toContain('# Expert Panel');
     expect(knowledgeRules).not.toContain('# Canonical URL Reference');
+    const roadmapRules = loadScopedRules(['knowledge', 'github']);
+    expect(roadmapRules).toContain('# Current AdCP Context');
+    expect(roadmapRules).toContain('# Expert Panel');
     expect(billingRules).toContain('## Individual Practitioner Suitability');
     expect(billingRules).not.toContain('# Knowledge');
     expect(billingRules).not.toContain('# Current AdCP Context');
@@ -207,6 +210,15 @@ describe('Rules Loader', () => {
     const billingRules = loadRules({ selectedToolSetNames: ['member_billing'] });
 
     expect(billingRules.length).toBeLessThan(completeRules.length * 0.6);
+  });
+
+  it('keeps volatile ecosystem context off ordinary knowledge routes', () => {
+    const knowledgeRules = loadScopedRules(['knowledge']);
+    const roadmapRules = loadScopedRules(['knowledge', 'github']);
+
+    expect(knowledgeRules.length).toBeLessThan(roadmapRules.length);
+    expect(knowledgeRules).not.toContain('<addie_reference>');
+    expect(roadmapRules).toContain('<addie_reference>');
   });
 });
 
