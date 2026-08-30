@@ -607,23 +607,29 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('web_search');
   });
 
-  it('should expose the bounded publishing workflow only when routed', () => {
-    const tools = getToolsForSets(['publishing'], false);
-    expect(tools).toContain('propose_content');
-    expect(tools).toContain('get_my_content');
-    expect(tools).toContain('list_pending_content');
-    expect(tools).toContain('approve_content');
-    expect(tools).toContain('reject_content');
+  it('should expose only the selected bounded publishing workflow', () => {
+    const authorTools = getToolsForSets(['publishing_author'], false);
+    const reviewTools = getToolsForSets(['publishing_review'], false);
+    const promotionTools = getToolsForSets(['publishing_promotion'], false);
+    expect(authorTools).toContain('propose_content');
+    expect(authorTools).toContain('get_my_content');
+    expect(authorTools).not.toContain('approve_content');
+    expect(reviewTools).toContain('list_pending_content');
+    expect(reviewTools).toContain('approve_content');
+    expect(reviewTools).toContain('reject_content');
+    expect(reviewTools).not.toContain('propose_content');
+    expect(promotionTools).toContain('draft_social_posts');
+    expect(promotionTools).not.toContain('approve_content');
     expect(getToolsForSets([], false)).not.toContain('propose_content');
   });
 
-  it('should keep read_google_doc with propose_content on the publishing surface', () => {
-    const tools = getToolsForSets(['publishing'], false);
+  it('should keep read_google_doc with propose_content on the author surface', () => {
+    const tools = getToolsForSets(['publishing_author'], false);
     expect(tools).toContain('read_google_doc');
   });
 
-  it('should keep published-cover operations on the publishing surface', () => {
-    const tools = getToolsForSets(['publishing'], false);
+  it('should keep published-cover operations on the author surface', () => {
+    const tools = getToolsForSets(['publishing_author'], false);
     expect(tools).toContain('check_illustration_status');
     expect(tools).toContain('generate_perspective_illustration');
   });

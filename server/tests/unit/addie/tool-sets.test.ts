@@ -10,7 +10,11 @@ import {
   LEGACY_ADMIN_TOOLS,
   LEGACY_AGENT_TESTING_TOOLS,
   LEGACY_MEMBER_TOOLS,
+  LEGACY_PUBLISHING_TOOLS,
   MEMBER_PROFILE_TOOLS,
+  PUBLISHING_AUTHOR_TOOLS,
+  PUBLISHING_PROMOTION_TOOLS,
+  PUBLISHING_REVIEW_TOOLS,
   PROPERTY_CATALOG_TOOLS,
   SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
   TOOL_SETS,
@@ -98,6 +102,10 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_groups**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin** *(admin only)*');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_author**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_review**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_promotion**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **publishing**');
     });
   });
 
@@ -286,7 +294,9 @@ describe('getToolsForSets', () => {
     it.each([
       ['member_profile', 7],
       ['community_groups', 11],
-      ['publishing', 12],
+      ['publishing_author', 6],
+      ['publishing_review', 4],
+      ['publishing_promotion', 2],
       ['github', 4],
       ['illustrations', 1],
       ['knowledge', 3],
@@ -313,10 +323,12 @@ describe('getToolsForSets', () => {
       expect(getValidToolSetNames(false).has('community_groups')).toBe(true);
     });
 
-    it('keeps profile, community-group, and publishing workflows isolated', () => {
+    it('keeps profile, community-group, and bounded publishing workflows isolated', () => {
       const profile = getToolsForSets(['member_profile'], false, false);
       const groups = getToolsForSets(['community_groups'], false, false);
-      const publishing = getToolsForSets(['publishing'], false, false);
+      const author = getToolsForSets(['publishing_author'], false, false);
+      const review = getToolsForSets(['publishing_review'], false, false);
+      const promotion = getToolsForSets(['publishing_promotion'], false, false);
 
       expect(profile).toContain('get_my_profile');
       expect(profile).not.toContain('join_working_group');
@@ -325,11 +337,31 @@ describe('getToolsForSets', () => {
       expect(groups).toContain('bookmark_resource');
       expect(groups).not.toContain('get_my_profile');
       expect(groups).not.toContain('attach_content_asset');
-      expect(publishing).toContain('list_perspectives');
-      expect(publishing).toContain('attach_content_asset');
-      expect(publishing).toContain('draft_social_posts');
-      expect(publishing).not.toContain('get_my_profile');
-      expect(publishing).not.toContain('join_working_group');
+      expect(author).toContain('propose_content');
+      expect(author).toContain('attach_content_asset');
+      expect(author).not.toContain('approve_content');
+      expect(author).not.toContain('draft_social_posts');
+      expect(review).toContain('approve_content');
+      expect(review).not.toContain('propose_content');
+      expect(promotion).toContain('list_perspectives');
+      expect(promotion).toContain('draft_social_posts');
+      expect(promotion).not.toContain('attach_content_asset');
+      expect(author).not.toContain('get_my_profile');
+      expect(author).not.toContain('join_working_group');
+    });
+
+    it('preserves the exact legacy publishing surface without exposing it to new router plans', () => {
+      expect(PUBLISHING_AUTHOR_TOOLS).toHaveLength(6);
+      expect(PUBLISHING_REVIEW_TOOLS).toHaveLength(4);
+      expect(PUBLISHING_PROMOTION_TOOLS).toHaveLength(2);
+      expect(LEGACY_PUBLISHING_TOOLS).toHaveLength(12);
+      expect(new Set(LEGACY_PUBLISHING_TOOLS).size).toBe(12);
+      expect(TOOL_SETS.publishing.tools).toEqual(LEGACY_PUBLISHING_TOOLS);
+      expect(TOOL_SETS.publishing.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('publishing')).toBe(false);
+      expect(getValidToolSetNames(false).has('publishing_author')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_review')).toBe(true);
+      expect(getValidToolSetNames(false).has('publishing_promotion')).toBe(true);
     });
 
     it('keeps the legacy member set callable only as a continuity shim', () => {

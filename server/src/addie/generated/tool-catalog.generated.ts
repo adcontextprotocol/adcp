@@ -30,7 +30,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **publishing** — propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration, list_perspectives, attach_content_asset, draft_social_posts
+- **publishing_author** — propose_content, get_my_content, read_google_doc, check_illustration_status, generate_perspective_illustration, attach_content_asset
+- **publishing_review** — list_pending_content, approve_content, reject_content, request_revisions
+- **publishing_promotion** — list_perspectives, draft_social_posts
 - **github** — draft_github_issue, create_github_issue, get_github_issue, list_github_issues
 - **illustrations** — search_image_library
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
