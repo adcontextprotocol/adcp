@@ -69,7 +69,7 @@
         },
         "venue_package": {
           "type": "string",
-          "description": "Named collection of screens included in this buy"
+          "description": "Named collection of DOOH venues or installed surfaces included in this buy"
         },
         "duration_hours": {
           "type": "number",

@@ -19,7 +19,7 @@
     "CanonicalDoohPlacementAttributes": {
       "title": "Canonical DOOH Placement Attributes",
       "type": "object",
-      "description": "DOOH screen and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
+      "description": "DOOH installed-surface and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
       "properties": {
         "slot_duration_seconds": {
           "type": "integer",
@@ -34,7 +34,7 @@
         "screen_resolution": { "$ref": "#/definitions/CanonicalDoohScreenResolution" },
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Physical motion capability, not an accepted-format declaration."
+          "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         }
       },
       "x-adcp-validation": {

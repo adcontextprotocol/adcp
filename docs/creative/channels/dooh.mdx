@@ -1,10 +1,12 @@
 ---
 title: Digital Out-of-Home
-description: "Canonical image and hosted-video contracts for DOOH screens and venue networks."
+description: "Canonical image, hosted-video, and audio contracts for digital inventory installed in physical venues."
 "og:title": "AdCP — Digital Out-of-Home"
 ---
 
-DOOH uses `image` or `video_hosted`, narrowed to the screen's pixel dimensions, duration, file limits, and operational constraints. Venue, screen network, loop position, scheduling, and audience currency are inventory facts rather than creative format IDs.
+In AdCP, DOOH is digital advertising inventory delivered through a device installed in a physical out-of-home venue. The device can be a screen, an audio player, or another installed digital surface. The canonical format declares the creative medium: visual placements use `image` or `video_hosted`, while audio-only placements use `audio_hosted` or `audio_daast`.
+
+Venue, installed-device identity, loop position, scheduling, and audience currency are inventory facts rather than creative format IDs. This delivery-context definition intentionally includes audio-only venue inventory even where another industry taxonomy uses DOOH only for screens or groups in-store audio under retail media. Streaming delivered to a listener's own device remains `streaming_audio`, and terrestrial broadcast remains `radio`.
 
 ```json
 {
@@ -33,7 +35,7 @@ DOOH uses `image` or `video_hosted`, narrowed to the screen's pixel dimensions, 
 }
 ```
 
-Most DOOH renderers cannot fire browser pixels or accept clickthrough interaction. Declare only slots and macros the runtime can actually support. Delivery and measurement come from screen logs, venue counts, panels, or other sources on the product/package.
+Most DOOH renderers cannot fire browser pixels or accept clickthrough interaction. Declare only slots and macros the runtime can actually support. Delivery and measurement come from playout logs, venue counts, panels, or other sources on the product/package.
 
 ## Declaring a non-guaranteed DOOH seller
 
@@ -60,9 +62,9 @@ A seller whose inventory is exclusively non-guaranteed DOOH declares:
 
 `sales-dooh` is explicitly the **digital out-of-home — non-guaranteed** profile, not a universal claim for every DOOH seller. A guaranteed-only DOOH seller claims `sales-guaranteed` and routes `dooh` briefs through `media_buy.portfolio.primary_channels`; it does not claim `sales-dooh` unless a future guaranteed DOOH profile defines that contract. A seller that also offers general display or video auction inventory claims `sales-non-guaranteed` as well; the generic claim is not required merely because the DOOH products use `delivery_type: "non_guaranteed"`.
 
-## Model venue and screen inventory with products and placements
+## Model venue and installed-surface inventory with products and placements
 
-DOOH does not require a separate Product subtype. Use publisher properties for the inventory estate, public placements for buyer-addressable screens or loop positions, and canonical format options for creative eligibility:
+DOOH does not require a separate Product subtype. Use publisher properties for the inventory estate, public placements for buyer-addressable installed devices or loop positions, and canonical format options for creative eligibility:
 
 ```json
 {
@@ -119,9 +121,142 @@ DOOH does not require a separate Product subtype. Use publisher properties for t
 }
 ```
 
-Set a placement to `targetable` only when the buyer can select it through the product's declared placement-selection overlay. Use `included` for screens or loop inventory already bundled into the product. Seller-private player IDs and ad-server mappings are not public placement IDs.
+Set a placement to `targetable` only when the buyer can select it through the product's declared placement-selection overlay. Use `included` for installed surfaces or loop inventory already bundled into the product. Seller-private player IDs and ad-server mappings are not public placement IDs.
 
-`dooh_placement_attributes` describes physical inventory and scheduling facts. It does not declare creative eligibility: in the example, the screen is capable of full motion but this product accepts only the image declared in `format_options`. Optional `identifiers` attach public venue, screen, or taxonomy identities when they exist; they do not require a seller to manufacture a persistent screen identifier.
+`dooh_placement_attributes` describes physical inventory and scheduling facts. It does not declare creative eligibility: in the example, the screen is capable of full motion but this product accepts only the image declared in `format_options`. All placement attributes are optional. Audio-only placements can declare slot and loop duration while omitting the screen-specific `screen_resolution` and `motion` fields. Optional `identifiers` attach public venue, installed-endpoint, or taxonomy identities when they exist; they do not require a seller to manufacture a persistent device identifier.
+
+## Audio-only DOOH in physical venues
+
+An installed audio player in a tavern, grocery store, convenience store, gym, or similar venue is a DOOH property in AdCP. When sold as place-based out-of-home media, the product also uses the `dooh` channel to preserve that buying context; a retailer can instead sell the same property under `retail_media`. In both cases, `format_options` declares the accepted audio contract. Do not relabel the property as `streaming_audio` merely because the player receives its programming over an internet stream.
+
+The venue-network owner publishes the property, placement, and seller authorization in its own namespace—for example, the following file is hosted at `https://harbor-audio.example/.well-known/adagents.json`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/adagents.json",
+  "properties": [{
+    "property_id": "harbor_tavern_12345",
+    "property_type": "dooh",
+    "name": "Harbor Tavern 12345",
+    "identifiers": [
+      { "type": "venue_id", "value": "harbor:STP-12345" },
+      { "type": "openooh_venue_type", "value": "openooh-1.1:804" }
+    ],
+    "supported_channels": ["dooh"]
+  }],
+  "placements": [{
+    "placement_id": "harbor_tavern_12345_audio",
+    "name": "In-venue audio player",
+    "property_ids": ["harbor_tavern_12345"],
+    "channels": ["dooh"],
+    "identifiers": [
+      { "type": "venue_id", "value": "harbor:STP-12345" }
+    ],
+    "dooh_placement_attributes": {
+      "slot_duration_seconds": 30,
+      "loop_duration_seconds": 900
+    },
+    "format_options": [{
+      "format_kind": "audio_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "audio_codecs": ["mp3", "aac"],
+        "slots": [
+          { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
+        ]
+      }
+    }]
+  }],
+  "authorized_agents": [{
+    "url": "https://sales.harbor-audio.example/adcp",
+    "authorized_for": "In-venue audio inventory",
+    "authorization_type": "property_ids",
+    "property_ids": ["harbor_tavern_12345"],
+    "placement_ids": ["harbor_tavern_12345_audio"],
+    "delegation_type": "delegated"
+  }],
+  "last_updated": "2026-08-30T00:00:00Z"
+}
+```
+
+The seller then references that publisher-owned inventory during product discovery:
+
+```json
+{
+  "product_id": "harbor_tavern_audio_week",
+  "name": "Tavern audio — one week",
+  "description": "Thirty-second audio spots delivered through installed tavern players.",
+  "channels": ["dooh"],
+  "delivery_type": "guaranteed",
+  "publisher_properties": [{
+    "publisher_domain": "harbor-audio.example",
+    "selection_type": "by_id",
+    "property_ids": ["harbor_tavern_12345"]
+  }],
+  "placements": [{
+    "kind": "publisher_ref",
+    "publisher_domain": "harbor-audio.example",
+    "placement_id": "harbor_tavern_12345_audio",
+    "mode": "included"
+  }],
+  "format_options": [{
+    "format_option_id": "in_venue_audio_30s",
+    "format_kind": "audio_hosted",
+    "params": {
+      "duration_ms_exact": 30000,
+      "audio_codecs": ["mp3", "aac"],
+      "slots": [
+        { "asset_group_id": "audio_main", "asset_type": "audio", "required": true }
+      ]
+    }
+  }],
+  "pricing_options": [{
+    "pricing_option_id": "tavern_audio_week_flat",
+    "pricing_model": "flat_rate",
+    "currency": "USD",
+    "fixed_price": 1200,
+    "parameters": {
+      "type": "dooh",
+      "min_plays_per_hour": 4,
+      "duration_hours": 168
+    }
+  }],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 240,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend", "plays", "dooh_metrics"],
+    "supports_placement_breakdown": true,
+    "date_range_support": "date_range"
+  }
+}
+```
+
+`audio_distribution_types` remains optional and describes the underlying audio feed when an existing value such as `music_streaming_service` or `web_radio` applies. It does not identify the installed venue context; `dooh` already does that. A sales agent representing several venue-network owners keeps each owner's `publisher_domain`, property catalog, and authorization distinct rather than inventing a network pseudo-publisher.
+
+Proof-of-play reporting uses `plays` for the raw playout count and `impressions` for the modeled audience after applying the venue-attendance multiplier. `dooh_metrics.venue_breakdown` can carry the same figures by venue; screen-only fields such as `screens_used` and `screen_time_seconds` are omitted for audio-only placements:
+
+```json
+{
+  "plays": 672,
+  "impressions": 2352,
+  "dooh_metrics": {
+    "loop_plays": 672,
+    "sov_achieved": 0.0333,
+    "calculation_notes": "Modeled audience uses 3.5 listeners per verified play.",
+    "venue_breakdown": [{
+      "venue_id": "harbor:STP-12345",
+      "venue_name": "Harbor Tavern 12345",
+      "venue_type": "openooh-1.1:804",
+      "impressions": 2352,
+      "loop_plays": 672
+    }]
+  }
+}
+```
+
+Exact structured coordinates and venue-coverage fields remain tracked in [#5538](https://github.com/adcontextprotocol/adcp/issues/5538); coordinates are metadata, not property or placement identity.
 
 If loop position, share of voice, or scheduling changes what the buyer can purchase, expose it as a distinct product or public placement with the applicable commercial terms. Put canonical slot and loop duration on `dooh_placement_attributes`. Existing fixed-allocation DOOH offers can also declare `pricing_options[].parameters` on a `flat_rate` option with `type: "dooh"`, plus `sov_percentage`, `min_plays_per_hour`, `venue_package`, `duration_hours`, and `daypart`. The deprecated pricing-layer copy of `loop_duration_seconds`, when present on a migrated offer, must agree with the placement declaration. Guaranteed-only offers use the `sales-guaranteed` profile.
 
@@ -148,16 +283,16 @@ Attention measurement is optional and is not required to claim `sales-dooh`. Whe
 }
 ```
 
-The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. The existing `media_buy_seller/vendor_metric_accountability` scenario verifies declaration, commitment, and delivery for sellers whose conformance profile selects that contract; it is not part of the core `sales-dooh` claim. Ordinary play-reporting DOOH sellers do not need vendor metrics. AdCP does not require a persistent person or device identifier for these aggregate observations. A seller must not manufacture one merely to fit an impression-oriented workflow. Standard DOOH delivery facts such as raw plays, screens used, screen time, share of voice, and venue breakdown use `plays` and `dooh_metrics`.
+The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. The existing `media_buy_seller/vendor_metric_accountability` scenario verifies declaration, commitment, and delivery for sellers whose conformance profile selects that contract; it is not part of the core `sales-dooh` claim. Ordinary play-reporting DOOH sellers do not need vendor metrics. AdCP does not require a persistent person or device identifier for these aggregate observations. A seller must not manufacture one merely to fit an impression-oriented workflow. Standard DOOH delivery facts such as raw plays, installed surfaces used, active time, share of voice, and venue breakdown use `plays` and the applicable fields in `dooh_metrics`.
 
 ## Storyboard coverage
 
 The [`sales-dooh` storyboard](/compliance/latest/specialisms/sales-dooh/index.yaml) verifies the channel-specific path:
 
 1. The seller declares `sales-dooh` and routes `dooh` briefs.
-2. Exact product listing returns non-guaranteed DOOH inventory with canonical screen formats, publisher scope, and public placements.
-3. When supported, the buyer preflights a screen-compatible creative against the product; the required flow syncs it and creates a sandbox media buy using the returned product, pricing option, and bid.
-4. Deterministically injected play and screen activity reconciles to the purchased package through `plays` and `dooh_metrics`.
+2. Exact product listing returns non-guaranteed DOOH inventory with canonical formats, publisher scope, and public placements.
+3. When supported, the buyer preflights a placement-compatible creative against the product; the required flow syncs it and creates a sandbox media buy using the returned product, pricing option, and bid.
+4. Deterministically injected play and placement activity reconciles to the purchased package through `plays` and `dooh_metrics`.
 
 Generic media-buy storyboards continue to test lifecycle and error semantics. The DOOH specialism does not require vendor attention measurement, clicks, conversions, browser pixels, or persistent audience identifiers.
 

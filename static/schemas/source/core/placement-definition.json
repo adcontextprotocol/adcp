@@ -19,7 +19,7 @@
     "PublisherDoohPlacementAttributes": {
       "title": "Publisher DOOH Placement Attributes",
       "type": "object",
-      "description": "Publisher-declared DOOH screen and default scheduled-loop facts, not creative acceptance. Referencing products may override slot_duration_seconds and loop_duration_seconds; screen_resolution and motion are intrinsic publisher facts and MUST NOT be changed.",
+      "description": "Publisher-declared facts about a DOOH installed surface and its default scheduled loop, not creative acceptance. Referencing products may override slot_duration_seconds and loop_duration_seconds. Visual placements may also declare screen_resolution and motion as intrinsic publisher facts that MUST NOT be changed; audio-only placements omit those screen-specific fields.",
       "properties": {
         "slot_duration_seconds": {
           "type": "integer",
@@ -34,7 +34,7 @@
         "screen_resolution": { "$ref": "#/definitions/PublisherDoohScreenResolution" },
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Physical motion capability of the DOOH screen, not an accepted-format declaration."
+          "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         }
       },
       "x-adcp-validation": {

@@ -397,7 +397,7 @@ Audio products can declare `audio_distribution_types` at the product level, plac
 | `video_game` | Background audio in video games |
 | `text_to_speech` | Text-to-speech audio such as audio books or website/plugin article narration |
 
-This field describes execution and distribution details inside the buyer-facing `radio`, `streaming_audio`, `podcast`, or `gaming` channel. It does not rename channels and it does not change `adagents.json` `property_type` semantics, which remain tied to authorizable inventory surfaces. The field is an array because a sellable product can aggregate multiple audio distribution types. When both product and placement declarations are present, the product-level array should be the union of the audio distribution types the seller may deliver under that product.
+This field describes execution and distribution details inside buyer-facing audio inventory, including `radio`, `streaming_audio`, `podcast`, `gaming`, and audio-only `dooh` products. It does not rename channels and it does not change `adagents.json` `property_type` semantics, which remain tied to authorizable inventory surfaces. The field describes the underlying feed, not the delivery environment: a player installed in a physical venue remains `dooh` even when an existing feed value also applies. The field is an array because a sellable product can aggregate multiple audio distribution types. When both product and placement declarations are present, the product-level array should be the union of the audio distribution types the seller may deliver under that product.
 
 This is a discovery signal, not a verification claim. Buyers can filter for products that can satisfy a requested type with `get_products.filters.audio_distribution_types`, but sellers should not return mixed, non-targetable bundles unless they can constrain delivery to the requested audio distribution type during planning or purchase.
 
@@ -433,22 +433,22 @@ This is a discovery signal, not a verification claim. Buyers can filter for prod
 
 #### DOOH placement attributes
 
-Digital out-of-home placements can declare structured selling-unit metadata via `dooh_placement_attributes` at the placement level (both in product placements and in `adagents.json` placement definitions). These fields describe the physical screen and ad-loop characteristics that buyers need for creative production and share-of-voice calculations:
+Digital out-of-home placements can declare structured selling-unit metadata via `dooh_placement_attributes` at the placement level (both in product placements and in `adagents.json` placement definitions). These fields describe an installed surface and its ad-loop characteristics. Visual placements use the screen fields for creative production and share-of-voice calculations; audio-only placements omit them:
 
 | Field | Type | Meaning |
 |---|---|---|
 | `slot_duration_seconds` | integer | Duration of one ad slot in seconds (e.g., 10, 15, 30) |
 | `loop_duration_seconds` | integer | Duration of the full ad loop rotation in seconds. Buyers derive nominal slot share as `slot_duration_seconds / loop_duration_seconds`. This is the canonical source; the pricing-layer field in `flat-rate-option` is superseded |
-| `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height` |
-| `motion` | string | Motion capability of the screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only) |
+| `screen_resolution` | object | Physical screen resolution (`{ width, height }` in pixels). Buyers derive aspect ratio from `width / height`. Omit for audio-only placements |
+| `motion` | string | Motion capability of a visual screen: `full_motion` (video), `partial_motion` (animated stills), or `static` (images only). Omit for audio-only placements |
 
-All fields are optional. A single screen/frame placement can include all fields; a package or network placement should include only fields that are uniform across the included inventory. After publisher and product declarations are resolved, `slot_duration_seconds` MUST NOT exceed `loop_duration_seconds`.
+All fields are optional. A single visual screen/frame placement can include all fields; an audio-only placement can declare only its slot and loop timing. A package or network placement should include only fields that are uniform across the included inventory. After publisher and product declarations are resolved, `slot_duration_seconds` MUST NOT exceed `loop_duration_seconds`.
 
-These are inventory facts, not an alternative creative contract. Effective canonical `format_options` remains authoritative for accepted dimensions, durations, asset types, and codecs. A physical screen can therefore report a larger `screen_resolution` than the content region declared by its formats, and a full-motion screen can still offer a static-only product.
+These are inventory facts, not an alternative creative contract. Effective canonical `format_options` remains authoritative for accepted dimensions, durations, asset types, and codecs. A physical screen can therefore report a larger `screen_resolution` than the content region declared by its formats, a full-motion screen can still offer a static-only product, and an audio-only DOOH placement declares `audio_hosted` or `audio_daast` without manufacturing visual attributes.
 
 For `kind: "publisher_ref"`, resolve the publisher placement before applying product detail. Product-level `slot_duration_seconds` and `loop_duration_seconds` override publisher defaults for that specific offer; omitted values inherit. `screen_resolution` and `motion` are intrinsic publisher facts, so repeated product values MUST match the publisher declaration. Treat mismatches and an invalid effective slot-to-loop ratio as conformance errors rather than silently choosing one source.
 
-Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id`, `screen_id`, and `openooh_venue_type` identifier types. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`). OpenOOH classifications include the taxonomy version (`openooh-1.1:20501`), since a bare category number does not identify which revision defined it. For publisher references, union publisher and product identifiers by exact `(type, value)`; product omission does not remove a publisher identifier.
+Placements can also carry `identifiers[]` using the same `{ type, value }` shape as property identifiers. DOOH placements commonly use `venue_id` and `openooh_venue_type`; visual placements can also use `screen_id`. Externally governed IDs should be authority-prefixed (e.g., `geopath:30961`). OpenOOH classifications include the taxonomy version (`openooh-1.1:20501`), since a bare category number does not identify which revision defined it. For publisher references, union publisher and product identifiers by exact `(type, value)`; product omission does not remove a publisher identifier.
 
 #### Format precedence with placements
 
