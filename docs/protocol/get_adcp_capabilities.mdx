@@ -577,15 +577,25 @@ For offline delivery, the seller provisions a per-account bucket and grants the 
 
 #### reporting_delivery (experimental)
 
-`media_buy.reporting_delivery` advertises managed durable reporting. Its `offerings[]`
-are atomic—not a cross-product—and each binds one feed purpose, content-addressed
-reporting profile/schema, schedule, supported finality, transport, orchestration,
-provider/access mode/format, and destination modes. It also declares automated
-recovery, ledger-metadata retention, exact-resource retention, and authorization
-revocation bounds. Presence requires `media_buy.reporting_delivery` in top-level
-`experimental_features` and a supported RFC 9421 `webhook_signing` profile. See
-[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) and
-[`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts).
+`media_buy.reporting_delivery` advertises managed reporting in **three tiers over one
+data model**. Presence requires `media_buy.reporting_delivery` in top-level
+`experimental_features`.
+
+| Tier | Advertised by | Contains | Required? |
+|---|---|---|---|
+| **Core** | `supported: true` | Obligations, revisions, materializations, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method` and canonicalization. | **Yes** — the only required tier |
+| **Managed delivery** | `managed_delivery: true` | Offerings whose `method` names `file_transfer`, `dataset_share`, or `warehouse_materialization`, plus exact-resource retention and authorization-revocation bounds. | No |
+| **Reconciled billing** | `reconciled_billing: true` | `receipt_task` ([`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)), `consumer_receipt` reconciliation, and the canonical-digest contract in offering profiles. | No |
+
+The `reporting.delivery_ready` doorbell (`readiness_notification`) is **optional in
+every tier** — a polling-only seller that repairs through `get_reporting_status`
+is fully Core-conformant, and a supported RFC 9421 `webhook_signing` profile is
+required only when the seller actually emits reporting webhooks.
+
+`offerings[]` are atomic—not a cross-product—and each binds one feed purpose,
+content-addressed reporting profile/schema, schedule, and supported finality;
+managed-delivery offerings additionally bind transport, orchestration,
+provider/access mode/format, and destination modes.
 
 #### performance_feedback
 

@@ -31,7 +31,7 @@
     "method": { "$ref": "/schemas/core/reporting-delivery-method.json" },
     "revocation_effective_at": { "type": "string", "format": "date-time", "description": "Optional requested cutoff for deactivation. No new publication may begin after the applied cutoff; historical access is limited to the contracted recovery window." }
   },
-  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "report_definition_id", "reporting_profile", "scope", "coverage_requirement", "required_finality", "reconciliation_mode", "schedule", "method"],
+  "required": ["delivery_config_id", "delivery_config_version", "offering_id", "active", "feed_purpose", "report_definition_id", "reporting_profile", "scope", "coverage_requirement", "required_finality", "reconciliation_mode", "schedule"],
   "allOf": [
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
@@ -43,6 +43,7 @@
     }
   ],
   "x-adcp-validation": {
+    "tier_boundaries": "method is present when and only when the selected offering declares one. A configuration selecting a Core (API-delivered) offering involves no destination, manifest, canonicalization, or receipt machinery.",
     "offering_applicability": "Resolve the seller-wide offering through every selected product's reporting_capabilities.reporting_delivery_offering_ids, then apply account, seat, credential, provider, and API constraints. Seller-wide advertisement alone is not proof that an individual package is eligible.",
     "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
   },

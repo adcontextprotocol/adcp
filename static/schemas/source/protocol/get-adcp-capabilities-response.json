@@ -97,6 +97,11 @@
       "if": {
         "properties": {
           "media_buy": {
+            "properties": {
+              "reporting_delivery": {
+                "required": ["readiness_notification"]
+              }
+            },
             "required": ["reporting_delivery"]
           }
         },

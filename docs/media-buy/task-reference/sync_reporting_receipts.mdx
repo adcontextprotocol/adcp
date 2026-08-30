@@ -5,8 +5,12 @@ description: "Record authenticated consumer reconciliation results for managed r
 ---
 
 <Warning>
-This task is experimental. Sellers implementing it declare
-`media_buy.reporting_delivery` in `get_adcp_capabilities.experimental_features`.
+This task is experimental and belongs to the optional **reconciled billing
+tier**: only sellers advertising
+`media_buy.reporting_delivery.reconciled_billing: true` implement it, and its
+presence is declared through `receipt_task`. Core-tier sellers never implement
+receipts. Sellers implementing it declare `media_buy.reporting_delivery` in
+`get_adcp_capabilities.experimental_features`.
 </Warning>
 
 `sync_reporting_receipts` closes the knowledge gap between “the seller published a

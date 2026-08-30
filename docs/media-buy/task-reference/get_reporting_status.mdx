@@ -188,6 +188,12 @@ across pages.
 
 ## Readiness and recovery
 
+The push doorbell is **optional in every tier**: a polling-only seller that
+answers `get_reporting_status` truthfully is fully Core-conformant, and buyers
+MUST treat polling as the authoritative recovery path regardless of whether
+the doorbell is offered.
+
+When offered (advertised via `readiness_notification`),
 `reporting.delivery_ready` is an account-anchored doorbell registered through
 [`sync_accounts`](/docs/accounts/tasks/sync_accounts) `notification_configs[]`. It is
 emitted only after the materialization is observable through the intended consumer
