@@ -2384,7 +2384,6 @@ export class AddieClaudeClient {
                   costModel = fallback.model;
                   modelFallbackReason = fallback.reason;
                   lastProviderModel = currentResponse.model;
-                  streamSucceeded = true;
                   modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
                   if (operationalExecution) {
                     this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
