@@ -166,9 +166,9 @@ export const TOOL_DEFINITIONS = [
               publisher_domain: { type: "string" },
               collection_ids: { type: "array", items: { type: "string" }, minItems: 1 },
             },
-            required: ["publisher_domain", "collection_ids"],
+            required: ["publisher_domain"],
           },
-          description: "Optional domain-qualified collection selectors to validate collection-scoped authorization",
+          description: "Optional domain-qualified collection selectors to validate collection-scoped authorization. Omit collection_ids in a selector to ask about all collections declared at that publisher_domain.",
         },
         placement_ids: {
           type: "array",

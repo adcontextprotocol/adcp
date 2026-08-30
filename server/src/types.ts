@@ -182,7 +182,8 @@ export interface AgentSigningKey {
 
 export interface CollectionSelector {
   publisher_domain: string;
-  collection_ids: string[];
+  /** Omitted = all collections declared in publisher_domain's adagents.json (bulk grant). */
+  collection_ids?: string[];
 }
 
 export interface PublisherPropertySelector {

@@ -76,7 +76,8 @@ export const AdagentsAuthorizedAgentSchema = z
     })).optional(),
     collections: z.array(z.object({
       publisher_domain: z.string(),
-      collection_ids: z.array(z.string()),
+      // Omitted = bulk grant for all collections declared at publisher_domain.
+      collection_ids: z.array(z.string()).min(1).optional(),
     })).optional(),
     placement_ids: z.array(z.string()).optional(),
     placement_tags: z.array(z.string()).optional(),

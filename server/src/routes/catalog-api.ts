@@ -45,7 +45,9 @@ const DistributionIdentifierSchema = z.object({
 const CollectionDistributionSchema = z.object({
   publisher_domain: z.string().min(1).transform((value) => canonicalizePublisherDomain(value))
     .refine(isValidCollectionPublisherDomain, 'Invalid publisher_domain'),
-  property_ids: z.array(z.string().regex(/^[a-z0-9_]+$/)).min(1).optional(),
+  property_ids: z.array(z.string().regex(/^[a-z0-9_]+$/)).min(1)
+    .refine((ids) => new Set(ids).size === ids.length, 'property_ids must be unique')
+    .optional(),
   identifiers: z.array(DistributionIdentifierSchema).min(1).optional(),
 }).passthrough().refine(
   (distribution) => Boolean(distribution.property_ids?.length || distribution.identifiers?.length),

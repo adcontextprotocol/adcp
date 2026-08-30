@@ -304,6 +304,16 @@ export class AgentValidator {
       return true;
     }
 
+    // Publisher-authored selectors arrive from the fetched manifest, so
+    // normalize them the same way as the caller-supplied scope — malformed
+    // entries drop instead of throwing (a throw would fail the whole
+    // validation with an opaque error even when another entry matches).
+    const authorized = this.normalizeCollectionSelectors(selectors);
+    if (!authorized) {
+      // Constrained entry whose constraint is entirely malformed: fail closed.
+      return false;
+    }
+
     const requested = this.normalizeCollectionSelectors([
       ...(scope.collections || []),
       ...(scope.collection_ids?.length
@@ -315,10 +325,14 @@ export class AgentValidator {
       return false;
     }
 
-    return selectors.some((selector) =>
+    // A selector without collection_ids is a bulk grant / bulk request for
+    // every collection declared at that publisher_domain.
+    return authorized.some((selector) =>
       requested.some((candidate) =>
-        canonicalizePublisherDomain(selector.publisher_domain) === candidate.publisher_domain &&
-        this.hasIntersection(selector.collection_ids, candidate.collection_ids)
+        selector.publisher_domain === candidate.publisher_domain &&
+        (!selector.collection_ids ||
+          !candidate.collection_ids ||
+          this.hasIntersection(selector.collection_ids, candidate.collection_ids))
       )
     );
   }
@@ -760,7 +774,7 @@ export class AgentValidator {
     const localCollectionIds = new Set(scope.collection_ids || []);
     for (const selector of collections || []) {
       if (selector.publisher_domain === normalizedDomain) {
-        for (const collectionId of selector.collection_ids) {
+        for (const collectionId of selector.collection_ids ?? []) {
           localCollectionIds.add(collectionId);
         }
       }
@@ -785,20 +799,31 @@ export class AgentValidator {
       return undefined;
     }
 
-    const idsByDomain = new Map<string, Set<string>>();
+    // Per domain: a Set of explicit IDs, or null once a bulk-grant selector
+    // (no collection_ids) is seen — the wildcard absorbs explicit IDs.
+    const idsByDomain = new Map<string, Set<string> | null>();
     for (const value of selectors) {
       if (!value || typeof value !== "object" || Array.isArray(value)) {
         continue;
       }
       const selector = value as { publisher_domain?: unknown; collection_ids?: unknown };
-      if (typeof selector.publisher_domain !== "string" || !Array.isArray(selector.collection_ids)) {
+      if (typeof selector.publisher_domain !== "string") {
         continue;
       }
       const domain = canonicalizePublisherDomain(selector.publisher_domain);
       if (!domain) {
         continue;
       }
-      const ids = idsByDomain.get(domain) || new Set<string>();
+      if (selector.collection_ids === undefined) {
+        idsByDomain.set(domain, null);
+        continue;
+      }
+      if (!Array.isArray(selector.collection_ids)) {
+        continue;
+      }
+      const existing = idsByDomain.get(domain);
+      if (existing === null) continue;
+      const ids = existing || new Set<string>();
       for (const collectionId of selector.collection_ids) {
         if (typeof collectionId === "string" && collectionId.length > 0) {
           ids.add(collectionId);
@@ -807,10 +832,11 @@ export class AgentValidator {
       if (ids.size) idsByDomain.set(domain, ids);
     }
 
-    const normalized = [...idsByDomain.entries()].map(([publisher_domain, collectionIds]) => ({
-      publisher_domain,
-      collection_ids: [...collectionIds],
-    }));
+    const normalized = [...idsByDomain.entries()].map(([publisher_domain, collectionIds]) =>
+      collectionIds === null
+        ? { publisher_domain }
+        : { publisher_domain, collection_ids: [...collectionIds] }
+    );
     return normalized.length ? normalized : undefined;
   }
 
@@ -827,11 +853,14 @@ export class AgentValidator {
       return undefined;
     }
 
+    // Legacy flat view: only host-domain IDs are expressible. External-domain
+    // and bulk-grant (no collection_ids) constraints flatten to [] rather than
+    // undefined so legacy readers see "constrained" instead of "unrestricted".
     return [
       ...new Set(
         selectors
           .filter((selector) => canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain)
-          .flatMap((selector) => selector.collection_ids)
+          .flatMap((selector) => selector.collection_ids ?? [])
       ),
     ];
   }

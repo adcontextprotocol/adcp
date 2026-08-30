@@ -1554,9 +1554,9 @@ components:
                 type: array
                 items:
                   type: string
+                minItems: 1
             required:
               - publisher_domain
-              - collection_ids
         placement_ids:
           type: array
           items:
@@ -3526,7 +3526,9 @@ components:
           items:
             type: string
         collections:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: object
             properties:
@@ -3539,7 +3541,6 @@ components:
                 minItems: 1
             required:
               - publisher_domain
-              - collection_ids
             additionalProperties: {}
         countries:
           type: array
@@ -9592,6 +9593,24 @@ paths:
                           items:
                             $ref: "#/components/schemas/SigningKey"
                           description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
+                        collections:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            type: object
+                            properties:
+                              publisher_domain:
+                                type: string
+                              collection_ids:
+                                type: array
+                                items:
+                                  type: string
+                                minItems: 1
+                            required:
+                              - publisher_domain
+                            additionalProperties: {}
+                          description: Collection constraints (authorized_agents[*].collections) from the source adagents.json. Null when the entry is unconstrained. When set, the row does NOT authorize the property unqualified — consumers MUST scope it to these selectors. A selector without collection_ids is a bulk grant for all collections declared at that publisher_domain.
                         override_applied:
                           type: boolean
                         override_reason:
@@ -9613,6 +9632,7 @@ paths:
                         - created_at
                         - updated_at
                         - signing_keys
+                        - collections
                         - override_applied
                         - override_reason
                   count:

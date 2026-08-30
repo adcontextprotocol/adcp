@@ -2753,8 +2753,12 @@ const AuthorizationEventPayloadSchema = z
     property_id_slug: z.string().nullable().optional().openapi({ description: "Publisher-local property id for materialized per-property authorization rows." }),
     placement_ids: z.array(z.string()).optional(),
     placement_tags: z.array(z.string()).optional(),
+    // Nullable because caa_event_payload emits {"collections": null} on
+    // base-row events for unconstrained entries (the common case). A
+    // selector without collection_ids is the bulk-grant form.
     collections: z
-      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1) }).passthrough())
+      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+      .nullable()
       .optional(),
     countries: z.array(z.string()).optional(),
     delegation_type: z.string().optional(),
@@ -2971,6 +2975,17 @@ const AuthorizationRowSchema = z.object({
       "Null when the publisher declared no keys; consumers fall back to the " +
       "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
   }),
+  collections: z
+    .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+    .nullable()
+    .openapi({
+      description:
+        "Collection constraints (authorized_agents[*].collections) from the source " +
+        "adagents.json. Null when the entry is unconstrained. When set, the row does " +
+        "NOT authorize the property unqualified — consumers MUST scope it to these " +
+        "selectors. A selector without collection_ids is a bulk grant for all " +
+        "collections declared at that publisher_domain.",
+    }),
   override_applied: z.boolean(),
   override_reason: z.string().nullable(),
 });

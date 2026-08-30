@@ -329,6 +329,52 @@ describe('AuthorizationIndex', () => {
       }).authorized).toBe(false);
     });
 
+    it('treats an empty collections array as a deny sentinel (declared constraint, unparseable)', () => {
+      index.addEntry(makeEntry({ collections: [] }));
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+      }).authorized).toBe(false);
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] }],
+      }).authorized).toBe(false);
+    });
+
+    it('matches a bulk-grant selector (no collection_ids) against any collection at that domain', () => {
+      index.addEntry(makeEntry({
+        collections: [{ publisher_domain: 'channel-owner.example' }],
+      }));
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] }],
+      }).authorized).toBe(true);
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'different-owner.example', collection_ids: ['retro_news'] }],
+      }).authorized).toBe(false);
+    });
+
+    it('unions domain-qualified selectors with the legacy collection_id shorthand', () => {
+      index.addEntry(makeEntry({
+        collections: [{ publisher_domain: 'publisher.example.com', collection_ids: ['primetime_drama'] }],
+      }));
+
+      expect(index.check({
+        agent_url: 'https://agent.example.com',
+        property_rid: 'rid-001',
+        collections: [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] }],
+        collection_id: 'primetime_drama',
+      }).authorized).toBe(true);
+    });
+
     it('authorizes all collections when none on entry', () => {
       index.addEntry(makeEntry({}));
       const result = index.check({

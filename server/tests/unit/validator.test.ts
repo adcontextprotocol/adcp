@@ -280,6 +280,71 @@ describe("AgentValidator", () => {
     expect(result.authorized).toBe(false);
   });
 
+  it("matches a bulk-grant selector against any collection of that owner", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        properties: [
+          {
+            property_id: "hoststream_ctv",
+            property_type: "ctv_app",
+            name: "HostStream",
+            identifiers: [{ type: "android_app", value: "com.example.hoststream" }],
+          },
+        ],
+        authorized_agents: [
+          {
+            url: "https://sales.channel-owner.example",
+            authorized_for: "Owner-sold avails, all carried channels",
+            authorization_type: "property_ids",
+            property_ids: ["hoststream_ctv"],
+            collections: [{ publisher_domain: "channel-owner.example" }],
+          },
+        ],
+      })
+    );
+
+    const result = await validator.validate(
+      "example.com",
+      "https://sales.channel-owner.example",
+      {
+        property_id: "hoststream_ctv",
+        collections: [
+          { publisher_domain: "channel-owner.example", collection_ids: ["retro_news"] },
+        ],
+      }
+    );
+
+    expect(result.authorized).toBe(true);
+    expect(result.matched_authorization?.collections).toEqual([
+      { publisher_domain: "channel-owner.example" },
+    ]);
+  });
+
+  it("fails closed without throwing when the manifest's collection selectors are malformed", async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        properties: [{ property_id: "example_site", name: "Example Site" }],
+        authorized_agents: [
+          {
+            url: "https://sales.example.com",
+            authorized_for: "Collection-scoped inventory",
+            authorization_type: "property_ids",
+            property_ids: ["example_site"],
+            collections: [{ publisher_domain: 42, collection_ids: "retro_news" }],
+          },
+        ],
+      })
+    );
+
+    const result = await validator.validate("example.com", "https://sales.example.com", {
+      property_id: "example_site",
+      collections: [{ publisher_domain: "example.com", collection_ids: ["anything"] }],
+    });
+
+    expect(result.authorized).toBe(false);
+    expect(result.error).toBeUndefined();
+  });
+
   it("fails closed on malformed external collection selectors", async () => {
     fetchMock.mockResolvedValue(
       jsonResponse({

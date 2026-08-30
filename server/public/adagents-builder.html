@@ -1626,7 +1626,7 @@
 
               <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--color-border);">
                 <label>Collection constraints <span style="font-weight: normal; font-size: 12px; color: var(--color-text-muted);">(optional — narrows authorization to specific content programs or channels)</span></label>
-                <p style="margin: 4px 0 8px 0; font-size: 12px; color: var(--color-text-muted);">Enter collection selectors as JSON. Selectors may point to a different publisher domain, which is how a host attests owner-sold channel inventory.</p>
+                <p style="margin: 4px 0 8px 0; font-size: 12px; color: var(--color-text-muted);">Enter collection selectors as JSON. Selectors may point to a different publisher domain, which is how a host attests owner-sold channel inventory. Omit collection_ids to grant for all of that publisher's collections without tracking their IDs.</p>
                 <textarea id="agent-collections" rows="4" placeholder='[{"publisher_domain":"channel-owner.example","collection_ids":["retro_news"]}]' style="width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle); font-family: monospace; font-size: 12px;"></textarea>
               </div>
 
@@ -4579,17 +4579,21 @@
               && typeof selector === 'object'
               && typeof selector.publisher_domain === 'string'
               && /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/.test(selector.publisher_domain)
-              && Array.isArray(selector.collection_ids)
-              && selector.collection_ids.length > 0
-              && selector.collection_ids.every(id => typeof id === 'string' && id.trim().length > 0));
+              && (selector.collection_ids === undefined
+                || (Array.isArray(selector.collection_ids)
+                  && selector.collection_ids.length > 0
+                  && selector.collection_ids.every(id => typeof id === 'string' && id.trim().length > 0))));
           if (!validSelectors) {
-            alert('Collection constraints must be a non-empty array of {publisher_domain, collection_ids[]} selectors.');
+            alert('Collection constraints must be a non-empty array of {publisher_domain, collection_ids[]} selectors. Omit collection_ids for a bulk grant covering all of that publisher\'s collections.');
             return;
           }
-          agent.collections = collections.map(selector => ({
-            ...selector,
-            collection_ids: [...new Set(selector.collection_ids.map(id => id.trim()))],
-          }));
+          agent.collections = collections.map(selector => (
+            selector.collection_ids === undefined
+              ? { publisher_domain: selector.publisher_domain }
+              : {
+                publisher_domain: selector.publisher_domain,
+                collection_ids: [...new Set(selector.collection_ids.map(id => id.trim()))],
+              }));
         }
 
         // Optional placement constraints

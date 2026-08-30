@@ -28,7 +28,14 @@ export interface AuthorizationEntry {
   property_tags?: string[];
   placement_ids?: string[];
   placement_tags?: string[];
-  collections?: Array<{ publisher_domain: string; collection_ids: string[] }>;
+  /**
+   * Collection constraints. undefined = unconstrained. An EMPTY array is a
+   * deny sentinel: the source declared a constraint that could not be
+   * parsed, so the entry matches no collection query (fail closed).
+   * A selector without collection_ids is a bulk grant for every collection
+   * declared at that publisher_domain.
+   */
+  collections?: Array<{ publisher_domain: string; collection_ids?: string[] }>;
   countries?: string[];
   delegation_type?: string;
   exclusive?: boolean;
@@ -49,7 +56,7 @@ export interface AuthorizationQuery {
   property_id?: string;
   placement_id?: string;
   placement_tags?: string[];
-  collections?: Array<{ publisher_domain: string; collection_ids: string[] }>;
+  collections?: Array<{ publisher_domain: string; collection_ids?: string[] }>;
   /** Legacy shorthand for a collection owned by the host publisher. */
   collection_id?: string;
   country?: string;
@@ -368,22 +375,32 @@ export class AuthorizationIndex {
   }
 
   private matchesCollection(entry: AuthorizationEntry, query: AuthorizationQuery): boolean {
-    // No collection restriction = all collections
-    if (!entry.collections || entry.collections.length === 0) return true;
+    // No collection restriction = all collections. An empty array is the
+    // deny sentinel (constraint declared but unparseable) — fail closed.
+    if (!entry.collections) return true;
+    if (entry.collections.length === 0) return false;
     // A constrained entry cannot prove authorization without collection scope.
     if (!query.collection_id && !query.collections?.length) return false;
 
-    const requested = query.collections?.length
-      ? query.collections
-      : query.collection_id
+    // Union domain-qualified selectors with the legacy host-collection
+    // shorthand (anchored to the granting publisher's own domain), matching
+    // AgentValidator.matchesCollections semantics.
+    const requested = [
+      ...(query.collections ?? []),
+      ...(query.collection_id
         ? [{ publisher_domain: entry.publisher_domain, collection_ids: [query.collection_id] }]
-        : [];
+        : []),
+    ];
 
+    // A selector without collection_ids is a bulk grant / bulk request for
+    // every collection declared at that publisher_domain.
     return entry.collections.some((authorized) =>
       requested.some((candidate) =>
         canonicalizePublisherDomain(authorized.publisher_domain) ===
           canonicalizePublisherDomain(candidate.publisher_domain) &&
-        authorized.collection_ids.some((collectionId) => candidate.collection_ids.includes(collectionId))
+        (!authorized.collection_ids ||
+          !candidate.collection_ids ||
+          authorized.collection_ids.some((collectionId) => candidate.collection_ids!.includes(collectionId)))
       )
     );
   }

@@ -22,7 +22,7 @@ export const DISTRIBUTION_IDENTIFIER_TYPE_VALUES = [
   'youtube_channel_url',
   'youtube_playlist_id',
   'amazon_title_id',
-  'publisher_channel_id',
+  'platform_channel_id',
   'roku_channel_id',
   'pluto_channel_id',
   'tubi_id',

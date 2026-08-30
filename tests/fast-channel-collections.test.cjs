@@ -50,7 +50,7 @@ test('channel collections support publisher-scoped channel identifiers', async (
     name: 'Acme Retro News',
     distribution: [{
       publisher_domain: 'hoststream.example',
-      identifiers: [{ type: 'publisher_channel_id', value: 'channel_942' }],
+      identifiers: [{ type: 'platform_channel_id', value: 'channel_942' }],
     }],
   };
 
@@ -67,6 +67,56 @@ test('collection distributions reject empty carriage records', async () => {
   };
 
   assert.equal(validate(collection), false, 'distribution requires property_ids or identifiers');
+});
+
+test('platform_channel_id is rejected in bare {type, value} filter contexts', async () => {
+  const validate = await compile('/schemas/collection/collection-list-filters.json');
+  const filters = {
+    exclude_distribution_ids: [{ type: 'platform_channel_id', value: '1005' }],
+  };
+
+  assert.equal(validate(filters), false,
+    'platform_channel_id identity is (publisher_domain, value); bare {type, value} cannot carry it');
+});
+
+test('a host can bulk-grant all collections of an external publisher', async () => {
+  const validate = await compile('/schemas/adagents.json');
+  const manifest = {
+    $schema: '/schemas/adagents.json',
+    properties: [{
+      property_id: 'hoststream_ctv',
+      property_type: 'ctv_app',
+      name: 'HostStream CTV',
+      identifiers: [{ type: 'roku_store_id', value: 'hoststream' }],
+    }],
+    authorized_agents: [{
+      url: 'https://sales.channel-owner.example',
+      authorized_for: 'Owner-sold avails, all carried channels',
+      authorization_type: 'property_ids',
+      property_ids: ['hoststream_ctv'],
+      collections: [{ publisher_domain: 'channel-owner.example' }],
+      delegation_type: 'direct',
+    }],
+  };
+
+  assert.equal(validate(manifest), true, JSON.stringify(validate.errors, null, 2));
+});
+
+test('product collection selectors require explicit collection_ids', async () => {
+  const validate = await compile('/schemas/core/product.json');
+  const product = {
+    product_id: 'owner_avails',
+    name: 'Channel-owner avails',
+    description: 'Owner-sold avails on the host app',
+    collections: [{ publisher_domain: 'channel-owner.example' }],
+  };
+
+  const valid = validate(product);
+  assert.equal(valid, false, 'domain-only selectors are for authorization scoping, not product composition');
+  assert.ok(
+    (validate.errors || []).some((error) => JSON.stringify(error).includes('collection_ids')),
+    JSON.stringify(validate.errors, null, 2),
+  );
 });
 
 test('a host can authorize owner-sold inventory by external collection selector', async () => {

@@ -165,14 +165,14 @@ function normalizeCollectionDistribution(collection: Record<string, unknown>): N
     }
 
     if (propertyIds.length === 0 && identifiers.length === 0) continue;
+    // Rebuild from known fields only. The source schema allows additional
+    // properties on the wire, but the catalog projection is re-served to
+    // other parties, so publisher-authored unknown keys stop here.
     const normalizedEntry: NormalizedCollectionDistribution = {
-      ...record,
       publisher_domain: publisherDomain,
     };
     if (propertyIds.length > 0) normalizedEntry.property_ids = propertyIds;
-    else delete normalizedEntry.property_ids;
     if (identifiers.length > 0) normalizedEntry.identifiers = identifiers;
-    else delete normalizedEntry.identifiers;
     normalized.push(normalizedEntry);
   }
 
