@@ -140,6 +140,8 @@ describe('runComplianceHeartbeatJob', () => {
       dry_run: true,
     });
     mocks.recordComplianceRun.mockResolvedValue({});
+    mocks.getBadgesForAgent.mockResolvedValue([]);
+    mocks.getRegistryMetadata.mockResolvedValue(null);
     mocks.getVerificationProfileShadowRollout.mockResolvedValue({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockResolvedValue(true);
     mocks.pruneVerificationProfileShadowAssessments.mockResolvedValue(0);
@@ -151,8 +153,6 @@ describe('runComplianceHeartbeatJob', () => {
       proposed_sandbox_status: null,
       controller_gap_phase_count: 0,
     });
-    mocks.getBadgesForAgent.mockResolvedValue([]);
-    mocks.getRegistryMetadata.mockResolvedValue(null);
     mocks.releaseExecutionFence.mockResolvedValue(undefined);
     mocks.acquireAgentExecutionFence.mockResolvedValue({
       isValid: () => true,
@@ -265,7 +265,7 @@ describe('runComplianceHeartbeatJob', () => {
 
   it('does not write compliance or badge records when comply() rejects after fence becomes invalid', async () => {
     let fenceValid = true;
-    vi.mocked(mocks.acquireAgentExecutionFence).mockResolvedValueOnce({
+    mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
       isValid: () => fenceValid,
       release: mocks.releaseExecutionFence,
     });

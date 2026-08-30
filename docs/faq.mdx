@@ -74,7 +74,7 @@ If your agency already supports AdCP, you can be live in days. If not, the [mone
 <Accordion title="What is AdCP?">
 AdCP (Ad Context Protocol) is an open protocol that lets AI agents collaborate across advertising platforms using a standardized language — spanning product discovery, media buying, creative generation, audience activation, and brand governance.
 
-[Embedded human judgment](/docs/governance/embedded-human-judgment) keeps humans accountable: agent actions are reviewed and approved before execution.
+[Embedded human judgment](/docs/governance/embedded-human-judgment) gives deployments explicit approval and governance boundaries so they can require human review before consequential execution. Support is capability-declared, and campaign governance remains experimental in AdCP 3.x.
 
 AdCP is a specification — not a product, platform, or company. Anyone can implement it. Start with the [introduction](/docs/intro) or the [building guide](/docs/building).
 </Accordion>
@@ -137,31 +137,9 @@ AdCP is Apache 2.0 — IAB Tech Lab or any other body is free to adopt, referenc
 </Accordion>
 
 <Accordion title="How does AdCP compare to AAMP?">
-AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/aamp-agentic-advertising-management-protocols/) — is an umbrella for three pillars: Agentic Foundations, Agentic Protocols, and Trust and Transparency. Its components include ARTF (Agentic Real Time Framework), Agentic Direct, Agentic Audiences, Agentic Mobile, buyer and seller reference agents, and the Agent Registry.
+[AAMP](https://iabtechlab.com/standards/aamp-agentic-advertising-management-protocols/) is a separate IAB Tech Lab initiative with some overlapping workflow concepts. It is not wire-compatible with AdCP, and implementing AdCP does not require implementing AAMP.
 
-AAMP and AdCP have substantial functional overlap. Both address buyer and seller agents, inventory and audience discovery, planning, pricing and negotiation, transaction creation, human approval, campaign management, reporting, and serve-time decisions. They are not separated by a simple "bidding versus buying" or "impression versus campaign" boundary.
-
-Their main differences are architectural. The shortest summary: **AAMP is a framework; AdCP is a protocol.** AAMP packages component standards, SDKs, and reference implementations at varying maturity under one umbrella; AdCP is a single versioned specification that implementers build against independently and verify against published schemas and conformance assets.
-
-As of August 2026, based on IAB Tech Lab's published standards and compliance pages and the IABTechLab GitHub organization:
-
-| | AAMP | AdCP |
-|---|---|---|
-| **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
-| **Design center** | Extend established IAB Tech Lab standards to agentic workflows | A cross-channel agent task and object model, selectively mapping established standards |
-| **Packaging** | Umbrella of components, SDKs, and reference implementations | One versioned protocol with [public schemas](https://adcontextprotocol.org/schemas/v3/), task definitions, and conformance assets |
-| **Specification maturity** | ARTF 1.0 (July 2026) is the first component specification finalized under IAB Tech Lab governance; the Agentic Direct, Agentic Audiences, and Agentic Mobile components have no tagged specification release | 3.0 GA April 2026; stable 3.1 line in production (governance and TMP surfaces are experimental under the published stability-notice contract) |
-| **Conformance** | No AAMP-specific conformance program (IAB Tech Lab's compliance programs cover OM SDK, podcast measurement, and data transparency) | Storyboard conformance suite; [AAO Verified (Spec) and (Sandbox)](/docs/building/verification/aao-verified) attestations |
-| **Security model** | Agent Registry diligence and privacy-platform integrations; no security model spanning AAMP components published | Signed governance context with 15-step verification (Layer 4 of the [security model](/docs/building/concepts/security-model)) |
-| **Versioning and support policy** | Umbrella releases (most recently AAMP 2.3) alongside per-component release lines; no published support or deprecation policy | [Release cadence policy](/docs/reference/versioning): majors ≥18 months apart, ≥12-month security support, ≥6-month deprecation notice |
-| **Transaction primitives** | OpenDirect accounts, products, orders, and lines; Deals API and AdCOM/OpenRTB objects | Products, proposals, media buys, creatives, signals, and governance plans |
-| **Real-time execution** | ARTF host-executed services, OpenRTB integration, Agentic Audiences | [Trusted Match Protocol](/docs/trusted-match) context and identity matching |
-| **Discovery and trust** | IAB Tech Lab Agent Registry and diligence integrations | Domain-published `adagents.json` and `brand.json`, signing keys, and governance context |
-| **Transport** | MCP, A2A, and component-specific APIs | MCP and A2A |
-
-A platform can implement both, but there is currently no normative AdCP-to-AAMP crosswalk. Shared transports and reused IAB vocabulary reduce adapter work; they do not make the task names, lifecycle states, or payloads interchangeable. See IAB Tech Lab's [current AAMP scope clarification](https://iabtechlab.com/clarifying-the-aamp-scope-why-so-many-aamp-vs-adcp-comparisons-miss-the-mark/) for its description of the overlap. This table is a point-in-time snapshot; check both organizations' current publications before relying on it.
-
-Questions to ask of any agentic-advertising framework before committing production spend: normative schemas to validate against, a conformance surface you can run, a security model you can audit, a support policy you can plan around, and a public record of outside implementers filing issues and getting fixes merged.
+AdCP continues to reuse established IAB Tech Lab vocabularies and execution standards where they are useful, including OpenRTB, AdCOM, VAST, DAAST, GPP, `ads.txt`, and `sellers.json`. AdCP defines the cross-channel agent contract around them: discovery, proposals, media buys, creative, signals, governance, and reporting. See [Industry landscape](/docs/building/concepts/industry-landscape) for the standards used by an AdCP implementation.
 </Accordion>
 
 <Accordion title="How does AdCP compare to UCP and ACP?">
@@ -244,11 +222,9 @@ See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md)
 </Accordion>
 
 <Accordion title="What if my buyer agent is compromised?">
-AdCP today uses bearer-token authentication between agents — see [authentication](/docs/building/by-layer/L2/authentication) for the shipped model.
+AdCP supports bearer-token authentication and optional RFC 9421 request signing; see [authentication](/docs/building/by-layer/L2/authentication) and [request signing](/docs/building/by-layer/L1/request-signing). When signing is used in 3.2, the signature must cover the request content digest. Signing is optional through AdCP 3.2 and is planned to become mandatory for spend-committing operations in 4.0.
 
-AdCP 3.1 will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies as a normative requirement, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
-
-Governance decisions will also be signed so that a seller or regulator can verify a `governance_context` token genuinely came from the issuing governance agent. Tracked in [#2306](https://github.com/adcontextprotocol/adcp/issues/2306). Until those land, implementers should treat bearer auth as an interim floor, not the long-term contract.
+These controls authenticate a caller and protect a request in transit; they do not make a compromised, already-authorized buyer safe. Sellers should apply least-privilege account grants, budget and inventory limits, short-lived credentials, idempotency checks, anomaly detection, and human or governance approval at consequential boundaries. Revoke the compromised credential or key immediately and use audit records to identify affected operations.
 </Accordion>
 
 <Accordion title="Does AdCP support AI platforms and AI ad networks?">

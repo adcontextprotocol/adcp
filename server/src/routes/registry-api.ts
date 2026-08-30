@@ -7912,10 +7912,14 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const complianceStart = Date.now();
       try {
         const testSessionId = request.test_session_id;
+        // Rotate the storyboard starting point so repeated, budget-limited
+        // refreshes cover different tracks, matching the heartbeat path.
+        const storyboardStartOffset = await complianceDb.countComplianceRuns(agentUrl);
         const complyOptions = {
           test_session_id: testSessionId,
           timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
           userAgent: AAO_UA_COMPLIANCE,
+          storyboard_start_offset: storyboardStartOffset,
           ...(complianceAuth && { auth: complianceAuth }),
         };
         const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
@@ -8185,18 +8189,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         });
       } catch (error) {
         if (error instanceof ComplianceRefreshRateLimitError) {
-          logger.warn({ agentUrl, scope: error.scope, retryAfter: error.retryAfterSeconds }, 'Compliance refresh rate limited');
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(429).json({
-            error: 'Rate limit exceeded',
+            error: error.scope === 'agent'
+              ? 'Rate limit exceeded for this agent'
+              : 'Hourly refresh limit exceeded',
             retry_after: error.retryAfterSeconds,
           });
         }
         if (error instanceof ComplianceRefreshInProgressError) {
-          logger.info({ agentUrl, retryAfter: error.retryAfterSeconds }, 'Compliance refresh already in progress');
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(409).json({
-            error: 'A compliance refresh is already in progress for this agent',
+            error: 'A refresh is already in progress for this agent',
             code: 'refresh_in_progress',
             retry_after: error.retryAfterSeconds,
           });
