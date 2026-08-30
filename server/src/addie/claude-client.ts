@@ -68,12 +68,13 @@ import {
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
 import {
-  appendModelTurnContinuation,
   ModelTurnLoopState,
 } from './model-providers/model-turn.js';
 import {
   AddieToolExecutionLedger,
   createAddieToolExecutor,
+  orchestrateAcceptedAddieTurn,
+  type AddieAcceptedTurnDecision,
   type AddieExecutionMode,
   type ToolExecution,
   type ToolExecutionPolicy,
@@ -1762,32 +1763,45 @@ export class AddieClaudeClient {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
       }
 
-      // Provider results may accompany a terminal, provider-continuation, or
-      // mixed custom-tool turn. Record them once at the normalized boundary.
-      const providerToolExecutions = executionLedger.recordProviderResults(
-        this.modelProvider,
-        turn.providerToolCalls,
-        turn.providerToolResults,
-        options?.executionMode ?? 'production',
-      );
-      for (const recorded of providerToolExecutions) {
-        logger.debug(
-          {
-            toolName: recorded.execution.tool_name,
-            resultCount: recorded.result.resultCount,
-            parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
-          },
-          'Addie: Provider tool completed',
-        );
+      let turnDecision: AddieAcceptedTurnDecision | undefined;
+      for await (const event of orchestrateAcceptedAddieTurn({
+        turn,
+        provider: this.modelProvider,
+        executionMode: options?.executionMode ?? 'production',
+        messages: modelMessages,
+        ledger: executionLedger,
+        execute: executeToolCall,
+      })) {
+        if (event.type === 'provider_tool') {
+          logger.debug(
+            {
+              toolName: event.recorded.execution.tool_name,
+              resultCount: event.recorded.result.resultCount,
+              parameterKeys: Object.keys(event.recorded.receipt.parameters).sort(),
+            },
+            'Addie: Provider tool completed',
+          );
+        } else if (event.type === 'turn_decision') {
+          turnDecision = event.decision;
+          hasExecutedCustomTool ||= event.decision.hasCustomToolCalls;
+        } else if (event.type === 'start') {
+          logger.debug(
+            {
+              toolName: event.call.name,
+              ...(operationalExecution && { toolInput: event.call.input }),
+            },
+            'Addie: Calling tool',
+          );
+        }
       }
+      if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
-      const stopAction = turn.action;
+      const stopAction = turnDecision.action;
 
       if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
-        appendModelTurnContinuation(modelMessages, response);
         logger.info(
           { stopReason: response.providerFinishReason, iteration },
           'Addie: Continuing resumable provider turn',
@@ -1796,10 +1810,7 @@ export class AddieClaudeClient {
       }
 
       if (stopAction === 'truncated') {
-        const rawText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n')
-          .trim();
+        const rawText = turnDecision.text.trim();
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
         if (finalized.emptyReason) {
           reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
@@ -1858,10 +1869,7 @@ export class AddieClaudeClient {
       // Done - no tool use, just text
       if (stopAction === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
-        const rawText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n')
-          .trim();
+        const rawText = turnDecision.text.trim();
         // A provider-successful but wholly empty first sample has no visible
         // output or side effect. Production may safely resample it once; eval
         // and replay preserve the original terminal outcome for integrity.
@@ -1959,29 +1967,8 @@ export class AddieClaudeClient {
         };
       }
 
-      // Handle custom tool use. Provider-managed results were recorded above.
-      if (stopAction === 'execute_tools') {
-        const toolResults: ModelToolResultContent[] = [];
-
-        for await (const event of executionLedger.executeCustomCalls(
-          turn.toolCalls,
-          executeToolCall,
-          toolResults,
-        )) {
-          if (event.type === 'start') {
-            hasExecutedCustomTool = true;
-            logger.debug(
-              {
-                toolName: event.call.name,
-                ...(operationalExecution && { toolInput: event.call.input }),
-              },
-              'Addie: Calling tool',
-            );
-          }
-        }
-
-        appendModelTurnContinuation(modelMessages, response, toolResults);
-      }
+      // Custom tool execution and continuation state are owned by the shared
+      // accepted-turn orchestration boundary above.
     }
 
     logger.warn('Addie: Hit max tool iterations');
@@ -2497,34 +2484,66 @@ export class AddieClaudeClient {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
 
-        const providerToolExecutions = executionLedger.recordProviderResults(
-          this.modelProvider,
-          turn.providerToolCalls,
-          turn.providerToolResults,
-          options?.executionMode ?? 'production',
-        );
-        for (const recorded of providerToolExecutions) {
-          yield {
-            type: 'tool_start',
-            tool_name: recorded.execution.tool_name,
-            parameters: recorded.execution.parameters,
-          };
-          yield {
-            type: 'tool_end',
-            tool_name: recorded.execution.tool_name,
-            result: recorded.execution.result,
-            is_error: recorded.execution.is_error,
-            normalized_result: recorded.execution.normalized_result,
-          };
-          logger.debug(
-            {
-              toolName: recorded.execution.tool_name,
-              resultCount: recorded.result.resultCount,
-              parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
-            },
-            'Addie Stream: Provider tool completed',
-          );
+        let turnDecision: AddieAcceptedTurnDecision | undefined;
+        for await (const event of orchestrateAcceptedAddieTurn({
+          turn,
+          provider: this.modelProvider,
+          executionMode: options?.executionMode ?? 'production',
+          messages: modelMessages,
+          ledger: executionLedger,
+          execute: executeToolCall,
+        })) {
+          if (event.type === 'provider_tool') {
+            yield {
+              type: 'tool_start',
+              tool_name: event.recorded.execution.tool_name,
+              parameters: event.recorded.execution.parameters,
+            };
+            yield {
+              type: 'tool_end',
+              tool_name: event.recorded.execution.tool_name,
+              result: event.recorded.execution.result,
+              is_error: event.recorded.execution.is_error,
+              normalized_result: event.recorded.execution.normalized_result,
+            };
+            logger.debug(
+              {
+                toolName: event.recorded.execution.tool_name,
+                resultCount: event.recorded.result.resultCount,
+                parameterKeys: Object.keys(event.recorded.receipt.parameters).sort(),
+              },
+              'Addie Stream: Provider tool completed',
+            );
+          } else if (event.type === 'turn_decision') {
+            turnDecision = event.decision;
+            if (event.decision.action === 'execute_tools') {
+              // Preserve accepted text before a tool handler can fail.
+              logicalText += event.decision.text;
+            }
+          } else if (event.type === 'start') {
+            logger.debug(
+              {
+                toolName: event.call.name,
+                ...(operationalExecution && { toolInput: event.call.input }),
+              },
+              'Addie Stream: Calling tool',
+            );
+            yield {
+              type: 'tool_start',
+              tool_name: event.call.name,
+              parameters: this.recordedToolParameters(options, event.call.input),
+            };
+          } else {
+            yield {
+              type: 'tool_end',
+              tool_name: event.call.name,
+              result: event.executed.execution.result,
+              is_error: event.executed.execution.is_error,
+              normalized_result: event.executed.execution.normalized_result,
+            };
+          }
         }
+        if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
@@ -2540,13 +2559,10 @@ export class AddieClaudeClient {
           }
         };
 
-        const stopAction = turn.action;
-        const iterationText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n');
+        const stopAction = turnDecision.action;
+        const iterationText = turnDecision.text;
         if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
           // Resume from the provider response without exposing interim text.
-          appendModelTurnContinuation(modelMessages, currentResponse);
           logger.info(
             { stopReason: currentResponse.providerFinishReason, iteration },
             'Addie Stream: Continuing resumable provider turn',
@@ -2702,41 +2718,6 @@ export class AddieClaudeClient {
 
         // Handle tool use
         if (stopAction === 'execute_tools') {
-          logicalText += iterationText;
-          const toolResults: ModelToolResultContent[] = [];
-
-          for await (const event of executionLedger.executeCustomCalls(
-            turn.toolCalls,
-            executeToolCall,
-            toolResults,
-          )) {
-            if (event.type === 'start') {
-              logger.debug(
-                {
-                  toolName: event.call.name,
-                  ...(operationalExecution && { toolInput: event.call.input }),
-                },
-                'Addie Stream: Calling tool',
-              );
-              yield {
-                type: 'tool_start',
-                tool_name: event.call.name,
-                parameters: this.recordedToolParameters(options, event.call.input),
-              };
-            } else {
-              yield {
-                type: 'tool_end',
-                tool_name: event.call.name,
-                result: event.executed.execution.result,
-                is_error: event.executed.execution.is_error,
-                normalized_result: event.executed.execution.normalized_result,
-              };
-            }
-          }
-
-          // Continue the conversation with tool results
-          appendModelTurnContinuation(modelMessages, currentResponse, toolResults);
-
           // Add spacing between tool use and subsequent text to prevent run-on text
           if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
             logicalText += '\n\n';
