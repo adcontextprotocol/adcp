@@ -11,7 +11,7 @@
  * workflow consumes it and generates signed artifacts in its trusted context.
  */
 
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -67,13 +67,17 @@ export function readPromotionPlan(root = repoRoot) {
 export function prepareRcPromotion(root = repoRoot) {
   const plan = readPromotionPlan(root);
   const markerPath = resolve(root, markerRelativePath);
-  if (existsSync(markerPath)) {
-    throw new Error(`${markerRelativePath} already exists.`);
+  try {
+    writeFileSync(markerPath, `${JSON.stringify({
+      from: plan.currentVersion,
+      to: plan.targetVersion,
+    }, null, 2)}\n`, { flag: 'wx' });
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
+      throw new Error(`${markerRelativePath} already exists.`);
+    }
+    throw error;
   }
-  writeFileSync(markerPath, `${JSON.stringify({
-    from: plan.currentVersion,
-    to: plan.targetVersion,
-  }, null, 2)}\n`);
   writeFileSync(
     resolve(root, '.changeset/pre.json'),
     `${JSON.stringify(plan.nextPreState, null, 2)}\n`,
