@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/collection.json",
   "title": "Collection",
-  "description": "A recurring inventory container — a named program, publication, event series, or rotation that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
+  "description": "A recurring inventory container — a named program, publication, event series, rotation, or programmed channel that produces bookable installments on a defined cadence. The kind field indicates how to interpret this collection: 'series' for TV/podcast programs, 'publication' for print/newsletter titles, 'event_series' for live events, 'rotation' for DOOH scheduling, and 'channel' for continuously programmed audio or video streams regardless of carriage or monetization model. Declared in the publisher's adagents.json and referenced by products via collection selectors.",
   "type": "object",
   "properties": {
     "collection_id": {
@@ -16,7 +16,7 @@
     },
     "kind": {
       "$ref": "/schemas/enums/collection-kind.json",
-      "description": "What kind of content program this is. Helps agents interpret installments correctly. Defaults to 'series' when absent."
+      "description": "What kind of content program this is. Helps agents interpret installments correctly. A channel collection represents the persistent programmed stream; its installments, when present, are scheduled airings or programming blocks. Defaults to 'series' when absent."
     },
     "description": {
       "type": "string",
@@ -74,14 +74,14 @@
     },
     "distribution": {
       "type": "array",
-      "description": "Where this collection is distributed. Each entry maps the collection to a publisher platform with platform-specific identifiers. Collections SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
+      "description": "Where this collection is distributed. Each entry maps the collection to a publisher platform using host property IDs, identifiers, or both. For channel collections this is the carriage map. It is a publisher assertion for discovery, not sales authorization; buyers validate owner-sold carriage against the host publisher's collection-scoped authorized_agents declaration. Collections SHOULD include at least one platform-independent identifier (imdb_id, gracenote_id, eidr_id) when available.",
       "items": {
         "$ref": "/schemas/core/collection-distribution.json"
       }
     },
     "deadline_policy": {
       "$ref": "/schemas/core/deadline-policy.json",
-      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy."
+      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. Only meaningful when installments carry scheduled_at; a continuously programmed channel collection without enumerated installments has no deadlines to derive."
     },
     "related_collections": {
       "type": "array",

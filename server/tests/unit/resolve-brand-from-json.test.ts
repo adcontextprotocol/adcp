@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveBrandFromJson } from '../../src/db/brand-db.js';
+import { canSurfaceBrandForMember, resolveBrandFromJson } from '../../src/db/brand-db.js';
 
 describe('resolveBrandFromJson', () => {
   it('resolves logos[] under brands[0]', () => {
@@ -17,6 +17,20 @@ describe('resolveBrandFromJson', () => {
     expect(result.brand_color).toBe('#ff0000');
     expect(result.name).toBe('Acme');
     expect(result.verified).toBe(true);
+  });
+
+  it('resolves a brand-level tagline with a top-level fallback', () => {
+    const portfolio = resolveBrandFromJson('acme.com', {
+      tagline: 'Top-level fallback',
+      brands: [{ names: [{ en: 'Acme' }], tagline: 'Brand-level tagline' }],
+    }, true);
+    const legacy = resolveBrandFromJson('legacy.example', {
+      name: 'Legacy',
+      tagline: 'Top-level fallback',
+    }, true);
+
+    expect(portfolio.tagline).toBe('Brand-level tagline');
+    expect(legacy.tagline).toBe('Top-level fallback');
   });
 
   it('resolves top-level logos[] when brands is missing', () => {
@@ -84,5 +98,53 @@ describe('resolveBrandFromJson', () => {
     const result = resolveBrandFromJson('empty.com', { name: 'Empty' }, false);
     expect(result.logo_url).toBeUndefined();
     expect(result.brand_color).toBeUndefined();
+  });
+});
+
+describe('canSurfaceBrandForMember', () => {
+  const manifest = { name: 'Acme' };
+
+  it('accepts origin-published brand.json without a hosted claim', () => {
+    expect(canSurfaceBrandForMember({
+      brand_manifest: manifest,
+      source_type: 'brand_json',
+      domain_verified: false,
+      is_public: true,
+    }, 'org-acme')).toBe(true);
+  });
+
+  it('accepts a verified hosted brand only for its owning organization', () => {
+    const brand = {
+      brand_manifest: manifest,
+      source_type: 'community' as const,
+      domain_verified: true,
+      workos_organization_id: 'org-acme',
+      is_public: true,
+    };
+
+    expect(canSurfaceBrandForMember(brand, 'org-acme')).toBe(true);
+    expect(canSurfaceBrandForMember(brand, 'org-other')).toBe(false);
+  });
+
+  it('rejects unclaimed enrichment and non-public or orphaned rows', () => {
+    expect(canSurfaceBrandForMember({
+      brand_manifest: manifest,
+      source_type: 'enriched',
+      domain_verified: false,
+      is_public: true,
+    }, 'org-acme')).toBe(false);
+    expect(canSurfaceBrandForMember({
+      brand_manifest: manifest,
+      source_type: 'brand_json',
+      domain_verified: false,
+      is_public: false,
+    }, 'org-acme')).toBe(false);
+    expect(canSurfaceBrandForMember({
+      brand_manifest: manifest,
+      source_type: 'brand_json',
+      domain_verified: false,
+      is_public: true,
+      manifest_orphaned: true,
+    }, 'org-acme')).toBe(false);
   });
 });

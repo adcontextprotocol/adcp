@@ -78,6 +78,14 @@ export interface AuthRow {
    * rows only.
    */
   signing_keys: unknown[] | null;
+  /**
+   * Collection constraints from `authorized_agents[*].collections`.
+   * Null = unconstrained. A selector without collection_ids is a bulk
+   * grant for every collection declared at that publisher_domain.
+   * Consumers MUST scope the authorization to these selectors — a row
+   * with collections set does not authorize the property unqualified.
+   */
+  collections: Array<{ publisher_domain: string; collection_ids?: string[] }> | null;
   override_applied: boolean;
   override_reason: string | null;
 }
@@ -175,7 +183,8 @@ function selectClause(include: IncludeMode): string {
         updated_at,
         override_applied,
         override_reason,
-        signing_keys
+        signing_keys,
+        collections
       FROM v_effective_agent_authorizations
     `;
   }
@@ -196,7 +205,8 @@ function selectClause(include: IncludeMode): string {
       updated_at,
       FALSE AS override_applied,
       NULL::text AS override_reason,
-      signing_keys
+      signing_keys,
+      collections
     FROM catalog_agent_authorizations
     WHERE deleted_at IS NULL
   `;

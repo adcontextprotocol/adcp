@@ -47,6 +47,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('selected-org-refresh'),
   ownedAgentUrl('selected-org-challenge'),
   ownedAgentUrl('public-notices'),
+  ownedAgentUrl('admin-auth-fallback'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -725,5 +726,44 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         membership_org_id: TEST_ORG_ID,
       }),
     ]));
+  });
+
+  // Regression for #7070: admin-refresh must not run comply() anonymously
+  // when the agent owner has stored credentials. The route now falls back
+  // to complianceDb.resolveOwnerAuth (the heartbeat pattern) so the
+  // compliance run uses the owner's saved token.
+  it('admin refresh falls back to stored owner auth for compliance (#7070)', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('admin-auth-fallback');
+
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const STORED_BEARER = 'stored-owner-bearer-for-admin-fallback';
+    await db.saveAuthToken(context.id, STORED_BEARER, 'bearer');
+
+    complyMock.mockResolvedValueOnce(makeComplianceResult());
+
+    try {
+      const res = await request(app).post(url(agentUrl)).send();
+
+      expect(res.status).toBe(200);
+      expect(res.body.compliance).toMatchObject({
+        ran: true,
+        auth_available: true,
+      });
+      expect(complyMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: expect.objectContaining({ type: 'bearer', token: STORED_BEARER }),
+        }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
   });
 });

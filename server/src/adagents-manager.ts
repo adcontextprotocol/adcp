@@ -495,7 +495,12 @@ export class AdAgentsManager {
    *    the publisher under publisher_properties[].publisher_domain
    *    (singular) or publisher_properties[].publisher_domains[] (compact
    *    managed-network form — exactly equivalent to repeating the entry
-   *    once per listed domain) or collections[].publisher_domain.
+   *    once per listed domain). collections[].publisher_domain does NOT
+   *    satisfy the gate: with owner-sold channel carriage, a host names an
+   *    external channel owner there to narrow one sales path ("I carry
+   *    their channel"), which is not a claim to manage that publisher's
+   *    inventory — counting it would let any carrying host become the
+   *    owner's manifest-of-record via the ads.txt MANAGERDOMAIN fallback.
    *
    * 2. **Property-level paths.** A top-level properties[] entry carries
    *    publisher_domain matching the source, AND at least one
@@ -547,9 +552,6 @@ export class AdAgentsManager {
           }
           return false;
         });
-      const hasCollections = Array.isArray(agent.collections)
-        && agent.collections.some((c) => canonicalizePublisherDomain(c.publisher_domain) === normalizedPublisher);
-
       // Property-level scoping: the agent reaches a property whose
       // publisher_domain matches the source. by_id walks property_ids;
       // by_tag walks property_tags.
@@ -558,7 +560,7 @@ export class AdAgentsManager {
       const hasPropertyTagLink = Array.isArray(agent.property_tags)
         && agent.property_tags.some((tag) => typeof tag === 'string' && matchingPropertyTags.has(tag));
 
-      return hasPublisherProperties || hasCollections || hasPropertyIdLink || hasPropertyTagLink;
+      return hasPublisherProperties || hasPropertyIdLink || hasPropertyTagLink;
     });
   }
 

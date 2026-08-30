@@ -5,7 +5,7 @@ export interface NormalizedCollectionIdentifier {
   value: string;
 }
 
-export const COLLECTION_KIND_VALUES = ['series', 'publication', 'event_series', 'rotation'] as const;
+export const COLLECTION_KIND_VALUES = ['series', 'publication', 'event_series', 'rotation', 'channel'] as const;
 export type CollectionKind = typeof COLLECTION_KIND_VALUES[number];
 export const COLLECTION_KIND_SET = new Set<string>(COLLECTION_KIND_VALUES);
 
@@ -22,6 +22,7 @@ export const DISTRIBUTION_IDENTIFIER_TYPE_VALUES = [
   'youtube_channel_url',
   'youtube_playlist_id',
   'amazon_title_id',
+  'platform_channel_id',
   'roku_channel_id',
   'pluto_channel_id',
   'tubi_id',

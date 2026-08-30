@@ -270,7 +270,7 @@ export class RegistrySync extends EventEmitter {
             property_tags: payload.property_tags as string[] | undefined,
             placement_ids: payload.placement_ids as string[] | undefined,
             placement_tags: payload.placement_tags as string[] | undefined,
-            collections: payload.collections as Array<{ publisher_domain: string; collection_id: string }> | undefined,
+            collections: this.authorizationCollectionsFromPayload(payload.collections),
             countries: payload.countries as string[] | undefined,
             delegation_type: payload.delegation_type as string | undefined,
             exclusive: payload.exclusive as boolean | undefined,
@@ -313,6 +313,37 @@ export class RegistrySync extends EventEmitter {
         ?? [],
       collection: (payload.collection as Record<string, unknown> | undefined) ?? existing?.collection,
     };
+  }
+
+  private authorizationCollectionsFromPayload(
+    value: unknown,
+  ): Array<{ publisher_domain: string; collection_ids?: string[] }> | undefined {
+    // Absent = the source declared no collection constraint.
+    if (value === undefined || value === null) return undefined;
+    // Present but not an array: the source meant to constrain and we cannot
+    // read it. Return the empty-array deny sentinel so the entry fails
+    // closed instead of silently widening to all collections.
+    if (!Array.isArray(value)) return [];
+
+    const selectors = value.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return [];
+      const selector = candidate as { publisher_domain?: unknown; collection_ids?: unknown };
+      if (typeof selector.publisher_domain !== 'string' || selector.publisher_domain.length === 0) return [];
+      // Bulk grant: no collection_ids = every collection at that domain.
+      if (selector.collection_ids === undefined) {
+        return [{ publisher_domain: selector.publisher_domain }];
+      }
+      if (!Array.isArray(selector.collection_ids)) return [];
+      const collectionIds = selector.collection_ids.filter(
+        (collectionId): collectionId is string => typeof collectionId === 'string' && collectionId.length > 0,
+      );
+      if (collectionIds.length === 0) return [];
+      return [{ publisher_domain: selector.publisher_domain, collection_ids: [...new Set(collectionIds)] }];
+    });
+
+    // Present-but-unparseable constraint degrades to the deny sentinel, not
+    // to unconstrained. Partial drops (some selectors valid) only narrow.
+    return selectors;
   }
 }
 

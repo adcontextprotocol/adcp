@@ -484,9 +484,12 @@
     },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json.",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
-        "$ref": "/schemas/core/collection-selector.json"
+        "allOf": [
+          { "$ref": "/schemas/core/collection-selector.json" },
+          { "required": ["collection_ids"] }
+        ]
       },
       "minItems": 1
     },
