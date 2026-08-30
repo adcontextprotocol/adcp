@@ -46,10 +46,14 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
-// measured increase isolated to the creative profile while retaining the
-// 400 KiB media-buy ceiling and a tight prompt-view bound.
+// measured increase isolated to the creative profile with a tight
+// prompt-view bound. targeting_overlay.collection_selection (the committed
+// collection-selection echo contract) adds one shared inventory-selection
+// graph (~0.7 KiB per targeting-bearing request schema) to media-buy tasks;
+// the media-buy ceiling moves 400 → 405 KiB to carry that measured,
+// deliberate increase — it is not headroom for incidental growth.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 400,
+  'media-buy': 405,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

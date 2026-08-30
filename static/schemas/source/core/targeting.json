@@ -209,6 +209,10 @@
       "$ref": "/schemas/core/placement-selection.json",
       "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. On update, the surrounding targeting_overlay replacement semantics apply."
     },
+    "collection_selection": {
+      "$ref": "/schemas/core/collection-selection.json",
+      "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. On update, the surrounding targeting_overlay replacement semantics apply."
+    },
     "age_restriction": {
       "type": "object",
       "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
