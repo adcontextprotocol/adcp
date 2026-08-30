@@ -130,6 +130,27 @@ describe("organization authorization system setting", () => {
     ]);
   });
 
+  it("accepts both supported read boundaries", async () => {
+    queryMock.mockResolvedValueOnce({ rows: [] });
+
+    await setOrganizationAuthorizationEnforcement(
+      {
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      },
+      "user_authenticated_admin",
+    );
+
+    expect(queryMock.mock.calls[0][1]).toEqual([
+      "organization_authorization_enforcement",
+      JSON.stringify({
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      }),
+      "user_authenticated_admin",
+    ]);
+  });
+
   it("will not persist enabled configuration outside the fixed boundary allowlist", async () => {
     await expect(setOrganizationAuthorizationEnforcement({
       enabled: true,

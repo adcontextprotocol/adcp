@@ -30,6 +30,7 @@ vi.mock("../../src/middleware/auth.js", () => {
 vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
   ORGANIZATION_AUTHORIZATION_BOUNDARIES: {
     ORGANIZATION_ROLES_READ: "organization_roles_read",
+    ORGANIZATION_DOMAINS_READ: "organization_domains_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -37,6 +38,16 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
 
 vi.mock("../../src/db/system-settings-db.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/db/system-settings-db.js")>()),
+  getAllSettings: vi.fn().mockResolvedValue([]),
+  getBillingChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getEscalationChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getAdminChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getProspectChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getProspectTriageEnabled: vi.fn().mockResolvedValue(false),
+  getErrorChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getEditorialChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getAnnouncementChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getS2CanonicalFormatsDeltaRelease: vi.fn().mockResolvedValue({}),
   getOrganizationAuthorizationEnforcement: getSettingMock,
   setOrganizationAuthorizationEnforcement: setSettingMock,
 }));
@@ -91,6 +102,54 @@ describe("organization authorization runtime admin setting", () => {
       enabled: true,
       boundaries: ["organization_roles_read"],
     });
+  });
+
+  it("reports the environment ceiling independently for each supported boundary", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary === "organization_domains_read",
+    );
+
+    const response = await request(createApp()).get("/api/admin/settings");
+
+    expect(response.status).toBe(200);
+    expect(response.body.organization_authorization_environment_ceiling).toEqual({
+      boundaries: ["organization_domains_read"],
+    });
+  });
+
+  it("persists independently selected read boundaries", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_domains_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      {
+        enabled: true,
+        boundaries: ["organization_domains_read"],
+      },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("rejects a mixed selection when any boundary is outside the environment ceiling", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary === "organization_roles_read",
+    );
+
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      });
+
+    expect(response.status).toBe(409);
+    expect(setSettingMock).not.toHaveBeenCalled();
+    expect(invalidateCacheMock).not.toHaveBeenCalled();
   });
 
   it("allows an audited runtime rollback without removing the staged boundary", async () => {
