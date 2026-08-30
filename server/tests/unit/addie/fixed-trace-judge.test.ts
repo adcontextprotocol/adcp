@@ -144,6 +144,7 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     terminalStage: 'generation',
     terminalStatus: 'complete',
     boundaryReason: null,
+    localReplacementReason: null,
     finishReason: 'stop',
     output: 'AdCP uses typed tasks between buyer and seller agents.',
     flagged: false,

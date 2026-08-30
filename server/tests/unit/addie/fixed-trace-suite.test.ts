@@ -106,6 +106,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
     terminalStage: ['ignored', 'reacted'].includes(terminalStatus) ? 'surface' : 'generation',
     terminalStatus,
     boundaryReason: null,
+    localReplacementReason: null,
     finishReason: terminalStatus === 'truncated' ? 'length' : terminalStatus === 'provider_error' ? null : 'stop',
     output: outputMarkers.join(' '),
     flagged: trace.expectation.requireFlagged ?? false,
@@ -127,7 +128,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v5');
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v6');
     expect(FIXED_TRACE_SUITE).toHaveLength(11);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -371,5 +372,16 @@ describe('fixed cross-provider trace suite', () => {
       'answer_assertion_failed',
     ]));
     expect(gradeFixedTrace(trace, observation).failures).not.toContain('terminal_stage_mismatch');
+  });
+
+  it('rejects an unflagged local response replacement', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-tool-error')!;
+    const observation = passingObservation(trace);
+    observation.localReplacementReason = 'failed_lookup_evidence';
+    observation.flagged = false;
+
+    expect(gradeFixedTrace(trace, observation).failures).toContain(
+      'local_replacement_metadata_invalid',
+    );
   });
 });

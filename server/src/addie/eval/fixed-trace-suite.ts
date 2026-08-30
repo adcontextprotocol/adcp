@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v5';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v6';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -47,6 +47,8 @@ export type FixedTraceBoundaryReason =
   | 'tool_input_invalid'
   | 'tool_schema_invalid'
   | 'unknown_tool_call';
+
+export type FixedTraceLocalReplacementReason = 'failed_lookup_evidence';
 
 export interface FixedTraceToolFixture {
   name: string;
@@ -147,6 +149,8 @@ export interface FixedTraceObservation {
   terminalStatus: FixedTraceTerminalStatus;
   /** Closed reason for a fixed-trace tool-loop boundary rejection, otherwise null. */
   boundaryReason: FixedTraceBoundaryReason | null;
+  /** Reason provider prose was replaced locally after a completed generation, otherwise null. */
+  localReplacementReason: FixedTraceLocalReplacementReason | null;
   finishReason: ModelFinishReason | null;
   output: string;
   flagged: boolean;
@@ -522,6 +526,10 @@ export function gradeFixedTrace(
   if (observation.traceId !== trace.id) failures.push('trace_id_mismatch');
   const provenanceFailures = metadataFailures(observation.metadata);
   failures.push(...provenanceFailures);
+  if (
+    observation.localReplacementReason !== null
+    && (!observation.flagged || observation.terminalStage !== 'generation')
+  ) failures.push('local_replacement_metadata_invalid');
 
   if (!trace.expectation.terminalStatuses.includes(observation.terminalStatus)) failures.push('terminal_status_unexpected');
   if (trace.expectation.requireFlagged !== undefined && observation.flagged !== trace.expectation.requireFlagged) {

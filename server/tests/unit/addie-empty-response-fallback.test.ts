@@ -47,6 +47,9 @@ vi.mock('../../src/addie/config-version.js', () => ({
 
 vi.mock('../../src/addie/rules/index.js', () => ({
   loadRules: vi.fn(() => 'You are Addie.'),
+  loadCoreRules: vi.fn(() => 'You are Addie.'),
+  loadScopedRules: vi.fn(() => ''),
+  loadConstraintRules: vi.fn(() => 'Use tools honestly.'),
   loadResponseStyle: vi.fn(() => 'Answer clearly.'),
   invalidateRulesCache: vi.fn(),
 }));
@@ -68,6 +71,7 @@ import {
   AddieClaudeClient,
   type StreamEvent,
 } from '../../src/addie/claude-client.js';
+import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../src/addie/failed-lookup-evidence.js';
 
 const emptyEndTurn = {
   model: 'claude-sonnet-4-6-20260801',
@@ -106,6 +110,16 @@ const recoveredEndTurn = {
   stop_reason: 'end_turn',
   content: [{ type: 'text', text: 'Issue 42 is open.' }],
   usage: { input_tokens: 12, output_tokens: 6 },
+};
+
+const unsupportedAfterLookupFailure = {
+  model: 'claude-sonnet-5-20260801',
+  stop_reason: 'end_turn',
+  content: [{
+    type: 'text',
+    text: 'The official docs confirm this. See https://invented.example/docs.',
+  }],
+  usage: { input_tokens: 12, output_tokens: 12 },
 };
 
 const thinkingOnlyEndTurn = {
@@ -235,7 +249,7 @@ function makeThrowingStream(error: Error) {
   };
 }
 
-function makeStream(message: typeof toolUseTurn | typeof searchToolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof personaOnlyEndTurn | typeof semanticRefusalEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn | typeof ritualOnlyEndTurn) {
+function makeStream(message: typeof toolUseTurn | typeof searchToolUseTurn | typeof emptyEndTurn | typeof recoveredEndTurn | typeof unsupportedAfterLookupFailure | typeof personaOnlyEndTurn | typeof semanticRefusalEndTurn | typeof mixedRecoveryToolUseTurn | typeof emptyRefusal | typeof thinkingOnlyEndTurn | typeof redactedThinkingOnlyEndTurn | typeof blankTextEndTurn | typeof ritualOnlyEndTurn) {
   return {
     async *[Symbol.asyncIterator]() {
       for (let index = 0; index < message.content.length; index++) {
@@ -269,6 +283,11 @@ const searchDocsTools = {
   }],
   handlers: new Map([['search_docs', searchDocs]]),
 };
+const failedSearchDocs = vi.fn().mockRejectedValue(new Error('private source failure'));
+const failedSearchDocsTools = {
+  ...searchDocsTools,
+  handlers: new Map([['search_docs', failedSearchDocs]]),
+};
 
 describe('Addie empty-response fallback (#4430)', () => {
   beforeEach(() => {
@@ -280,6 +299,60 @@ describe('Addie empty-response fallback (#4430)', () => {
     mocks.recordCost.mockReset().mockResolvedValue(undefined);
     getGithubIssue.mockClear();
     searchDocs.mockClear();
+    failedSearchDocs.mockClear();
+  });
+
+  it('replaces unsupported non-streaming prose after every source lookup failed', async () => {
+    mocks.createMessage
+      .mockResolvedValueOnce(searchToolUseTurn)
+      .mockResolvedValueOnce(unsupportedAfterLookupFailure);
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const response = await client.processMessage(
+      'What do the official docs say?',
+      undefined,
+      failedSearchDocsTools,
+      undefined,
+      { uncapped: true },
+    );
+
+    expect(response.text).toBe(FAILED_LOOKUP_EVIDENCE_RESPONSE);
+    expect(response.text).not.toContain('invented.example');
+    expect(response.flag_reason).toContain('Failed lookup evidence boundary enforced');
+    expect(response.tool_executions[0]).toMatchObject({ tool_name: 'search_docs', is_error: true });
+    expect(response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'canned_response',
+    });
+  });
+
+  it('applies the same failed-lookup boundary before streaming text is emitted', async () => {
+    mocks.streamMessage
+      .mockReturnValueOnce(makeStream(searchToolUseTurn))
+      .mockReturnValueOnce(makeStream(unsupportedAfterLookupFailure));
+
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const events: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'What do the official docs say?',
+      undefined,
+      failedSearchDocsTools,
+      { uncapped: true },
+    )) events.push(event);
+
+    const streamedText = events
+      .filter((event): event is Extract<StreamEvent, { type: 'text' }> => event.type === 'text')
+      .map((event) => event.text)
+      .join('');
+    const done = events.find(
+      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    );
+    expect(streamedText).toBe(FAILED_LOOKUP_EVIDENCE_RESPONSE);
+    expect(done?.response.text).toBe(streamedText);
+    expect(done?.response.flag_reason).toContain('Failed lookup evidence boundary enforced');
+    expect(done?.response.model_execution).toMatchObject({ source: 'local', reason: 'canned_response' });
   });
 
   it('returns fallback text and sends monitoring for non-streaming empty responses', async () => {

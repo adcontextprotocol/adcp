@@ -101,6 +101,7 @@ import {
   renderToolExecutionsFallback,
   type ToolResultPresentation,
 } from './tool-result-contract.js';
+import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -549,6 +550,7 @@ function applyResponsePipelineWithEmptyMonitoring(
 interface FinalizedAssistantText {
   text: string;
   emptyReason: string | null;
+  localReplacementReason: string | null;
   lengthExceeded: boolean;
 }
 
@@ -559,12 +561,27 @@ function finalizeAssistantText(
   toolExecutions: readonly ToolExecution[],
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
-  const processed = applyResponsePipelineWithEmptyMonitoring(question, rawText, toolExecutions);
+  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(rawText, toolExecutions);
+  if (evidenceBoundary.enforced) {
+    logger.warn(
+      {
+        event: 'addie_failed_lookup_evidence_boundary',
+        failedToolNames: evidenceBoundary.failedToolNames,
+      },
+      'Addie: Replaced unsupported provider prose after failed source lookups',
+    );
+  }
+  const processed = applyResponsePipelineWithEmptyMonitoring(
+    question,
+    evidenceBoundary.text,
+    toolExecutions,
+  );
   const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
+    localReplacementReason: evidenceBoundary.reason,
     lengthExceeded,
   };
 }
@@ -1656,6 +1673,8 @@ export class AddieClaudeClient {
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
             ? localModelExecution('no_provider_response', effectiveModel)
+            : finalized.localReplacementReason
+              ? localModelExecution('canned_response', effectiveModel)
             : anthropicModelExecution(response.model, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
@@ -1728,7 +1747,7 @@ export class AddieClaudeClient {
         }
         const flagReason = finalized.lengthExceeded
           ? 'Output truncated due to length'
-          : hallucinationReason ?? finalized.emptyReason;
+          : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
 
         const finalUsage = toAddieUsage(modelLoop.usage);
         // Record the call against the user's daily budget (#2790).
@@ -1753,6 +1772,8 @@ export class AddieClaudeClient {
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
             ? localModelExecution('no_provider_response', effectiveModel)
+            : finalized.localReplacementReason
+              ? localModelExecution('canned_response', effectiveModel)
             : anthropicModelExecution(response.model, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
@@ -2325,6 +2346,8 @@ export class AddieClaudeClient {
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
                 ? localModelExecution('no_provider_response', effectiveModel)
+                : finalized.localReplacementReason
+                  ? localModelExecution('canned_response', effectiveModel)
                 : anthropicModelExecution(currentResponse.model, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
@@ -2390,7 +2413,7 @@ export class AddieClaudeClient {
           }
           const flagReason = finalized.lengthExceeded
             ? 'Output truncated due to length'
-            : hallucinationReason ?? finalized.emptyReason;
+            : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
@@ -2407,6 +2430,8 @@ export class AddieClaudeClient {
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
                 ? localModelExecution('no_provider_response', effectiveModel)
+                : finalized.localReplacementReason
+                  ? localModelExecution('canned_response', effectiveModel)
                 : anthropicModelExecution(currentResponse.model, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
@@ -2500,7 +2525,9 @@ export class AddieClaudeClient {
           flag_reason: 'Max tool iterations reached',
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
-          model_execution: logicalText && lastProviderModel
+          model_execution: finalizedMaxIter.localReplacementReason
+            ? localModelExecution('canned_response', effectiveModel)
+            : logicalText && lastProviderModel
             ? anthropicModelExecution(lastProviderModel, effectiveModel)
             : localModelExecution('canned_response', effectiveModel),
           timing: {
