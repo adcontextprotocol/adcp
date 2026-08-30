@@ -8,9 +8,9 @@ description: "Adopter overview of AdCP 3.2: compact media buying, targeting-awar
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.6 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.8` embeds beta.6; Python `adcp==8.0.0b7` remains on
-beta.5, so use the signed beta.6 artifact directly unless your SDK explicitly names beta.6.
+**3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed beta.6, so use the
+signed beta.9 artifact directly unless your SDK explicitly names beta.9.
 Python higher-level helpers remain partial, and Go exact support is still
 pending. See the
 [3.2 beta program](/docs/reference/3-2-beta) before testing.
@@ -137,6 +137,29 @@ attribution, and publisher-owned creative data.
 
 These remain experimental. Implementers must inspect `experimental_features`,
 pin an exact 3.2 release, and follow the applicable migration notice.
+
+## Reference implementation evidence
+
+The reference training agent is useful evidence, but it is not a badge and it
+does not turn every schema addition into an implementation claim. The current
+3.2 corpus draws the boundary as follows:
+
+| Surface | Executable evidence | Current boundary |
+|---|---|---|
+| Compact product and proposal lifecycle | `compact_product_lifecycle`, `compact_direct_buy_lifecycle`, declined-proposal, expired-proposal, and structured-rejection storyboards | End-to-end on the reference sales tenant; implementations still advertise only the lifecycle tools they actually serve. |
+| Targeting-aware discovery | `targeting_aware_discovery` covers conflicting legacy input, hard brief interpretation, forecasts, exact and modified configured products, fixed inventory, cardinality, compatibility, create, update, and readback | End-to-end on the reference sales tenant. Optional 3.1 downshift runs only when that release is advertised. |
+| Canonical creative validation | `premium_display_canonical_validation` and `ctv_experience_validate_input`, plus policy-backed rejection and asset-filter storyboards | Strong executable coverage. Native localization and lifecycle-webhook coverage remain capability- and runner-dependent. |
+| Portable attestations and audience evidence | Versioned `attestations`, `rights-attestations`, `governance-runtime-attestations`, and `audience-evidence` vector suites | Deterministic trust, binding, revocation, cache-reuse, and requirement-mode coverage. These library fixtures do not claim a live issuer/resolver network or replace an agent storyboard. |
+| Timezone and operational controls | Account-timezone and budget-cap-timezone storyboard families, plus deterministic media-buy read filters | End-to-end for the declared reference-agent routes. |
+| OAuth and cache isolation | `oauth_setup` and wholesale product/signal cache-scope isolation storyboards | Protocol and transport behavior are exercised independently of any one commercial workflow. |
+| Experimental governance and Trusted Match | Property-list webhook signing and publisher-authentication rejection storyboards | Partial reference evidence only; experimental declarations and exact-version pinning remain mandatory. |
+| Advanced delivery reporting | `advanced_delivery_reporting` covers metric narrowing, `time_based_views`, canonical `by_format` rows, limits, truncation disclosure, and applied-sort echoes across discovery, purchase, simulation, and delivery | End-to-end on the reference sales tenant for the declared product capabilities. Expanded channel-specific OOH/audio metrics remain separate coverage work. |
+| Audience activation | `audience_activation_discovery` covers the experimental feature gate, catalog-wide method union, per-product declarations, vendor-constrained matching, OR and wildcard semantics, and exclusion of undeclared products | Discovery is end-to-end on the reference sales tenant. External dataset or distributed-segment binding remains an account-setup integration until the external-source runtime extension lands; the storyboard does not imply that runtime exists. |
+
+The CI matrix resolves applicable storyboards from each tenant's live
+capability declaration, keeps skipped and quarantined work visible, and uses
+ratcheted floors only as regression guards. See [Known Limitations](/docs/reference/known-limitations#conformance-and-testing)
+for the remaining runner and coverage gaps.
 
 ## What requires adopter attention
 

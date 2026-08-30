@@ -2,23 +2,80 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/placement.json",
   "title": "Placement",
-  "description": "Represents a specific public ad placement within a product's inventory. Placement IDs are scoped by publisher domain, matching placement definitions in that publisher's adagents.json. `kind` is the structural discriminator: `publisher_ref` means this product placement is a reference to `{publisher_domain, placement_id}`; `seller_inline` means the seller is defining public buyer-facing placement metadata inline. The schema accepts either `name` or `publisher_domain` because publisher-referenced placements can omit `name` only when the publisher declaration supplies it; seller-inline placements carry `name` directly. Whether a reference was resolved from publisher-hosted adagents.json or a community-maintained fallback is resolver metadata, not placement structure. Placement selection purchases inventory; creative assignments may then route creatives only within the purchased set. Reusing a registered placement preserves the registry's semantic identity; product-level placement objects may narrow format_ids/format_options or add operational detail, but SHOULD NOT redefine the placement's meaning incompatibly.",
+  "description": "Represents a specific public ad placement within a product's inventory. `kind` identifies the authority: `publisher_ref` resolves the canonical `{publisher_domain, placement_id}` in the publisher's adagents.json; `seller_inline` is defined by the sales agent and is self-contained only when paired with `seller_agent`. Legacy inline placements without seller_agent remain valid but are scoped to the enclosing seller and product. Whether a publisher reference resolved from publisher-hosted adagents.json or a community-maintained fallback is resolver metadata, not placement structure. Placement selection purchases inventory; creative assignments may then route creatives only within the purchased set.",
   "type": "object",
+  "definitions": {
+    "ProductDoohScreenResolution": {
+      "title": "Product DOOH Screen Resolution",
+      "type": "object",
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
+      "properties": {
+        "width": { "type": "integer", "description": "Screen width in pixels.", "minimum": 1 },
+        "height": { "type": "integer", "description": "Screen height in pixels.", "minimum": 1 }
+      },
+      "required": ["width", "height"],
+      "additionalProperties": false
+    },
+    "ProductDoohPlacementAttributes": {
+      "title": "Product DOOH Placement Attributes",
+      "type": "object",
+      "description": "DOOH inventory facts describing the screen and scheduled loop, not creative acceptance. For kind: publisher_ref, product-level slot_duration_seconds and loop_duration_seconds override publisher defaults; omitted values inherit. Repeated screen_resolution and motion values MUST equal publisher facts.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "description": "Scheduled duration of one ad slot in seconds. This is an inventory fact used for loop and share calculations, not the creative-duration contract.",
+          "minimum": 1
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration.",
+          "minimum": 1
+        },
+        "screen_resolution": { "$ref": "#/definitions/ProductDoohScreenResolution" },
+        "motion": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capability of the DOOH screen, not an accepted-format declaration."
+        }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds",
+            "evaluate_after": "publisher_ref_resolution"
+          },
+          "publisher_ref_resolution": {
+            "override_fields": ["slot_duration_seconds", "loop_duration_seconds"],
+            "inherit_when_omitted": true,
+            "must_equal_fields": ["screen_resolution", "motion"],
+            "identifier_merge": "union_by_type_and_value"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "kind": {
       "type": "string",
       "enum": ["publisher_ref", "seller_inline"],
-      "description": "Placement structure discriminator. `publisher_ref` identifies a placement by `{publisher_domain, placement_id}` and resolves public metadata from the named publisher's adagents.json placement declarations; `seller_inline` identifies buyer-facing placement metadata defined inline by the sales agent (still in the named publisher namespace when `publisher_domain` is present, or the seller's own namespace in legacy single-publisher contexts)."
+      "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
     },
     "placement_id": {
       "type": "string",
-      "description": "Placement identifier in the publisher namespace. When `publisher_domain` is present, this matches a placement ID in that publisher's adagents.json catalog or a seller-defined inline placement in that publisher namespace. Buyers use this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `creative_assignments[].placement_ids` strings are only unambiguous in single-publisher contexts.",
+      "description": "Placement identifier. For publisher_ref it is scoped by publisher_domain and resolves in adagents.json. For seller_inline it is scoped by seller_agent, or by the enclosing seller and product for legacy rows.",
       "x-entity": "placement"
     },
     "publisher_domain": {
       "type": "string",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-      "description": "Publisher domain whose adagents.json placement declarations define this placement. Required for `kind: \"publisher_ref\"`. Omitted only for `kind: \"seller_inline\"` in legacy single-publisher seller contexts where the seller agent's own publisher domain is the namespace."
+      "description": "For publisher_ref, the domain whose adagents.json declares the placement and part of canonical identity. For seller_inline, optional inventory-publisher attribution only; it does not grant the seller authority to mint IDs in that publisher's catalog namespace."
+    },
+    "seller_agent": {
+      "$ref": "/schemas/core/seller-agent-ref.json",
+      "description": "Sales agent that defines a seller_inline placement. Together with placement_id this is its self-contained identity. New 3.2 sellers SHOULD populate it; legacy product-context inline placements may omit it. Not used for publisher_ref."
     },
     "name": {
       "type": "string",
@@ -93,10 +150,31 @@
       },
       "uniqueItems": true,
       "minItems": 1
-    }
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH screen/venue IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "/schemas/enums/identifier-types.json"
+          },
+          "value": {
+            "type": "string",
+            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": true
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "dooh_placement_attributes": { "$ref": "#/definitions/ProductDoohPlacementAttributes" }
   },
   "required": ["kind", "placement_id", "mode"],
-  "$comment": "The anyOf(name OR publisher_domain) is a schema-local proxy for the cross-document invariant: publisher-referenced placements can omit name only because {publisher_domain, placement_id} resolves to an adagents.json placement that supplies the name. Seller-inline placements carry name directly.",
+  "$comment": "The anyOf(name OR publisher_domain) preserves the released compatibility shape. publisher_ref requires publisher_domain below; seller_inline requires name and should add seller_agent for self-contained identity.",
   "anyOf": [
     {
       "required": ["name"]

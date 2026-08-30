@@ -11,6 +11,9 @@ requires_scenarios:
   - media_buy_seller/get_products_rejected
   - media_buy_seller/refine_products
   - media_buy_seller/delivery_reporting
+  - media_buy_seller/advanced_delivery_reporting
+  - media_buy_seller/audience_activation_discovery
+  - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/measurement_terms_accepted
   - media_buy_seller/pending_creatives_to_start
@@ -21,12 +24,16 @@ requires_scenarios:
   - media_buy_seller/product_filter_behavior
   - media_buy_seller/read_filter_behavior
   - media_buy_seller/list_creatives_filter_behavior
+  - media_buy_seller/account_change_feed
   - media_buy_seller/targeting_aware_discovery
   - media_buy_seller/geo_place_targeting
   - media_buy_seller/geo_region_all_values_support
   - media_buy_seller/geo_region_exclusion_support
   - media_buy_seller/geo_region_targeting
   - media_buy_seller/available_actions
+  - media_buy_seller/change_rights_state_projection
+  - media_buy_seller/acceptance_policy_discovery
+  - media_buy_seller/governance_agent_binding_acceptance
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
   - media_buy_seller/inline_creatives_without_sync
@@ -104,7 +111,7 @@ fixtures:
   products:
     - product_id: "sports_preroll_q2"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"

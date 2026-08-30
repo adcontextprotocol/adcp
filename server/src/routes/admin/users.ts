@@ -16,6 +16,8 @@ import {
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
+import { bumpAuthorizationEpochs } from '../../db/authorization-epoch-db.js';
+import { findSupersededMemberships } from '../../db/membership-consolidation-db.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
 import { getWorkos } from '../../auth/workos-client.js';
@@ -1208,6 +1210,11 @@ export function createAdminUsersRouter(): Router {
         [credId, newIdentity.rows[0].id]
       );
 
+      // The detached credential stops routing to the host, so any session
+      // issued before this commit must lose that routing on every instance,
+      // not just the one handling this request.
+      await bumpAuthorizationEpochs(client, [userId, credId]);
+
       // Audit log
       const auditOrg = await client.query<{ workos_organization_id: string }>(
         `SELECT workos_organization_id FROM organization_memberships
@@ -1350,10 +1357,34 @@ export function createAdminUsersRouter(): Router {
     // prior partial promote, manual SQL, etc.). Just set the target as
     // primary; nothing to move forward.
     if (!currentPrimaryId) {
-      await pool.query(
-        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
-        [newPrimaryId]
-      );
+      const repairClient = await pool.connect();
+      try {
+        await repairClient.query('BEGIN');
+        await repairClient.query(
+          `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
+          [newPrimaryId]
+        );
+        // Same transaction as the primary flip: a bump that commits
+        // separately leaves a window where the routing changed but stale
+        // sessions still validate. Every credential on the identity is
+        // bumped, not just the new primary — the flip changes where each
+        // sibling's canonical reads land.
+        const repairBound = await repairClient.query<{ workos_user_id: string }>(
+          `SELECT workos_user_id FROM identity_workos_users WHERE identity_id = $1`,
+          [identityId]
+        );
+        await bumpAuthorizationEpochs(repairClient, [
+          newPrimaryId,
+          ...repairBound.rows.map((row) => row.workos_user_id),
+        ]);
+        await repairClient.query('COMMIT');
+      } catch (err) {
+        await repairClient.query('ROLLBACK').catch(() => undefined);
+        logger.error({ err, userId, newPrimaryId }, 'Promote: orphan-primary repair failed');
+        return res.status(500).json({ error: 'Failed to promote credential' });
+      } finally {
+        repairClient.release();
+      }
       logger.info(
         { adminEmail, userId, newPrimaryId, identityId, recovered_orphan: true },
         'Promote: identity had no current primary; set target as primary directly'
@@ -1363,6 +1394,27 @@ export function createAdminUsersRouter(): Router {
         promoted: true,
         message: 'Promoted (no current primary to demote — invariant repaired).',
       });
+    }
+
+    // Foot-gun gate: promote runs the same consolidation as link-credential.
+    // Memberships whose partner key the incoming credential already holds are
+    // DELETED by it — the outgoing row's role, seat, upstream membership id,
+    // and join provenance are not recoverable, and an unlink cannot put them
+    // back. Require stated intent, matching the `consolidate: true` gate on
+    // the bind path above.
+    if (req.body?.consolidate !== true) {
+      const superseded = await findSupersededMemberships(currentPrimaryId, newPrimaryId);
+      const supersededCount =
+        superseded.organizationIds.length + superseded.workingGroupIds.length;
+      if (supersededCount > 0) {
+        return res.status(409).json({
+          error: 'Promoting would delete memberships',
+          message: `The outgoing primary holds ${supersededCount} membership(s) whose organization or working group the incoming credential already belongs to. Promoting deletes those rows — their role, seat, WorkOS membership id, and join provenance cannot be recovered. Certification progress, credentials, badges, and committee interest are consolidated in the same operation and deduplicated on conflict; they are not enumerated here. Re-submit with \`"consolidate": true\` to confirm this is intended.`,
+          consolidate_confirmation_required: true,
+          superseded_organization_ids: superseded.organizationIds,
+          superseded_working_group_ids: superseded.workingGroupIds,
+        });
+      }
     }
 
     // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary

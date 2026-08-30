@@ -19,6 +19,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
+import { fileURLToPath } from 'node:url';
 
 type ExtractedTool = {
   name: string;
@@ -31,9 +32,10 @@ type ExtractedToolSet = {
   description: string;
   tools: string[];
   adminOnly: boolean;
+  routerVisible: boolean;
 };
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MCP_DIR = path.join(REPO_ROOT, 'server/src/addie/mcp');
 const TOOL_SETS_FILE = path.join(REPO_ROOT, 'server/src/addie/tool-sets.ts');
 const OUTPUT_FILE = path.join(REPO_ROOT, 'docs/aao/addie-tools.mdx');
@@ -47,6 +49,24 @@ function parseFile(filePath: string): ts.SourceFile {
 function literalText(node: ts.Node): string | null {
   if (ts.isStringLiteralLike(node)) return node.text;
   if (ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
+  if (ts.isParenthesizedExpression(node)) return literalText(node.expression);
+  if (
+    ts.isCallExpression(node)
+    && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === 'join'
+    && ts.isArrayLiteralExpression(node.expression.expression)
+  ) {
+    const separator = node.arguments.length === 0 ? ',' : literalText(node.arguments[0]);
+    const parts = node.expression.expression.elements.map(literalText);
+    return separator !== null && parts.every((part): part is string => part !== null)
+      ? parts.join(separator)
+      : null;
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = literalText(node.left);
+    const right = literalText(node.right);
+    return left !== null && right !== null ? left + right : null;
+  }
   if (ts.isTemplateExpression(node)) {
     let out = node.head.text;
     for (const span of node.templateSpans) {
@@ -63,6 +83,20 @@ function extractToolsFromFile(filePath: string): ExtractedTool[] {
   const fileBase = path.basename(filePath);
   const tools: ExtractedTool[] = [];
 
+  function extractObject(node: ts.ObjectLiteralExpression): void {
+    let name: string | null = null;
+    let description: string | null = null;
+    for (const prop of node.properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const key = ts.isIdentifier(prop.name) ? prop.name.text
+        : ts.isStringLiteralLike(prop.name) ? prop.name.text
+        : null;
+      if (key === 'name') name = literalText(prop.initializer);
+      else if (key === 'description') description = literalText(prop.initializer);
+    }
+    if (name && description) tools.push({ name, description, sourceFile: fileBase });
+  }
+
   function visit(node: ts.Node) {
     if (
       ts.isVariableDeclaration(node) &&
@@ -73,20 +107,17 @@ function extractToolsFromFile(filePath: string): ExtractedTool[] {
     ) {
       for (const el of node.initializer.elements) {
         if (!ts.isObjectLiteralExpression(el)) continue;
-        let name: string | null = null;
-        let description: string | null = null;
-        for (const prop of el.properties) {
-          if (!ts.isPropertyAssignment(prop)) continue;
-          const key = ts.isIdentifier(prop.name) ? prop.name.text
-            : ts.isStringLiteralLike(prop.name) ? prop.name.text
-            : null;
-          if (key === 'name') name = literalText(prop.initializer);
-          else if (key === 'description') description = literalText(prop.initializer);
-        }
-        if (name && description) {
-          tools.push({ name, description, sourceFile: fileBase });
-        }
+        extractObject(el);
       }
+    } else if (
+      ts.isVariableDeclaration(node)
+      && node.initializer
+      && ts.isObjectLiteralExpression(node.initializer)
+      && node.type?.getText(sf).replace(/\s/g, '') === 'AddieTool'
+    ) {
+      // Some modules compose their exported *_TOOLS array from named,
+      // individually typed definitions. Capture those definitions too.
+      extractObject(node.initializer);
     }
     ts.forEachChild(node, visit);
   }
@@ -98,15 +129,69 @@ function extractToolsFromFile(filePath: string): ExtractedTool[] {
 function extractToolSets(filePath: string): ExtractedToolSet[] {
   const sf = parseFile(filePath);
   const sets: ExtractedToolSet[] = [];
+  const arrayConstants = new Map<string, string[]>();
+  const objectArrayConstants = new Map<string, Map<string, string[]>>();
+
+  function unwrap(node: ts.Node): ts.Node {
+    if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isParenthesizedExpression(node)) {
+      return unwrap(node.expression);
+    }
+    return node;
+  }
 
   function readArrayOfStrings(node: ts.Node): string[] {
-    if (!ts.isArrayLiteralExpression(node)) return [];
+    const unwrapped = unwrap(node);
+    if (!ts.isArrayLiteralExpression(unwrapped)) return [];
     const out: string[] = [];
-    for (const el of node.elements) {
+    for (const el of unwrapped.elements) {
       const t = literalText(el);
       if (t) out.push(t);
+      if (
+        ts.isSpreadElement(el)
+        && ts.isIdentifier(el.expression)
+      ) {
+        const values = arrayConstants.get(el.expression.text);
+        if (values) out.push(...values);
+      }
+      if (
+        ts.isSpreadElement(el)
+        && ts.isPropertyAccessExpression(el.expression)
+        && ts.isIdentifier(el.expression.expression)
+      ) {
+        const values = objectArrayConstants
+          .get(el.expression.expression.text)
+          ?.get(el.expression.name.text);
+        if (values) out.push(...values);
+      }
     }
     return out;
+  }
+
+  // Resolve the bounded domain arrays referenced by TOOL_SETS without
+  // executing application code during generation.
+  for (const statement of sf.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const initializer = unwrap(declaration.initializer);
+      if (ts.isArrayLiteralExpression(initializer)) {
+        const values = readArrayOfStrings(initializer);
+        if (values.length > 0) arrayConstants.set(declaration.name.text, values);
+        continue;
+      }
+      if (!ts.isObjectLiteralExpression(initializer)) continue;
+      const entries = new Map<string, string[]>();
+      for (const property of initializer.properties) {
+        if (!ts.isPropertyAssignment(property)) continue;
+        const key = ts.isIdentifier(property.name) ? property.name.text
+          : ts.isStringLiteralLike(property.name) ? property.name.text
+          : null;
+        if (!key) continue;
+        const values = readArrayOfStrings(property.initializer);
+        if (values.length > 0) entries.set(key, values);
+      }
+      if (entries.size > 0) objectArrayConstants.set(declaration.name.text, entries);
+    }
   }
 
   function visit(node: ts.Node) {
@@ -124,6 +209,7 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
         let description: string | null = null;
         let toolList: string[] = [];
         let adminOnly = false;
+        let routerVisible = true;
         for (const inner of prop.initializer.properties) {
           if (!ts.isPropertyAssignment(inner)) continue;
           const key = ts.isIdentifier(inner.name) ? inner.name.text
@@ -133,9 +219,10 @@ function extractToolSets(filePath: string): ExtractedToolSet[] {
           else if (key === 'description') description = literalText(inner.initializer);
           else if (key === 'tools') toolList = readArrayOfStrings(inner.initializer);
           else if (key === 'adminOnly' && inner.initializer.kind === ts.SyntaxKind.TrueKeyword) adminOnly = true;
+          else if (key === 'routerVisible' && inner.initializer.kind === ts.SyntaxKind.FalseKeyword) routerVisible = false;
         }
         if (setName && description) {
-          sets.push({ name: setName, description, tools: toolList, adminOnly });
+          sets.push({ name: setName, description, tools: toolList, adminOnly, routerVisible });
         }
       }
     }
@@ -176,7 +263,12 @@ function indentDescription(description: string): string {
   // less-than operator; both crash MDX 3 parsers. Replace ALL `<` with `&lt;`
   // — tool descriptions don't legitimately use HTML/JSX tags, and any quoted
   // machine-protocol fragments render the same way after escaping.
-  const escaped = trimmed.replace(/</g, '&lt;');
+  // Template expressions are represented as the literal placeholder
+  // `${...}` by literalText(). Encode its delimiters so MDX does not try to
+  // parse the placeholder as a JavaScript expression.
+  const escaped = trimmed
+    .replace(/</g, '&lt;')
+    .replaceAll('${...}', '&#36;&#123;...&#125;');
   return escaped.split('\n').map(line => line.trimEnd()).join('\n');
 }
 
@@ -334,7 +426,7 @@ function renderCatalog(
   return lines.join('\n') + '\n';
 }
 
-function renderCatalogModule(catalogBody: string): string {
+function renderCatalogModule(catalogBody: string, toolNames: string[]): string {
   const escaped = catalogBody.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
   return `// AUTO-GENERATED by scripts/build-addie-tool-reference.ts
 // Do not edit by hand. Run \`npm run build:addie-tools\` to regenerate.
@@ -346,6 +438,9 @@ function renderCatalogModule(catalogBody: string): string {
  * so the two cannot drift.
  */
 export const ADDIE_TOOL_CATALOG = \`${escaped}\`;
+
+/** Explicit catalog names for runtime/inventory parity checks. */
+export const ADDIE_TOOL_NAMES = ${JSON.stringify(toolNames, null, 2)} as const;
 `;
 }
 
@@ -356,7 +451,10 @@ function main() {
   // docs-search.ts is a legacy, unregistered implementation whose duplicate
   // search_docs/get_doc names must not override the runtime definitions.
   const toolFiles = fs.readdirSync(MCP_DIR)
-    .filter(f => f.endsWith('-tools.ts') || f === 'knowledge-search.ts')
+    .filter(f => (f.endsWith('-tools.ts') && f !== 'story-tools.ts')
+      || f === 'knowledge-search.ts'
+      || f === 'admin-analytics.ts'
+      || f === 'google-docs.ts')
     .map(f => path.join(MCP_DIR, f))
     .sort();
 
@@ -365,13 +463,16 @@ function main() {
     allTools.push(...extractToolsFromFile(file));
   }
 
-  const toolSets = extractToolSets(TOOL_SETS_FILE);
+  const toolSets = extractToolSets(TOOL_SETS_FILE).filter((set) => set.routerVisible);
   const alwaysAvailable = extractAlwaysAvailable(TOOL_SETS_FILE, 'ALWAYS_AVAILABLE_TOOLS');
   const alwaysAvailableAdmin = extractAlwaysAvailable(TOOL_SETS_FILE, 'ALWAYS_AVAILABLE_ADMIN_TOOLS');
 
   const rendered = render(allTools, toolSets, alwaysAvailable, alwaysAvailableAdmin);
   const catalogBody = renderCatalog(allTools, toolSets, alwaysAvailable, alwaysAvailableAdmin);
-  const catalogModule = renderCatalogModule(catalogBody);
+  const catalogModule = renderCatalogModule(
+    catalogBody,
+    [...new Set(allTools.map((tool) => tool.name))],
+  );
 
   if (checkMode) {
     const existing = fs.existsSync(OUTPUT_FILE) ? fs.readFileSync(OUTPUT_FILE, 'utf8') : '';

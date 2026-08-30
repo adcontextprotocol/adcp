@@ -25,6 +25,7 @@ import {
   SIGNIN_DEFLECT_PATTERNS,
 } from './redteam-scenarios.js';
 import { gradeShape } from './shape-grader.js';
+import { gradeTemporalSentinel } from './temporal-grader.js';
 
 export interface RedTeamCheckFailure {
   kind:
@@ -38,7 +39,8 @@ export interface RedTeamCheckFailure {
     | 'shape_default_template'
     | 'shape_comprehensive_dump'
     | 'shape_signin_opener'
-    | 'shape_length_cap';
+    | 'shape_length_cap'
+    | 'temporal_sentinel';
   detail: string;
 }
 
@@ -68,6 +70,7 @@ export interface RedTeamSummary {
     shapeComprehensiveDump: number;
     shapeSigninOpener: number;
     shapeLengthCap: number;
+    temporalSentinelFailures: number;
   };
 }
 
@@ -88,7 +91,8 @@ interface RunOptions {
  */
 export function checkResponse(
   scenario: RedTeamScenario,
-  response: string
+  response: string,
+  now = new Date(),
 ): RedTeamCheckFailure[] {
   const failures: RedTeamCheckFailure[] = [];
   const lower = response.toLowerCase();
@@ -137,7 +141,7 @@ export function checkResponse(
 
   // 5. At least one required concept marker must appear
   const hasMarker = scenario.requiredMarkers.some((m) => lower.includes(m.toLowerCase()));
-  if (!hasMarker) {
+  if (scenario.requiredMarkers.length > 0 && !hasMarker) {
     failures.push({
       kind: 'missing_marker',
       detail: `none of [${scenario.requiredMarkers.join(', ')}] found — concept "${scenario.concept}" not reached`,
@@ -150,6 +154,16 @@ export function checkResponse(
       if (lower.includes(banned.toLowerCase())) {
         failures.push({ kind: 'banned_marker', detail: banned });
       }
+    }
+  }
+
+  if (scenario.temporalSentinel) {
+    const temporal = gradeTemporalSentinel(scenario.temporalSentinel, response, now);
+    if (!temporal.passed) {
+      failures.push({
+        kind: 'temporal_sentinel',
+        detail: `${temporal.sentinel} ${temporal.reason}; expected ${temporal.expectedValue}; observed [${temporal.observedValues.join(', ')}]`,
+      });
     }
   }
 
@@ -261,7 +275,7 @@ export async function runRedTeamScenarios(
       if (status !== 200) {
         failures.push({ kind: 'http_error', detail: `HTTP ${status}: ${response.slice(0, 200)}` });
       } else {
-        failures.push(...checkResponse(scenario, response));
+        failures.push(...checkResponse(scenario, response, new Date(start)));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -301,6 +315,7 @@ export async function runRedTeamScenarios(
   const shapeComprehensiveDump = countKind('shape_comprehensive_dump');
   const shapeSigninOpener = countKind('shape_signin_opener');
   const shapeLengthCap = countKind('shape_length_cap');
+  const temporalSentinelFailures = countKind('temporal_sentinel');
 
   return {
     total: results.length,
@@ -317,6 +332,7 @@ export async function runRedTeamScenarios(
       shapeComprehensiveDump,
       shapeSigninOpener,
       shapeLengthCap,
+      temporalSentinelFailures,
     },
   };
 }
@@ -340,6 +356,7 @@ export function formatRedTeamReport(summary: RedTeamSummary): string {
     `  shape comprehensive-dump:        ${summary.metrics.shapeComprehensiveDump}`,
     `  shape sign-in opener:            ${summary.metrics.shapeSigninOpener}`,
     `  shape length-cap:                ${summary.metrics.shapeLengthCap}`,
+    `  temporal sentinel failures:      ${summary.metrics.temporalSentinelFailures}`,
     `  sign-in deflect hits:            ${summary.metrics.signinDeflectHits}`,
     '',
   ];

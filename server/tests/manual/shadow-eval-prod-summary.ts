@@ -87,13 +87,102 @@ interface CaptureSummary {
     total: number;
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    usage_complete: number;
+    latency_complete: number;
+    estimated_cost_micros: string;
     outcomes: Array<{
+      capture_version: number;
+      capture_policy_version: string;
+      source_config_version_id: number;
+      source_model: string;
+      requested_provider: string;
+      requested_model: string;
+      addie_code_version: string;
+      execution_policy_version: string;
+      pricing_version: string;
+      returned_provider: string | null;
+      returned_model: string | null;
       status: string;
       reason: string;
       count: number;
       input_tokens: number;
       output_tokens: number;
+      cache_read_tokens: number;
+      cache_write_tokens: number;
+      usage_complete_count: number;
+      latency_count: number;
+      estimated_cost_micros: string;
+      latency_p50_ms: number | null;
+      latency_p95_ms: number | null;
     }>;
+  };
+  judgments?: {
+    total: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    usage_complete: number;
+    latency_complete: number;
+    estimated_cost_micros: string;
+    outcomes: Array<{
+      capture_version: number;
+      capture_policy_version: string;
+      source_config_version_id: number;
+      source_model: string;
+      has_human_evidence: boolean;
+      requested_provider: string;
+      requested_model: string;
+      addie_code_version: string;
+      execution_policy_version: string;
+      returned_provider: string | null;
+      returned_model: string | null;
+      judgment_policy_version: string;
+      judge_provider: string | null;
+      judge_model: string | null;
+      self_judged: boolean | null;
+      judge_prompt_version: string | null;
+      pricing_version: string;
+      status: string;
+      reason: string;
+      evaluation_valid: boolean;
+      evaluation_skipped: boolean;
+      knowledge_gap: boolean | null;
+      gap_severity: string | null;
+      shadow_quality: string | null;
+      deterministic_failure_labels: string[];
+      count: number;
+      input_tokens: number;
+      output_tokens: number;
+      cache_read_tokens: number;
+      cache_write_tokens: number;
+      usage_complete_count: number;
+      latency_count: number;
+      estimated_cost_micros: string;
+      latency_p50_ms: number | null;
+      latency_p95_ms: number | null;
+    }>;
+  };
+  funnel?: {
+    opportunities: number;
+    traces_captured: number;
+    parity_verified: number;
+    capture_verified: number;
+    capture_pending: number;
+    capture_skipped: number;
+    capture_error: number;
+    generation_claimed: number;
+    generation_succeeded: number;
+    generation_blocked: number;
+    generation_error: number;
+    generation_running: number;
+    judgment_judged: number;
+    judgment_deterministic_failure: number;
+    judgment_skipped: number;
+    judgment_error: number;
+    judgment_missing: number;
   };
 }
 
@@ -314,14 +403,99 @@ async function main() {
       console.log(
         `Generation-only replays: ${captureSummary.generations.total} `
         + `(${captureSummary.generations.input_tokens} input / `
-        + `${captureSummary.generations.output_tokens} output tokens)`,
+        + `${captureSummary.generations.output_tokens} output / `
+        + `${captureSummary.generations.cache_read_tokens} cache-read / `
+        + `${captureSummary.generations.cache_write_tokens} cache-write tokens; `
+        + `${captureSummary.generations.usage_complete}/${captureSummary.generations.total} `
+        + `complete usage; ${captureSummary.generations.latency_complete}/`
+        + `${captureSummary.generations.total} timed; `
+        + `${captureSummary.generations.estimated_cost_micros} cost micros)`,
       );
       for (const outcome of captureSummary.generations.outcomes) {
+        const returned = outcome.returned_provider && outcome.returned_model
+          ? `${outcome.returned_provider}/${outcome.returned_model}`
+          : 'none';
         console.log(
-          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
-          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+          `  candidate=${outcome.requested_provider}/${outcome.requested_model} `
+          + `source=${outcome.source_model}@config:${outcome.source_config_version_id} `
+          + `returned=${returned} code=${outcome.addie_code_version} `
+          + `capture=v${outcome.capture_version}/${outcome.capture_policy_version} `
+          + `execution=${outcome.execution_policy_version} pricing=${outcome.pricing_version} `
+          + `${outcome.status}:${outcome.reason} ${outcome.count} `
+          + `usage=${outcome.usage_complete_count}/${outcome.count} `
+          + `timed=${outcome.latency_count}/${outcome.count} `
+          + `latency_p50/p95=${outcome.latency_p50_ms ?? 'none'}/`
+          + `${outcome.latency_p95_ms ?? 'none'}ms `
+          + `cost=${outcome.estimated_cost_micros}µUSD `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output / `
+          + `${outcome.cache_read_tokens} cache-read / `
+          + `${outcome.cache_write_tokens} cache-write tokens)`,
         );
       }
+    }
+    if (captureSummary.judgments) {
+      console.log(
+        `Judgment outcomes: ${captureSummary.judgments.total} `
+        + `(${captureSummary.judgments.input_tokens} input / `
+        + `${captureSummary.judgments.output_tokens} output / `
+        + `${captureSummary.judgments.cache_read_tokens} cache-read / `
+        + `${captureSummary.judgments.cache_write_tokens} cache-write tokens; `
+        + `${captureSummary.judgments.usage_complete}/${captureSummary.judgments.total} `
+        + `complete usage; ${captureSummary.judgments.latency_complete}/`
+        + `${captureSummary.judgments.total} timed; `
+        + `${captureSummary.judgments.estimated_cost_micros} cost micros)`,
+      );
+      for (const outcome of captureSummary.judgments.outcomes) {
+        const returned = outcome.returned_provider && outcome.returned_model
+          ? `${outcome.returned_provider}/${outcome.returned_model}`
+          : 'none';
+        const judge = outcome.judge_provider && outcome.judge_model
+          ? `${outcome.judge_provider}/${outcome.judge_model}`
+          : 'none';
+        console.log(
+          `  candidate=${outcome.requested_provider}/${outcome.requested_model} `
+          + `source=${outcome.source_model}@config:${outcome.source_config_version_id} `
+          + `returned=${returned} code=${outcome.addie_code_version} `
+          + `capture=v${outcome.capture_version}/${outcome.capture_policy_version} `
+          + `execution=${outcome.execution_policy_version} `
+          + `human_evidence=${String(outcome.has_human_evidence)} `
+          + `judge=${judge} self_judged=${String(outcome.self_judged)} `
+          + `judgment=${outcome.judgment_policy_version}/`
+          + `${outcome.judge_prompt_version ?? 'none'} `
+          + `pricing=${outcome.pricing_version} `
+          + `quality=${outcome.shadow_quality ?? 'none'} `
+          + `gap=${outcome.gap_severity ?? 'none'} `
+          + `shape_failures=${outcome.deterministic_failure_labels.join(',') || 'none'} `
+          + `${outcome.status}:${outcome.reason} ${outcome.count} `
+          + `usage=${outcome.usage_complete_count}/${outcome.count} `
+          + `timed=${outcome.latency_count}/${outcome.count} `
+          + `latency_p50/p95=${outcome.latency_p50_ms ?? 'none'}/`
+          + `${outcome.latency_p95_ms ?? 'none'}ms `
+          + `cost=${outcome.estimated_cost_micros}µUSD `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output / `
+          + `${outcome.cache_read_tokens} cache-read / `
+          + `${outcome.cache_write_tokens} cache-write tokens)`,
+        );
+      }
+    }
+    if (captureSummary.funnel) {
+      const funnel = captureSummary.funnel;
+      console.log(
+        'Replay funnel: '
+        + `${funnel.opportunities} opportunities → ${funnel.traces_captured} signed → `
+        + `${funnel.parity_verified} parity verified → `
+        + `${funnel.generation_claimed} claimed → ${funnel.generation_succeeded} generated → `
+        + `${funnel.judgment_judged} judged`,
+      );
+      console.log(
+        '  exclusions/failures: '
+        + `${funnel.capture_pending} capture pending, ${funnel.capture_skipped} capture skipped, `
+        + `${funnel.capture_error} capture error, ${funnel.generation_blocked} generation blocked, `
+        + `${funnel.generation_error} generation error, ${funnel.generation_running} generation running, `
+        + `${funnel.judgment_deterministic_failure} deterministic failure, `
+        + `${funnel.judgment_skipped} judgment skipped, ${funnel.judgment_error} judgment error, `
+        + `${funnel.judgment_missing} judgment missing`,
+      );
     }
   } catch (error) {
     console.warn(

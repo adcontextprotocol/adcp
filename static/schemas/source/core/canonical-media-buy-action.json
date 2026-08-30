@@ -3,52 +3,42 @@
   "$id": "/schemas/core/canonical-media-buy-action.json",
   "title": "Canonical Media Buy Action",
   "description": "A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it. Deprecated coarse action values are absent.",
-  "type": "object",
-  "discriminator": {
-    "propertyName": "task"
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "change_term_link": "When change_term_id is present, it resolves to the accepted proposal change term governing this action.",
+      "legacy_alias_agreement": "When both change_term_id and deprecated terms_ref are emitted as proposal-term links, their values are identical."
+    }
   },
+  "type": "object",
+  "discriminator": { "propertyName": "task" },
   "oneOf": [
     {
+      "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-action-fields.json" }],
+      "required": ["task"],
       "properties": {
-        "task": { "type": "string", "const": "control_media_buy" },
+        "task": { "const": "control_media_buy" },
         "action": {
-          "type": "string",
           "enum": ["pause", "resume", "cancel", "update_name", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "update_catalog_assignments", "update_keywords", "update_optimization_goals", "update_impression_goal", "update_spend_target", "update_reporting_webhook", "remove_packages"]
-        },
-        "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
-        "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
-      },
-      "required": ["task", "action", "mode"],
-      "additionalProperties": false
+        }
+      }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-action-fields.json" }],
+      "required": ["task"],
       "properties": {
-        "task": { "type": "string", "const": "refine_proposals" },
+        "task": { "const": "refine_proposals" },
         "action": {
-          "type": "string",
           "enum": ["cancel", "extend_flight", "shorten_flight", "update_flight_dates", "increase_budget", "decrease_budget", "reallocate_budget", "update_budget_allocation", "update_targeting", "update_pacing", "update_bidding", "update_frequency_caps", "add_packages", "remove_packages"]
-        },
-        "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
-        "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
-      },
-      "required": ["task", "action", "mode"],
-      "additionalProperties": false
+        }
+      }
     },
     {
+      "allOf": [{ "$ref": "/schemas/core/canonical-media-buy-action-fields.json" }],
+      "required": ["task"],
       "properties": {
-        "task": { "type": "string", "const": "sync_creatives" },
-        "action": {
-          "type": "string",
-          "enum": ["replace_creative", "update_creative_assignments", "remove_creative"]
-        },
-        "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },
-        "sla": { "$ref": "/schemas/core/sla-window.json" },
-        "terms_ref": { "type": "string" }
-      },
-      "required": ["task", "action", "mode"],
-      "additionalProperties": false
+        "task": { "const": "sync_creatives" },
+        "action": { "enum": ["replace_creative", "update_creative_assignments", "remove_creative"] }
+      }
     }
   ]
 }

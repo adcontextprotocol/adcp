@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
@@ -8,10 +8,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.hoisted(() => {
-  process.env.WORKOS_API_KEY = 'sk_test_api_key_issuance';
-  process.env.WORKOS_CLIENT_ID = 'client_test_api_key_issuance';
-  process.env.WORKOS_COOKIE_PASSWORD =
-    'test-cookie-password-at-least-32-characters';
+  vi.stubEnv('WORKOS_API_KEY', 'sk_test_api_key_issuance');
+  vi.stubEnv('WORKOS_CLIENT_ID', 'client_test_api_key_issuance');
+  vi.stubEnv('WORKOS_COOKIE_PASSWORD', 'test-cookie-password-at-least-32-characters');
 });
 
 vi.mock('@workos-inc/node', () => ({
@@ -50,6 +49,10 @@ beforeAll(() => {
 
 afterAll(() => {
   vi.unstubAllGlobals();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 function setMembership(

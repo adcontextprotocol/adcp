@@ -4,10 +4,11 @@
   "title": "Canonical Media Buy Action Mode",
   "description": "How a seller honors a routed compact-lifecycle action.",
   "type": "string",
-  "enum": ["self_serve", "conditional_self_serve", "requires_approval"],
+  "enum": ["self_serve", "conditional_self_serve", "seller_managed", "requires_approval"],
   "enumDescriptions": {
     "self_serve": "The declared task completes synchronously without approval.",
     "conditional_self_serve": "The declared task completes synchronously inside seller tolerances and may become asynchronous outside them.",
-    "requires_approval": "The declared task uses the standard submitted, working, and input-required lifecycle before terminal completion."
+    "seller_managed": "The seller processes the action through the standard async lifecycle. The internal use of people, models, queues, or other controls is intentionally opaque.",
+    "requires_approval": "Legacy 3.x mode indicating an approval-dependent async path. New proposal-bound terms SHOULD use seller_managed so they do not expose an internal implementation."
   }
 }

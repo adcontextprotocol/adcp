@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.9/core/placement-ref.json",
+  "title": "Placement Reference",
+  "description": "Legacy-compatible product-context reference to a placement. For publisher-catalog placements, publisher_domain plus placement_id resolves the declaration in that publisher's adagents.json. For seller-inline placements, the enclosing seller and product supply scope. When publisher_domain is omitted on legacy inputs, receivers MAY interpret the ID relative to the enclosing single-publisher product. Use placement-identity.json when a self-contained cross-document identity is required.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain where the adagents.json declaring a publisher-catalog placement is hosted, or the inventory publisher associated with an inline placement. Omitted only for legacy single-publisher product-context references.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "placement_id": {
+      "type": "string",
+      "description": "Placement ID from the publisher's adagents.json placement catalog, or an inline seller-defined placement ID interpreted within the enclosing seller and product context.",
+      "x-entity": "placement"
+    }
+  },
+  "required": [
+    "placement_id"
+  ],
+  "additionalProperties": true
+}

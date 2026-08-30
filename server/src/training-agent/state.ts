@@ -273,6 +273,7 @@ function createSession(): SessionState {
     negotiatedPricingOptions: new Map(),
     configuredProducts: new Map(),
     configuredProductTargeting: new Map(),
+    configuredProductOwners: new Map(),
     proposalLifecycleLinks: new Map(),
     proposalRefinementRecords: new Map(),
     creatives: new Map(),
@@ -306,11 +307,12 @@ function createSession(): SessionState {
  * Conformance storyboards reference these IDs by hardcoded value — e.g. the
  * `creative_ad_server` storyboard calls `list_creatives` with no filter and
  * asserts `creatives[0].pricing_options`, then calls `build_creative` /
- * `report_usage` against `campaign_hero_video`. The storyboard declares
- * `controller_seeding: true` to have the runner auto-fire `seed_creative`,
- * but the SDK side of that wiring (adcp-client#778) is still open.
+ * `report_usage` against `campaign_hero_video`. SDK 14 beta.15 auto-fires
+ * `seed_creative` for storyboards that declare `controller_seeding: true`.
  *
- * Session handlers consult this map as a read-through fallback:
+ * Session handlers retain this map as a read-through fallback for direct
+ * tool smoke tests and harnesses that intentionally opt out of controller
+ * seeding:
  *  - `list_creatives` merges compliance fixtures in when the session has
  *    none synced (so storyboards that never sync still see them); filtered
  *    queries skip the fallback — an explicit `creative_ids` filter means
@@ -523,6 +525,10 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       hydrated.configuredProductTargeting,
       fresh.configuredProductTargeting,
     ),
+    configuredProductOwners: asMap(
+      hydrated.configuredProductOwners,
+      fresh.configuredProductOwners,
+    ),
     proposalLifecycleLinks: asMap(hydrated.proposalLifecycleLinks, fresh.proposalLifecycleLinks),
     proposalRefinementRecords: asMap(hydrated.proposalRefinementRecords, fresh.proposalRefinementRecords),
     buildVariantTargets: asMap(hydrated.buildVariantTargets, fresh.buildVariantTargets),
@@ -543,6 +549,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
       forcedGetSignalsArm: hydratedComply.forcedGetSignalsArm,
+      forcedGetProductsArm: hydratedComply.forcedGetProductsArm,
       forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
       forcedUpstreamUnavailable: hydratedComply.forcedUpstreamUnavailable,
     },
@@ -636,6 +643,13 @@ export async function getSession(key: string, controllerFixtureSessionKey?: stri
   return session;
 }
 
+/** Return an already-authoritatively-loaded session for synchronous policy
+ * checks. Security-sensitive callers must not interpret a missing cache entry
+ * as an empty durable record. */
+export function getCachedSession(key: string): SessionState | undefined {
+  return requestCtx.getStore()?.sessions.get(key);
+}
+
 
 const MAX_DOMAIN_LEN = 253; // RFC 1035 max hostname length
 const MAX_ACCOUNT_ID_LEN = 128;
@@ -671,6 +685,24 @@ function canonicalOpenKey(scope: string, preferred?: string): string {
   const candidate = preferred ?? `open:${scope}`;
   if (candidate.length <= 256 && /^[A-Za-z0-9_.\-:]+$/.test(candidate)) return candidate;
   return `open:h:${createHash('sha256').update(scope).digest('hex')}`;
+}
+
+const trustedSessionPartitionHint = Symbol('trustedSessionPartitionHint');
+
+/** Attach a framework-derived storage hint without changing the AccountRef the
+ * business layer receives. The WeakMap prevents callers from forging the hint
+ * through wire input and avoids persisting transport-only partition metadata. */
+export function registerSharedPublicBrandPartition<T extends object>(
+  args: T,
+  brandDomain: string,
+): T {
+  Object.defineProperty(args, trustedSessionPartitionHint, {
+    configurable: false,
+    enumerable: true,
+    writable: false,
+    value: { sharedPublicBrandDomain: brandDomain.toLowerCase() },
+  });
+  return args;
 }
 
 /** Derive a session key from the request context.
@@ -716,9 +748,18 @@ export function sessionKeyFromArgs(
     try {
       const canonical = canonicalizeAccountRef(account);
       const scope = accountScopeFromRef(account);
+      // The symbol is framework-owned, cannot be forged by JSON input, and is
+      // intentionally enumerable so the ordinary handler argument spreads
+      // retain it until storage partitioning occurs.
+      const partitionHint = (args as typeof args & {
+        [trustedSessionPartitionHint]?: { sharedPublicBrandDomain: string };
+      })[trustedSessionPartitionHint];
       if (principal) return principalScopedOpenKey(principal, scope);
       if (canonical.kind === 'account_id') {
         return canonicalOpenKey(scope);
+      }
+      if (partitionHint?.sharedPublicBrandDomain === canonical.brand.domain.toLowerCase()) {
+        return canonicalOpenKey(scope, `open:${canonical.brand.domain.toLowerCase()}`);
       }
       if (
         canonical.brand.brand_id === undefined

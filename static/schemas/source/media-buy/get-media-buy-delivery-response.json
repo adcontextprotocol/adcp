@@ -674,37 +674,9 @@
                     },
                     "by_placement": {
                       "type": "array",
-                      "description": "Delivery by placement within this package. Available when the buyer requests placement breakdown via reporting_dimensions and the seller supports it. Placement IDs reference the product's placements array.",
+                      "description": "Delivery by placement within this package. placement_id remains required for 3.1 compatibility. New 3.2 sellers also emit placement_identity, whose discriminator separates publisher-catalog identity from sales-agent-defined inline identity.",
                       "items": {
-                        "allOf": [
-                          {
-                            "$ref": "/schemas/core/delivery-metrics.json"
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "placement_id": {
-                                "type": "string",
-                                "description": "Placement identifier from the product's placements array",
-                                "x-entity": "placement"
-                              },
-                              "placement_name": {
-                                "type": "string",
-                                "description": "Human-readable placement name"
-                              },
-                              "publisher_domain": {
-                                "type": "string",
-                                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
-                                "description": "Canonical publisher domain whose adagents.json namespace this placement belongs to, matching the `publisher_domain` on the product's `placements[]` entry that `placement_id` resolves to (see core/placement.json). Lets buyers attribute delivered impressions to a publisher namespace without re-fetching the product catalog — the common case for multi-publisher buys through a single sales agent. Sellers SHOULD emit it whenever the resolving product placement carries a publisher_domain (always true for `kind: publisher_ref`); sellers MAY omit it only for `seller_inline` placements in a legacy single-publisher context where the seller agent's own domain is the namespace. Single-valued: a placement resolves within exactly one publisher namespace (package-level attribution, where an ad-network product can span publishers, is a separate concern)."
-                              }
-                            },
-                            "required": [
-                              "placement_id",
-                              "impressions",
-                              "spend"
-                            ]
-                          }
-                        ]
+                        "$ref": "/schemas/core/placement-delivery-metrics.json"
                       }
                     },
                     "by_placement_truncated": {
@@ -718,6 +690,124 @@
                     "by_placement_sort_direction": {
                       "$ref": "/schemas/enums/sort-direction.json",
                       "description": "The direction actually applied to by_placement ordering. Sellers MUST return this field whenever by_placement is present."
+                    },
+                    "by_property": {
+                      "type": "array",
+                      "description": "Delivery by publisher property within this package. Each row identifies the actual surface with an operational identifier and adds property_ref when it resolves to a canonical publisher catalog entry. Rows are independent of by_collection.",
+                      "items": { "$ref": "/schemas/core/property-delivery-metrics.json" }
+                    },
+                    "by_property_truncated": {
+                      "type": "boolean",
+                      "description": "Whether non-suppressed by_property rows were truncated. Sellers MUST return this flag whenever by_property is present. False means every non-suppressed row is present; inspect by_property_suppressed before reconciling rows to package totals."
+                    },
+                    "by_property_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable by_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
+                    },
+                    "by_property_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_property rows. Sellers MUST return this field whenever by_property is present."
+                    },
+                    "by_property_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_property rows. Sellers MUST return this field whenever by_property is present."
+                    },
+                    "by_collection": {
+                      "type": "array",
+                      "description": "Delivery by publisher-scoped collection within this package. This is a marginal breakdown and does not by itself prove which property carried a collection.",
+                      "items": { "$ref": "/schemas/core/collection-delivery-metrics.json" }
+                    },
+                    "by_collection_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_collection was truncated. Sellers MUST return this flag whenever by_collection is present."
+                    },
+                    "by_collection_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_collection rows. Sellers MUST return this field whenever by_collection is present."
+                    },
+                    "by_collection_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_collection rows. Sellers MUST return this field whenever by_collection is present."
+                    },
+                    "by_installment": {
+                      "type": "array",
+                      "description": "Delivery by canonically identified installment within this package.",
+                      "items": { "$ref": "/schemas/core/installment-delivery-metrics.json" }
+                    },
+                    "by_installment_truncated": {
+                      "type": "boolean",
+                      "description": "Whether by_installment was truncated. Sellers MUST return this flag whenever by_installment is present."
+                    },
+                    "by_installment_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_installment rows. Sellers MUST return this field whenever by_installment is present."
+                    },
+                    "by_installment_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_installment rows. Sellers MUST return this field whenever by_installment is present."
+                    },
+                    "by_collection_property": {
+                      "type": "array",
+                      "description": "Delivery at the collection × property intersection. A row is affirmative delivery evidence that the referenced collection ran on the referenced property; it is not merely a carriage or catalog assertion.",
+                      "items": { "$ref": "/schemas/core/collection-property-delivery-metrics.json" }
+                    },
+                    "by_collection_property_truncated": {
+                      "type": "boolean",
+                      "description": "Whether non-suppressed by_collection_property rows were truncated. Sellers MUST return this flag whenever by_collection_property is present."
+                    },
+                    "by_collection_property_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable by_collection_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_collection_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
+                    },
+                    "by_collection_property_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_collection_property rows. Sellers MUST return this field whenever by_collection_property is present."
+                    },
+                    "by_collection_property_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_collection_property rows. Sellers MUST return this field whenever by_collection_property is present."
+                    },
+                    "by_installment_property": {
+                      "type": "array",
+                      "description": "Delivery at the installment × property intersection. A row is affirmative delivery evidence that the referenced airing, episode, issue, or programming block ran on the referenced property; it is not inferred from collection carriage or independent marginals.",
+                      "items": { "$ref": "/schemas/core/installment-property-delivery-metrics.json" }
+                    },
+                    "by_installment_property_truncated": {
+                      "type": "boolean",
+                      "description": "Whether non-suppressed by_installment_property rows were truncated. Sellers MUST return this flag whenever by_installment_property is present."
+                    },
+                    "by_installment_property_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable by_installment_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_installment_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
+                    },
+                    "by_installment_property_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_installment_property rows. Sellers MUST return this field whenever by_installment_property is present."
+                    },
+                    "by_installment_property_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_installment_property rows. Sellers MUST return this field whenever by_installment_property is present."
+                    },
+                    "by_placement_property": {
+                      "type": "array",
+                      "description": "Delivery at the placement × property intersection. This proves which actual property carried a placement that may span more than one property.",
+                      "items": { "$ref": "/schemas/core/placement-property-delivery-metrics.json" }
+                    },
+                    "by_placement_property_truncated": {
+                      "type": "boolean",
+                      "description": "Whether non-suppressed by_placement_property rows were truncated. Sellers MUST return this flag whenever by_placement_property is present."
+                    },
+                    "by_placement_property_suppressed": {
+                      "type": "boolean",
+                      "description": "Whether one or more otherwise reportable by_placement_property rows were omitted from this response due to privacy, policy, or measurement thresholds. Sellers MUST return this flag whenever by_placement_property is present. False means no rows were threshold-suppressed. Both suppression and truncation may be true."
+                    },
+                    "by_placement_property_sorted_by": {
+                      "$ref": "/schemas/enums/sort-metric.json",
+                      "description": "The metric actually used to order by_placement_property rows. Sellers MUST return this field whenever by_placement_property is present."
+                    },
+                    "by_placement_property_sort_direction": {
+                      "$ref": "/schemas/enums/sort-direction.json",
+                      "description": "The direction actually applied to by_placement_property rows. Sellers MUST return this field whenever by_placement_property is present."
                     },
                     "by_spot": {
                       "type": "array",

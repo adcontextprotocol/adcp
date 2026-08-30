@@ -22,6 +22,24 @@ export type TalentRole = typeof TALENT_ROLES[number];
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
+/**
+ * First wire checkpoint that may carry the standardized seller-governance
+ * discovery fields ratified for the current 3.2 beta checkpoint.
+ */
+export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
+
+/** Current prerelease schema bundle shipped by the server SDK. */
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.9' as const;
+
+/** Release checkpoints the reference training agent can serve. */
+export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
+  '3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6',
+  '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
+  '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+] as const;
+export const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0' as const;
+
 export const PROPOSAL_NEGOTIATION_PROFILES = [
   'ask-only',
   'typed-negotiation',
@@ -30,18 +48,53 @@ export const PROPOSAL_NEGOTIATION_PROFILES = [
 ] as const;
 export type ProposalNegotiationProfile = (typeof PROPOSAL_NEGOTIATION_PROFILES)[number];
 
-export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+export function atLeastAdcpVersion(servedVersion: string | undefined, minimumVersion: string): boolean {
   if (!servedVersion) return false;
-  const match = servedVersion.match(/^(\d+)\.(\d+)(?:-(beta|rc)(?:\.(\d+))?)?$/);
+  const parse = (value: string) => {
+    const match = value.match(/^(\d+)\.(\d+)(?:\.(\d+))?(?:-(beta|rc)(?:\.(\d+))?)?$/);
+    if (!match) return undefined;
+    return {
+      major: Number.parseInt(match[1], 10),
+      minor: Number.parseInt(match[2], 10),
+      patch: Number.parseInt(match[3] ?? '0', 10),
+      qualifier: match[4],
+      prerelease: Number.parseInt(match[5] ?? '0', 10),
+    };
+  };
+  const actual = parse(servedVersion);
+  const minimum = parse(minimumVersion);
+  if (!actual || !minimum) return false;
+  for (const key of ['major', 'minor', 'patch'] as const) {
+    if (actual[key] !== minimum[key]) return actual[key] > minimum[key];
+  }
+  if (actual.qualifier !== minimum.qualifier) {
+    if (!actual.qualifier) return true;
+    if (!minimum.qualifier) return false;
+    return actual.qualifier === 'rc' && minimum.qualifier === 'beta';
+  }
+  return actual.prerelease >= minimum.prerelease;
+}
+
+export function supportsGetProductsRejected(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, GET_PRODUCTS_REJECTED_ADCP_VERSION);
+}
+
+export function supportsSellerGovernanceDiscovery(servedVersion: string | undefined): boolean {
+  return atLeastAdcpVersion(servedVersion, SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION);
+}
+
+/** Account change feed is a 3.2+ surface and must not leak into 3.1
+ * negotiation. The reference implementation remains process-local until the
+ * server SDK durable store lands, so production must not advertise it. Tests
+ * and local training runs retain the scenario. */
+export function supportsAccountChangeFeed(servedVersion: string | undefined): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  if (!servedVersion) return false;
+  const match = servedVersion.match(/^(\d+)\.(\d+)/);
   if (!match) return false;
   const major = Number.parseInt(match[1], 10);
   const minor = Number.parseInt(match[2], 10);
-  if (major > 3 || (major === 3 && minor > 2)) return true;
-  if (major !== 3 || minor !== 2) return false;
-  const qualifier = match[3];
-  if (!qualifier || qualifier === 'rc') return true;
-  const prerelease = Number.parseInt(match[4] ?? '0', 10);
-  return qualifier === 'beta' && prerelease >= 2;
+  return major > 3 || (major === 3 && minor >= 2);
 }
 
 /** AccountReference from SDK — identifies an account on create_media_buy */
@@ -64,6 +117,8 @@ export interface TrainingContext {
    * mapping. Never populate this from request arguments or principal text.
    */
   authenticatedAgentUrl?: string;
+  /** Exact trusted partition used by the SDK task registry. */
+  taskRegistryScope?: Readonly<{ registryNamespace: string; accountId: string; ownerScope: string }>;
   /** Validated wire input before SDK account extraction; used only to verify
    * governance payload bindings against the exact buyer-authorized request. */
   requestInput?: Record<string, unknown>;
@@ -280,6 +335,18 @@ export interface ComplyDeliveryAccumulator {
     viewable_impressions?: number;
     viewable_rate?: number;
     viewed_seconds?: number;
+    viewed_seconds_percentiles?: {
+      p25: number;
+      p50: number;
+      p75: number;
+      p90: number;
+      p95: number;
+    };
+    viewed_seconds_histogram?: Array<{
+      lower_bound_seconds: number;
+      upper_bound_seconds?: number;
+      impressions: number;
+    }>;
     standard?: string;
   };
   /** vendor_metric_values injected via comply_test_controller simulate_delivery. */
@@ -290,11 +357,13 @@ export interface ComplyDeliveryAccumulator {
   deferredVendorMetrics?: Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>;
   /** Package-scoped measurement deferrals, keyed by package_id. */
   deferredVendorMetricsByPackage?: Record<string, Array<{
     vendor: { domain: string; brand_id?: string };
     metric_id: string;
+    qualifier?: Record<string, unknown>;
   }>>;
   /** Per-call snapshots with a UTC delivery date for deterministic range tests. */
   datedSimulations?: ComplyDatedDeliverySimulation[];
@@ -382,6 +451,12 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot submitted response for the next brief-mode get_products call. */
+  forcedGetProductsArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
   /** Single-shot rejected response for the principal's next brief/refine request. */
   forcedGetProductsRejections: Map<string, {
     reason: string;
@@ -426,6 +501,9 @@ export interface SessionState {
   configuredProducts: Map<string, Product>;
   /** Concrete discovery targeting bound to each configured product ID. */
   configuredProductTargeting: Map<string, Record<string, unknown>>;
+  /** Trusted ownership used to recover a configured offer across SDK account
+   * projection boundaries without exposing or globally trusting its opaque ID. */
+  configuredProductOwners: Map<string, { principal: string; accountScope: string }>;
   /** Durable proposal-successor receipts kept outside immutable proposal
    * snapshots. Finalization uses this to recover an exact idempotent retry
    * after domain state was flushed but before the idempotency receipt was
@@ -539,11 +617,12 @@ export interface MediaBuyHistoryEntry {
 export interface MediaBuyAvailableActionState {
   task?: 'control_media_buy' | 'refine_proposals' | 'sync_creatives';
   action: string;
-  mode: 'self_serve' | 'conditional_self_serve' | 'requires_approval';
+  mode: 'self_serve' | 'conditional_self_serve' | 'seller_managed' | 'requires_approval';
   sla?: {
     response_max?: string;
     completion_max?: string;
   };
+  change_term_id?: string;
   terms_ref?: string;
 }
 
@@ -555,6 +634,7 @@ export interface MediaBuyProductAllowedActionState {
     response_max?: string;
     completion_max?: string;
   };
+  constraints?: Record<string, unknown>;
   terms_ref?: string;
 }
 
@@ -601,6 +681,15 @@ export interface MediaBuyState {
   createdAt: string;
   updatedAt: string;
   history: MediaBuyHistoryEntry[];
+  /** Durable idempotency receipts for seller-managed task execution. Written
+   * in the same session CAS as the media-buy mutation so a worker can recover
+   * after mutation but before recording its outbox outcome. */
+  sellerManagedControlReceipts?: Array<{
+    taskId: string;
+    expectedRevision: number;
+    actions: string[];
+    result: Record<string, unknown>;
+  }>;
   /** Set by comply_test_controller after a forced status write so repeated
    * reads preserve the requested harness state even when creative readiness
    * would normally derive pending_creatives. Never set by production paths. */
@@ -670,6 +759,10 @@ export interface PackageState {
    * readback. Delivery simulation still indexes the creative IDs separately. */
   creativeAssignmentDetails?: Array<Record<string, unknown>>;
   targeting?: PackageTargeting;
+  /** Exact execution details for demographic targeting accepted on this
+   * package. Kept alongside the effective targeting so create/update/read
+   * surfaces cannot drift after a configured product is selected. */
+  targetingResolution?: Record<string, unknown>;
   context?: Record<string, unknown>;
   legacyOmitProductId?: boolean;
   /** Buyer-declared optimization goals carried through from create_media_buy.
@@ -726,6 +819,8 @@ export interface CreativeState {
   creativeId: string;
   accountId?: string;
   accountRef?: AccountRef;
+  /** Internal marker for sandbox fixtures injected by comply_test_controller. */
+  controllerSeeded?: boolean;
   /** @deprecated Present only for creatives received through the AdCP 3.x compatibility facade. */
   formatId?: FormatID;
   formatKind?: string;
@@ -962,6 +1057,12 @@ export interface GovernanceOutcomeState {
   response?: Record<string, unknown>;
   /** Buyer-attributed delivery observation retained independently of seller evidence. */
   delivery?: Record<string, unknown>;
+  /**
+   * Bounded, untrusted copy of a failed seller interaction as reported by the
+   * buyer. Audit evidence only: never authorization input, seller attestation,
+   * or privileged prompt material.
+   */
+  reportedError?: Record<string, unknown>;
   deliveryReconciliationStatus?: 'consistent' | 'measurement_variance' | 'disputed' | 'unmatched' | 'closed_unresolved';
   /** Operational governance-window state; closure is not a billing settlement. */
   deliveryPeriodState?: 'open' | 'closed';

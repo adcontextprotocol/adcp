@@ -607,6 +607,10 @@
               },
               "minItems": 1,
               "uniqueItems": true
+            },
+            "accepted_governance_agents": {
+              "$ref": "/schemas/governance/accepted-governance-agents.json",
+              "description": "Seller-wide advisory default for governance agents this enforcing service accepts as binding counterparties. A candidate satisfying any matcher is accepted by this declaration. The per-account sync_governance response is authoritative and may apply stricter account-specific criteria. Omission means accept any, preserving legacy behavior."
             }
           },
           "required": ["tasks"],
@@ -755,6 +759,57 @@
             }
           ]
         },
+        "change_feed": {
+          "type": "object",
+          "description": "Whether the seller exposes a durable, ordered feed of material changes to authoritative account-scoped state. This is distinct from webhook_activity transport diagnostics and from current-state reads. Sellers claiming support MUST retain changes for at least 90 days after recording and MUST produce records regardless of whether a mutation originated through AdCP, a seller surface, another authorized principal, seller automation, or a connected platform within declared coverage.",
+          "oneOf": [
+            {
+              "title": "AccountChangeFeedSupported",
+              "properties": {
+                "supported": {"type": "boolean", "const": true},
+                "read_task": {"type": "string", "const": "list_account_changes"},
+                "registration_task": {"type": "string", "const": "sync_accounts"},
+                "event_type": {"type": "string", "const": "account.change_recorded"},
+                "retention_days": {
+                  "type": "integer",
+                  "minimum": 90,
+                  "description": "Minimum number of days committed change records remain readable."
+                },
+                "resource_types": {
+                  "type": "array",
+                  "description": "Resource families for which this seller can produce change records. Account-specific connected-source status and freshness are returned by list_account_changes.",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              },
+              "required": ["supported", "read_task", "registration_task", "event_type", "retention_days", "resource_types"],
+              "additionalProperties": true
+            },
+            {
+              "title": "AccountChangeFeedUnsupported",
+              "properties": {
+                "supported": {"type": "boolean", "const": false}
+              },
+              "required": ["supported"],
+              "not": {
+                "anyOf": [
+                  {"required": ["read_task"]},
+                  {"required": ["registration_task"]},
+                  {"required": ["event_type"]},
+                  {"required": ["retention_days"]},
+                  {"required": ["resource_types"]}
+                ]
+              },
+              "additionalProperties": true
+            }
+          ]
+        },
         "identity_updates": {
           "type": "object",
           "description": "Whether the seller accepts buyer-desired operator identity reconciliation through sync_accounts settings-update entries. Sellers declaring support expose the exact identity transitions they implement, MUST return account revisions from sync_accounts and list_accounts, and MUST return identity_change_preview for dry-run identity updates.",
@@ -821,6 +876,32 @@
       "type": "object",
       "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
       "properties": {
+        "acceptance_policy_discovery": {
+          "type": "object",
+          "description": "Registry-backed seller acceptance-policy discovery. Presence means the seller publishes a versioned catalog; it does not claim that the seller evaluates acceptance_context during discovery. Discovery is advisory, exact task responses remain authoritative, and absent capability means support is unknown rather than unrestricted acceptance.",
+          "properties": {
+            "catalog_url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://",
+              "description": "HTTPS document that validates against acceptance-policy-catalog.json."
+            },
+            "catalog_digest": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "description": "SHA-256 digest of the exact catalog representation fetched from catalog_url."
+            },
+            "default_profile_ids": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "x-entity": "acceptance_policy_profile" },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Local or registry-referenced catalog profiles that apply seller-wide unless a product adds further profiles. IDs MUST resolve uniquely across profiles and registry_profiles; all referenced profiles compose restrictively."
+            }
+          },
+          "required": ["catalog_url", "catalog_digest"],
+          "additionalProperties": false
+        },
         "supported_pricing_models": {
           "type": "array",
           "description": "Pricing models this seller supports across its product portfolio. Buyers can use this for pre-flight filtering before querying individual products. Individual products may support a subset of these models.",
@@ -2132,7 +2213,7 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
+          "description": "Canonical-format capability catalog for this creative agent. This is the 3.2 source of truth for discovering which format contracts the agent can build, validate, or preview; it replaces the deprecated `list_creative_formats` task. Each entry uses the authority-free `CreativeOperationFormatDeclaration` projection of a product format declaration: canonical shape and creative-route macro processing are preserved, while seller production commitments are excluded. New 3.2 producers MUST publish a stable agent-local `capability_id` and explicit `operations` for task routing. Every emitted `capability_id` MUST be unique within this catalog so a route selects exactly one entry. During the 3.x compatibility window, consumers MUST also accept legacy entries that omit either field; absent `operations` means `[\"build\"]`, while an absent `capability_id` means the entry is discoverable by canonical contract but cannot be selected through a capability-ID route.\n\n**Publisher-specific support.** To claim exact support for a publisher declaration, `format` carries the declaration's `{publisher_domain, format_option_id}` pair plus its canonical `format_kind` and narrowed `params`. Generic creative agents MAY instead advertise a canonical parameter envelope without publisher identity. A generic capability matches a target declaration only when the capability can satisfy every target constraint; matching canonical names alone is insufficient. Registries MAY reverse-index these entries by `format.format_kind`, `format.publisher_domain`, and `format.format_option_id`.\n\nThis catalog describes creative operations, not sales-agent inventory deliverability. Sales agents publish the purchasable closed set on each `Product.format_options[]`; publisher acceptance lives in `adagents.json.formats[]`.",
           "items": {
             "type": "object",
             "properties": {
@@ -2142,8 +2223,8 @@
                 "description": "Stable identifier for this format capability within the creative agent (e.g., 'audio_narration_30s'). The value MUST be unique across this agent's supported_formats catalog. Route the advertised operation with this ID: build_creative.target_capability_id(s) for build, preview_creative.target_capability_id for preview, or validate_input targets[] kind capability for validate. Capability IDs are agent-local routes and do not appear on portable manifests or products."
               },
               "format": {
-                "$ref": "/schemas/core/product-format-declaration.json",
-                "description": "Format declaration on which this agent can perform the listed operations. Same shape as a product's inline format_options entry: format_kind plus params and slots."
+                "description": "Format declaration on which this agent can perform the listed operations. Creative-agent capability self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
+                "$ref": "/schemas/core/creative-operation-format-declaration.json"
               },
               "operations": {
                 "type": "array",

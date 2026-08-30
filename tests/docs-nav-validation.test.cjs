@@ -71,8 +71,22 @@ function collectOpenApiDirectories(node) {
   if (!node || typeof node !== 'object') return [];
 
   const directories = node.openapi?.directory ? [node.openapi.directory] : [];
+  if (node.groups) directories.push(...collectOpenApiDirectories(node.groups));
   if (node.pages) directories.push(...collectOpenApiDirectories(node.pages));
   return directories;
+}
+
+/**
+ * Collect OpenAPI sources from every navigation level.
+ */
+function collectOpenApiSources(node) {
+  if (Array.isArray(node)) return node.flatMap(collectOpenApiSources);
+  if (!node || typeof node !== 'object') return [];
+
+  const sources = node.openapi?.source ? [node.openapi.source] : [];
+  if (node.groups) sources.push(...collectOpenApiSources(node.groups));
+  if (node.pages) sources.push(...collectOpenApiSources(node.pages));
+  return sources;
 }
 
 function isDirectSlackInvite(value) {
@@ -104,6 +118,17 @@ function snapshotMatchesVersionLabel(label, snapshotVersion) {
 // --- Run tests ---
 
 log('\n🧪 Docs Navigation Validation Tests');
+
+test('current documentation pages have valid MDX syntax', () => {
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, '../scripts/check-docs-mdx-syntax.mjs')], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+  } catch (error) {
+    throw new Error((error.stderr || error.stdout || error.message).trim());
+  }
+});
 log('====================================\n');
 
 const docsConfig = JSON.parse(fs.readFileSync(DOCS_JSON, 'utf8'));
@@ -133,6 +158,31 @@ test('default version carries the Latest tag', () => {
     || navigation.versions[0];
   if (defaultEntry.tag !== 'Latest') {
     throw new Error('The default docs version must carry the "Latest" tag');
+  }
+});
+
+test('OpenAPI navigation uses release-pinned public sources', () => {
+  const sources = collectOpenApiSources(navigation.versions);
+  if (sources.length === 0) {
+    throw new Error('Versioned navigation must include an OpenAPI source');
+  }
+
+  for (const entry of navigation.versions) {
+    const pages = collectPages(entry.groups);
+    const snapshot = pages
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .find(Boolean);
+    const entrySources = collectOpenApiSources(entry.groups);
+    const mutableSources = entrySources.filter(
+      source => !snapshot || source !==
+        `https://raw.githubusercontent.com/adcontextprotocol/adcp/v${snapshot}/static/openapi/registry.yaml`
+    );
+    if (mutableSources.length > 0) {
+      throw new Error(
+        `Docs version ${entry.version} must use its immutable snapshot OpenAPI source: ` +
+        mutableSources.join(', ')
+      );
+    }
   }
 });
 

@@ -1256,7 +1256,7 @@
 
           var credName = credDef.name;
           var hasCertifier = !!mc.certifier_public_id;
-          var certUrl = hasCertifier ? 'https://credsverse.com/credentials/' + mc.certifier_public_id : '';
+          var certUrl = hasCertifier ? 'https://credsverse.com/credentials/' + encodeURIComponent(String(mc.certifier_public_id)) : '';
           var certPageUrl = window.location.origin + '/certification';
           var shareUrl = certUrl || certPageUrl;
           var badgeImgUrl = mc.certifier_badge_url || '';
@@ -1267,7 +1267,7 @@
             html += '<div class="credential-badge-row">';
             if (badgeImgUrl) {
               var badgeLink = certUrl || certPageUrl;
-              html += '<a href="' + badgeLink + '" target="_blank" rel="noopener" class="credential-badge-link">';
+              html += '<a href="' + esc(badgeLink) + '" target="_blank" rel="noopener" class="credential-badge-link">';
               html += '<img src="' + esc(badgeImgUrl) + '" alt="' + esc(credName) + ' credential badge" class="credential-badge-img" onerror="this.style.display=\'none\'" />';
               html += '</a>';
             }
@@ -1275,7 +1275,7 @@
             html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
             html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
             if (hasCertifier) {
-              html += '<a href="' + certUrl + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
+              html += '<a href="' + esc(certUrl) + '" target="_blank" rel="noopener" class="credential-badge-verify">View credential, QR code &amp; verification</a>';
             }
             html += '</div>';
             html += '</div>';
@@ -1283,7 +1283,7 @@
             html += '<div class="credential-badge-info">';
             html += '<div class="credential-badge-name">' + esc(credName) + '</div>';
             html += '<div class="credential-badge-date">Earned ' + dateStr + '</div>';
-            html += '<p class="credential-pending-note">Digital badge is being processed.</p>';
+            html += '<p class="credential-pending-note">External verification is not currently available.</p>';
             html += '</div>';
           }
 
@@ -1445,17 +1445,17 @@
 
         tierMeta.forEach(function(meta, idx) {
           var creds = tiered[idx];
-          var primaryCred = creds[0]; // main credential for this tier
-          var earned = primaryCred ? hasCredential(primaryCred.id) : false;
+          // A tier can contain alternate credentials (for example, the
+          // reasoning-only Level 1 path). Prefer an earned credential for the
+          // card and open the share panel when any credential in the tier is
+          // earned, rather than gating everything on the first definition.
+          var earnedCred = creds.find(function(c) { return hasCredential(c.id); });
+          var primaryCred = earnedCred || creds[0];
+          var earned = !!earnedCred;
           var prog = primaryCred && state.isAuthenticated ? getTierProgress(primaryCred) : null;
 
           var name = primaryCred ? primaryCred.name : meta.fallbackName;
           var req = primaryCred ? primaryCred.description : meta.fallbackReq;
-
-          // For tier 3, check if ANY specialist credential is earned
-          if (meta.level === 3 && creds.length > 1) {
-            earned = creds.some(function(c) { return hasCredential(c.id); });
-          }
 
           html += '<div class="tier-card ' + (earned ? 'tier-card-earned' : '') + '" data-tier="' + meta.level + '">';
           html += '  <div class="tier-card-header">';

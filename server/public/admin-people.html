@@ -643,11 +643,33 @@
         alert('Confirmation did not match. Cancelled.');
         return;
       }
+      const promoteUrl = `/api/admin/users/${encodeURIComponent(hostId)}/credentials/${encodeURIComponent(credId)}/promote`;
       try {
-        const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(hostId)}/credentials/${encodeURIComponent(credId)}/promote`, {
-          method: 'POST',
-        });
-        const data = await res.json();
+        let res = await AdminSidebar.fetch(promoteUrl, { method: 'POST' });
+        let data = await res.json();
+        // Server refused because the consolidation would DELETE memberships
+        // the incoming credential already holds. Escalate the confirmation
+        // and retry, same shape as the link-existing flow above.
+        if (res.status === 409 && data.consolidate_confirmation_required) {
+          const orgCount = (data.superseded_organization_ids || []).length;
+          const wgCount = (data.superseded_working_group_ids || []).length;
+          const lost = [
+            orgCount ? `${orgCount} organization membership(s)` : null,
+            wgCount ? `${wgCount} working-group membership(s)` : null,
+          ].filter(Boolean).join(' and ');
+          const ack = prompt(`${credLabel} already belongs to the same organizations or working groups as the current primary.\n\nPromoting DELETES the current primary's ${lost}. Their role, seat, WorkOS membership id, and join provenance cannot be recovered — unlinking later will not bring them back. Certification progress, credentials, badges, and committee interest are also consolidated and deduplicated.\n\nType CONSOLIDATE (in caps) to confirm.`);
+          if (ack === null) return;
+          if (ack.trim() !== 'CONSOLIDATE') {
+            alert('Confirmation phrase did not match. Cancelled.');
+            return;
+          }
+          res = await AdminSidebar.fetch(promoteUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ consolidate: true }),
+          });
+          data = await res.json();
+        }
         if (!res.ok) {
           alert(data.message || data.error || `Promote failed (${res.status})`);
           return;

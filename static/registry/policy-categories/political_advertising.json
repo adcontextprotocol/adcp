@@ -2,6 +2,43 @@
   "category_id": "political_advertising",
   "name": "Political Advertising",
   "description": "Campaigns promoting political candidates, parties, ballot measures, or issue advocacy. Triggers disclosure requirements, transparency obligations, and in some jurisdictions targeting restrictions.",
+  "facets": [
+    {
+      "facet_id": "candidate_or_party",
+      "name": "Candidate or party",
+      "description": "Advertising by, for, or about a candidate, elected official, political party, or political organization."
+    },
+    {
+      "facet_id": "election_or_ballot_measure",
+      "name": "Election or ballot measure",
+      "description": "Advertising designed to influence an election, referendum, ballot initiative, or voting behavior."
+    },
+    {
+      "facet_id": "issue_advocacy",
+      "name": "Issue advocacy",
+      "description": "Paid advocacy about a public issue even when no candidate, party, or ballot measure is named."
+    },
+    {
+      "facet_id": "legislation_or_regulation",
+      "name": "Legislation or regulation",
+      "description": "Advertising designed to influence a legislative or regulatory process."
+    },
+    {
+      "facet_id": "government_information",
+      "name": "Government information",
+      "description": "Official, factual public information from a government or election authority, including participation instructions."
+    },
+    {
+      "facet_id": "political_merchandise",
+      "name": "Political merchandise",
+      "description": "Advertising whose commercial product or service carries candidate, party, election, or political-issue messaging."
+    },
+    {
+      "facet_id": "incidental_or_news_reference",
+      "name": "Incidental or news reference",
+      "description": "Editorial, journalistic, or incidental political references that may be exempt from political-advertising treatment."
+    }
+  ],
   "regulatory_frameworks": [
     {
       "name": "US FEC Regulations",
@@ -9,9 +46,10 @@
       "summary": "Federal Election Commission requires paid-for-by disclosures on political advertising. State laws add additional requirements."
     },
     {
-      "name": "EU DSA Political Ad Transparency",
+      "name": "EU Political Advertising Regulation",
       "jurisdictions": ["EU"],
-      "summary": "Digital Services Act requires transparency on political advertising including who paid, targeting criteria used, and reach data."
+      "summary": "Regulation (EU) 2024/900 defines political advertising, transparency duties, sponsor eligibility, and restrictions on targeting and ad-delivery techniques.",
+      "policy_ids": ["eu_dsa_political_targeting"]
     },
     {
       "name": "UK Electoral Commission",
@@ -19,8 +57,8 @@
       "summary": "Requires imprint information on digital political advertising identifying the promoter."
     }
   ],
-  "restricted_attributes": ["political_opinions"],
+  "restricted_attributes": ["racial_ethnic_origin", "political_opinions", "religious_beliefs", "trade_union_membership", "health_data", "sex_life_sexual_orientation", "genetic_data", "biometric_data"],
   "industries": [],
-  "guidance": "Any organization can run political ads — this is not industry-specific. Issue advocacy (e.g., 'support clean energy') is political advertising even when run by a corporate brand. The EU DSA prohibits targeting political ads using GDPR Article 9 special categories, which is stricter than US rules.",
+  "guidance": "Any organization can run political ads — this is not industry-specific. Issue advocacy can be political advertising even when run by a commercial brand. Regulation (EU) 2024/900 prohibits political-ad targeting or delivery based on profiling with special-category data and imposes additional consent, transparency, and sponsor-eligibility rules.",
   "related_categories": []
 }

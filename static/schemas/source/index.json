@@ -4,7 +4,7 @@
   "title": "AdCP Schema Registry",
   "version": "1.0.0",
   "description": "Registry of all AdCP JSON schemas for validation and discovery",
-  "adcp_version": "3.2.0-beta.6",
+  "adcp_version": "3.2.0-beta.9",
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
@@ -49,9 +49,17 @@
           "$ref": "/schemas/core/canonical-product.json",
           "description": "Canonical-only product view for the AdCP 3.2 split product and proposal tools"
         },
+        "inventory-list-application": {
+          "$ref": "/schemas/core/inventory-list-application.json",
+          "description": "Product-scoped receipt for property- and collection-list matching"
+        },
         "canonical-format-option": {
           "$ref": "/schemas/core/canonical-format-option.json",
           "description": "Compact canonical format declaration without legacy named-format links"
+        },
+        "creative-operation-format-declaration": {
+          "$ref": "/schemas/core/creative-operation-format-declaration.json",
+          "description": "Authority-free canonical declaration for creative-agent build, validation, and preview capabilities"
         },
         "canonical-placement": {
           "$ref": "/schemas/core/canonical-placement.json",
@@ -112,6 +120,10 @@
         "package": {
           "$ref": "/schemas/core/package.json",
           "description": "A specific product within a media buy (line item)"
+        },
+        "package-format-snapshot": {
+          "$ref": "/schemas/core/package-format-snapshot.json",
+          "description": "Immutable package-time selected product format, placement, execution-version, and tracker-contract binding"
         },
         "committed-metric": {
           "$ref": "/schemas/core/committed-metric.json",
@@ -622,6 +634,22 @@
           "$ref": "/schemas/core/product-format-declaration.json",
           "description": "v2 inline format declaration on products. Keyed by canonical format name; product narrows exactly one canonical with platform-specific parameters."
         },
+        "tracker-execution-contract": {
+          "$ref": "/schemas/core/tracker-execution-contract.json",
+          "description": "Seller production commitment for accepted first-class manifest tracker execution"
+        },
+        "tracker-execution-selector": {
+          "$ref": "/schemas/core/tracker-execution-selector.json",
+          "description": "Exact pixel, VAST, or DAAST tracker selector in a production execution contract"
+        },
+        "vast-tracker-constraints": {
+          "$ref": "/schemas/core/vast-tracker-constraints.json",
+          "description": "Shared version-aware VAST tracker event and target constraints"
+        },
+        "daast-tracker-constraints": {
+          "$ref": "/schemas/core/daast-tracker-constraints.json",
+          "description": "Shared DAAST tracker event and target constraints"
+        },
         "downstream-connection-requirement": {
           "$ref": "/schemas/core/downstream-connection-requirement.json",
           "description": "Seller/platform-side connection or grant required by a product, format, or request, distinct from the AdCP caller credential."
@@ -749,6 +777,14 @@
         "account-status-changed-webhook": {
           "$ref": "/schemas/core/account-status-changed-webhook.json",
           "description": "Account-level webhook payload that invalidates a list_accounts account status snapshot"
+        },
+        "account-change": {
+          "$ref": "/schemas/core/account-change.json",
+          "description": "Immutable metadata for one material change to authoritative account-scoped state"
+        },
+        "account-change-recorded-webhook": {
+          "$ref": "/schemas/core/account-change-recorded-webhook.json",
+          "description": "Account-level invalidation indicating that a durable account change is available"
         },
         "indicator": {
           "$ref": "/schemas/core/indicator.json",
@@ -1147,7 +1183,7 @@
         },
         "identifier-types": {
           "$ref": "/schemas/enums/identifier-types.json",
-          "description": "Valid identifier types for property identification across different media types"
+          "description": "Valid identifier types for property and placement identification across different media types"
         },
         "publisher-identifier-types": {
           "$ref": "/schemas/enums/publisher-identifier-types.json",
@@ -1172,6 +1208,10 @@
         "social-placement-surface": {
           "$ref": "/schemas/enums/social-placement-surface.json",
           "description": "Declared social-placement surface classifications for social inventory"
+        },
+        "dooh-motion-type": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capabilities of digital out-of-home screens"
         },
         "task-status": {
           "$ref": "/schemas/enums/task-status.json",
@@ -1204,6 +1244,18 @@
         "vast-tracking-event": {
           "$ref": "/schemas/enums/vast-tracking-event.json",
           "description": "Standard VAST tracking events for video playback and interaction"
+        },
+        "pixel-tracking-event": {
+          "$ref": "/schemas/enums/pixel-tracking-event.json",
+          "description": "Canonical first-class pixel tracker event vocabulary"
+        },
+        "tracker-execution-actor": {
+          "$ref": "/schemas/enums/tracker-execution-actor.json",
+          "description": "Actor responsible for initiating an accepted tracker"
+        },
+        "tracker-firing-path": {
+          "$ref": "/schemas/enums/tracker-firing-path.json",
+          "description": "Permitted client or server tracker initiation path"
         },
         "property-type": {
           "$ref": "/schemas/enums/property-type.json",
@@ -1556,6 +1608,16 @@
     "account": {
       "description": "Account management task request/response schemas",
       "tasks": {
+        "list-account-changes": {
+          "request": {
+            "$ref": "/schemas/account/list-account-changes-request.json",
+            "description": "Request parameters for reading the durable account change feed"
+          },
+          "response": {
+            "$ref": "/schemas/account/list-account-changes-response.json",
+            "description": "Ordered durable changes to authoritative account-scoped state"
+          }
+        },
         "list-accounts": {
           "request": {
             "$ref": "/schemas/account/list-accounts-request.json",
@@ -1611,6 +1673,38 @@
     "media-buy": {
       "description": "Media buy task request/response schemas",
       "supporting-schemas": {
+        "acceptance-context": {
+          "$ref": "/schemas/media-buy/acceptance-context.json",
+          "description": "Buyer-declared facts for coarse seller acceptance-policy matching"
+        },
+        "acceptance-policy-catalog": {
+          "$ref": "/schemas/media-buy/acceptance-policy-catalog.json",
+          "description": "Versioned seller-hosted acceptance-policy catalog referenced from capabilities"
+        },
+        "acceptance-policy-profile": {
+          "$ref": "/schemas/media-buy/acceptance-policy-profile.json",
+          "description": "Composable seller acceptance profile selected by products and seller defaults"
+        },
+        "acceptance-policy-profile-ref": {
+          "$ref": "/schemas/media-buy/acceptance-policy-profile-ref.json",
+          "description": "Version-pinned reference to a reusable registry acceptance profile"
+        },
+        "acceptance-policy-rule": {
+          "$ref": "/schemas/media-buy/acceptance-policy-rule.json",
+          "description": "Machine-readable allowed, conditional, or prohibited seller acceptance rule"
+        },
+        "acceptance-policy-requirement": {
+          "$ref": "/schemas/media-buy/acceptance-policy-requirement.json",
+          "description": "Typed prerequisite or restriction attached to a conditional acceptance rule"
+        },
+        "change-term": {
+          "$ref": "/schemas/media-buy/change-term.json",
+          "description": "Proposal-bound buyer change right covered by the commercial terms digest"
+        },
+        "change-term-constraints": {
+          "$ref": "/schemas/media-buy/change-term-constraints.json",
+          "description": "Portable budget, flight, package-count, or effective-timing bounds on a product action or proposal change right"
+        },
         "product-discovery-criteria": {
           "$ref": "/schemas/media-buy/product-discovery-criteria.json",
           "description": "Structured offer, catalog, and policy criteria shared by compact discovery tools"
@@ -1986,6 +2080,14 @@
     "governance": {
       "description": "Governance protocol for property governance, brand standards, content standards, and compliance",
       "supporting-schemas": {
+        "accepted-governance-agents": {
+          "$ref": "/schemas/governance/accepted-governance-agents.json",
+          "description": "Seller acceptance matchers for buyer-selected governance agents"
+        },
+        "reported-outcome-error": {
+          "$ref": "/schemas/governance/reported-outcome-error.json",
+          "description": "Buyer-attributed structured error evidence for a failed governed action"
+        },
         "property-feature-definition": {
           "$ref": "/schemas/property/property-feature-definition.json",
           "description": "Definition of a feature that a governance agent can evaluate"
@@ -2627,5 +2729,5 @@
       "code": "// Use everit-org/json-schema or similar library"
     }
   ],
-  "published_version": "3.2.0-beta.6"
+  "published_version": "3.2.0-beta.9"
 }

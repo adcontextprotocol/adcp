@@ -65,7 +65,7 @@ fixtures:
   products:
     - product_id: "premium_video_q4"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"

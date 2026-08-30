@@ -1,0 +1,201 @@
+id: creative/creative_revision_identity
+version: "1.0.0"
+introduced_in: "3.2"
+title: "Creative revision identity is immutable and reads back exactly"
+category: creative
+summary: "Verifies capability-gated revision echo, immutable content reuse, non-mutation on mismatch, and current library readback."
+track: creative
+
+required_tools:
+  - get_adcp_capabilities
+  - sync_creatives
+  - list_creatives
+
+requires_capability:
+  path: creative.supports_revisions
+  equals: true
+
+narrative: |
+  An agent that advertises creative.supports_revisions commits to one immutable
+  buyer-authored input state for each (creative_id, revision_id). The buyer
+  creates a revision, attempts to reuse the same ID with changed assets, and
+  confirms that the failed probe did not mutate the accepted creative.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+    - supports_revisions
+  examples:
+    - "Creative libraries that preserve buyer revision identity"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller has two image URLs. Only the first may become the stored content
+    for revision rev_launch_1.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: discover_revision_support
+    title: "Discover revision support"
+    steps:
+      - id: get_revision_capability
+        title: "Confirm the revision contract"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        sample_request:
+          context:
+            correlation_id: "creative_revision_identity--capability"
+        expected: |
+          Return creative.has_creative_library and creative.supports_revisions
+          as true before the buyer relies on revision identity.
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json"
+          - check: field_value
+            path: "creative.has_creative_library"
+            value: true
+            description: "Revision support is backed by a creative library"
+          - check: field_value
+            path: "creative.supports_revisions"
+            value: true
+            description: "The agent opts into immutable revision handling"
+
+  - id: bind_revision
+    title: "Bind the first accepted revision"
+    steps:
+      - id: sync_initial_revision
+        title: "Create revision rev_launch_1"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
+        comply_scenario: creative_flow
+        stateful: true
+        sample_request:
+          account: &revision_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          creatives:
+            - creative_id: "revision_launch_banner"
+              revision_id: "rev_launch_1"
+              name: "Launch banner revision one"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/revision-launch-v1.png"
+                  width: 300
+                  height: 250
+          idempotency_key: "$generate:uuid_v4#creative_revision_identity_initial"
+          context:
+            correlation_id: "creative_revision_identity--initial"
+        expected: |
+          Accept the creative and echo rev_launch_1 exactly on a created,
+          updated, or unchanged result.
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "revision_launch_banner"
+            description: "The result identifies the submitted creative"
+          - check: field_value
+            path: "creatives[0].revision_id"
+            value: "rev_launch_1"
+            description: "The accepted buyer revision echoes exactly"
+
+  - id: reject_revision_reuse
+    title: "Reject changed content under the bound ID"
+    steps:
+      - id: sync_changed_same_revision
+        title: "Attempt to replace the asset without a new revision"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives#creative-revisions"
+        comply_scenario: creative_flow
+        stateful: true
+        sample_request:
+          account: *revision_account
+          creatives:
+            - creative_id: "revision_launch_banner"
+              revision_id: "rev_launch_1"
+              name: "Changed bytes under the same revision"
+              format_kind: "image"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/revision-launch-mutated.png"
+                  width: 300
+                  height: 250
+          idempotency_key: "$generate:uuid_v4#creative_revision_identity_mismatch"
+          context:
+            correlation_id: "creative_revision_identity--mismatch"
+        expected: |
+          Return a failed per-creative item carrying
+          CREATIVE_REVISION_CONTENT_MISMATCH. Do not echo revision_id on the
+          failed result and do not mutate the stored creative.
+        validations:
+          - check: response_schema
+            description: "The best-effort per-item failure remains schema-valid"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Changed content under a bound revision is rejected"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "CREATIVE_REVISION_CONTENT_MISMATCH"
+            description: "The typed correctable mismatch error is returned"
+          - check: field_absent
+            path: "creatives[0].revision_id"
+            description: "Failed items do not claim an accepted revision"
+
+  - id: verify_non_mutation
+    title: "Read back the accepted revision and original asset"
+    steps:
+      - id: list_current_revision
+        title: "Confirm the mismatch probe changed nothing"
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_flow
+        stateful: true
+        sample_request:
+          account: *revision_account
+          filters:
+            creative_ids: ["revision_launch_banner"]
+          context:
+            correlation_id: "creative_revision_identity--readback"
+        expected: |
+          Return exactly the current creative with rev_launch_1 and the original
+          accepted asset URL. The rejected replacement must not be visible.
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json"
+          - check: field_value
+            path: "creatives[0].creative_id"
+            value: "revision_launch_banner"
+            description: "The requested creative is returned"
+          - check: field_value
+            path: "creatives[0].revision_id"
+            value: "rev_launch_1"
+            description: "The current revision reads back exactly"
+          - check: field_value
+            path: "creatives[0].assets.image.url"
+            value: "https://cdn.pinnacle-agency.example/revision-launch-v1.png"
+            description: "The failed mismatch did not mutate stored content"
+          - check: field_absent
+            path: "creatives[1]"
+            description: "The exact creative_id filter returns one row"

@@ -83,12 +83,14 @@ describe('PostgresWebhookDeliveryPersistence', () => {
 
   it('encrypts the complete recovery snapshot and keeps plaintext credentials out of SQL parameters', async () => {
     const runQuery = queryMock();
-    runQuery.mockResolvedValueOnce({ rows: [{ snapshot_digest: 'stored' }] });
+    runQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ snapshot_digest: 'stored' }] });
     const store = new PostgresWebhookDeliveryPersistence(runQuery);
 
     await store.checkpoint(KEY, SNAPSHOT);
 
-    const params = runQuery.mock.calls[0][1] ?? [];
+    const params = runQuery.mock.calls[1][1] ?? [];
     expect(params.slice(0, 3)).toEqual([KEY.publisherScope, KEY.tenantScope, KEY.deliveryId]);
     expect(params[3]).toEqual(expect.any(String));
     expect(params[4]).toEqual(expect.any(String));
@@ -101,6 +103,7 @@ describe('PostgresWebhookDeliveryPersistence', () => {
     const runQuery = queryMock();
     runQuery
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ snapshot_digest: 'not-the-new-digest' }] });
     const store = new PostgresWebhookDeliveryPersistence(runQuery);
 
@@ -109,12 +112,26 @@ describe('PostgresWebhookDeliveryPersistence', () => {
     );
   });
 
+  it('does not checkpoint a callback identity retired before framework emission', async () => {
+    const runQuery = queryMock();
+    runQuery.mockResolvedValueOnce({ rows: [{ status: 'retired' }] });
+    const store = new PostgresWebhookDeliveryPersistence(runQuery);
+
+    await expect(store.checkpoint(KEY, SNAPSHOT)).resolves.toBeUndefined();
+
+    expect(runQuery).toHaveBeenCalledOnce();
+    expect(runQuery.mock.calls[0][0]).toContain("status = 'retired'");
+    expect(runQuery.mock.calls[0][0]).not.toContain('adcp_webhook_delivery_outbox');
+  });
+
   it('leases recoverable snapshots and reconstructs the exact emit parameters', async () => {
     const insertQuery = queryMock();
-    insertQuery.mockResolvedValueOnce({ rows: [{ snapshot_digest: 'stored' }] });
+    insertQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ snapshot_digest: 'stored' }] });
     const writer = new PostgresWebhookDeliveryPersistence(insertQuery);
     await writer.checkpoint(KEY, SNAPSHOT);
-    const checkpointParams = insertQuery.mock.calls[0][1] ?? [];
+    const checkpointParams = insertQuery.mock.calls[1][1] ?? [];
 
     const recoveryQuery = queryMock();
     recoveryQuery.mockResolvedValueOnce({ rows: [{

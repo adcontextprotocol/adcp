@@ -15,6 +15,10 @@
           "description": "Creative identifier matching the creative assignment",
           "x-entity": "creative"
         },
+        "creative_name": {
+          "type": "string",
+          "description": "Optional human-readable creative name current when the report is generated. Convenience metadata only: names may change and buyers MUST use creative_id as the stable identity."
+        },
         "weight": {
           "type": "number",
           "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",

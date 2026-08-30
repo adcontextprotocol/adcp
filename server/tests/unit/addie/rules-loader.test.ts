@@ -20,6 +20,7 @@ describe('Addie rules loader', () => {
   it('loadResponseStyle() returns the response-style.md content', () => {
     const style = loadResponseStyle();
     expect(style).toContain('# Response Style');
+    expect(style).toContain('## Evidence Boundaries Override Style');
     expect(style).toContain('## Concise and Helpful');
   });
 
@@ -49,6 +50,13 @@ describe('Addie rules loader', () => {
     // that the content is equal after invalidation, not that a new
     // object is returned.
     expect(b).toEqual(a);
+  });
+
+  it('caches equivalent routed domain selections under one canonical key', () => {
+    const first = loadRules({ selectedToolSetNames: ['schema_reference', 'knowledge', 'knowledge'] });
+    const second = loadRules({ selectedToolSetNames: ['knowledge', 'schema_reference'] });
+
+    expect(second).toBe(first);
   });
 
   it('wraps current-context in an untrusted fence with ignore-directives framing', () => {

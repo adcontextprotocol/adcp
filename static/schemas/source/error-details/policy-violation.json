@@ -5,10 +5,20 @@
   "description": "Recommended details shape for POLICY_VIOLATION errors. Provides policy reference and violated rules so agents can adjust requests.",
   "type": "object",
   "properties": {
+    "origin": {
+      "type": "string",
+      "enum": ["buyer_plan", "registry", "seller"],
+      "description": "Whose policy produced the rejection. Optional so undisclosed seller policies can return only the typed POLICY_VIOLATION code if even origin would reveal sensitive information."
+    },
     "policy_id": {
       "type": "string",
-      "description": "Identifier for the violated policy",
+      "description": "Shared policy-registry identifier for the violated policy. Use seller_policy_ref instead when the seller is not disclosing a registry policy.",
       "x-entity": "governance_registry_policy"
+    },
+    "seller_policy_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque seller-scoped reference that lets support and audit records correlate an undisclosed policy without publishing its rules. This is not a shared policy-registry ID."
     },
     "policy_url": {
       "type": "string",
@@ -19,6 +29,12 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Specific rules that were violated"
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "x-entity": "governance_policy_category",
+      "description": "Optional coarse policy category disclosed at the seller's discretion."
     }
   },
   "additionalProperties": true

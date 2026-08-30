@@ -1,12 +1,11 @@
 id: sales_non_guaranteed
-version: "1.0.0"
+version: "1.0.1"
 title: "Non-guaranteed auction-based media buy"
 protocol: media-buy
 category: sales_non_guaranteed
 summary: "Seller agent for auction-based, non-guaranteed buying where the buyer sets bid prices and budgets."
 track: media_buy
 required_tools:
-  - sync_governance
   - get_products
   - create_media_buy
 requires_scenarios:
@@ -32,13 +31,17 @@ requires_scenarios:
 invariants:
   - status.monotonic
 
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
-
 narrative: |
   You run a sell-side platform with auction-based inventory. Non-guaranteed buys don't
   require IOs or human approval — the buyer sets a bid price and budget, and your platform
   runs the auction. Delivery is best-effort based on bid competitiveness.
+
+  This is deliberately the ungoverned sales baseline. Registering a governance agent changes
+  the account contract: every later commitment needs an approved `governance_context`, so a
+  registration followed by this baseline's context-free create would correctly be rejected.
+  The required governance-registration scenario separately proves valid single-agent
+  registration and rejects multiple agents; the governance-aware-seller specialism owns the
+  complete registration, approval, and governed-create loop.
 
   The buyer discovers products with bid guidance and any declared floors, creates a buy
   with bid prices per package, monitors win rates and pacing, and adjusts bids or budgets
@@ -84,7 +87,7 @@ fixtures:
             height: 250
     - product_id: "outdoor_video_auction"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_30s"
           format_kind: "video_hosted"
@@ -342,60 +345,17 @@ phases:
     narrative: |
       The buyer creates a media buy with bid prices per package. Since this is
       non-guaranteed, no IO is required and no human approval is needed. The response
-      comes back as completed — the buy is immediately active and your platform starts
-      bidding in auctions on the buyer's behalf.
+      completes synchronously, without an IO or human-approval task. Because this
+      baseline does not attach creatives, the resulting buy waits in pending_creatives
+      until the separate creative lifecycle supplies them.
 
     steps:
-      - id: sync_governance
-        title: "Register governance agent"
-        narrative: |
-          The buyer registers the configured governance agent on the account before
-          creating the auction-based media buy.
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        stateful: true
-        expected: |
-          Acknowledge governance registration for the account:
-          - status: synced
-          - governance_agents[0].url echoes the configured governance agent
-
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-
-          idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_sync_governance"
-          context:
-            correlation_id: "sales_non_guaranteed--sync_governance"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_value
-            path: "accounts[0].status"
-            value: "synced"
-            description: "Governance agent is registered on the account"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_non_guaranteed--sync_governance"
-            description: "Context correlation_id returned unchanged"
       - id: create_media_buy
         title: "Create a media buy with bid prices"
         narrative: |
           The buyer commits to non-guaranteed products with bid prices and budgets.
           Your platform validates the bids against floor prices, confirms the buy
-          immediately (completed status), and begins auction participation.
+          synchronously (completed task status), and reports its current lifecycle state.
 
           Each package includes a bid_price that the buyer is willing to pay per unit
           (CPM, CPC, etc.). The platform uses this to compete in auctions.
@@ -406,12 +366,12 @@ phases:
         comply_scenario: create_media_buy
         stateful: true
         expected: |
-          Return the media buy in completed status:
+          Return the media buy synchronously:
           - media_buy_id: your platform's identifier
-          - status: active (no async approval needed)
+          - media_buy_status: pending_creatives until valid assets are assigned
           - confirmed_at: timestamp
           - packages: confirmed line items with bid prices acknowledged
-          - valid_actions: pause, update_bid, get_delivery
+          - valid_actions: include the actions available in the current lifecycle state
 
           Bids below floor_price should be rejected with a clear error when the
           pricing option declares a floor_price.
@@ -430,14 +390,10 @@ phases:
               budget: 10000
               bid_price: "$context.first_bid_price"
               pricing_option_id: "$context.first_pricing_option_id"
-              creative_assignments:
-                - creative_id: "display_trail_pro_300x250"
             - product_id: "$context.second_product_id"
               budget: 15000
               bid_price: "$context.second_bid_price"
               pricing_option_id: "$context.second_pricing_option_id"
-              creative_assignments:
-                - creative_id: "video_30s_trail_pro"
 
           idempotency_key: "$generate:uuid_v4#sales_non_guaranteed_create_buy_create_media_buy"
           context:
@@ -463,6 +419,10 @@ phases:
           - check: field_present
             path: "packages[0].package_id"
             description: "Seller assigns package_id — must be echoed in update_media_buy"
+          - check: field_value
+            path: "media_buy_status"
+            value: "pending_creatives"
+            description: "A synchronously accepted buy without assigned assets waits for creatives"
           # Anti-façade: a real non-guaranteed buy creates line items / orders /
           # campaigns in the seller's adserver or DSP. An adapter returning a
           # shape-valid response with a fabricated media_buy_id but no upstream
@@ -474,19 +434,18 @@ phases:
             min_count: 1
             endpoint_pattern: "POST *"
   - id: monitor_pacing
-    title: "Monitor win rates and pacing"
+    title: "Inspect readiness and pacing"
     narrative: |
-      The non-guaranteed buy is live and bidding in auctions. The buyer checks
-      pacing to understand how competitive their bids are and whether the budget
-      is spending at the desired rate.
+      The buyer reads the accepted non-guaranteed buy. Before creatives are assigned,
+      the seller reports pending_creatives and no auction delivery; once the separate
+      creative lifecycle activates it, the same read surface carries pacing data.
 
     steps:
       - id: get_media_buys_pacing
         title: "Check buy status and pacing"
         narrative: |
-          The buyer polls for the media buy status. Your platform returns the active
-          buy with pacing data — how much budget has been spent, win rates, and whether
-          the buy is on pace to exhaust the budget by the end of the flight.
+          The buyer polls for the media buy status. Your platform returns the current
+          readiness state and any pacing data available so far.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
@@ -494,11 +453,11 @@ phases:
         comply_scenario: media_buy_lifecycle
         stateful: true
         expected: |
-          Return the media buy with pacing data:
+          Return the media buy with lifecycle and pacing data:
           - media_buy_id: matches the buy created earlier
-          - status: active
-          - packages: line items with current spend, win rate, and pacing status
-          - valid_actions: update, pause, get_delivery
+          - status: pending_creatives before assets are assigned
+          - packages: line items with current delivery and pacing fields
+          - valid_actions: actions valid for the reported lifecycle state
 
         sample_request:
           account:
@@ -516,6 +475,10 @@ phases:
           - check: field_present
             path: "media_buys[0].status"
             description: "Media buy has a status"
+          - check: field_value
+            path: "media_buys[0].status"
+            value: "pending_creatives"
+            description: "The unassigned buy remains pending creatives"
 
           - check: field_present
             path: "context"
@@ -527,17 +490,16 @@ phases:
   - id: adjust_bids
     title: "Adjust bids and budget"
     narrative: |
-      Based on pacing data, the buyer adjusts bids or budgets in-flight. If a package
-      is underspending (low win rate), the buyer increases the bid. If a package is
-      overspending, the buyer decreases the bid or caps the daily budget.
+      The buyer can adjust bids or budgets before activation or in-flight. Here it
+      raises each bid and reallocates package budgets while the buy awaits creatives.
 
     steps:
       - id: update_media_buy
         title: "Update bid prices and budget"
         narrative: |
-          The buyer modifies the active media buy — adjusting bid prices, reallocating
-          budget between packages, or changing daily spend caps. Your platform applies
-          the updates immediately to the live auction participation.
+          The buyer modifies the accepted media buy by adjusting bid prices and
+          reallocating budget between packages. Your platform persists the complete
+          post-update package state without changing lifecycle readiness.
         task: update_media_buy
         schema_ref: "media-buy/update-media-buy-request.json"
         response_schema_ref: "media-buy/update-media-buy-response.json"
@@ -548,8 +510,8 @@ phases:
           Apply the updates and return the modified media buy state:
           - media_buy_id: matches the existing buy
           - affected_packages: full post-update package objects reflecting new bids and budgets
-          - media_buy_status: active if lifecycle state is emitted
-          - Changes take effect immediately for subsequent auctions
+          - media_buy_status: pending_creatives if lifecycle state is emitted
+          - Changes are retained for subsequent auction participation
 
         sample_request:
           account:
@@ -609,18 +571,19 @@ phases:
             min_count: 1
             endpoint_pattern: "POST *"
   - id: delivery
-    title: "Delivery and auction metrics"
+    title: "Delivery surface before activation"
     narrative: |
-      The buyer reviews delivery data including auction-specific metrics: win rates,
-      average clearing prices, and bid competitiveness across packages.
+      The buyer confirms that the delivery surface remains available before activation.
+      With no creatives assigned, counters may remain zero; active buys use this same
+      surface for auction-specific measurements.
 
     steps:
       - id: get_delivery
-        title: "Check delivery with auction metrics"
+        title: "Check the delivery surface"
         narrative: |
-          The buyer requests delivery data for the active non-guaranteed media buy.
-          Your platform returns standard delivery metrics plus auction-specific data:
-          win rates, average clearing prices, bid-to-win ratios, and budget pacing.
+          The buyer requests delivery data for the accepted non-guaranteed media buy.
+          Your platform returns the canonical delivery shape even when delivery has not
+          begun, without inventing auction activity.
         task: get_media_buy_delivery
         schema_ref: "media-buy/get-media-buy-delivery-request.json"
         response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
@@ -628,12 +591,10 @@ phases:
         comply_scenario: reporting_flow
         stateful: true
         expected: |
-          Return delivery metrics for the non-guaranteed media buy:
-          - Per-package delivery: impressions, clicks, spend
-          - Win rate: percentage of auctions won per package
-          - Average clearing price: what the buyer actually paid vs. bid price
-          - Pacing: on track, ahead, behind relative to budget and flight dates
-          - Budget utilization: spent vs. committed
+          Return the canonical delivery record for the non-guaranteed media buy:
+          - Per-package delivery counters may be zero before activation
+          - Do not report invented wins, clearing prices, or spend
+          - Active buys may add auction measurements and pacing on this surface
 
         sample_request:
           account:

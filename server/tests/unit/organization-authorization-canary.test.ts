@@ -3,9 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
   resolveUserOrgAuthorizationMock,
   evaluateUserOrgRoleAuthorizationMock,
+  getRuntimeSettingDbMock,
+  captureEventMock,
 } = vi.hoisted(() => ({
   resolveUserOrgAuthorizationMock: vi.fn(),
   evaluateUserOrgRoleAuthorizationMock: vi.fn(),
+  getRuntimeSettingDbMock: vi.fn(),
+  captureEventMock: vi.fn(),
 }));
 
 vi.mock("../../src/utils/resolve-user-org-authorization.js", () => ({
@@ -13,10 +17,20 @@ vi.mock("../../src/utils/resolve-user-org-authorization.js", () => ({
   evaluateUserOrgRoleAuthorization: evaluateUserOrgRoleAuthorizationMock,
 }));
 
+vi.mock("../../src/db/system-settings-db.js", () => ({
+  getOrganizationAuthorizationEnforcement: getRuntimeSettingDbMock,
+}));
+
+vi.mock("../../src/utils/posthog.js", () => ({
+  captureEvent: captureEventMock,
+}));
+
 import {
   evaluateOrganizationAuthorizationCanary,
-  isOrganizationAuthorizationBoundaryEnabled,
+  invalidateOrganizationAuthorizationRuntimeSettingCache,
+  isOrganizationAuthorizationBoundaryAllowedByEnvironment,
   ORGANIZATION_AUTHORIZATION_BOUNDARIES,
+  recordOrganizationAuthorizationCanaryDecision,
 } from "../../src/middleware/organization-authorization-canary.js";
 
 const BOUNDARY = ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ;
@@ -27,6 +41,9 @@ describe("organization authorization canary", () => {
     delete process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES;
     resolveUserOrgAuthorizationMock.mockReset();
     evaluateUserOrgRoleAuthorizationMock.mockReset();
+    getRuntimeSettingDbMock.mockReset();
+    captureEventMock.mockReset();
+    invalidateOrganizationAuthorizationRuntimeSettingCache();
   });
 
   afterEach(() => {
@@ -47,6 +64,7 @@ describe("organization authorization canary", () => {
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = boundaries;
     }
     const getWorkos = vi.fn();
+    const getRuntimeSetting = vi.fn();
 
     const decision = await evaluateOrganizationAuthorizationCanary({
       boundary: BOUNDARY,
@@ -56,25 +74,172 @@ describe("organization authorization canary", () => {
       },
       organizationId: "org_test",
       getWorkos,
+      getRuntimeSetting,
     });
 
     expect(decision).toEqual({ enforced: false });
     expect(getWorkos).not.toHaveBeenCalled();
+    expect(getRuntimeSetting).not.toHaveBeenCalled();
     expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
   });
 
-  it("requires the global switch and the exact fixed boundary", () => {
+  it("requires the global switch and the exact fixed environment boundary", () => {
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
-    expect(isOrganizationAuthorizationBoundaryEnabled(BOUNDARY)).toBe(false);
+    expect(isOrganizationAuthorizationBoundaryAllowedByEnvironment(BOUNDARY)).toBe(false);
 
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = "another_boundary";
-    expect(isOrganizationAuthorizationBoundaryEnabled(BOUNDARY)).toBe(false);
+    expect(isOrganizationAuthorizationBoundaryAllowedByEnvironment(BOUNDARY)).toBe(false);
 
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = `another_boundary, ${BOUNDARY}`;
-    expect(isOrganizationAuthorizationBoundaryEnabled(BOUNDARY)).toBe(true);
+    expect(isOrganizationAuthorizationBoundaryAllowedByEnvironment(BOUNDARY)).toBe(true);
 
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "false";
-    expect(isOrganizationAuthorizationBoundaryEnabled(BOUNDARY)).toBe(false);
+    expect(isOrganizationAuthorizationBoundaryAllowedByEnvironment(BOUNDARY)).toBe(false);
+  });
+
+  it("records enforced decisions without credential, membership, or organization identifiers", () => {
+    recordOrganizationAuthorizationCanaryDecision(BOUNDARY, {
+      enforced: true,
+      status: "authorized",
+      membership: {
+        organizationId: "org_sensitive",
+        role: "member",
+        source: "workos",
+      },
+    });
+
+    expect(captureEventMock).toHaveBeenCalledWith(
+      "server-metrics",
+      "org_authorization_canary",
+      {
+        boundary: BOUNDARY,
+        decision: "authorized",
+        unavailable_sources: undefined,
+      }
+    );
+    expect(JSON.stringify(captureEventMock.mock.calls)).not.toContain("sensitive");
+
+    captureEventMock.mockClear();
+    recordOrganizationAuthorizationCanaryDecision(BOUNDARY, {
+      enforced: true,
+      status: "unavailable",
+      unavailableSources: ["workos", "runtime_config"],
+    });
+
+    expect(captureEventMock).toHaveBeenCalledWith(
+      "server-metrics",
+      "org_authorization_canary",
+      {
+        boundary: BOUNDARY,
+        decision: "unavailable",
+        unavailable_sources: ["workos", "runtime_config"],
+      }
+    );
+  });
+
+  it("keeps legacy authorization when the audited runtime gate is off", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = BOUNDARY;
+    const getWorkos = vi.fn();
+    const getRuntimeSetting = vi.fn().mockResolvedValue({
+      enabled: false,
+      boundaries: [BOUNDARY],
+    });
+
+    const decision = await evaluateOrganizationAuthorizationCanary({
+      boundary: BOUNDARY,
+      principal: { id: "user_test" },
+      organizationId: "org_test",
+      getWorkos,
+      getRuntimeSetting,
+    });
+
+    expect(decision).toEqual({ enforced: false });
+    expect(getRuntimeSetting).toHaveBeenCalledOnce();
+    expect(getWorkos).not.toHaveBeenCalled();
+    expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the environment is staged but runtime configuration is unavailable", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = BOUNDARY;
+    const getWorkos = vi.fn();
+
+    const decision = await evaluateOrganizationAuthorizationCanary({
+      boundary: BOUNDARY,
+      principal: { id: "user_test" },
+      organizationId: "org_test",
+      getWorkos,
+      getRuntimeSetting: vi.fn().mockRejectedValue(new Error("database unavailable")),
+    });
+
+    expect(decision).toEqual({
+      enforced: true,
+      status: "unavailable",
+      unavailableSources: ["runtime_config"],
+    });
+    expect(getWorkos).not.toHaveBeenCalled();
+    expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the process cache so rollback is visible without a restart", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = BOUNDARY;
+    getRuntimeSettingDbMock
+      .mockResolvedValueOnce({ enabled: true, boundaries: [BOUNDARY] })
+      .mockResolvedValueOnce({ enabled: false, boundaries: [BOUNDARY] });
+    resolveUserOrgAuthorizationMock.mockResolvedValue({ status: "authorized" });
+    evaluateUserOrgRoleAuthorizationMock.mockReturnValue({ status: "forbidden" });
+    const input = {
+      boundary: BOUNDARY,
+      principal: { id: "user_test" },
+      organizationId: "org_test",
+      getWorkos: vi.fn(() => ({ userManagement: {} }) as never),
+    };
+
+    expect(await evaluateOrganizationAuthorizationCanary(input)).toEqual({
+      enforced: true,
+      status: "forbidden",
+    });
+    expect(await evaluateOrganizationAuthorizationCanary(input)).toEqual({
+      enforced: true,
+      status: "forbidden",
+    });
+    expect(getRuntimeSettingDbMock).toHaveBeenCalledOnce();
+
+    invalidateOrganizationAuthorizationRuntimeSettingCache();
+    expect(await evaluateOrganizationAuthorizationCanary(input)).toEqual({ enforced: false });
+    expect(getRuntimeSettingDbMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let an in-flight stale read repopulate the cache after rollback", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES = BOUNDARY;
+    let resolveStaleRead!: (setting: { enabled: boolean; boundaries: string[] }) => void;
+    getRuntimeSettingDbMock
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveStaleRead = resolve;
+      }))
+      .mockResolvedValueOnce({ enabled: false, boundaries: [BOUNDARY] });
+    resolveUserOrgAuthorizationMock.mockResolvedValue({ status: "authorized" });
+    evaluateUserOrgRoleAuthorizationMock.mockReturnValue({ status: "forbidden" });
+    const input = {
+      boundary: BOUNDARY,
+      principal: { id: "user_test" },
+      organizationId: "org_test",
+      getWorkos: vi.fn(() => ({ userManagement: {} }) as never),
+    };
+
+    const staleDecision = evaluateOrganizationAuthorizationCanary(input);
+    await vi.waitFor(() => expect(getRuntimeSettingDbMock).toHaveBeenCalledOnce());
+    invalidateOrganizationAuthorizationRuntimeSettingCache();
+
+    expect(await evaluateOrganizationAuthorizationCanary(input)).toEqual({ enforced: false });
+    resolveStaleRead({ enabled: true, boundaries: [BOUNDARY] });
+    expect(await staleDecision).toEqual({ enforced: true, status: "forbidden" });
+
+    expect(await evaluateOrganizationAuthorizationCanary(input)).toEqual({ enforced: false });
+    expect(getRuntimeSettingDbMock).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -120,6 +285,10 @@ describe("organization authorization canary", () => {
         },
         organizationId: "org_test",
         getWorkos: () => workos as never,
+        getRuntimeSetting: vi.fn().mockResolvedValue({
+          enabled: true,
+          boundaries: [BOUNDARY],
+        }),
       });
 
       expect(decision).toEqual(expected);
@@ -150,6 +319,10 @@ describe("organization authorization canary", () => {
       getWorkos: () => {
         throw new Error("missing configuration");
       },
+      getRuntimeSetting: vi.fn().mockResolvedValue({
+        enabled: true,
+        boundaries: [BOUNDARY],
+      }),
     });
 
     expect(resolveUserOrgAuthorizationMock).toHaveBeenCalledWith(

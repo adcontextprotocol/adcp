@@ -1,6 +1,7 @@
 import { createLogger } from '../logger.js';
 import type { CreateMessageInput } from './thread-service.js';
 import { getSlackApiErrorCode, isPermanentDmDeliveryError } from './slack-api-errors.js';
+import { classifyLocalModelExecution } from './model-providers/model-provider.js';
 
 const logger = createLogger('addie-dm-delivery');
 
@@ -14,7 +15,7 @@ export interface DirectMessageDeliveryInput {
   channelId: string;
   userId: string;
   threadId: string;
-  assistantMessage: CreateMessageInput;
+  assistantMessage: Extract<CreateMessageInput, { role: 'assistant' }>;
   userMessageFlagged: boolean;
   assistantFlagged: boolean;
   flagReason: string;
@@ -75,6 +76,10 @@ export async function deliverAndRecordDirectMessage(
         content_sanitized: undefined,
         flagged: true,
         flag_reason: `Slack delivery failed: ${deliveryLabel}`,
+        model_execution: classifyLocalModelExecution(
+          input.assistantMessage.model_execution,
+          'canned_response',
+        ),
       });
     } catch (error) {
       logger.error({ error, threadId: input.threadId }, 'Addie Bolt: Failed to save undelivered tool audit');

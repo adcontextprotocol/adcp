@@ -35,7 +35,11 @@ import type {
   ComplyBudgetSimulation,
   SeededProductAvailability,
 } from './types.js';
-import { supportsGetProductsRejected } from './types.js';
+import {
+  supportsAccountChangeFeed,
+  supportsGetProductsRejected,
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+} from './types.js';
 import {
   findSessionsMatching,
   findSessionMatching,
@@ -46,20 +50,46 @@ import {
 import { getAgentUrl } from './config.js';
 import { randomUUID } from 'node:crypto';
 import {
+  emitAccountChangeRecordedWebhook,
+  expireAccountChangeCursors,
   getAccountNotificationSubscribers,
+  recordAccountChange,
+  resolveAccountIdForRef,
+  resolveGovernanceAgentsForAccount,
   sandboxAccountRefForId,
   seedAccountFixture,
 } from './account-handlers.js';
-import { canonicalizeAccountRef, type CanonicalAccountRef } from './account-scope.js';
-import { verifyGovernanceToken, mintRevokedDemoToken, mintWrongAudDemoToken } from './governance-verify.js';
+import {
+  canonicalizeAccountRef,
+  normalizeControllerAccountRef,
+  syntheticAccountIdFromRef,
+  type CanonicalAccountRef,
+} from './account-scope.js';
+import {
+  verifyGovernanceToken as inspectGovernanceTokenForTraining,
+  mintRevokedDemoToken,
+  mintWrongAudDemoToken,
+} from './governance-verify.js';
 import { emitAccountNotificationWebhook } from './webhooks.js';
+import {
+  getSharedAccountCreative,
+  removeSharedAccountCreative,
+  upsertSharedAccountCreative,
+} from './shared-account-resources.js';
 import { buildCatalog } from './product-factory.js';
 import { getAllSignals } from './signal-providers.js';
+import { validateProtocolSchema } from '../services/protocol-schema-validator.js';
 import {
   findAudienceInSession,
   forceAudienceStatusInSession,
   type TrainingAudienceStatus,
 } from './audience-handlers.js';
+import { validateViewedSecondsDistributionSemantics } from './delivery-metrics-semantics.js';
+import {
+  taskRegistryNamespaceForTenant,
+  type TaskRegistryTenant,
+  type TrainingTaskRegistryScope,
+} from './task-registry-scope.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -332,18 +362,21 @@ function deliverySimulationSnapshot(
 type VendorMetricIdentity = {
   vendor: { domain: string; brand_id?: string };
   metric_id: string;
+  qualifier?: Record<string, unknown>;
 };
 
 function normalizeVendorMetricIdentity(value: unknown): VendorMetricIdentity | null {
   if (!isRecord(value) || !isRecord(value.vendor)) return null;
   if (typeof value.vendor.domain !== 'string' || value.vendor.domain.length === 0) return null;
   if (typeof value.metric_id !== 'string' || value.metric_id.length === 0) return null;
+  if (value.qualifier !== undefined && !isRecord(value.qualifier)) return null;
   return {
     vendor: {
       domain: value.vendor.domain,
       ...(typeof value.vendor.brand_id === 'string' && { brand_id: value.vendor.brand_id }),
     },
     metric_id: value.metric_id,
+    ...(value.qualifier !== undefined && { qualifier: structuredClone(value.qualifier) }),
   };
 }
 
@@ -513,6 +546,7 @@ function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionSta
     if (
       src.mode !== 'self_serve'
       && src.mode !== 'conditional_self_serve'
+      && src.mode !== 'seller_managed'
       && src.mode !== 'requires_approval'
     ) continue;
     const mode = src.mode;
@@ -528,6 +562,7 @@ function normalizeAvailableActions(actions: unknown): MediaBuyAvailableActionSta
           ...(typeof sla.completion_max === 'string' && { completion_max: sla.completion_max }),
         },
       }),
+      ...(typeof src.change_term_id === 'string' && { change_term_id: src.change_term_id }),
       ...(typeof src.terms_ref === 'string' && { terms_ref: src.terms_ref }),
     });
   }
@@ -802,6 +837,8 @@ function createStore(
   principal?: string,
   storyboardCompat?: TrainingContext['storyboardCompat'],
   controllerAccount?: NaturalAccountIdentity,
+  controllerAccountRef?: AccountRef,
+  controllerAccountId?: string,
 ): TestControllerStore {
   return {
     async forceAudienceStatus(audienceId, status, reason) {
@@ -860,7 +897,8 @@ function createStore(
     },
 
     async forceCreativeStatus(creativeId, status, rejectionReason) {
-      const creative = session.creatives.get(creativeId);
+      const creative = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       if (!creative) {
         const priorTerminalState = session.complyExtensions.forcedCreativeTerminalStates.get(creativeId);
         if (priorTerminalState) {
@@ -888,6 +926,24 @@ function createStore(
         session.complyExtensions.forcedCreativeTerminalStates.delete(creativeId);
       }
       propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
+      const accountId = creative.accountId
+        ?? resolveAccountIdForRef(sessionKey, principal, creative.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: accountId,
+            resource_id: creativeId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: ['/status'],
+          repair: { task: 'list_creatives' },
+          reason: lifecycleReasonCode(prev, status),
+          summary: `Connected training platform changed creative status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
       await emitCreativeStatusChanged(sessionKey, principal, creative, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
@@ -952,6 +1008,24 @@ function createStore(
         summary: `Comply test controller forced status to ${status}`,
       });
 
+      const accountId = resolveAccountIdForRef(sessionKey, principal, mb.accountRef);
+      if (accountId) {
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'media_buy',
+            account_id: accountId,
+            resource_id: mediaBuyId,
+          },
+          action: 'status_changed',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          resource_revision: mb.revision,
+          changed_paths: ['/status'],
+          repair: { task: 'get_media_buys' },
+          summary: `Connected training platform changed media buy status from ${prev} to ${status}.`,
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
+
       return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} transitioned from ${prev} to ${status}` };
     },
 
@@ -1001,9 +1075,39 @@ function createStore(
       const reportedSpend = params.reported_spend;
       const typedParams = params as Record<string, unknown>;
 
+      if (typedParams.viewability !== undefined && mb.packages.length !== 1) {
+        throw new TestControllerError(
+          'INVALID_PARAMS',
+          'media-buy-scoped viewability is unambiguous only for a single-package buy',
+        );
+      }
+
       const deliveryDate = typedParams.delivery_date;
       if (deliveryDate !== undefined && !isCanonicalDeliveryDate(deliveryDate)) {
         throw new TestControllerError('INVALID_PARAMS', 'delivery_date must be a real calendar date in YYYY-MM-DD format');
+      }
+
+      if (typedParams.viewability !== undefined) {
+        const schemaResult = await validateProtocolSchema(
+          '/schemas/core/delivery-metrics.json',
+          { viewability: typedParams.viewability },
+        );
+        if (!schemaResult.valid) {
+          const first = schemaResult.errors[0];
+          throw new TestControllerError(
+            'INVALID_PARAMS',
+            `viewability schema: ${first?.instancePath || '/viewability'} ${first?.message ?? 'is invalid'}`,
+          );
+        }
+      }
+
+      const distributionViolations = validateViewedSecondsDistributionSemantics(typedParams.viewability);
+      if (distributionViolations.length > 0) {
+        const first = distributionViolations[0];
+        throw new TestControllerError(
+          'INVALID_PARAMS',
+          `${first.rule}: ${first.field} expected ${String(first.expected ?? 'valid distribution semantics')}`,
+        );
       }
 
       const existing = getDeliverySimulation(session, mediaBuyId);
@@ -1150,7 +1254,8 @@ function createStore(
     async seedCreative(creativeId, fixture) {
       const fx = (fixture ?? {}) as Record<string, unknown>;
       enforceMapCap(session.creatives, creativeId, 'creatives');
-      const existing = session.creatives.get(creativeId);
+      const existing = session.creatives.get(creativeId)
+        ?? getSharedAccountCreative(controllerAccountId, creativeId);
       const now = new Date().toISOString();
       const fixtureFormatId = fx.format_id as CreativeState['formatId'];
       const formatKind = (fx.format_kind as string | undefined)
@@ -1164,8 +1269,11 @@ function createStore(
         ?? (fixtureFormatId || existing?.formatId ? undefined : 'image');
       const formatOptionRef = (fx.format_option_ref as Record<string, unknown> | undefined) ?? existing?.formatOptionRef;
       const formatId = fixtureFormatId ?? existing?.formatId;
-      session.creatives.set(creativeId, {
+      const storedCreative: CreativeState = {
         creativeId,
+        ...(controllerAccountId && { accountId: controllerAccountId }),
+        ...(controllerAccountRef && { accountRef: controllerAccountRef }),
+        controllerSeeded: true,
         ...(formatId && { formatId }),
         formatKind,
         formatOptionRef,
@@ -1174,7 +1282,26 @@ function createStore(
         syncedAt: existing?.syncedAt ?? now,
         manifest: (fx.manifest as CreativeState['manifest']) ?? existing?.manifest,
         pricingOptionId: (fx.pricing_option_id as string | undefined) ?? existing?.pricingOptionId,
-      });
+      };
+      session.creatives.set(creativeId, storedCreative);
+      if (controllerAccountId) {
+        upsertSharedAccountCreative(controllerAccountId, storedCreative);
+        const change = recordAccountChange(principal, {
+          resource: {
+            type: 'creative',
+            account_id: controllerAccountId,
+            resource_id: creativeId,
+          },
+          action: existing ? 'updated' : 'created',
+          origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+          changed_paths: existing ? ['/name', '/status', '/manifest'] : undefined,
+          repair: { task: 'list_creatives' },
+          summary: existing
+            ? 'Connected training platform updated a creative.'
+            : 'Connected training platform added a creative.',
+        });
+        await emitAccountChangeRecordedWebhook(principal, change);
+      }
     },
 
     async seedPlan(planId, fixture) {
@@ -1246,6 +1373,9 @@ function createStore(
             .filter(pkg => pkg && typeof pkg === 'object' && !Array.isArray(pkg))
             .map(pkg => normalizeSeedPackage(pkg as Record<string, unknown>, startTime, endTime))
         : existing?.packages ?? [];
+      const acceptedProposal = isRecord(fx.accepted_proposal)
+        ? structuredClone(fx.accepted_proposal) as unknown as NonNullable<MediaBuyState['acceptedProposal']>
+        : existing?.acceptedProposal;
       session.mediaBuys.set(mediaBuyId, {
         mediaBuyId,
         accountRef:
@@ -1256,6 +1386,7 @@ function createStore(
         status: (fx.status as string | undefined) ?? existing?.status ?? 'active',
         currency: (fx.currency as string | undefined) ?? existing?.currency ?? 'USD',
         packages,
+        ...(acceptedProposal && { acceptedProposal }),
         availableActions: normalizeAvailableActions(fx.available_actions) ?? existing?.availableActions,
         startTime,
         endTime,
@@ -1288,6 +1419,7 @@ function createStore(
  * entry in place during the transition; remove once a release has landed and the
  * cross-impl tests no longer rely on it). */
 const LOCAL_SCENARIOS = [
+  'expire_account_change_cursor',
   'force_create_media_buy_arm',
   'force_get_products_arm',
   'force_get_signals_arm',
@@ -1301,6 +1433,7 @@ const LOCAL_SCENARIOS = [
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
   'query_provenance_audit_observations',
+  'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
   'verify_governance_token',
 ] as const;
@@ -1453,9 +1586,12 @@ async function handleCompactLifecycleProbe(
 }
 
 function localScenariosFor(ctx: TrainingContext): string[] {
-  return ctx.storyboardCompat?.version === '3.0'
-    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations')
+  const scenarios = ctx.storyboardCompat?.version === '3.0'
+    ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
+  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? scenarios
+    : scenarios.filter(s => s !== 'expire_account_change_cursor');
 }
 
 /**
@@ -1473,7 +1609,10 @@ function localScenariosFor(ctx: TrainingContext): string[] {
  * params: { token?, mode?: 'verify'|'revoked_demo'|'wrong_aud_demo',
  *           tamper?: 'signature'|'sub'|<anything-else> }
  */
-async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Promise<object> {
+// This is a sandbox teaching fixture, not an authorization guard for the
+// controller route. Name it accordingly so static analysis does not mistake
+// scenario dispatch for a user-controlled permission check.
+async function handleInspectGovernanceTokenFixture(rawArgs: Record<string, unknown>): Promise<object> {
   const params = (rawArgs.params ?? {}) as Record<string, unknown>;
   const mode = typeof params.mode === 'string' ? params.mode : 'verify';
   let token = typeof params.token === 'string' ? params.token : undefined;
@@ -1494,7 +1633,7 @@ async function handleVerifyGovernanceToken(rawArgs: Record<string, unknown>): Pr
   }
   const tamper = typeof params.tamper === 'string' ? params.tamper : undefined;
   if (tamper) token = tamperGovernanceToken(token, tamper);
-  const result = await verifyGovernanceToken(token);
+  const result = await inspectGovernanceTokenForTraining(token);
   return {
     success: true,
     verdict: result.verdict,
@@ -1753,6 +1892,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_get_signals_arm') {
     return handleForceGetSignalsArm(session, rawArgs);
   }
+  if (scenario === 'force_get_products_arm' && params.arm === 'submitted') {
+    return handleForceGetProductsArm(session, rawArgs);
+  }
   if (
     scenario === 'compact_product_lifecycle_probe'
     || scenario === 'compact_direct_buy_lifecycle_probe'
@@ -1770,7 +1912,39 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     return handleForceGetProductsRejection(session, ctx.principal ?? 'anonymous', params);
   }
   if (scenario === 'force_task_completion') {
-    return handleForceTaskCompletion(sessionKey, rawArgs);
+    const completionScope = ctx.taskRegistryScope ?? controllerTaskRegistryScope(sessionArgs, ctx);
+    return handleForceTaskCompletion(completionScope, rawArgs);
+  }
+  if (scenario === 'expire_account_change_cursor') {
+    if (!supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)) {
+      return {
+        success: false,
+        error: 'UNKNOWN_SCENARIO',
+        error_detail: 'expire_account_change_cursor requires AdCP 3.2 or later',
+      };
+    }
+    if (!args.account) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'expire_account_change_cursor requires account',
+      };
+    }
+    const expired = expireAccountChangeCursors(ctx.principal, args.account);
+    if (!expired) {
+      return {
+        success: false,
+        error: 'INVALID_STATE',
+        error_detail: 'The requested account is not visible to this principal',
+      };
+    }
+    return {
+      success: true,
+      previous_state: 'current',
+      current_state: 'authorization_scope_changed',
+      account_id: expired.accountId,
+      message: 'Previously issued account change cursors now require snapshot rebootstrap.',
+    };
   }
   if (scenario === 'evaluate_distributed_brand_resolution') {
     const params = isRecord(rawArgs.params) ? rawArgs.params : {};
@@ -1782,7 +1956,25 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     };
   }
   if (scenario === 'verify_governance_token') {
-    return handleVerifyGovernanceToken(rawArgs);
+    return handleInspectGovernanceTokenFixture(rawArgs);
+  }
+  if (scenario === 'query_account_governance_binding') {
+    const accountRef = isRecord(params.account) ? params.account as AccountRef : undefined;
+    if (!accountRef) {
+      return {
+        success: false,
+        error: 'INVALID_PARAMS',
+        error_detail: 'params.account is required for query_account_governance_binding',
+      };
+    }
+    return {
+      success: true,
+      simulated: {
+        account: structuredClone(accountRef),
+        governance_agents: (await resolveGovernanceAgentsForAccount(sessionKey, ctx.principal, accountRef))
+          .map(agent => ({ url: agent.url })),
+      },
+    };
   }
   if (scenario === 'force_upstream_unavailable') {
     const params = (rawArgs.params ?? {}) as Record<string, unknown>;
@@ -1982,12 +2174,16 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     }
   }
 
+  const controllerAccountId = resolveAccountIdForRef(sessionKey, ctx.principal, args.account)
+    ?? opaqueAccountId;
   const store = createStore(
     session,
     sessionKey,
     ctx.principal,
     ctx.storyboardCompat,
     sandboxControllerIdentity(args.account),
+    args.account,
+    controllerAccountId,
   );
   const sdkResponse = await handleTestControllerRequest(store, rawArgs, { seedCache: SEED_CACHE });
 
@@ -2443,7 +2639,10 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       error_detail: 'creative_id is required',
     };
   }
-  const creative = session.creatives.get(creativeId);
+  const accountRef = rawArgs.account as AccountRef | undefined;
+  const accountId = resolveAccountIdForRef(sessionKey, principal, accountRef);
+  const creative = session.creatives.get(creativeId)
+    ?? getSharedAccountCreative(accountId, creativeId);
   if (!creative) {
     return {
       success: false,
@@ -2478,6 +2677,7 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
 
   if (purgeKind === 'hard') {
     session.creatives.delete(creativeId);
+    removeSharedAccountCreative(accountId, creativeId);
     session.complyExtensions.provenanceAuditObservations.delete(creativeId);
   } else {
     creative.purge = {
@@ -2485,6 +2685,26 @@ async function handleForceCreativePurge(session: SessionState, sessionKey: strin
       at: purgedAt,
       reasonCode,
     };
+  }
+  if (accountId) {
+    const change = recordAccountChange(principal, {
+      resource: {
+        type: 'creative',
+        account_id: accountId,
+        resource_id: creativeId,
+      },
+      action: 'purged',
+      origin: { kind: 'connected_platform', connection_id: 'conn_shared_training_platform' },
+      changed_paths: ['/purge'],
+      repair: {
+        task: 'list_creatives',
+        available: purgeKind !== 'hard',
+        ...(purgeKind === 'hard' && { unavailable_reason: 'purged' }),
+      },
+      reason: reasonCode,
+      summary: `Connected training platform ${purgeKind}-purged a creative.`,
+    });
+    await emitAccountChangeRecordedWebhook(principal, change);
   }
   await emitCreativePurged(sessionKey, principal, creative, purgeKind, reasonCode, purgedAt, reasonDetail);
 
@@ -2620,6 +2840,43 @@ function handleForceGetSignalsArm(session: SessionState, rawArgs: Record<string,
   };
 }
 
+function handleForceGetProductsArm(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || params.arm !== 'submitted') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: "force_get_products_arm requires params.arm = 'submitted'",
+    };
+  }
+  const taskId = params.task_id;
+  if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 128) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id is required and must contain at most 128 characters',
+    };
+  }
+  const message = params.message;
+  if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'message must be a string up to 2000 characters',
+    };
+  }
+  session.complyExtensions.forcedGetProductsArm = {
+    arm: 'submitted',
+    taskId,
+    ...(typeof message === 'string' && { message }),
+  };
+  return {
+    success: true,
+    forced: { arm: 'submitted', task_id: taskId },
+    message: `Next brief-mode get_products call will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
 function handleForceGetProductsRejection(
   session: SessionState,
   principal: string,
@@ -2675,7 +2932,7 @@ function handleForceGetProductsRejection(
  * `comply-test-controller-request.json` and the matching mdx section.
  *
  * The training-agent records completions in a process-global Map keyed by
- * (caller-supplied task_id) → ({ result, ownerKey }). Cross-account calls return
+ * (account + task-registry owner scope + caller-supplied task_id). Cross-account calls return
  * NOT_FOUND (per the spec MUST). Tasks already at `completed` with the same
  * result are idempotent no-ops; tasks at any other terminal state return
  * INVALID_TRANSITION.
@@ -2686,16 +2943,48 @@ function handleForceGetProductsRejection(
  * tenant controller adapter also completes the shared registry before it
  * returns so the next polling step cannot race the background handoff.
  */
-const FORCED_TASK_COMPLETIONS = new Map<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }>();
+interface ForcedTaskCompletionRecord {
+  result: Record<string, unknown>;
+  scope: TrainingTaskRegistryScope;
+  completedAt: string;
+}
+
+const FORCED_TASK_COMPLETIONS = new Map<string, ForcedTaskCompletionRecord>();
 const MAX_FORCED_TASK_COMPLETIONS = 1000;
 const FORCED_TASK_COMPLETION_TIMEOUT_MS = 15 * 60 * 1000;
 interface PendingForcedTaskCompletion {
-  ownerKey: string;
+  scope: TrainingTaskRegistryScope;
   resolve: (result: Record<string, unknown>) => void;
   reject: (error: Error) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskCompletion>();
+
+function forcedTaskCompletionKey(taskId: string, scope: TrainingTaskRegistryScope): string {
+  return JSON.stringify([scope.registryNamespace, scope.accountId, scope.ownerScope, taskId]);
+}
+
+function controllerTaskRegistryScope(
+  args: ToolArgs,
+  ctx: TrainingContext,
+): TrainingTaskRegistryScope {
+  const accountRef = normalizeControllerAccountRef(args.account);
+  const canonical = canonicalizeAccountRef(accountRef);
+  const accountId = canonical.kind === 'account_id'
+    ? canonical.account_id
+    : syntheticAccountIdFromRef(accountRef);
+  const ownerScope = ctx.authenticatedAgentUrl
+    ? `agent:${ctx.authenticatedAgentUrl}`
+    : ctx.principal && ctx.principal !== 'anonymous'
+      ? `client:${ctx.principal}`
+      : `account:${accountId}`;
+  const tenantId: TaskRegistryTenant = ctx.tenantId === 'signals' ? 'signals' : 'sales';
+  return {
+    registryNamespace: taskRegistryNamespaceForTenant(tenantId),
+    accountId,
+    ownerScope,
+  };
+}
 
 /**
  * Register the background half of a forceable async task. The v6 task
@@ -2704,21 +2993,16 @@ const PENDING_FORCED_TASK_COMPLETIONS = new Map<string, PendingForcedTaskComplet
  */
 export function waitForForcedTaskCompletion(
   taskId: string,
-  ownerKey: string,
+  scope: TrainingTaskRegistryScope,
 ): Promise<Record<string, unknown>> {
-  const completed = FORCED_TASK_COMPLETIONS.get(taskId);
+  const completionKey = forcedTaskCompletionKey(taskId, scope);
+  const completed = FORCED_TASK_COMPLETIONS.get(completionKey);
   if (completed) {
-    if (completed.ownerKey !== ownerKey) {
-      return Promise.reject(new Error(`Task "${taskId}" belongs to another sandbox account`));
-    }
     return Promise.resolve(completed.result);
   }
 
-  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(completionKey);
   if (pending) {
-    if (pending.ownerKey !== ownerKey) {
-      return Promise.reject(new Error(`Task "${taskId}" is already registered for another sandbox account`));
-    }
     return Promise.reject(new Error(`Task "${taskId}" already has a pending completion waiter`));
   }
 
@@ -2728,11 +3012,11 @@ export function waitForForcedTaskCompletion(
 
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const timeout = setTimeout(() => {
-      PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+      PENDING_FORCED_TASK_COMPLETIONS.delete(completionKey);
       reject(new Error(`Task "${taskId}" was not completed within the 15-minute compliance window`));
     }, FORCED_TASK_COMPLETION_TIMEOUT_MS);
     timeout.unref();
-    PENDING_FORCED_TASK_COMPLETIONS.set(taskId, { ownerKey, resolve, reject, timeout });
+    PENDING_FORCED_TASK_COMPLETIONS.set(completionKey, { scope, resolve, reject, timeout });
   });
 }
 
@@ -2747,11 +3031,11 @@ export function clearForcedTaskCompletions(): void {
 }
 
 /** Test-only: read the forced-completion pool. */
-export function getForcedTaskCompletions(): ReadonlyMap<string, { result: Record<string, unknown>; ownerKey: string; completedAt: string }> {
+export function getForcedTaskCompletions(): ReadonlyMap<string, ForcedTaskCompletionRecord> {
   return FORCED_TASK_COMPLETIONS;
 }
 
-function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, unknown>): object {
+function handleForceTaskCompletion(scope: TrainingTaskRegistryScope, rawArgs: Record<string, unknown>): object {
   const params = rawArgs.params as Record<string, unknown> | undefined;
   if (!params || typeof params !== 'object') {
     return {
@@ -2797,17 +3081,9 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  const existing = FORCED_TASK_COMPLETIONS.get(taskId);
+  const completionKey = forcedTaskCompletionKey(taskId, scope);
+  const existing = FORCED_TASK_COMPLETIONS.get(completionKey);
   if (existing) {
-    // Cross-account check (spec MUST): NOT_FOUND for task_ids belonging to other
-    // accounts, conventional "not yours" → "doesn't exist" treatment.
-    if (existing.ownerKey !== sessionKey) {
-      return {
-        success: false,
-        error: 'NOT_FOUND',
-        error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-      };
-    }
     // Idempotent replay: same params → no-op success.
     if (JSON.stringify(existing.result) === JSON.stringify(result)) {
       return {
@@ -2826,14 +3102,7 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(taskId);
-  if (pending && pending.ownerKey !== sessionKey) {
-    return {
-      success: false,
-      error: 'NOT_FOUND',
-      error_detail: `Task "${taskId}" was not registered for this sandbox account`,
-    };
-  }
+  const pending = PENDING_FORCED_TASK_COMPLETIONS.get(completionKey);
   if (!pending) {
     return {
       success: false,
@@ -2850,14 +3119,14 @@ function handleForceTaskCompletion(sessionKey: string, rawArgs: Record<string, u
     };
   }
 
-  FORCED_TASK_COMPLETIONS.set(taskId, {
+  FORCED_TASK_COMPLETIONS.set(completionKey, {
     result: result as Record<string, unknown>,
-    ownerKey: sessionKey,
+    scope,
     completedAt: new Date().toISOString(),
   });
   if (pending) {
     clearTimeout(pending.timeout);
-    PENDING_FORCED_TASK_COMPLETIONS.delete(taskId);
+    PENDING_FORCED_TASK_COMPLETIONS.delete(completionKey);
     pending.resolve(result as Record<string, unknown>);
   }
 

@@ -9,11 +9,25 @@ import {
   invalidateCache,
   clearTaskStore,
 } from '../../src/training-agent/task-handlers.js';
-import { clearSessions } from '../../src/training-agent/state.js';
+import {
+  clearSessions,
+  getSession,
+  runWithSessionContext,
+  sessionKeyFromArgs,
+} from '../../src/training-agent/state.js';
 import {
   clearAccountStore,
+  clearProcessLocalAccountStore,
+  handleSyncGovernance,
   MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC,
+  resolveGovernanceAgentsForAccount,
 } from '../../src/training-agent/account-handlers.js';
+import {
+  InMemoryGovernanceBindingStore,
+  setGovernanceBindingStore,
+  type GovernanceBindingStore,
+} from '../../src/training-agent/governance-binding-store.js';
+import { accountScopeFromRef } from '../../src/training-agent/account-scope.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
 
@@ -1008,7 +1022,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
         governance_agents: [{
-          url: 'https://governance.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_123' },
         }],
       }],
@@ -1020,7 +1034,55 @@ describe('sync_governance', () => {
 
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://governance.example.com/mcp');
+    expect(agents[0].url).toBe('https://governance.example/mcp');
+  });
+
+  it('restores one authoritative governance binding through every account alias after restart', async () => {
+    const created = await createSandboxAccount();
+    const account = { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true };
+    await simulateCallTool(server, 'sync_governance', {
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: 'https://governance.example/mcp',
+          authentication: { schemes: ['bearer'], credentials: 'tok_restart' },
+        }],
+      }],
+    });
+
+    clearProcessLocalAccountStore();
+    server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      scenario: 'query_account_governance_binding',
+      params: { account },
+    });
+
+    expect((result.simulated as { governance_agents?: unknown }).governance_agents).toEqual([
+      { url: 'https://governance.example/mcp' },
+    ]);
+
+    const partialRefAgents = await runWithSessionContext(async () => {
+      const partialRef = { brand: { domain: 'acme.com' } };
+      const key = sessionKeyFromArgs(partialRef, 'open');
+      await getSession(key);
+      return resolveGovernanceAgentsForAccount(key, undefined, partialRef as never);
+    });
+    const restoredAgent = {
+      url: 'https://governance.example/mcp',
+      authentication: { schemes: ['Bearer'], credentials: 'tok_restart' },
+    };
+    expect(partialRefAgents).toEqual([restoredAgent]);
+    await expect(resolveGovernanceAgentsForAccount(
+      sessionKeyFromArgs({ account }, 'open'),
+      undefined,
+      account,
+    )).resolves.toEqual([restoredAgent]);
+    await expect(resolveGovernanceAgentsForAccount(
+      sessionKeyFromArgs({ account: { account_id: String(created.account_id) } }, 'open'),
+      undefined,
+      { account_id: String(created.account_id) },
+    )).resolves.toEqual([restoredAgent]);
   });
 
   it('replaces the governance agent on second call', async () => {
@@ -1033,7 +1095,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: ref,
         governance_agents: [{
-          url: 'https://gov-a.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok_a' },
         }],
       }],
@@ -1044,7 +1106,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: ref,
         governance_agents: [{
-          url: 'https://gov-b.example.com/mcp',
+          url: 'https://test-agent.adcontextprotocol.org',
           authentication: { schemes: ['bearer'], credentials: 'tok_b' },
         }],
       }],
@@ -1054,7 +1116,141 @@ describe('sync_governance', () => {
     expect(govResult.status).toBe('synced');
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://gov-b.example.com/mcp');
+    expect(agents[0].url).toBe('https://test-agent.adcontextprotocol.org/');
+  });
+
+  it('atomically retains the prior binding when a durable replacement fails', async () => {
+    const store = new InMemoryGovernanceBindingStore();
+    setGovernanceBindingStore(store);
+    const created = await createSandboxAccount();
+    const account = { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true };
+    await handleSyncGovernance({
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: 'https://governance.example/mcp',
+          authentication: { schemes: ['bearer'], credentials: 'initial-secret' },
+        }],
+      }],
+    }, DEFAULT_CTX);
+
+    const failingStore: GovernanceBindingStore = {
+      upsert: async () => { throw new Error('injected durable write failure'); },
+      getByAccountId: (...args) => store.getByAccountId(...args),
+      getByAccountScope: (...args) => store.getByAccountScope(...args),
+      findByBrandDomain: (...args) => store.findByBrandDomain(...args),
+    };
+    setGovernanceBindingStore(failingStore);
+    await expect(handleSyncGovernance({
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: 'https://test-agent.adcontextprotocol.org',
+          authentication: { schemes: ['bearer'], credentials: 'replacement-secret' },
+        }],
+      }],
+    }, DEFAULT_CTX)).rejects.toThrow('injected durable write failure');
+
+    setGovernanceBindingStore(store);
+    await expect(resolveGovernanceAgentsForAccount(
+      sessionKeyFromArgs({ account: { account_id: String(created.account_id) } }, 'open'),
+      undefined,
+      { account_id: String(created.account_id) },
+    )).resolves.toEqual([{
+      url: 'https://governance.example/mcp',
+      authentication: { schemes: ['Bearer'], credentials: 'initial-secret' },
+    }]);
+  });
+
+  it('does not lose concurrent same-brand bindings and includes timezone in natural identity', async () => {
+    const store = new InMemoryGovernanceBindingStore();
+    setGovernanceBindingStore(store);
+    const accountA = {
+      brand: { domain: 'timezone-binding.example' },
+      operator: 'agency-one.example',
+      timezone: 'Europe/Amsterdam',
+      sandbox: true,
+    };
+    const accountB = { ...accountA, timezone: 'America/New_York' };
+    // Seed each account through the same natural-key session partition that
+    // sync_governance will subsequently use. The concurrent operation under
+    // test is the authoritative binding upsert, not batch-session routing.
+    const [{ result: syncedA }, { result: syncedB }] = await Promise.all([
+      simulateCallTool(server, 'sync_accounts', {
+        accounts: [{ ...accountA, billing: 'operator' }],
+      }),
+      simulateCallTool(server, 'sync_accounts', {
+        accounts: [{ ...accountB, billing: 'operator' }],
+      }),
+    ]);
+    const [createdA] = syncedA.accounts as Array<{ account_id: string }>;
+    const [createdB] = syncedB.accounts as Array<{ account_id: string }>;
+    expect(createdA.account_id).not.toBe(createdB.account_id);
+
+    const bindingResults = await Promise.all([accountA, accountB].map((account, index) => handleSyncGovernance({
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: 'https://governance.example/mcp',
+          authentication: { schemes: ['bearer'], credentials: `concurrent-${index}` },
+        }],
+      }],
+    }, DEFAULT_CTX)));
+    expect(bindingResults).toEqual([
+      { accounts: [expect.objectContaining({ status: 'synced' })] },
+      { accounts: [expect.objectContaining({ status: 'synced' })] },
+    ]);
+    await expect(store.getByAccountScope('anonymous', accountScopeFromRef(accountA)))
+      .resolves.toMatchObject({ accountId: createdA.account_id });
+    await expect(store.getByAccountScope('anonymous', accountScopeFromRef(accountB)))
+      .resolves.toMatchObject({ accountId: createdB.account_id });
+
+    for (const [index, [account, created]] of ([[accountA, createdA], [accountB, createdB]] as const).entries()) {
+      const expectedAgent = {
+        url: 'https://governance.example/mcp',
+        authentication: { schemes: ['Bearer'], credentials: `concurrent-${index}` },
+      };
+      await expect(resolveGovernanceAgentsForAccount('ignored', undefined, account))
+        .resolves.toEqual([expectedAgent]);
+      await expect(resolveGovernanceAgentsForAccount(
+        'ignored',
+        undefined,
+        { account_id: created.account_id },
+      )).resolves.toEqual([expectedAgent]);
+    }
+    await expect(resolveGovernanceAgentsForAccount(
+      'ignored',
+      undefined,
+      { brand: { domain: 'timezone-binding.example' } } as never,
+    )).rejects.toThrow('Training session state is temporarily unavailable');
+  });
+
+  it('enforces governance-agent criteria even when the caller requests an older version', async () => {
+    await createSandboxAccount();
+
+    const credential = 'tok_unaccepted_governance_agent';
+    const result = await handleSyncGovernance({
+      adcp_version: '3.0',
+      accounts: [{
+        account: { brand: { domain: 'acme.com' }, operator: 'agency-one', sandbox: true },
+        governance_agents: [{
+          url: 'https://untrusted-governance.example/mcp',
+          authentication: { schemes: ['bearer'], credentials: credential },
+        }],
+      }],
+    }, { ...DEFAULT_CTX, servedAdcpVersion: '3.0' });
+
+    const account = (result.accounts as Record<string, unknown>[])[0];
+    expect(account).toMatchObject({
+      status: 'failed',
+      errors: [{
+        code: 'GOVERNANCE_AGENT_NOT_ACCEPTED',
+        details: { disclosure: 'opaque' },
+      }],
+    });
+    expect(account).not.toHaveProperty('governance_agents');
+    expect(JSON.stringify(result)).not.toContain('untrusted-governance');
+    expect(JSON.stringify(result)).not.toContain(credential);
   });
 
   it('rejects payloads carrying more than one governance agent at the request-shape layer (maxItems: 1)', async () => {
@@ -1093,7 +1289,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { brand: { domain: 'nonexistent.com' }, operator: 'nobody' },
         governance_agents: [{
-          url: 'https://gov.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok' },
         }],
       }],
@@ -1114,7 +1310,7 @@ describe('sync_governance', () => {
       accounts: [{
         account: { account_id: accountId },
         governance_agents: [{
-          url: 'https://gov.example.com/mcp',
+          url: 'https://governance.example/mcp',
           authentication: { schemes: ['bearer'], credentials: 'tok' },
         }],
       }],
@@ -1124,6 +1320,6 @@ describe('sync_governance', () => {
     expect(govResult.status).toBe('synced');
     const agents = govResult.governance_agents as Array<{ url: string }>;
     expect(agents).toHaveLength(1);
-    expect(agents[0].url).toBe('https://gov.example.com/mcp');
+    expect(agents[0].url).toBe('https://governance.example/mcp');
   });
 });

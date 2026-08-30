@@ -21,18 +21,22 @@ import {
   salesCapabilityProjection,
 } from '../v6-sales-platform.js';
 import { handleComplyTestController } from '../comply-test-controller.js';
+import { TRAINING_ACCEPTED_GOVERNANCE_AGENTS } from '../account-handlers.js';
 import {
   adcpError,
+  acceptancePolicyDiscoveryCapability,
   creativePreviewCapability,
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { GET_PRODUCTS_REJECTED_ADCP_VERSION, supportsGetProductsRejected, type TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
 import { runWithTrainingTaskScope, trainingTaskScope } from '../mcp-task-store.js';
 import { PUBLISHERS } from '../publishers.js';
+import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
+import { TRAINING_AUDIENCE_ACTIVATION_METHODS } from '../product-factory.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -146,9 +150,6 @@ const SALES_CURRENT_SCENARIOS = [
   'evaluate_distributed_brand_resolution',
 ] as const;
 
-const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.2-beta.6'] as const;
-const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.6';
-const TRAINING_AGENT_DEFAULT_ADCP_VERSION = '3.0';
 const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
   'list_products',
   'request_proposals',
@@ -188,15 +189,23 @@ function apiKeyCredential(req: Request, principal: string): { kind: 'api_key'; k
   };
 }
 
-function salesComplyScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
-  return storyboardCompat?.version === '3.0'
-    ? [...SALES_THREE_ZERO_COMPLY_SCENARIOS]
+function salesComplyScenarios(
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  servedVersion?: string,
+): string[] {
+  if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
+  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
     : [...SALES_CURRENT_SCENARIOS];
 }
 
-function salesCapabilityScenarios(storyboardCompat: TrainingContext['storyboardCompat'] | undefined): string[] {
-  return storyboardCompat?.version === '3.0'
-    ? [...SALES_LEGACY_CAPABILITY_SCENARIOS]
+function salesCapabilityScenarios(
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  servedVersion?: string,
+): string[] {
+  if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
+  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
     : [...SALES_CURRENT_SCENARIOS];
 }
 
@@ -401,7 +410,25 @@ function tenantMcpHandler(
         && req.body.params.arguments
         && typeof req.body.params.arguments === 'object'
       ) {
+        // Internal scope is derived only from the authenticated credential.
+        // Scrub any caller value even when no buyer agent resolves.
+        delete req.body.params.arguments.__training_task_owner_scope;
         req.body.params.arguments.__training_principal = principal;
+        const credential = apiKeyCredential(req, principal);
+        const demoToken = principal.startsWith('static:demo:')
+          ? principal.slice('static:demo:'.length)
+          : undefined;
+        const buyerAgent = await trainingBuyerAgentRegistry.resolve({
+          credential,
+          ...(demoToken && { extra: { demo_token: demoToken } }),
+          input: req.body.params.arguments,
+        });
+        // taskOwnerScopeFor() prioritizes the resolved buyer-agent identity.
+        // Re-resolve from the same trusted credential inputs here so the
+        // administrative controller can address only this caller's task.
+        if (buyerAgent?.agent_url) {
+          req.body.params.arguments.__training_task_owner_scope = `agent:${buyerAgent.agent_url}`;
+        }
       }
 
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat)) {
@@ -448,11 +475,12 @@ async function tryHandleLocalComplyScenario(
   principal: string | undefined,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): Promise<boolean> {
-  if (tenantId !== 'sales') return false;
   if (req.body?.method !== 'tools/call') return false;
   if (req.body?.params?.name !== 'comply_test_controller') return false;
 
   const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  const isAccountGovernanceBindingProbe = rawArgs.scenario === 'query_account_governance_binding';
+  if (tenantId !== 'sales' && !isAccountGovernanceBindingProbe) return false;
   const isThreeZeroCompat = storyboardCompat?.version === '3.0';
   const isRejectedGetProductsDirective = rawArgs.scenario === 'force_get_products_arm'
     && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
@@ -460,11 +488,13 @@ async function tryHandleLocalComplyScenario(
     || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
+    && rawArgs.scenario !== 'expire_account_change_cursor'
     && rawArgs.scenario !== 'force_creative_purge'
     && rawArgs.scenario !== 'query_provenance_audit_observations'
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
     && rawArgs.scenario !== 'compact_product_lifecycle_probe'
     && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
+    && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
     && !isRejectedGetProductsDirective
@@ -473,11 +503,13 @@ async function tryHandleLocalComplyScenario(
     isThreeZeroCompat
     && (
       rawArgs.scenario === 'seed_measurement_catalog'
+      || rawArgs.scenario === 'expire_account_change_cursor'
       || rawArgs.scenario === 'force_creative_purge'
       || rawArgs.scenario === 'query_provenance_audit_observations'
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
       || rawArgs.scenario === 'compact_product_lifecycle_probe'
       || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
+      || rawArgs.scenario === 'query_account_governance_binding'
       || isRejectedGetProductsDirective
     )
   ) return false;
@@ -513,7 +545,7 @@ async function tryHandleLocalComplyScenario(
     const body = rawArgs.scenario === 'list_scenarios'
       ? {
           success: true,
-          scenarios: salesComplyScenarios(storyboardCompat),
+          scenarios: salesComplyScenarios(storyboardCompat, versionResolution.servedVersion),
         }
       : await handleComplyTestController(handlerArgs, {
           ...localContext,
@@ -774,7 +806,7 @@ function projectTenantCapabilities(
     }
     if (tenantId === 'sales' && storyboardCompat?.version !== '3.0') {
       structured.adcp.capability_changes = {
-        capabilities_version: 'training-agent-3.2-beta.6',
+        capabilities_version: `training-agent-${TRAINING_AGENT_CURRENT_ADCP_VERSION}`,
         last_modified: '2026-08-24T00:00:00.000Z',
         cache_ttl_seconds: 300,
         notifications: {
@@ -793,14 +825,18 @@ function projectTenantCapabilities(
         ...account,
         supported_account_currency_modes: ['fixed', 'per_media_buy'],
       };
-      const governanceTasks: Record<string, Array<{ task: string; modes: ['signed_context'] }>> = {
+      const governanceTasks: Record<string, Array<{
+        task: string;
+        modes: Array<'signed_context' | 'online_execution_check'>;
+      }>> = {
         sales: supportsGetProductsRejected(servedVersion)
           ? [
               { task: 'buy_products', modes: ['signed_context'] },
               { task: 'accept_proposal', modes: ['signed_context'] },
               { task: 'control_media_buy', modes: ['signed_context'] },
+              { task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] },
             ]
-          : [{ task: 'create_media_buy', modes: ['signed_context'] }],
+          : [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }],
         signals: [{ task: 'activate_signal', modes: ['signed_context'] }],
         brand: [{ task: 'acquire_rights', modes: ['signed_context'] }],
         creative: [{ task: 'build_creative', modes: ['signed_context'] }],
@@ -810,7 +846,12 @@ function projectTenantCapabilities(
       if (tasks) {
         structured.adcp = {
           ...structured.adcp,
-          governance_enforcement: { tasks },
+          governance_enforcement: {
+            tasks,
+            ...(supportsSellerGovernanceDiscovery(servedVersion) && {
+              accepted_governance_agents: TRAINING_ACCEPTED_GOVERNANCE_AGENTS,
+            }),
+          },
         };
         const experimentalFeatures = Array.isArray(structured.experimental_features)
           ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
@@ -854,6 +895,12 @@ function projectTenantCapabilities(
       if (!experimentalFeatures.includes('measurement.core')) {
         experimentalFeatures.push('measurement.core');
       }
+      if (
+        supportsGetProductsRejected(servedVersion)
+        && !experimentalFeatures.includes('media_buy.audience_activation')
+      ) {
+        experimentalFeatures.push('media_buy.audience_activation');
+      }
       structured.experimental_features = experimentalFeatures;
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy
@@ -869,6 +916,9 @@ function projectTenantCapabilities(
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
+        ...(acceptancePolicyDiscoveryCapability(servedVersion, 'sales') && {
+          acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedVersion, 'sales'),
+        }),
         portfolio: {
           ...(
             mediaBuy.portfolio && typeof mediaBuy.portfolio === 'object'
@@ -902,6 +952,16 @@ function projectTenantCapabilities(
           ),
           ...salesProjection.features,
         },
+        ...(supportsGetProductsRejected(servedVersion) && {
+          audience_targeting: {
+            ...(
+              mediaBuy.audience_targeting && typeof mediaBuy.audience_targeting === 'object'
+                ? mediaBuy.audience_targeting as Record<string, unknown>
+                : {}
+            ),
+            supported_activation_methods: structuredClone(TRAINING_AUDIENCE_ACTIVATION_METHODS),
+          },
+        }),
       };
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;
@@ -918,10 +978,29 @@ function projectTenantCapabilities(
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
       };
+      if (supportsAccountChangeFeed(servedVersion)) {
+        const account = structured.account && typeof structured.account === 'object'
+          ? structured.account
+          : {};
+        structured.account = {
+          ...account,
+          change_feed: {
+            supported: true,
+            read_task: 'list_account_changes',
+            registration_task: 'sync_accounts',
+            event_type: 'account.change_recorded',
+            retention_days: 90,
+            // The reference seller claims only the family whose AdCP writes,
+            // controller-side creates/updates, status changes, purges, and
+            // shared-account reads are all instrumented end to end.
+            resource_types: ['creative'],
+          },
+        };
+      }
       const complianceTesting = structured.compliance_testing && typeof structured.compliance_testing === 'object'
         ? structured.compliance_testing
         : {};
-      const capabilityScenarios = salesCapabilityScenarios(storyboardCompat);
+      const capabilityScenarios = salesCapabilityScenarios(storyboardCompat, servedVersion);
       const existingCapabilityScenarios = Array.isArray((complianceTesting as { scenarios?: unknown }).scenarios)
         ? (complianceTesting as { scenarios: unknown[] }).scenarios.filter((s): s is string => typeof s === 'string')
         : [];

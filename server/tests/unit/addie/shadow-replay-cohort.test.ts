@@ -6,6 +6,7 @@ import {
   hasOfficialDocsToolBoundary,
   normalizeReplayableSiResult,
   selectOfficialDocsCohort,
+  selectOfficialDocsJudgeActivation,
   selectOfficialDocsReplayActivation,
 } from '../../../src/addie/jobs/shadow-replay-cohort.js';
 
@@ -173,6 +174,52 @@ describe('official docs replay cohort', () => {
         channelId: CHANNEL_ID,
         plan: profiledPlan,
       }, {})).toMatchObject({ enabled: false, dailyLimit: 0 });
+    });
+
+    describe('judgment activation', () => {
+      const judgeEnv = {
+        ...generationEnv,
+        SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED: 'true',
+        SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS: `C_OTHER, ${CHANNEL_ID}`,
+      };
+
+      it('inherits replay eligibility and its bounded quota', () => {
+        expect(selectOfficialDocsJudgeActivation({
+          channelId: CHANNEL_ID,
+          plan: profiledPlan,
+        }, judgeEnv)).toEqual({
+          enabled: true,
+          reason: 'enabled',
+          dailyLimit: 5,
+        });
+      });
+
+      it.each([
+        ['generation_disabled', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_ENABLED: 'false' }],
+        ['daily_limit_invalid', { SHADOW_EVAL_OFFICIAL_DOCS_REPLAY_DAILY_LIMIT: '0' }],
+        ['judge_disabled', { SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_ENABLED: 'false' }],
+        ['judge_channel_not_allowlisted', { SHADOW_EVAL_OFFICIAL_DOCS_JUDGE_CHANNEL_IDS: 'C_OTHER' }],
+      ])('fails closed with %s', (reason, override) => {
+        expect(selectOfficialDocsJudgeActivation({
+          channelId: CHANNEL_ID,
+          plan: profiledPlan,
+        }, { ...judgeEnv, ...override })).toEqual({
+          enabled: false,
+          reason,
+          dailyLimit: 0,
+        });
+      });
+
+      it('is disabled by default even when replay is enabled', () => {
+        expect(selectOfficialDocsJudgeActivation({
+          channelId: CHANNEL_ID,
+          plan: profiledPlan,
+        }, generationEnv)).toEqual({
+          enabled: false,
+          reason: 'judge_disabled',
+          dailyLimit: 0,
+        });
+      });
     });
   });
 });

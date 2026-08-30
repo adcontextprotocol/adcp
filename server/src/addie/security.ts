@@ -10,7 +10,7 @@
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('addie-security');
-import type { SanitizationResult, AddieInteractionLog } from './types.js';
+import type { SanitizationResult, CreateAddieInteractionLog } from './types.js';
 import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
 export const MAX_OUTPUT_LENGTH = 10_000;
@@ -598,8 +598,11 @@ export function extractMarkdownImages(text: string): ImageExtractionResult {
 /**
  * Log an interaction for audit purposes
  */
-export function logInteraction(log: AddieInteractionLog): void {
+export function logInteraction(log: CreateAddieInteractionLog): void {
   const emoji = log.flagged ? '⚠️ ' : '';
+  const providerExecution = log.model_execution?.source === 'provider'
+    ? log.model_execution
+    : undefined;
   logger.info(
     {
       interactionId: log.id,
@@ -607,6 +610,13 @@ export function logInteraction(log: AddieInteractionLog): void {
       userId: log.user_id,
       channelId: log.channel_id,
       latencyMs: log.latency_ms,
+      requestedModelProvider: log.model_execution?.requested_provider,
+      modelProvider: providerExecution?.provider,
+      providerModel: providerExecution?.model,
+      providerFallbackReason: providerExecution?.fallback_reason,
+      localResponseReason: log.model_execution?.source === 'local'
+        ? log.model_execution.reason
+        : undefined,
       deliveryStatus: log.delivery_status,
       toolsUsed: log.tools_used,
       flagged: log.flagged,

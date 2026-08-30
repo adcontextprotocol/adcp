@@ -404,7 +404,7 @@ export const CONFORMANCE_TOOLS: AddieTool[] = [
         storyboard_id: {
           type: 'string',
           description:
-            'The storyboard id to run (e.g. `media_buy_state_machine`). Use list_storyboards (in agent_testing) to discover available ids if the user is unsure.',
+            'The storyboard id to run (e.g. `media_buy_state_machine`). List storyboards first if the user is unsure which id to use.',
         },
       },
       required: ['storyboard_id'],
@@ -471,7 +471,7 @@ export function createConformanceToolHandlers(
 
     const storyboardId = typeof input.storyboard_id === 'string' ? input.storyboard_id : '';
     if (!storyboardId) {
-      return '**`storyboard_id` is required.** Try `media_buy_state_machine` for a sales agent or list storyboards via the `agent_testing` toolset.';
+      return '**`storyboard_id` is required.** Try `media_buy_state_machine` for a sales agent or list the available storyboards first.';
     }
 
     if (!conformanceSessions.get(orgId)) {
@@ -489,7 +489,7 @@ export function createConformanceToolHandlers(
         return [
           `**Unknown storyboard:** \`${storyboardId}\`.`,
           '',
-          'I list available storyboards via the `agent_testing` toolset — try \`list_storyboards\` first if you\'re not sure which id to use.',
+          'Try \`list_storyboards\` first if you\'re not sure which id to use.',
         ].join('\n');
       }
       const message = err instanceof Error ? err.message : String(err);

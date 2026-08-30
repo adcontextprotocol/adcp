@@ -8,9 +8,9 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.6 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.8` embeds beta.6; Python `adcp==8.0.0b7` remains on
-beta.5, so use the signed beta.6 artifact directly unless your SDK explicitly names beta.6.
+**3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed beta.6, so use the
+signed beta.9 artifact directly unless your SDK explicitly names beta.9.
 Python higher-level helpers remain partial, and Go exact support remains
 pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
 staging.
@@ -29,20 +29,20 @@ For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/refere
 | Step | Who | Action |
 |---|---|---|
 | 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 beta artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.6` protocol tarball, not `main` or `/schemas/latest/`. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.9` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
 | 4 | Buyers | Send `adcp_version: "3.2-beta.N"` only after exact capability discovery; never silently move between beta pins. |
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test beta.6 from its signed assets or pair `@adcp/sdk@14.0.0-beta.8` with exact beta.6; pair Python `adcp==8.0.0b7` with exact beta.5; require an explicit beta.6 support statement before using any other SDK with the new checkpoint. |
+| 8 | Compliance operators | Test beta.9 from its signed assets, or pair `@adcp/sdk@14.0.0-beta.13` or Python `adcp==8.0.0b9` with exact beta.6; require an explicit beta.9 support statement before using any SDK with the new checkpoint. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During beta, prerelease matching is exact. A seller serving beta.6 advertises
-`"3.2-beta.6"`. Do not advertise stable `"3.2"` before GA, silently negotiate
+During beta, prerelease matching is exact. A seller serving beta.9 advertises
+`"3.2-beta.9"`. Do not advertise stable `"3.2"` before GA, silently negotiate
 between beta ordinals, or treat a major-only declaration as evidence of 3.2
 support.
 
@@ -108,6 +108,20 @@ Use:
 Absence of the declaration means use the 3.x compatibility facades. Retry a
 stateful request with the same tool name, idempotency key, and payload; an
 idempotency key does not create replay identity across old and new task names.
+
+### Resolve product, proposal, and live action rights
+
+Use product `allowed_actions[]` only to select offers. Binding rights live in
+accepted `commercial_terms.change_terms[]`; the live buy's
+`available_actions[]` is the authoritative current-state subset. A 3.2 buyer
+uses `available_actions[].change_term_id` to resolve the accepted proposal
+term, including its `allowed_statuses`, constraints, mode, and processing SLA.
+
+The `available_actions[].terms_ref` field shipped in 3.1 and remains valid but
+opaque. Continue parsing it for 3.1 peers. A 3.2 seller may echo a
+`change_term_id` there for an older consumer, but new integrations emit and
+prefer `change_term_id`; if both are used as term links, they must agree.
+Remove the alias only with AdCP 4.0.
 
 ### Targeting-aware discovery
 

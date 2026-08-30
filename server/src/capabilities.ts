@@ -124,7 +124,8 @@ export interface AgentCapabilityProfile {
 const SOURCE_SCHEMAS_DIR = path.resolve(fileURLToPath(
   new URL('../../static/schemas/source/', import.meta.url),
 ));
-let productFormatValidatorPromise: Promise<ValidateFunction> | null = null;
+let creativeOperationFormatValidatorPromise: Promise<ValidateFunction> | null = null;
+const canonicalParamsValidatorPromises = new Map<string, Promise<ValidateFunction>>();
 
 function loadLocalSchema(uri: string): object {
   if (!uri.startsWith('/schemas/')) {
@@ -137,9 +138,9 @@ function loadLocalSchema(uri: string): object {
   return JSON.parse(readFileSync(fullPath, 'utf8')) as object;
 }
 
-function getProductFormatValidator(): Promise<ValidateFunction> {
-  if (!productFormatValidatorPromise) {
-    productFormatValidatorPromise = (async () => {
+function getCreativeOperationFormatValidator(): Promise<ValidateFunction> {
+  if (!creativeOperationFormatValidatorPromise) {
+    creativeOperationFormatValidatorPromise = (async () => {
       const ajv = new Ajv({
         strict: false,
         allErrors: true,
@@ -147,13 +148,32 @@ function getProductFormatValidator(): Promise<ValidateFunction> {
         loadSchema: async (uri: string) => loadLocalSchema(uri),
       });
       addFormats(ajv);
-      return ajv.compileAsync(loadLocalSchema('/schemas/core/product-format-declaration.json'));
+      return ajv.compileAsync(loadLocalSchema('/schemas/core/creative-operation-format-declaration.json'));
     })().catch(error => {
-      productFormatValidatorPromise = null;
+      creativeOperationFormatValidatorPromise = null;
       throw error;
     });
   }
-  return productFormatValidatorPromise;
+  return creativeOperationFormatValidatorPromise;
+}
+
+function getCanonicalParamsValidator(formatKind: string): Promise<ValidateFunction> {
+  const existing = canonicalParamsValidatorPromises.get(formatKind);
+  if (existing) return existing;
+  const promise = (async () => {
+    const ajv = new Ajv({
+      strict: false,
+      allErrors: true,
+      loadSchema: async (uri: string) => loadLocalSchema(uri),
+    });
+    addFormats(ajv);
+    return ajv.compileAsync(loadLocalSchema(`/schemas/formats/canonical/${formatKind}.json`));
+  })().catch(error => {
+    canonicalParamsValidatorPromises.delete(formatKind);
+    throw error;
+  });
+  canonicalParamsValidatorPromises.set(formatKind, promise);
+  return promise;
 }
 
 function schemaErrors(validate: ValidateFunction): string {
@@ -176,7 +196,7 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
     throw new Error('creative.supported_formats: exceeds 500 entries');
   }
 
-  const validateFormat = await getProductFormatValidator();
+  const validateFormat = await getCreativeOperationFormatValidator();
   const capabilityIds = new Set<string>();
   const supportedFormats: CreativeCapabilities['supported_formats'] = [];
   for (const [index, rawEntry] of (rawFormats ?? []).entries()) {
@@ -198,6 +218,14 @@ export async function sanitizeCreativeCapabilities(raw: unknown): Promise<Creati
     }
     if (!validateFormat(format)) {
       throw new Error(`creative.supported_formats[${index}].format: ${schemaErrors(validateFormat)}`);
+    }
+    const formatDeclaration = format as Record<string, unknown>;
+    const formatKind = formatDeclaration.format_kind as string;
+    if (formatKind !== 'custom') {
+      const validateParams = await getCanonicalParamsValidator(formatKind);
+      if (!validateParams(formatDeclaration.params)) {
+        throw new Error(`creative.supported_formats[${index}].format.params: ${schemaErrors(validateParams)}`);
+      }
     }
     if (!Array.isArray(operations)
       || operations.length === 0
@@ -568,9 +596,10 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "mcp",
         ...agentConfigAuthFields(auth),
-      // TODO(adcp-client#1799): maxResponseBytes is currently dormant on
-      // getAgentInfo/listTools — the SDK doesn't yet wrap that path in
-      // withResponseSizeLimit. Re-verify when upstream lands.
+      // SDK 14 beta.15 applies maxResponseBytes to getAgentInfo/listTools,
+      // but MCP endpoint discovery and SSE responses remain outside that
+      // limit. Treat this as a guardrail, not a hostile-peer hard cap
+      // (adcp-client#1799).
       }], withSdkSafeTransport({
         userAgent: AAO_UA_DISCOVERY,
         transport: { maxResponseBytes: 4 * 1024 * 1024 },
@@ -614,7 +643,7 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "a2a",
         ...agentConfigAuthFields(auth),
-      // TODO(adcp-client#1799): cap dormant on A2AClient.fromCardUrl until upstream wraps it.
+      // The discovery cap also covers A2AClient.fromCardUrl in SDK 14 beta.15.
       }], withSdkSafeTransport({
         userAgent: AAO_UA_DISCOVERY,
         transport: { maxResponseBytes: 4 * 1024 * 1024 },

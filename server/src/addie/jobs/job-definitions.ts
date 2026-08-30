@@ -577,6 +577,19 @@ export function registerAllJobs(): void {
     shouldLogResult: (r: { deleted: number }) => r.deleted > 0,
   });
 
+  jobScheduler.register({
+    name: 'account-link-correlation-cleanup',
+    description: 'Clean up expired account-link origin correlations',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 65, unit: 'minutes' },
+    runner: async () => {
+      const { cleanupAccountLinkCorrelations } = await import('../../db/addie-account-link-correlation-db.js');
+      const deleted = await cleanupAccountLinkCorrelations(24);
+      return { deleted };
+    },
+    shouldLogResult: (r: { deleted: number }) => r.deleted > 0,
+  });
+
   // Shadow evaluator - generates what Addie would have said and compares with human answers
   jobScheduler.register({
     name: 'shadow-evaluator',
@@ -1006,6 +1019,7 @@ export const JOB_NAMES = {
   KNOWLEDGE_GAP_CLOSER: 'knowledge-gap-closer',
   BRAND_REGISTRY_SWEEP: 'brand-registry-sweep',
   OUTBOUND_LOG_CLEANUP: 'outbound-log-cleanup',
+  ACCOUNT_LINK_CORRELATION_CLEANUP: 'account-link-correlation-cleanup',
   NETWORK_CONSISTENCY_REPORTER: 'network-consistency-reporter',
   ESCALATION_TRIAGE: 'escalation-triage',
   ESCALATION_SLA: 'escalation-sla',

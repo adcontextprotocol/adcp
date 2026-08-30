@@ -139,6 +139,11 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "Brand reference for product discovery context. Resolved to full brand identity at execution time."
     },
+    "acceptance_context": {
+      "$ref": "/schemas/media-buy/acceptance-context.json",
+      "x-adcp-schema-uri": "/schemas/media-buy/acceptance-context.json",
+      "description": "Structured campaign and advertiser facts for seller acceptance-policy preflight. Sellers may infer omitted facts from brand and brief, but uncertainty never implies acceptance."
+    },
     "catalog": {
       "$ref": "/schemas/core/catalog.json",
       "description": "Catalog of items the buyer wants to promote. The seller matches catalog items against its inventory and returns products where matches exist. Supports all catalog types: a job catalog finds job ad products, a product catalog finds sponsored product slots. Reference a synced catalog by catalog_id, or provide inline items."
@@ -175,56 +180,35 @@
     },
     "fields": {
       "type": "array",
-      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not the evidence decision receipt. Response-level brief targeting confirmation is not a projected product field.",
+      "description": "Specific product fields to include in the response. When omitted, all fields are returned. Use for lightweight discovery calls where only a subset of product data is needed. product_id and name are always included. `format_ids` is a deprecated 3.x compatibility projection; new integrations request canonical `format_options`. Safety-critical request-specific fields override projection: Product.targeting_resolution and expires_at MUST be included whenever the seller returns modifications, overlay_support MUST be included when required_overlay_support was requested, list_applications MUST be included when a property or collection list is in the effective targeting, and audience_evidence_selections MUST be included when filters.audience_evidence_requirements affects eligibility or ranking. fields controls the optional audience_evidence payload, not either decision receipt. Response-level brief targeting confirmation is not a projected product field.",
       "minItems": 1,
       "items": {
-        "type": "string",
-        "enum": [
-          "product_id",
-          "name",
-          "description",
-          "publisher_properties",
-          "channels",
-          "video_placement_types",
-          "audio_distribution_types",
-          "sponsored_placement_types",
-          "social_placement_surfaces",
-          "format_ids",
-          "format_options",
-          "placements",
-          "delivery_type",
-          "exclusivity",
-          "pricing_options",
-          "forecast",
-          "outcome_measurement",
-          "delivery_measurement",
-          "reporting_capabilities",
-          "creative_policy",
-          "catalog_types",
-          "metric_optimization",
-          "conversion_tracking",
-          "data_provider_signals",
-          "included_signals",
-          "signal_targeting_allowed",
-          "signal_targeting_options",
-          "signal_targeting_rules",
-          "demographic_targeting",
-          "overlay_support",
-          "targeting_resolution",
-          "audience_evidence",
-          "audience_evidence_selections",
-          "max_optimization_goals",
-          "catalog_match",
-          "collections",
-          "collection_targeting_allowed",
-          "installments",
-          "brief_relevance",
-          "is_custom",
-          "expires_at",
-          "product_card",
-          "product_card_detailed",
-          "enforced_policies",
-          "trusted_match"
+        "anyOf": [
+          { "$ref": "/schemas/media-buy/product-fields.json#/items" },
+          {
+            "type": "string",
+            "enum": [
+              "format_ids",
+              "outcome_measurement",
+              "delivery_measurement",
+              "creative_policy",
+              "metric_optimization",
+              "conversion_tracking",
+              "data_provider_signals",
+              "included_signals",
+              "signal_targeting_options",
+              "overlay_support",
+              "targeting_resolution",
+              "collections",
+              "collection_targeting_allowed",
+              "installments",
+              "is_custom",
+              "product_card",
+              "product_card_detailed",
+              "enforced_policies",
+              "trusted_match"
+            ]
+          }
         ]
       }
     },

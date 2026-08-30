@@ -20,6 +20,7 @@ import { createLogger } from '../../logger.js';
 import { getMemberContext } from '../member-context.js';
 import { disableAdaptiveThinking, ModelConfig, AddieModelConfig } from '../../config/models.js';
 import { gradeShape, type ShapeReport } from '../testing/shape-grader.js';
+import { maintainRouterShadowAttempts } from '../router-shadow.js';
 import {
   buildChannelContext,
   buildChannelResponseInvocation,
@@ -35,17 +36,28 @@ import {
   recoverStaleShadowReplayGenerations,
   renewShadowReplayGenerationLease,
   resolveShadowReplayTrace,
+  type ShadowReplayGenerationTarget,
   verifyShadowReplayTraceContext,
 } from './shadow-replay-trace.js';
 import {
   isOfficialDocsProfile,
+  selectOfficialDocsJudgeActivation,
   selectOfficialDocsReplayActivation,
 } from './shadow-replay-cohort.js';
 import {
   executeVerifiedOfficialDocsReplay,
   OfficialDocsReplayBoundaryError,
   OfficialDocsReplayExecutionError,
+  OfficialDocsReplayOutputConsumerError,
+  prepareVerifiedOfficialDocsReplayTarget,
+  type VerifiedOfficialDocsReplayTarget,
 } from './shadow-replay.js';
+import {
+  createShadowReplayInternalErrorEvidence,
+  createShadowReplayOutputConsumer,
+  hydrateVerifiedShadowReplayHumanEvidence,
+  ShadowReplayJudgeBoundaryError,
+} from './shadow-replay-judge.js';
 import { getDocsCorpusFingerprint } from '../mcp/docs-indexer.js';
 import { getCurrentConfigVersionId } from '../config-version.js';
 import { guardBareJsonEnvelope, validateOutput } from '../security.js';
@@ -53,8 +65,17 @@ import {
   resolveShadowJudgeModel,
   type ShadowEvalType,
 } from './shadow-eval-metadata.js';
+import {
+  createGoogleShadowReplayProvider,
+  selectShadowReplayTarget,
+} from './shadow-replay-target.js';
 
 const logger = createLogger('shadow-evaluator');
+
+function createShadowJudgeClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  return apiKey ? new Anthropic({ apiKey }) : null;
+}
 
 export interface ShadowEvalResult {
   evaluated: number;
@@ -396,6 +417,7 @@ export async function runShadowEvaluatorJob(
   dependencies: {
     purgeTraces?: typeof purgeRetainedShadowReplayTraces;
     recoverGenerations?: typeof recoverStaleShadowReplayGenerations;
+    maintainRouterShadow?: typeof maintainRouterShadowAttempts;
     listPending?: typeof listPendingShadowReplayCaptures;
     resolveTrace?: typeof resolveShadowReplayTrace;
     verifyTraceContext?: typeof verifyShadowReplayTraceContext;
@@ -407,10 +429,18 @@ export async function runShadowEvaluatorJob(
     getChannel?: typeof buildChannelContext;
     buildInvocation?: typeof buildChannelResponseInvocation;
     selectReplayActivation?: typeof selectOfficialDocsReplayActivation;
+    selectReplayTarget?: typeof selectShadowReplayTarget;
+    createGoogleProvider?: typeof createGoogleShadowReplayProvider;
+    prepareReplayTarget?: typeof prepareVerifiedOfficialDocsReplayTarget;
+    selectJudgeActivation?: typeof selectOfficialDocsJudgeActivation;
     claimGeneration?: typeof claimShadowReplayGeneration;
     executeReplay?: typeof executeVerifiedOfficialDocsReplay;
     completeGeneration?: typeof completeShadowReplayGeneration;
     renewGenerationLease?: typeof renewShadowReplayGenerationLease;
+    hydrateHumanEvidence?: typeof hydrateVerifiedShadowReplayHumanEvidence;
+    getJudgeClient?: typeof createShadowJudgeClient;
+    resolveJudgeModel?: typeof resolveShadowJudgeModel;
+    createOutputConsumer?: typeof createShadowReplayOutputConsumer;
   } = {},
 ): Promise<ShadowEvalResult> {
   const result: ShadowEvalResult = {
@@ -428,6 +458,9 @@ export async function runShadowEvaluatorJob(
   });
   await (dependencies.recoverGenerations ?? recoverStaleShadowReplayGenerations)().catch(() => {
     logger.warn('Shadow evaluator: Stale replay generation recovery failed');
+  });
+  await (dependencies.maintainRouterShadow ?? maintainRouterShadowAttempts)().catch(() => {
+    logger.warn('Shadow evaluator: Router shadow maintenance failed');
   });
 
   let pendingCaptures: Awaited<ReturnType<typeof listPendingShadowReplayCaptures>>;
@@ -554,9 +587,116 @@ export async function runShadowEvaluatorJob(
         continue;
       }
 
-      const claim = await (
-        dependencies.claimGeneration ?? claimShadowReplayGeneration
-      )(authorization.trace, activation.dailyLimit);
+      const targetSelection = (
+        dependencies.selectReplayTarget ?? selectShadowReplayTarget
+      )();
+      if (targetSelection.mode === 'blocked') {
+        await finishCapture(capture, 'verified', `replay_${targetSelection.reason}`, {
+          parityVerified: true,
+        });
+        result.skipped++;
+        continue;
+      }
+
+      let replayClient = client;
+      let replayTarget: VerifiedOfficialDocsReplayTarget | undefined;
+      let generationTarget: ShadowReplayGenerationTarget | undefined;
+      if (targetSelection.mode === 'alternate') {
+        const provider = (
+          dependencies.createGoogleProvider ?? createGoogleShadowReplayProvider
+        )();
+        if (!provider || provider.id !== targetSelection.provider) {
+          await finishCapture(capture, 'verified', 'replay_google_provider_unavailable', {
+            parityVerified: true,
+          });
+          result.skipped++;
+          continue;
+        }
+        try {
+          replayClient = client.forkForIsolatedProvider(targetSelection.model, { provider });
+          replayTarget = (
+            dependencies.prepareReplayTarget ?? prepareVerifiedOfficialDocsReplayTarget
+          )({
+            trace: authorization.trace,
+            invocation,
+            docsCorpusFingerprint,
+          }, targetSelection, replayClient);
+          generationTarget = {
+            provider: replayTarget.provider,
+            model: replayTarget.model,
+            firstProviderRequestHmac: replayTarget.firstInvocation.provider_request_sha256,
+          };
+        } catch {
+          await finishCapture(capture, 'verified', 'replay_google_target_unavailable', {
+            parityVerified: true,
+          });
+          result.skipped++;
+          continue;
+        }
+      }
+
+      const judgeActivation = (
+        dependencies.selectJudgeActivation ?? selectOfficialDocsJudgeActivation
+      )({
+        channelId: authorization.trace.channelId,
+        plan,
+      });
+      let humanEvidence: Awaited<ReturnType<typeof hydrateVerifiedShadowReplayHumanEvidence>>
+        | null = null;
+      let judgeClient: Anthropic | null = null;
+      let judgeModel = '';
+      if (judgeActivation.enabled) {
+        if (authorization.trace.humanEvidence) {
+          try {
+            humanEvidence = await (
+              dependencies.hydrateHumanEvidence ?? hydrateVerifiedShadowReplayHumanEvidence
+            )(authorization.trace);
+          } catch (error) {
+            const reason = error instanceof ShadowReplayJudgeBoundaryError
+              ? error.reason
+              : 'human_evidence_hydration_failed';
+            await finishCapture(capture, 'skipped', reason, { parityVerified: true });
+            result.skipped++;
+            continue;
+          }
+          try {
+            const excludedJudgeModels = replayTarget
+              ? [invocation.effectiveModel, replayTarget.model]
+              : [invocation.effectiveModel];
+            judgeModel = (
+              dependencies.resolveJudgeModel ?? resolveShadowJudgeModel
+            )([...new Set(excludedJudgeModels)]);
+          } catch {
+            await finishCapture(capture, 'skipped', 'judge_model_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          if (judgeModel === invocation.effectiveModel || judgeModel === replayTarget?.model) {
+            await finishCapture(capture, 'skipped', 'judge_model_not_independent', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+          judgeClient = (dependencies.getJudgeClient ?? createShadowJudgeClient)();
+          if (!judgeClient) {
+            await finishCapture(capture, 'skipped', 'judge_client_unavailable', {
+              parityVerified: true,
+            });
+            result.skipped++;
+            continue;
+          }
+        }
+      }
+
+      const claimGeneration = dependencies.claimGeneration ?? claimShadowReplayGeneration;
+      const claim = generationTarget
+        ? await claimGeneration(authorization.trace, activation.dailyLimit, {
+          target: generationTarget,
+        })
+        : await claimGeneration(authorization.trace, activation.dailyLimit);
       if (claim === 'already_claimed') {
         // Another worker owns this exact trace. It alone may complete the
         // generation ledger; this worker must not call either model.
@@ -577,33 +717,76 @@ export async function runShadowEvaluatorJob(
       }
 
       try {
-        const generation = await (
-          dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay
+        const renewLease = () => (
+          dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
+        )(authorization.trace);
+        const outputConsumer = (
+          dependencies.createOutputConsumer ?? createShadowReplayOutputConsumer
         )({
+          trace: authorization.trace,
+          humanEvidence,
+          judgeEnabled: judgeActivation.enabled,
+          judgeModel,
+        }, {
+          client: judgeClient ?? undefined,
+          renewLease,
+        });
+        const executeReplay = dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay;
+        const replayInput = {
           trace: authorization.trace,
           invocation,
           docsCorpusFingerprint,
-        }, {
-          renewLease: () => (
-            dependencies.renewGenerationLease ?? renewShadowReplayGenerationLease
-          )(authorization.trace),
+          ...(replayTarget ? { target: replayTarget } : {}),
+        };
+        const generation = await executeReplay(replayInput, {
+          renewLease,
+          outputConsumer,
+          ...(replayTarget ? { client: replayClient } : {}),
         });
-        const completed = await (
-          dependencies.completeGeneration ?? completeShadowReplayGeneration
-        )(authorization.trace, generation);
+        const completeGeneration = dependencies.completeGeneration
+          ?? completeShadowReplayGeneration;
+        const judgment = generation.status === 'succeeded'
+          ? generation.judgment ?? createShadowReplayInternalErrorEvidence(
+            authorization.trace,
+            generation.outputHmac!,
+          )
+          : generation.judgment;
+        const targetDependency = generationTarget ? { target: generationTarget } : {};
+        const completed = judgment
+          ? await completeGeneration(
+            authorization.trace,
+            generation,
+            { judgment, ...targetDependency },
+          )
+          : generationTarget
+            ? await completeGeneration(
+              authorization.trace,
+              generation,
+              targetDependency,
+            )
+            : await completeGeneration(authorization.trace, generation);
         if (!completed) {
           logger.warn('Shadow evaluator: Claimed replay generation was not completed');
           result.errors++;
           continue;
         }
-        // Generation-only rollout: the output was digested and discarded.
-        // No human evidence or judge is consulted in this phase.
-        result.skipped++;
+        if (!judgment || judgment.status === 'skipped') {
+          result.skipped++;
+        } else if (judgment.status === 'error') {
+          result.errors++;
+        } else {
+          result.evaluated++;
+          if (judgment.status === 'deterministic_failure') result.shape_regressions++;
+          if (judgment.knowledgeGap === true) result.knowledge_gaps++;
+        }
       } catch (error) {
+        const safeGeneration = error instanceof OfficialDocsReplayOutputConsumerError
+          ? error.completion
+          : null;
         const boundaryReason = error instanceof OfficialDocsReplayBoundaryError
           ? error.reason
           : null;
-        const terminal = error instanceof OfficialDocsReplayExecutionError
+        const terminal = safeGeneration ?? (error instanceof OfficialDocsReplayExecutionError
           ? error.completion
           : {
           status: boundaryReason ? 'blocked' as const : 'error' as const,
@@ -615,12 +798,36 @@ export async function runShadowEvaluatorJob(
           blockedCapabilities: boundaryReason ? [boundaryReason] : [],
           inputTokens: 0,
           outputTokens: 0,
-          };
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          usageAvailable: false,
+          latencyMs: null,
+          });
         let completed = false;
         try {
-          completed = await (
-            dependencies.completeGeneration ?? completeShadowReplayGeneration
-          )(authorization.trace, terminal);
+          const completeGeneration = dependencies.completeGeneration
+            ?? completeShadowReplayGeneration;
+          const judgment = safeGeneration?.status === 'succeeded'
+            && safeGeneration.outputHmac
+            ? createShadowReplayInternalErrorEvidence(
+              authorization.trace,
+              safeGeneration.outputHmac,
+            )
+            : null;
+          const targetDependency = generationTarget ? { target: generationTarget } : {};
+          completed = judgment
+            ? await completeGeneration(
+              authorization.trace,
+              terminal,
+              { judgment, ...targetDependency },
+            )
+            : generationTarget
+              ? await completeGeneration(
+                authorization.trace,
+                terminal,
+                targetDependency,
+              )
+              : await completeGeneration(authorization.trace, terminal);
         } catch {
           // Keep the one-attempt row running. Stale recovery will close it;
           // never fall through to mutable capture completion after a claim.

@@ -5,7 +5,8 @@ import {
   __setCostTrackerStore,
   __createInMemoryCostStore,
 } from '../../src/addie/claude-cost-tracker.js';
-import { AddieClaudeClient } from '../../src/addie/claude-client.js';
+import { AddieClaudeClient, type AddieResponse } from '../../src/addie/claude-client.js';
+import { ProviderHealthController } from '../../src/addie/model-providers/provider-health.js';
 
 /**
  * End-to-end gate test (#2790). When a user has exhausted their
@@ -49,7 +50,9 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 5) + 1;
     await recordCost('user-x', 'claude-opus-5', { input_tokens: tokensToExceedCap, output_tokens: 0 });
 
-    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+    const health = new ProviderHealthController();
+    const acquireSpy = vi.spyOn(health, 'acquire');
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6', health);
     const response = await client.processMessage(
       'hello',
       undefined,
@@ -63,22 +66,31 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(response.text).toMatch(/conversation limit/);
     // No token usage because no Claude call fired.
     expect(response.usage).toBeUndefined();
+    expect(response.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'cost_cap_exceeded',
+    });
     expect(anthropicCall).not.toHaveBeenCalled();
+    expect(acquireSpy).not.toHaveBeenCalled();
   });
 
   it('processMessageStream yields a single cost_cap_exceeded done event when over budget', async () => {
     const tokensToExceedCap = Math.ceil((DAILY_BUDGET_USD.anonymous * 1_000_000) / 5) + 1;
     await recordCost('user-y', 'claude-opus-5', { input_tokens: tokensToExceedCap, output_tokens: 0 });
 
-    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
-    const events: Array<{ type: string; response?: { flagged: boolean; flag_reason?: string } }> = [];
+    const health = new ProviderHealthController();
+    const acquireSpy = vi.spyOn(health, 'acquire');
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6', health);
+    const events: Array<{ type: string; response?: AddieResponse }> = [];
     for await (const event of client.processMessageStream(
       'hello',
       undefined,
       undefined,
       { costScope: { userId: 'user-y', tier: 'anonymous' } },
     )) {
-      events.push(event as { type: string; response?: { flagged: boolean; flag_reason?: string } });
+      events.push(event as { type: string; response?: AddieResponse });
     }
 
     // A single `done` event carrying the cap-exceeded flag.
@@ -86,7 +98,14 @@ describe('claude-client entry-gate behavior (#2790)', () => {
     expect(events[0].type).toBe('done');
     expect(events[0].response?.flagged).toBe(true);
     expect(events[0].response?.flag_reason).toBe('cost_cap_exceeded');
+    expect(events[0].response?.model_execution).toEqual({
+      source: 'local',
+      requested_provider: 'anthropic',
+      requested_model: 'claude-sonnet-4-6',
+      reason: 'cost_cap_exceeded',
+    });
     expect(anthropicCall).not.toHaveBeenCalled();
+    expect(acquireSpy).not.toHaveBeenCalled();
   });
 
   // A third case — "no costScope → runs uncapped, SDK IS reached" —

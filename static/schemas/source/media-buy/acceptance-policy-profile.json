@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-policy-profile.json",
+  "title": "Acceptance Policy Profile",
+  "description": "Versioned acceptance-policy profile published by a registry or seller. Omitted rules are unknown unless coverage is complete and scope is explicit; discovery never guarantees acceptance of an exact request.",
+  "type": "object",
+  "properties": {
+    "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_profile" },
+    "version": { "type": "string", "minLength": 1 },
+    "content_digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "SHA-256 digest of the RFC 8785 JCS serialization of this profile with content_digest omitted. A profile_id/version pair is immutable; consumers reject a resolved profile whose digest differs."
+    },
+    "policy_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "policy_id": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+          "version": { "type": "string", "minLength": 1 },
+          "content_digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "description": "SHA-256 digest of the referenced policy entry's RFC 8785 JCS serialization with acceptance_profile omitted."
+          }
+        },
+        "required": ["policy_id", "version", "content_digest"],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "description": "Exact registry policy versions from which this profile was derived. Consumers MUST NOT silently substitute a different version."
+    },
+    "coverage": {
+      "type": "string",
+      "enum": ["partial", "complete"],
+      "description": "partial means additional unpublished rules may apply and omission is unknown. complete means this profile is exhaustive only for its declared scope and version."
+    },
+    "scope": {
+      "type": "object",
+      "description": "The boundary within which a complete profile claims exhaustiveness. It is informative for partial profiles and mandatory for complete profiles.",
+      "properties": {
+        "subject_categories": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "applies_to": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["account", "media_buy", "creative", "landing_page", "targeting", "delivery", "format"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "jurisdictions": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "jurisdiction_groups": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Named groups declared in this profile's region_aliases."
+        },
+        "all_jurisdictions": {
+          "type": "boolean",
+          "const": true,
+          "description": "Explicitly states that the scope is not limited by delivery jurisdiction."
+        }
+      },
+      "required": ["subject_categories", "applies_to"],
+      "anyOf": [
+        { "required": ["jurisdictions"] },
+        { "required": ["jurisdiction_groups"] },
+        { "required": ["all_jurisdictions"] }
+      ],
+      "additionalProperties": false
+    },
+    "region_aliases": {
+      "type": "object",
+      "description": "Profile-local named country groups. Rules may reference only keys declared here; consumers expand them before matching.",
+      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_-]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+        "minItems": 1,
+        "uniqueItems": true
+      }
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "/schemas/media-buy/acceptance-policy-rule.json" },
+      "minItems": 1
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["profile_id", "version", "content_digest", "policy_refs", "coverage", "rules"],
+  "x-adcp-validation": {
+    "unique_by": [
+      { "path": "policy_refs", "field": "policy_id" },
+      { "path": "rules", "field": "rule_id" }
+    ],
+    "referential_integrity": [
+      "Every rules[].policy_ids value MUST identify exactly one policy_refs[] entry.",
+      "Every rules[].subject_category and subject_facets value MUST resolve through the policy-category registry."
+    ],
+    "content_digests": [
+      {
+        "path": "$",
+        "field": "content_digest",
+        "algorithm": "sha256",
+        "canonicalization": "RFC8785-JCS",
+        "omit": ["content_digest"]
+      }
+    ]
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "coverage": { "const": "complete" } }, "required": ["coverage"] },
+      "then": { "required": ["scope"] }
+    }
+  ],
+  "additionalProperties": false
+}

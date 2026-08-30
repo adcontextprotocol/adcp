@@ -118,6 +118,7 @@ describe('storyboard runner option helpers', () => {
 
   it('builds test_kit auth options and applies tenant probe-task overrides', () => {
     const kit: LoadedTestKit = {
+      commercial_relationship: 'passthrough_only',
       auth: {
         api_key: 'kit-api-key',
         basic: { username: 'agent-user', password: 'agent-pass' },
@@ -126,6 +127,7 @@ describe('storyboard runner option helpers', () => {
     };
 
     expect(testKitOptionsFromKit(kit, 'signals')).toEqual({
+      commercial_relationship: 'passthrough_only',
       auth: {
         api_key: 'kit-api-key',
         basic: { username: 'agent-user', password: 'agent-pass' },

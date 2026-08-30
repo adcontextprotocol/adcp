@@ -14,6 +14,10 @@ import { pathToFileURL } from 'node:url';
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
 const PRERELEASE_DOCS_LABEL_RE = /^(\d+)\.(\d+)-([0-9A-Za-z]+)$/;
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
+// Production builds fetch versioned navigation specs reliably from public URLs;
+// release tags keep each docs version tied to the spec shipped with that release.
+const RELEASE_OPENAPI_URL = (releaseVersion) =>
+  `https://raw.githubusercontent.com/adcontextprotocol/adcp/v${releaseVersion}/static/openapi/registry.yaml`;
 
 function clone(value) {
   // docs.json navigation is JSON-pure, so JSON clone is sufficient here.
@@ -31,6 +35,25 @@ function mapStrings(value, mapper) {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [key, mapStrings(item, mapper)])
     );
+  }
+  return value;
+}
+
+function pinOpenApiSources(value, releaseVersion) {
+  if (Array.isArray(value)) {
+    return value.map((item) => pinOpenApiSources(item, releaseVersion));
+  }
+  if (value && typeof value === 'object') {
+    const result = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        pinOpenApiSources(item, releaseVersion),
+      ])
+    );
+    if (result.openapi?.source) {
+      result.openapi.source = RELEASE_OPENAPI_URL(releaseVersion);
+    }
+    return result;
   }
   return value;
 }
@@ -153,6 +176,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     entry.groups = mapStrings(entry.groups, (value) =>
       retargetExistingPath(releaseVersion, value)
     );
+    entry.groups = pinOpenApiSources(entry.groups, releaseVersion);
     if (!entry.default) {
       entry.groups = flattenVersionGroups(entry.groups);
     }
@@ -176,7 +200,10 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   delete newEntry.default;
   newEntry.version = majorMinor;
   newEntry.groups = flattenVersionGroups(
-    mapStrings(newEntry.groups, (value) => snapshotPath(releaseVersion, value))
+    pinOpenApiSources(
+      mapStrings(newEntry.groups, (value) => snapshotPath(releaseVersion, value)),
+      releaseVersion
+    )
   );
 
   versions.splice(sourceIndex + 1, 0, newEntry);

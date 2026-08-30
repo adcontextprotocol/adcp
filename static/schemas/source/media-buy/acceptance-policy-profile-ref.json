@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-policy-profile-ref.json",
+  "title": "Registry Acceptance Policy Profile Reference",
+  "description": "Exact reference to a reusable acceptance profile embedded in a version-pinned shared policy-registry entry. Sellers add separate local profiles to narrow it; they do not copy and mutate a registry profile under the same identity.",
+  "type": "object",
+  "properties": {
+    "policy_id": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+    "policy_version": { "type": "string", "minLength": 1 },
+    "policy_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_profile" },
+    "profile_version": { "type": "string", "minLength": 1 },
+    "profile_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  },
+  "required": ["policy_id", "policy_version", "policy_digest", "profile_id", "profile_version", "profile_digest"],
+  "x-adcp-validation": {
+    "resolver_integrity": "Resolve the exact policy_id/policy_version. The resolver returns canonical_content and content_digest; RFC 8785-canonicalize canonical_content, verify that its SHA-256 equals both content_digest and policy_digest, then select the embedded profile_id/profile_version and verify profile_digest before use. A null digest or canonical_content is not sufficient for a pinned registry profile."
+  },
+  "additionalProperties": false
+}

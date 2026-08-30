@@ -465,8 +465,9 @@ Each returned placement may carry:
 
 | Field | Meaning |
 |-------|---------|
-| `placement_id` | Placement identifier in the publisher namespace. Buyers reference this with `publisher_domain` in `creative_assignments[].placement_refs`; legacy `placement_ids` strings are only unambiguous in single-publisher contexts. |
-| `publisher_domain` | Domain whose `adagents.json` defines the publisher-referenced placement. New multi-publisher products SHOULD include it. When omitted on legacy products, buyers may interpret `placement_id` relative to the seller agent's own publisher domain. |
+| `placement_id` | Placement identifier. `publisher_ref` IDs are scoped by `publisher_domain`; `seller_inline` IDs are scoped by `seller_agent` or, for legacy rows, the enclosing seller and product. Creative-assignment refs remain product-context routing references. |
+| `publisher_domain` | For `publisher_ref`, the required domain whose `adagents.json` owns the placement ID. For `seller_inline`, optional inventory-publisher attribution only. |
+| `seller_agent` | Defining sales agent for self-contained `seller_inline` identity. New 3.2 products SHOULD include it; legacy inline rows remain product-scoped. |
 | `mode` | `targetable` means the buyer may purchase the publisher-scoped placement through `targeting_overlay.placement_selection`. `included` means fixed/default product inventory that cannot be independently selected. Creative routing is permitted only after the placement is purchased. |
 | `video_placement_types` | Declared video placement types for OLV and other video inventory, using the IAB Tech Lab/OpenRTB 2.6 `video.plcmt` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
 | `audio_distribution_types` | Declared audio distribution types for radio, streaming-audio, podcast, gaming, and other audio inventory, using the IAB Tech Lab/OpenRTB 2.6 `audio.feed` definitions with AdCP-native names. Concrete placements usually declare one value; aggregate placements may declare multiple. |
@@ -488,6 +489,10 @@ set, a product with any included placement does not declare selectable placement
 overlay support; sellers expose a separate selectable product when needed.
 `creative_assignments[].placement_refs` only route different creatives across
 placements already selected for the package; they do not purchase inventory.
+These refs retain product-context matching even when forward-compatible fields
+make them resemble a canonical placement identity: `kind` and `seller_agent`
+cannot expand or reinterpret the committed set, and the seller rejects any ref
+that does not resolve to one unambiguous placement within that set.
 
 Signal-targeting filter example:
 
@@ -643,6 +648,7 @@ result set. Otherwise confirmation remains a best practice.
 | `collection_targeting_allowed` | boolean | (Optional, default: false) Whether buyers can target a subset of this product's shows. When false, the product is a bundle. |
 | `overlay_support` | TargetingOverlaySupport | Product-scoped targeting dimensions that may be selected later. Required when the discovery request includes `required_overlay_support`. This guarantees selectable capability subject to disclosed limits, not inventory or a value-specific forecast for every possible selection. |
 | `targeting_resolution` | ProductTargetingResolution | Sparse product-specific modifications between requested and executable structured targeting. Omitted when the product accepts the structured overlay exactly. When present, `expires_at` is also required. |
+| `list_applications` | InventoryListApplication[] | Required once per effective property- or collection-list targeting reference and regardless of `fields`. Exclusion applications carry zero-match receipts; zero matches for any inclusion application make the product ineligible, so it is not returned. The deprecated top-level `property_list` produces a property `include` receipt and still sets `property_list_applied: true`. Identifies the list without its credential, timestamps the list resolution and seller evaluation, and reports product-scoped matched and unmatched entry counts. Pricing and forecast reflect post-application inventory. |
 | `expires_at` | string | Expiration of this request-scoped configured product or quote. A recognized expired ID issued to the authenticated account and lineage returns [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired); after the seller no longer retains its tombstone, or when the ID belongs to another account/lineage, [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) applies. The error choice never reveals cross-tenant existence. Buyers rediscover in either case. |
 | `data_provider_signals` | DataProviderSignalSelector[] | (Optional, deprecated) Legacy/non-selectable metadata for data-provider signals already bundled into or associated with this product. New implementations should use `included_signals`. |
 | `included_signals` | SignalListing[] | (Optional) Non-selectable signal metadata for signals already included in, bundled with, or planned into this product. These describe what the product is; buyers do not select them in package `signal_targeting_groups`. Data-provider and signal-source refs may be reference-only; product-local refs include inline `name` and `value_type`. |
@@ -696,7 +702,7 @@ Publishers may return proposals alongside products - structured media plans with
 | `brief_alignment` | string | How this proposal addresses the campaign brief |
 | `expires_at` | string | ISO 8601 timestamp when this proposal expires. For committed proposals, this is the inventory-hold deadline for `create_media_buy`. |
 
-Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting verifies one-dimensional marginals, not exact cross-dimensional intersections.
+Each `ForecastPoint` is one forecast row. Composite slices are encoded by multiple `dimensions[]` items on the same point, such as placement x country. Sibling points are parallel rows, not nested children. Dimension order has no meaning; buyers normalize row identity from `(forecast_range_unit, budget if present, product_id if present, dimensions sorted by kind)`. Buyers may compare rows at the same grain, but MUST NOT sum them unless the seller documents that the returned rows form a complete, non-overlapping partition. Standard delivery reporting mostly verifies one-dimensional marginals; `collection_property`, `installment_property`, and `placement_property` are explicit standardized intersections with property delivery.
 
 ### Pagination
 

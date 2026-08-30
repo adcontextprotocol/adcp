@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-policy-rule.json",
+  "title": "Acceptance Policy Rule",
+  "description": "A coarse, discoverable seller rule for one policy subject. Discovery is advisory; the seller response to an exact request remains authoritative.",
+  "type": "object",
+  "properties": {
+    "rule_id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]+$", "x-entity": "acceptance_policy_rule" },
+    "subject_category": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "x-entity": "governance_policy_category",
+      "description": "Registry policy-category-definition category_id. Named subject_category to avoid collision with PolicyEntry.category, whose values are regulation and standard."
+    },
+    "subject_facets": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category_facet" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Facet IDs defined by the selected policy category. Omission means the rule applies to every facet in the category."
+    },
+    "advertiser_roles": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Registry-extensible roles such as political_actor, election_authority, government_entity, news_publisher, or commercial_advertiser."
+    },
+    "jurisdictions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Delivery jurisdictions where this rule applies. Omission means every jurisdiction served by the seller."
+    },
+    "jurisdiction_groups": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_-]*$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Named country groups declared by the containing profile's region_aliases. Unknown group IDs invalidate the profile; they never match permissively."
+    },
+    "applies_to": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["account", "media_buy", "creative", "landing_page", "targeting", "delivery", "format"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "disposition": {
+      "type": "string",
+      "enum": ["allowed", "conditional", "prohibited"]
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "$ref": "/schemas/media-buy/acceptance-policy-requirement.json" },
+      "minItems": 1
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "x-entity": "governance_registry_policy" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Registry policies that define the exact obligations behind this coarse rule."
+    },
+    "description": { "type": "string", "minLength": 1, "maxLength": 1000, "description": "Display-only explanation. Matchers MUST NOT interpret this text as executable instructions or use it to override typed fields." },
+    "effective_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["rule_id", "subject_category", "applies_to", "disposition"],
+  "allOf": [
+    {
+      "if": { "properties": { "disposition": { "const": "conditional" } }, "required": ["disposition"] },
+      "then": { "required": ["requirements"] }
+    }
+  ],
+  "additionalProperties": false
+}

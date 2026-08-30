@@ -3,11 +3,13 @@ import type { QueryResult, QueryResultRow } from 'pg';
 import { getClient, query } from '../../db/client.js';
 import { isUuid } from '../../utils/uuid.js';
 import type { InvocationPreparedSnapshot } from '../claude-client.js';
+import { CODE_VERSION } from '../config-version.js';
 import type { MemberContext } from '../member-context.js';
+import type { ModelProviderId } from '../model-providers/model-provider.js';
 import type { SIRetrievalResult } from '../services/si-retriever.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { ChannelRespondPlan, ChannelResponseInvocation } from '../bolt-app.js';
-import { SHADOW_REPLAY_POLICY_VERSION } from './shadow-eval-metadata.js';
+import { providerForModel, SHADOW_REPLAY_POLICY_VERSION } from './shadow-eval-metadata.js';
 import {
   OFFICIAL_DOCS_ALLOWED_TOOLS,
   OFFICIAL_DOCS_POLICY_VERSION,
@@ -15,9 +17,11 @@ import {
   canonicalOfficialDocsPlan,
   isOfficialDocsProfile,
 } from './shadow-replay-cohort.js';
+import { resolveShadowReplayPricing } from './shadow-replay-pricing.js';
 
-export const SHADOW_REPLAY_TRACE_CAPTURE_VERSION = 2 as const;
-export const SHADOW_REPLAY_TRACE_HASH_DOMAIN = 'addie-shadow-replay-trace:v2' as const;
+export const SHADOW_REPLAY_TRACE_CAPTURE_VERSION = 3 as const;
+export const SHADOW_REPLAY_TRACE_HASH_DOMAIN = 'addie-shadow-replay-trace:v3' as const;
+export const SHADOW_REPLAY_JUDGMENT_POLICY_VERSION = 'official-docs-judgment:v1' as const;
 const TRACE_EXPIRY_MS = 60 * 60 * 1000;
 const TRACE_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
 
@@ -32,6 +36,18 @@ export interface ShadowReplayCaptureIdentity {
   hashKey: string;
   hashDomain: typeof SHADOW_REPLAY_TRACE_HASH_DOMAIN;
   keyVersion: string;
+}
+
+export interface ShadowReplayHumanEvidenceInput {
+  slackMessageTs: string;
+  userId: string;
+  content: string;
+}
+
+export interface ShadowReplayHumanEvidenceReference {
+  slackMessageTs: string;
+  userHmac: string;
+  contentHmac: string;
 }
 
 export interface QueueShadowReplayTraceInput {
@@ -53,12 +69,14 @@ export interface QueueShadowReplayTraceInput {
   snapshot: InvocationPreparedSnapshot;
   docsCorpusFingerprint: string;
   providerWebSearchEnabled: boolean;
+  humanEvidence?: ShadowReplayHumanEvidenceInput | null;
   now?: Date;
 }
 
 interface TraceRow extends QueryResultRow {
   trace_id: string;
   capture_version: number;
+  capture_parity_verified: boolean;
   thread_id: string;
   source_question_message_id: string;
   source_slack_message_ts: string;
@@ -85,6 +103,9 @@ interface TraceRow extends QueryResultRow {
   tool_schema_hmacs: Array<{ index: number; name: string; sha256: string }>;
   message_payload_hmacs: Array<{ index: number; sha256: string }>;
   provider_request_hmac: string | null;
+  human_response_slack_message_ts: string | null;
+  human_response_user_hmac: string | null;
+  human_response_content_hmac: string | null;
   authorization_hmac: string;
   created_at: Date | string;
   expires_at: Date | string;
@@ -140,6 +161,18 @@ export interface ShadowReplayGenerationCompletion {
   blockedCapabilities: string[];
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  usageAvailable: boolean;
+  latencyMs: number | null;
+  returnedProvider?: ModelProviderId | null;
+  returnedModel?: string | null;
+}
+
+export interface ShadowReplayGenerationTarget {
+  provider: ModelProviderId;
+  model: string;
+  firstProviderRequestHmac: string;
 }
 
 export type ShadowReplayGenerationClaimDecision =
@@ -149,11 +182,125 @@ export type ShadowReplayGenerationClaimDecision =
   | 'trace_unavailable';
 
 export interface ShadowReplayGenerationSummaryRow extends QueryResultRow {
+  capture_version: number;
+  capture_policy_version: string;
+  source_config_version_id: number;
+  source_model: string;
+  requested_provider: ModelProviderId;
+  requested_model: string;
+  addie_code_version: string;
+  execution_policy_version: string;
+  pricing_version: string;
+  returned_provider: ModelProviderId | null;
+  returned_model: string | null;
   status: string;
   reason: string;
   count: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  usage_complete_count: number;
+  latency_count: number;
+  estimated_cost_micros: string;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
+}
+
+export type ShadowReplayJudgmentStatus = 'judged' | 'deterministic_failure' | 'skipped' | 'error';
+export type ShadowReplayGapSeverity = 'none' | 'minor' | 'significant' | 'critical';
+export type ShadowReplayQuality = 'better' | 'equivalent' | 'worse' | 'different_focus';
+export type ShadowReplayJudgeProvider = 'anthropic' | 'openai' | 'google' | 'unknown';
+
+/** Hash-only judgment completion. Raw question/answer/reply text is intentionally absent. */
+export interface ShadowReplayJudgmentCompletion {
+  status: ShadowReplayJudgmentStatus;
+  reason: string;
+  evaluationValid: boolean;
+  evaluationSkipped: boolean;
+  knowledgeGap: boolean | null;
+  gapSeverity: ShadowReplayGapSeverity | null;
+  shadowQuality: ShadowReplayQuality | null;
+  deterministicFailureLabels: string[];
+  shapeWordCount: number;
+  shapeExpectedMaxWords: number;
+  shapeRatioToExpected: number;
+  judgeProvider: ShadowReplayJudgeProvider | null;
+  judgeModel: string | null;
+  selfJudged: boolean | null;
+  judgePromptVersion: string | null;
+  judgePromptHmac: string | null;
+  judgeRequestHmac: string | null;
+  judgeResponseHmac: string | null;
+  sourceOutputHmac: string | null;
+  humanEvidenceContentHmac: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  usageAvailable: boolean;
+  pricingVersion: string;
+  latencyMs: number | null;
+  startedAt: Date;
+  completedAt: Date;
+}
+
+export interface ShadowReplayJudgmentSummaryRow extends QueryResultRow {
+  capture_version: number;
+  capture_policy_version: string;
+  source_config_version_id: number;
+  source_model: string;
+  has_human_evidence: boolean;
+  requested_provider: ModelProviderId;
+  requested_model: string;
+  addie_code_version: string;
+  execution_policy_version: string;
+  returned_provider: ModelProviderId | null;
+  returned_model: string | null;
+  judgment_policy_version: string;
+  judge_provider: ShadowReplayJudgeProvider | null;
+  judge_model: string | null;
+  self_judged: boolean | null;
+  judge_prompt_version: string | null;
+  pricing_version: string;
+  status: string;
+  reason: string;
+  evaluation_valid: boolean;
+  evaluation_skipped: boolean;
+  knowledge_gap: boolean | null;
+  gap_severity: ShadowReplayGapSeverity | null;
+  shadow_quality: ShadowReplayQuality | null;
+  deterministic_failure_labels: string[];
+  count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  usage_complete_count: number;
+  latency_count: number;
+  estimated_cost_micros: string;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
+}
+
+export interface ShadowReplayFunnelSummary extends QueryResultRow {
+  opportunities: number;
+  traces_captured: number;
+  parity_verified: number;
+  capture_verified: number;
+  capture_pending: number;
+  capture_skipped: number;
+  capture_error: number;
+  generation_claimed: number;
+  generation_succeeded: number;
+  generation_blocked: number;
+  generation_error: number;
+  generation_running: number;
+  judgment_judged: number;
+  judgment_deterministic_failure: number;
+  judgment_skipped: number;
+  judgment_error: number;
+  judgment_missing: number;
 }
 
 type QueryFn = <T extends QueryResultRow = QueryResultRow>(
@@ -173,6 +320,7 @@ export type ShadowReplayTraceDenialReason =
   | 'trace_authorization_invalid'
   | 'trace_thread_mismatch'
   | 'trace_source_invalid'
+  | 'trace_human_evidence_invalid'
   | 'trace_capability_profile_unsupported'
   | 'trace_provider_tools_unsupported'
   | 'trace_si_context_unsupported';
@@ -189,6 +337,7 @@ export interface ResolvedShadowReplayTrace {
   questionTs: string;
   question: string;
   routerDecision: unknown;
+  humanEvidence: ShadowReplayHumanEvidenceReference | null;
   expected: TraceRow;
 }
 
@@ -234,8 +383,8 @@ export async function beginShadowReplayCaptureAttempt(
     `WITH inserted AS (
        INSERT INTO addie_shadow_replay_capture_attempts (
          attempt_id, thread_id, source_question_message_id,
-         capability_profile, created_at, retained_until
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+         capability_profile, capture_version, created_at, retained_until
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING attempt_id, thread_id
      )
      UPDATE addie_threads thread
@@ -245,7 +394,7 @@ export async function beginShadowReplayCaptureAttempt(
          'shadow_eval_replay_drift_reasons', 'shadow_eval_completed_at',
          'shadow_eval_replay_error'
        ]::text[]
-     ) || $7::jsonb,
+     ) || $8::jsonb,
          updated_at = NOW()
      FROM inserted
      WHERE thread.thread_id = inserted.thread_id
@@ -255,6 +404,7 @@ export async function beginShadowReplayCaptureAttempt(
       input.threadId,
       input.sourceQuestionMessageId,
       OFFICIAL_DOCS_PROFILE,
+      SHADOW_REPLAY_TRACE_CAPTURE_VERSION,
       now,
       retainedUntil,
       JSON.stringify(context),
@@ -368,6 +518,12 @@ function equalDigest(left: string, right: string): boolean {
   return timingSafeEqual(Buffer.from(left, 'hex'), Buffer.from(right, 'hex'));
 }
 
+function slackTimestampMicros(value: string): bigint | null {
+  const match = /^(\d{1,20})\.(\d{1,6})$/.exec(value);
+  if (!match) return null;
+  return BigInt(match[1]) * 1_000_000n + BigInt(match[2].padEnd(6, '0'));
+}
+
 function timestamp(value: Date | string): string {
   return (value instanceof Date ? value : new Date(value)).toISOString();
 }
@@ -421,6 +577,9 @@ function authorizationPayload(row: {
   tool_schema_hmacs: Array<{ index: number; name: string; sha256: string }>;
   message_payload_hmacs: Array<{ index: number; sha256: string }>;
   provider_request_hmac: string | null;
+  human_response_slack_message_ts: string | null;
+  human_response_user_hmac: string | null;
+  human_response_content_hmac: string | null;
   created_at: Date | string;
   expires_at: Date | string;
   retained_until: Date | string;
@@ -454,6 +613,9 @@ function authorizationPayload(row: {
     tool_schema_hmacs: row.tool_schema_hmacs,
     message_payload_hmacs: row.message_payload_hmacs,
     provider_request_hmac: row.provider_request_hmac,
+    human_response_slack_message_ts: row.human_response_slack_message_ts,
+    human_response_user_hmac: row.human_response_user_hmac,
+    human_response_content_hmac: row.human_response_content_hmac,
     created_at: timestamp(row.created_at),
     expires_at: timestamp(row.expires_at),
     retained_until: timestamp(row.retained_until),
@@ -494,6 +656,26 @@ export async function queueShadowReplayTrace(
   ) {
     throw new Error('shadow_replay_trace_tool_boundary_mismatch');
   }
+  const humanEvidence = input.humanEvidence ?? null;
+  const questionTimestampMicros = slackTimestampMicros(input.questionTs);
+  const humanTimestampMicros = humanEvidence
+    ? slackTimestampMicros(humanEvidence.slackMessageTs)
+    : null;
+  if (humanEvidence && (
+    humanEvidence.slackMessageTs.length < 1
+    || humanEvidence.slackMessageTs.length > 64
+    || /\s/.test(humanEvidence.slackMessageTs)
+    || humanEvidence.userId.length < 1
+    || humanEvidence.userId.length > 64
+    || /\s/.test(humanEvidence.userId)
+    || Buffer.byteLength(humanEvidence.content.trim(), 'utf8') < 20
+    || Buffer.byteLength(humanEvidence.content.trim(), 'utf8') > 1_500
+    || questionTimestampMicros === null
+    || humanTimestampMicros === null
+    || humanTimestampMicros <= questionTimestampMicros
+  )) {
+    throw new Error('shadow_replay_human_evidence_invalid');
+  }
   const unsigned = {
     trace_id: input.identity.traceId,
     capture_version: SHADOW_REPLAY_TRACE_CAPTURE_VERSION,
@@ -527,6 +709,13 @@ export async function queueShadowReplayTrace(
     tool_schema_hmacs: input.snapshot.tool_schemas,
     message_payload_hmacs: input.snapshot.message_payloads,
     provider_request_hmac: input.snapshot.provider_request_sha256,
+    human_response_slack_message_ts: humanEvidence?.slackMessageTs ?? null,
+    human_response_user_hmac: humanEvidence
+      ? digest(input.identity, 'human-response-user', humanEvidence.userId)
+      : null,
+    human_response_content_hmac: humanEvidence
+      ? digest(input.identity, 'human-response-content', humanEvidence.content)
+      : null,
     created_at: now,
     expires_at: expiresAt,
     retained_until: retainedUntil,
@@ -553,12 +742,13 @@ export async function queueShadowReplayTrace(
          source_binding_hmac, member_context_hmac, channel_context_hmac,
          plan_hmac, si_retrieval_hmac, request_context_hmac, docs_corpus_hmac,
          system_block_hmacs, tool_schema_hmacs, message_payload_hmacs,
-         provider_request_hmac, authorization_hmac,
+         provider_request_hmac, human_response_slack_message_ts,
+         human_response_user_hmac, human_response_content_hmac, authorization_hmac,
          created_at, expires_at, retained_until
        ) SELECT
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
          $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23, $24,
-         $25::jsonb, $26::jsonb, $27::jsonb, $28, $29, $30, $31, $32
+         $25::jsonb, $26::jsonb, $27::jsonb, $28, $29, $30, $31, $32, $33, $34, $35
        WHERE EXISTS (
          SELECT 1
          FROM addie_thread_messages source
@@ -596,6 +786,9 @@ export async function queueShadowReplayTrace(
         JSON.stringify(unsigned.tool_schema_hmacs),
         JSON.stringify(unsigned.message_payload_hmacs),
         unsigned.provider_request_hmac,
+        unsigned.human_response_slack_message_ts,
+        unsigned.human_response_user_hmac,
+        unsigned.human_response_content_hmac,
         authorizationHmac,
         now,
         expiresAt,
@@ -609,6 +802,7 @@ export async function queueShadowReplayTrace(
        WHERE attempt_id = $1
          AND thread_id = $4
          AND source_question_message_id = $5
+         AND capture_version = $6
          AND status = 'pending'`,
       [
         input.attemptId,
@@ -616,6 +810,7 @@ export async function queueShadowReplayTrace(
         now,
         input.threadId,
         input.sourceQuestionMessageId,
+        SHADOW_REPLAY_TRACE_CAPTURE_VERSION,
       ],
     );
     if (linkedAttempt.rowCount !== 1) {
@@ -710,6 +905,27 @@ export async function resolveShadowReplayTrace(
   if (!equalDigest(expectedAuthorization, row.authorization_hmac)) {
     return { authorized: false, reason: 'trace_authorization_invalid' };
   }
+  const humanEvidenceValues = [
+    row.human_response_slack_message_ts,
+    row.human_response_user_hmac,
+    row.human_response_content_hmac,
+  ];
+  if (
+    !humanEvidenceValues.every((value) => value === null)
+    && !(
+      humanEvidenceValues.every((value) => value !== null)
+      && row.human_response_slack_message_ts!.length <= 64
+      && !/\s/.test(row.human_response_slack_message_ts!)
+      && HMAC.test(row.human_response_user_hmac!)
+      && HMAC.test(row.human_response_content_hmac!)
+      && slackTimestampMicros(row.source_slack_message_ts) !== null
+      && slackTimestampMicros(row.human_response_slack_message_ts!) !== null
+      && slackTimestampMicros(row.human_response_slack_message_ts!)! >
+        slackTimestampMicros(row.source_slack_message_ts)!
+    )
+  ) {
+    return { authorized: false, reason: 'trace_human_evidence_invalid' };
+  }
   if (dependencies.expectedThreadId && row.thread_id !== dependencies.expectedThreadId) {
     return { authorized: false, reason: 'trace_thread_mismatch' };
   }
@@ -792,9 +1008,53 @@ export async function resolveShadowReplayTrace(
       questionTs: row.source_slack_message_ts,
       question: source.question,
       routerDecision: source.router_decision,
+      humanEvidence: row.human_response_slack_message_ts === null
+        ? null
+        : {
+          slackMessageTs: row.human_response_slack_message_ts,
+          userHmac: row.human_response_user_hmac!,
+          contentHmac: row.human_response_content_hmac!,
+        },
       expected: row,
     },
   };
+}
+
+/** Verify exact source evidence without persisting or returning its raw author/content. */
+export function verifyShadowReplayHumanEvidence(
+  trace: ResolvedShadowReplayTrace,
+  candidate: ShadowReplayHumanEvidenceInput,
+): { verified: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (!trace.humanEvidence) return { verified: false, reasons: ['human_evidence_unavailable'] };
+  if (
+    candidate.slackMessageTs.length < 1
+    || candidate.slackMessageTs.length > 64
+    || /\s/.test(candidate.slackMessageTs)
+    || candidate.userId.length < 1
+    || candidate.userId.length > 64
+    || /\s/.test(candidate.userId)
+    || Buffer.byteLength(candidate.content.trim(), 'utf8') < 20
+    || Buffer.byteLength(candidate.content.trim(), 'utf8') > 1_500
+  ) {
+    return { verified: false, reasons: ['human_evidence_invalid'] };
+  }
+  if (candidate.slackMessageTs !== trace.humanEvidence.slackMessageTs) {
+    reasons.push('human_evidence_message_drift');
+  }
+  if (!equalDigest(
+    digest(trace.identity, 'human-response-user', candidate.userId),
+    trace.humanEvidence.userHmac,
+  )) {
+    reasons.push('human_evidence_user_drift');
+  }
+  if (!equalDigest(
+    digest(trace.identity, 'human-response-content', candidate.content),
+    trace.humanEvidence.contentHmac,
+  )) {
+    reasons.push('human_evidence_content_drift');
+  }
+  return { verified: reasons.length === 0, reasons };
 }
 
 function compareSnapshotList(
@@ -997,14 +1257,15 @@ export async function completeShadowReplayCapture(
        UPDATE addie_shadow_replay_traces
        SET capture_status = $3,
            capture_reason = $4,
-           capture_completed_at = $5
+           capture_completed_at = $5,
+           capture_parity_verified = capture_parity_verified OR $6
        WHERE trace_id = $1
          AND thread_id = $2
          AND capture_status = 'pending'
        RETURNING trace_id, thread_id
      ), patched AS (
        UPDATE addie_threads thread
-       SET context = COALESCE(thread.context, '{}'::jsonb) || $6::jsonb,
+       SET context = COALESCE(thread.context, '{}'::jsonb) || $7::jsonb,
            updated_at = NOW()
        FROM completed
        WHERE thread.thread_id = completed.thread_id
@@ -1018,6 +1279,7 @@ export async function completeShadowReplayCapture(
       outcome.status,
       outcome.reason,
       completedAt,
+      outcome.parityVerified === true,
       JSON.stringify(context),
     ],
   );
@@ -1026,11 +1288,21 @@ export async function completeShadowReplayCapture(
 
 const CATEGORICAL_REASON = /^[a-z0-9_]{1,96}$/;
 const HMAC = /^[0-9a-f]{64}$/;
+const BOUNDED_VERSION = /^[a-zA-Z0-9._:-]{1,64}$/;
 const MAX_REPLAY_OUTPUT_BYTES = 128 * 1024;
+const DETERMINISTIC_FAILURE_LABELS = new Set([
+  'length_cap',
+  'default_template',
+  'structured_heavy',
+  'comprehensive_dump',
+  'signin_opener',
+  'banned_ritual',
+]);
 
 function validateGenerationCompletion(
   trace: ResolvedShadowReplayTrace,
   outcome: ShadowReplayGenerationCompletion,
+  target: ShadowReplayGenerationTarget,
 ): void {
   if (!CATEGORICAL_REASON.test(outcome.reason)) {
     throw new Error('shadow_replay_generation_reason_invalid');
@@ -1047,8 +1319,35 @@ function validateGenerationCompletion(
     throw new Error('shadow_replay_generation_output_bytes_invalid');
   }
   if (!Number.isInteger(outcome.inputTokens) || outcome.inputTokens < 0
-    || !Number.isInteger(outcome.outputTokens) || outcome.outputTokens < 0) {
+    || !Number.isInteger(outcome.outputTokens) || outcome.outputTokens < 0
+    || !Number.isInteger(outcome.cacheReadTokens) || outcome.cacheReadTokens < 0
+    || !Number.isInteger(outcome.cacheWriteTokens) || outcome.cacheWriteTokens < 0
+    || [
+      outcome.inputTokens,
+      outcome.outputTokens,
+      outcome.cacheReadTokens,
+      outcome.cacheWriteTokens,
+    ].some((value) => value > 2_147_483_647)) {
     throw new Error('shadow_replay_generation_usage_invalid');
+  }
+  if (typeof outcome.usageAvailable !== 'boolean'
+    || (!outcome.usageAvailable && (
+      outcome.inputTokens !== 0
+      || outcome.outputTokens !== 0
+      || outcome.cacheReadTokens !== 0
+      || outcome.cacheWriteTokens !== 0
+    ))) {
+    throw new Error('shadow_replay_generation_usage_completeness_invalid');
+  }
+  if (outcome.latencyMs !== null && (
+    !Number.isSafeInteger(outcome.latencyMs)
+    || outcome.latencyMs < 0
+    || outcome.latencyMs > 900_000
+  )) {
+    throw new Error('shadow_replay_generation_latency_invalid');
+  }
+  if (outcome.usageAvailable && outcome.latencyMs === null) {
+    throw new Error('shadow_replay_generation_latency_required');
   }
   if (outcome.invocations.length > 4
     || (outcome.status === 'succeeded' && outcome.invocations.length === 0)) {
@@ -1066,10 +1365,9 @@ function validateGenerationCompletion(
   if (firstInvocation && (
     firstInvocation.iteration !== 1
     || firstInvocation.attempt !== 1
-    || !trace.expected.provider_request_hmac
     || !equalDigest(
       firstInvocation.provider_request_hmac,
-      trace.expected.provider_request_hmac,
+      target.firstProviderRequestHmac,
     )
   )) {
     throw new Error('shadow_replay_generation_first_invocation_mismatch');
@@ -1108,8 +1406,238 @@ function validateGenerationCompletion(
     outcome.blockedCapabilities.length > 0
     || outcome.toolExecutions.some(({ disposition }) => disposition !== 'live_read')
     || outcome.reason !== 'generation_succeeded'
+    || !outcome.usageAvailable
+    || outcome.latencyMs === null
   )) {
     throw new Error('shadow_replay_generation_success_inconsistent');
+  }
+  const returnedProvider = outcome.returnedProvider ?? null;
+  const returnedModel = outcome.returnedModel ?? null;
+  if ((returnedProvider === null) !== (returnedModel === null)
+    || (returnedProvider !== null && (
+      !isBoundedModel(returnedModel!)
+      || providerForModel(returnedModel!) !== returnedProvider
+    ))) {
+    throw new Error('shadow_replay_generation_returned_model_invalid');
+  }
+}
+
+function isBoundedModel(model: string): boolean {
+  return model.length > 0
+    && model.length <= 160
+    && !/[\u0000-\u001f\u007f]/.test(model);
+}
+
+function resolveGenerationTarget(
+  trace: ResolvedShadowReplayTrace,
+  target?: ShadowReplayGenerationTarget,
+): ShadowReplayGenerationTarget | null {
+  const resolved = target ?? {
+    provider: providerForModel(trace.expected.effective_model),
+    model: trace.expected.effective_model,
+    firstProviderRequestHmac: trace.expected.provider_request_hmac ?? '',
+  };
+  if (!['anthropic', 'openai', 'google'].includes(resolved.provider)
+    || !isBoundedModel(resolved.model)
+    || providerForModel(resolved.model) !== resolved.provider
+    || !HMAC.test(resolved.firstProviderRequestHmac)) {
+    return null;
+  }
+  return resolved as ShadowReplayGenerationTarget;
+}
+
+function validateJudgmentCompletion(
+  trace: ResolvedShadowReplayTrace,
+  outcome: ShadowReplayGenerationCompletion,
+  judgment: ShadowReplayJudgmentCompletion,
+  persistedAt: Date,
+  generatorModel: string,
+): void {
+  if (outcome.status !== 'succeeded' || !outcome.outputHmac) {
+    throw new Error('shadow_replay_judgment_generation_incomplete');
+  }
+  if (
+    !['judged', 'deterministic_failure', 'skipped', 'error'].includes(judgment.status)
+    || !CATEGORICAL_REASON.test(judgment.reason)
+  ) {
+    throw new Error('shadow_replay_judgment_reason_invalid');
+  }
+  if (
+    !Number.isSafeInteger(judgment.inputTokens) || judgment.inputTokens < 0
+    || !Number.isSafeInteger(judgment.outputTokens) || judgment.outputTokens < 0
+    || !Number.isSafeInteger(judgment.cacheReadTokens) || judgment.cacheReadTokens < 0
+    || !Number.isSafeInteger(judgment.cacheWriteTokens) || judgment.cacheWriteTokens < 0
+    || judgment.inputTokens > 2_147_483_647
+    || judgment.outputTokens > 2_147_483_647
+    || judgment.cacheReadTokens > 2_147_483_647
+    || judgment.cacheWriteTokens > 2_147_483_647
+  ) {
+    throw new Error('shadow_replay_judgment_usage_invalid');
+  }
+  if (typeof judgment.usageAvailable !== 'boolean'
+    || (!judgment.usageAvailable && (
+      judgment.inputTokens !== 0
+      || judgment.outputTokens !== 0
+      || judgment.cacheReadTokens !== 0
+      || judgment.cacheWriteTokens !== 0
+    ))) {
+    throw new Error('shadow_replay_judgment_usage_completeness_invalid');
+  }
+  if (!BOUNDED_VERSION.test(judgment.pricingVersion)) {
+    throw new Error('shadow_replay_judgment_pricing_version_invalid');
+  }
+  if (judgment.latencyMs !== null && (
+    !Number.isSafeInteger(judgment.latencyMs)
+    || judgment.latencyMs < 0
+    || judgment.latencyMs > 900_000
+  )) {
+    throw new Error('shadow_replay_judgment_latency_invalid');
+  }
+  if (
+    !Number.isSafeInteger(judgment.shapeWordCount)
+    || judgment.shapeWordCount < 0
+    || judgment.shapeWordCount > 100_000
+    || !Number.isSafeInteger(judgment.shapeExpectedMaxWords)
+    || judgment.shapeExpectedMaxWords < 1
+    || judgment.shapeExpectedMaxWords > 100_000
+    || !Number.isFinite(judgment.shapeRatioToExpected)
+    || judgment.shapeRatioToExpected < 0
+    || judgment.shapeRatioToExpected > 1_000
+  ) {
+    throw new Error('shadow_replay_judgment_shape_invalid');
+  }
+  if (
+    !Array.isArray(judgment.deterministicFailureLabels)
+    || judgment.deterministicFailureLabels.length > 16
+    || new Set(judgment.deterministicFailureLabels).size
+      !== judgment.deterministicFailureLabels.length
+    || judgment.deterministicFailureLabels.some(
+      (label) => !DETERMINISTIC_FAILURE_LABELS.has(label),
+    )
+  ) {
+    throw new Error('shadow_replay_judgment_shape_labels_invalid');
+  }
+  const startedAtMs = judgment.startedAt instanceof Date
+    ? judgment.startedAt.getTime()
+    : Number.NaN;
+  const completedAtMs = judgment.completedAt instanceof Date
+    ? judgment.completedAt.getTime()
+    : Number.NaN;
+  if (
+    !Number.isFinite(startedAtMs)
+    || !Number.isFinite(completedAtMs)
+    || completedAtMs < startedAtMs
+    || completedAtMs > persistedAt.getTime()
+    || completedAtMs >= new Date(trace.expected.retained_until).getTime()
+  ) {
+    throw new Error('shadow_replay_judgment_time_invalid');
+  }
+
+  const executionFields = [
+    judgment.judgeProvider,
+    judgment.judgeModel,
+    judgment.selfJudged,
+    judgment.judgePromptVersion,
+    judgment.judgePromptHmac,
+    judgment.judgeRequestHmac,
+  ];
+  const judgeExecuted = judgment.judgeModel !== null;
+  if (
+    (judgeExecuted && executionFields.some((value) => value === null))
+    || (!judgeExecuted && (
+      executionFields.some((value) => value !== null)
+      || judgment.judgeResponseHmac !== null
+    ))
+  ) {
+    throw new Error('shadow_replay_judgment_provenance_incomplete');
+  }
+  if ((!judgeExecuted && (
+    judgment.pricingVersion !== 'not-applicable'
+    || judgment.usageAvailable
+    || judgment.latencyMs !== null
+  )) || (judgeExecuted && judgment.pricingVersion === 'not-applicable')) {
+    throw new Error('shadow_replay_judgment_cost_provenance_invalid');
+  }
+  if (
+    !judgment.sourceOutputHmac
+    || !equalDigest(judgment.sourceOutputHmac, outcome.outputHmac)
+    || ((trace.humanEvidence === null) !== (judgment.humanEvidenceContentHmac === null))
+    || (trace.humanEvidence !== null && (
+      !judgment.humanEvidenceContentHmac
+      || !equalDigest(
+        judgment.humanEvidenceContentHmac,
+        trace.humanEvidence.contentHmac,
+      )
+    ))
+  ) {
+    throw new Error('shadow_replay_judgment_source_binding_invalid');
+  }
+  if (judgeExecuted) {
+    if (
+      !judgment.judgeModel
+      || judgment.judgeModel.length > 160
+      || /[\u0000-\u001f\u007f]/.test(judgment.judgeModel)
+      || judgment.judgeProvider !== providerForModel(judgment.judgeModel)
+      || judgment.selfJudged !== (judgment.judgeModel === generatorModel)
+      || !judgment.judgePromptVersion
+      || !BOUNDED_VERSION.test(judgment.judgePromptVersion)
+      || !judgment.judgePromptHmac
+      || !HMAC.test(judgment.judgePromptHmac)
+      || !judgment.judgeRequestHmac
+      || !HMAC.test(judgment.judgeRequestHmac)
+      || (judgment.judgeResponseHmac !== null && !HMAC.test(judgment.judgeResponseHmac))
+      || !trace.humanEvidence
+    ) {
+      throw new Error('shadow_replay_judgment_provenance_invalid');
+    }
+  }
+
+  const hasVerdict = judgment.knowledgeGap !== null
+    || judgment.gapSeverity !== null
+    || judgment.shadowQuality !== null;
+  if (judgment.status === 'judged') {
+    if (
+      !judgeExecuted
+      || !judgment.judgeResponseHmac
+      || judgment.selfJudged !== false
+      || !judgment.evaluationValid
+      || judgment.evaluationSkipped
+      || judgment.knowledgeGap === null
+      || judgment.gapSeverity === null
+      || judgment.shadowQuality === null
+      || !['none', 'minor', 'significant', 'critical'].includes(judgment.gapSeverity)
+      || !['better', 'equivalent', 'worse', 'different_focus'].includes(
+        judgment.shadowQuality,
+      )
+      || judgment.deterministicFailureLabels.length !== 0
+      || !judgment.usageAvailable
+      || judgment.latencyMs === null
+      || (judgment.knowledgeGap && judgment.gapSeverity === 'none')
+      || (!judgment.knowledgeGap && judgment.gapSeverity !== 'none')
+    ) {
+      throw new Error('shadow_replay_judgment_verdict_invalid');
+    }
+  } else if (judgment.status === 'deterministic_failure') {
+    if (
+      hasVerdict
+      || judgeExecuted
+      || !judgment.evaluationValid
+      || judgment.evaluationSkipped
+      || judgment.deterministicFailureLabels.length === 0
+    ) {
+      throw new Error('shadow_replay_judgment_deterministic_failure_invalid');
+    }
+  } else {
+    if (hasVerdict || judgment.evaluationValid) {
+      throw new Error('shadow_replay_judgment_verdict_invalid');
+    }
+    if (
+      judgment.deterministicFailureLabels.length !== 0
+      || (judgment.status === 'skipped' && (!judgment.evaluationSkipped || judgeExecuted))
+      || (judgment.status === 'error' && judgment.evaluationSkipped)
+    ) {
+      throw new Error('shadow_replay_judgment_disposition_invalid');
+    }
   }
 }
 
@@ -1121,11 +1649,21 @@ function validateGenerationCompletion(
 export async function claimShadowReplayGeneration(
   trace: ResolvedShadowReplayTrace,
   dailyLimit: number,
-  dependencies: { query?: QueryFn; now?: Date } = {},
+  dependencies: {
+    query?: QueryFn;
+    now?: Date;
+    target?: ShadowReplayGenerationTarget;
+  } = {},
 ): Promise<ShadowReplayGenerationClaimDecision> {
   const runQuery = dependencies.query ?? query as QueryFn;
   const now = dependencies.now ?? new Date();
   if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 100) {
+    return 'trace_unavailable';
+  }
+  const target = resolveGenerationTarget(trace, dependencies.target);
+  if (!target) return 'trace_unavailable';
+  const pricing = resolveShadowReplayPricing(target.provider, target.model);
+  if (!pricing || (pricing.validBefore && now >= pricing.validBefore)) {
     return 'trace_unavailable';
   }
   const boundedLimit = dailyLimit;
@@ -1146,21 +1684,28 @@ export async function claimShadowReplayGeneration(
          AND trace.provider_request_hmac IS NOT NULL
      ), inserted AS (
        INSERT INTO addie_shadow_replay_generations (
-         trace_id, execution_policy_version, model,
+         trace_id, execution_policy_version, requested_provider, model,
+         addie_code_version, pricing_version,
          quota_date, quota_slot, first_provider_request_hmac,
          started_at, heartbeat_at, retained_until
        )
-       SELECT eligible.trace_id, $8, $7,
+       SELECT eligible.trace_id, $8, $11, $12, $14, $15,
               ($9::timestamptz AT TIME ZONE 'UTC')::date, slot,
-              eligible.provider_request_hmac, $9, $9, eligible.retained_until
+              $13, $9, $9, eligible.retained_until
        FROM eligible
        CROSS JOIN LATERAL generate_series(1, $10::integer) AS slot
        ORDER BY slot
        ON CONFLICT DO NOTHING
        RETURNING trace_id
+     ), parity_marked AS (
+       UPDATE addie_shadow_replay_traces trace
+       SET capture_parity_verified = TRUE
+       FROM inserted
+       WHERE trace.trace_id = inserted.trace_id
+       RETURNING trace.trace_id
      )
      SELECT CASE
-       WHEN EXISTS (SELECT 1 FROM inserted) THEN 'claimed'
+       WHEN EXISTS (SELECT 1 FROM parity_marked) THEN 'claimed'
        WHEN EXISTS (
          SELECT 1 FROM addie_shadow_replay_generations generation
          WHERE generation.trace_id = $1
@@ -1179,6 +1724,11 @@ export async function claimShadowReplayGeneration(
       SHADOW_REPLAY_POLICY_VERSION,
       now,
       boundedLimit,
+      target.provider,
+      target.model,
+      target.firstProviderRequestHmac,
+      CODE_VERSION,
+      pricing.version,
     ],
   );
   const decision = result.rows[0]?.decision ?? 'trace_unavailable';
@@ -1233,16 +1783,55 @@ export async function renewShadowReplayGenerationLease(
 export async function completeShadowReplayGeneration(
   trace: ResolvedShadowReplayTrace,
   outcome: ShadowReplayGenerationCompletion,
-  dependencies: { query?: QueryFn; now?: Date } = {},
+  dependencies: {
+    judgment?: ShadowReplayJudgmentCompletion | null;
+    query?: QueryFn;
+    now?: Date;
+    target?: ShadowReplayGenerationTarget;
+  } = {},
 ): Promise<boolean> {
-  validateGenerationCompletion(trace, outcome);
+  const target = resolveGenerationTarget(trace, dependencies.target);
+  if (!target) throw new Error('shadow_replay_generation_target_invalid');
+  const pricing = resolveShadowReplayPricing(target.provider, target.model);
+  if (!pricing) throw new Error('shadow_replay_generation_pricing_unavailable');
+  validateGenerationCompletion(trace, outcome, target);
   const runQuery = dependencies.query ?? query as QueryFn;
   const completedAt = dependencies.now ?? new Date();
+  const judgment = dependencies.judgment ?? null;
+  if (judgment) {
+    validateJudgmentCompletion(trace, outcome, judgment, completedAt, target.model);
+  }
   const captureStatus = outcome.status === 'succeeded'
     ? 'verified'
     : outcome.status === 'blocked'
       ? 'skipped'
       : 'error';
+  const estimatedCostMicros = outcome.usageAvailable
+    ? pricing.estimateCostMicros({
+      inputTokens: outcome.inputTokens,
+      outputTokens: outcome.outputTokens,
+      cacheReadTokens: outcome.cacheReadTokens,
+      cacheWriteTokens: outcome.cacheWriteTokens,
+    })
+    : null;
+  let judgmentEstimatedCostMicros: number | null = null;
+  if (judgment?.judgeModel) {
+    const judgmentPricing = resolveShadowReplayPricing(
+      providerForModel(judgment.judgeModel) as ModelProviderId,
+      judgment.judgeModel,
+    );
+    if (!judgmentPricing || judgmentPricing.version !== judgment.pricingVersion) {
+      throw new Error('shadow_replay_judgment_pricing_unavailable');
+    }
+    judgmentEstimatedCostMicros = judgment.usageAvailable
+      ? judgmentPricing.estimateCostMicros({
+        inputTokens: judgment.inputTokens,
+        outputTokens: judgment.outputTokens,
+        cacheReadTokens: judgment.cacheReadTokens,
+        cacheWriteTokens: judgment.cacheWriteTokens,
+      })
+      : null;
+  }
   const context = {
     shadow_eval_status: outcome.status === 'error' ? 'error' : 'skipped',
     shadow_eval_type: 'suppressed_opportunity',
@@ -1252,6 +1841,10 @@ export async function completeShadowReplayGeneration(
     shadow_eval_trace_id: trace.traceId,
     shadow_eval_capture_parity_verified: true,
     shadow_eval_replay_generation_status: outcome.status,
+    ...(judgment ? {
+      shadow_eval_judgment_status: judgment.status,
+      shadow_eval_judgment_reason: judgment.reason,
+    } : {}),
   };
   const result = await runQuery<{ completed: boolean }>(
     `WITH finished AS (
@@ -1265,9 +1858,20 @@ export async function completeShadowReplayGeneration(
            blocked_capabilities = $9::jsonb,
            input_tokens = $10,
            output_tokens = $11,
+           cache_read_tokens = $48,
+           cache_write_tokens = $49,
+           usage_complete = $50,
+           latency_ms = $51,
+           estimated_cost_micros = $52,
+           returned_provider = $46,
+           returned_model = $47,
            completed_at = $12
        WHERE generation.trace_id = $1
          AND generation.status = 'running'
+         AND generation.requested_provider = $43
+         AND generation.model = $44
+         AND generation.first_provider_request_hmac = $45
+         AND generation.pricing_version = $53
          AND EXISTS (
            SELECT 1 FROM addie_shadow_replay_traces trace
            WHERE trace.trace_id = generation.trace_id
@@ -1279,12 +1883,37 @@ export async function completeShadowReplayGeneration(
        UPDATE addie_shadow_replay_traces trace
        SET capture_status = $13,
            capture_reason = $4,
-           capture_completed_at = $12
+           capture_completed_at = $12,
+           capture_parity_verified = TRUE
        FROM finished
        WHERE trace.trace_id = finished.trace_id
          AND trace.thread_id = $2
          AND trace.capture_status = 'pending'
        RETURNING trace.trace_id, trace.thread_id
+     ), judgment_inserted AS (
+       INSERT INTO addie_shadow_replay_judgments (
+         trace_id, status, reason, judgment_policy_version,
+         evaluation_valid, evaluation_skipped, knowledge_gap, gap_severity,
+         shadow_quality, deterministic_failure_labels,
+         shape_word_count, shape_expected_max_words, shape_ratio_to_expected,
+         judge_provider, judge_model, self_judged,
+         judge_prompt_version, judge_prompt_hmac,
+         judge_request_hmac, judge_response_hmac,
+         question_hmac, source_output_hmac, human_evidence_content_hmac,
+         input_tokens, output_tokens, started_at, completed_at, retained_until,
+         pricing_version, usage_complete, cache_read_tokens, cache_write_tokens,
+         latency_ms, estimated_cost_micros
+       )
+       SELECT
+         trace_completed.trace_id, $16, $17, $18,
+         $19, $20, $21, $22, $23, $24::text[],
+         $25, $26, $27,
+         $28, $29, $30, $31, $32, $33, $34,
+         $35, $36, $37, $38, $39, $40, $41, $42,
+         $54, $55, $56, $57, $58, $59
+       FROM trace_completed
+       WHERE $15::boolean
+       RETURNING trace_id
      ), patched AS (
        UPDATE addie_threads thread
        SET context = COALESCE(thread.context, '{}'::jsonb) || $14::jsonb,
@@ -1294,7 +1923,8 @@ export async function completeShadowReplayGeneration(
          AND thread.context->>'shadow_eval_trace_id' = trace_completed.trace_id::text
        RETURNING thread.thread_id
      )
-     SELECT EXISTS (SELECT 1 FROM trace_completed) AS completed`,
+     SELECT EXISTS (SELECT 1 FROM trace_completed)
+       AND (NOT $15::boolean OR EXISTS (SELECT 1 FROM judgment_inserted)) AS completed`,
     [
       trace.traceId,
       trace.threadId,
@@ -1310,6 +1940,51 @@ export async function completeShadowReplayGeneration(
       completedAt,
       captureStatus,
       JSON.stringify(context),
+      judgment !== null,
+      judgment?.status ?? null,
+      judgment?.reason ?? null,
+      SHADOW_REPLAY_JUDGMENT_POLICY_VERSION,
+      judgment?.evaluationValid ?? null,
+      judgment?.evaluationSkipped ?? null,
+      judgment?.knowledgeGap ?? null,
+      judgment?.gapSeverity ?? null,
+      judgment?.shadowQuality ?? null,
+      judgment?.deterministicFailureLabels ?? [],
+      judgment?.shapeWordCount ?? null,
+      judgment?.shapeExpectedMaxWords ?? null,
+      judgment?.shapeRatioToExpected ?? null,
+      judgment?.judgeProvider ?? null,
+      judgment?.judgeModel ?? null,
+      judgment?.selfJudged ?? null,
+      judgment?.judgePromptVersion ?? null,
+      judgment?.judgePromptHmac ?? null,
+      judgment?.judgeRequestHmac ?? null,
+      judgment?.judgeResponseHmac ?? null,
+      trace.expected.question_hmac,
+      judgment?.sourceOutputHmac ?? null,
+      judgment?.humanEvidenceContentHmac ?? null,
+      judgment?.inputTokens ?? null,
+      judgment?.outputTokens ?? null,
+      judgment?.startedAt ?? null,
+      judgment?.completedAt ?? null,
+      trace.expected.retained_until,
+      target.provider,
+      target.model,
+      target.firstProviderRequestHmac,
+      outcome.returnedProvider ?? null,
+      outcome.returnedModel ?? null,
+      outcome.cacheReadTokens,
+      outcome.cacheWriteTokens,
+      outcome.usageAvailable,
+      outcome.latencyMs,
+      estimatedCostMicros,
+      pricing.version,
+      judgment?.pricingVersion ?? null,
+      judgment?.usageAvailable ?? null,
+      judgment?.cacheReadTokens ?? null,
+      judgment?.cacheWriteTokens ?? null,
+      judgment?.latencyMs ?? null,
+      judgmentEstimatedCostMicros,
     ],
   );
   return result.rows[0]?.completed === true;
@@ -1350,7 +2025,8 @@ export async function recoverStaleShadowReplayGenerations(
        UPDATE addie_shadow_replay_traces trace
        SET capture_status = 'error',
            capture_reason = 'replay_generation_interrupted',
-           capture_completed_at = $1
+           capture_completed_at = $1,
+           capture_parity_verified = TRUE
        FROM stale
        WHERE trace.trace_id = stale.trace_id
          AND trace.capture_status = 'pending'
@@ -1386,7 +2062,7 @@ export async function getShadowReplayCaptureSummary(
      FROM addie_shadow_replay_capture_attempts attempt
      LEFT JOIN addie_shadow_replay_traces trace ON trace.trace_id = attempt.trace_id
      WHERE attempt.created_at >= NOW() - ($2::integer * INTERVAL '1 day')
-       AND (trace.trace_id IS NULL OR trace.capture_version = $1)
+       AND attempt.capture_version = $1
      GROUP BY 1, 2
      ORDER BY 1, 2`,
     [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
@@ -1401,16 +2077,194 @@ export async function getShadowReplayGenerationSummary(
   const runQuery = dependencies.query ?? query as QueryFn;
   const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
   const result = await runQuery<ShadowReplayGenerationSummaryRow>(
-    `SELECT status,
-            reason,
+    `SELECT trace.capture_version,
+            trace.policy_version AS capture_policy_version,
+            trace.source_config_version_id,
+            trace.effective_model AS source_model,
+            generation.requested_provider,
+            generation.model AS requested_model,
+            generation.addie_code_version,
+            generation.execution_policy_version,
+            generation.pricing_version,
+            generation.returned_provider,
+            generation.returned_model,
+            generation.status,
+            generation.reason,
             COUNT(*)::integer AS count,
-            COALESCE(SUM(input_tokens), 0)::integer AS input_tokens,
-            COALESCE(SUM(output_tokens), 0)::integer AS output_tokens
-     FROM addie_shadow_replay_generations
-     WHERE started_at >= NOW() - ($1::integer * INTERVAL '1 day')
-     GROUP BY status, reason
-     ORDER BY status, reason`,
-    [boundedDays],
+            COALESCE(SUM(generation.input_tokens), 0)::integer AS input_tokens,
+            COALESCE(SUM(generation.output_tokens), 0)::integer AS output_tokens,
+            COALESCE(SUM(generation.cache_read_tokens), 0)::integer AS cache_read_tokens,
+            COALESCE(SUM(generation.cache_write_tokens), 0)::integer AS cache_write_tokens,
+            COUNT(*) FILTER (WHERE generation.usage_complete)::integer
+              AS usage_complete_count,
+            COUNT(generation.latency_ms)::integer AS latency_count,
+            COALESCE(SUM(generation.estimated_cost_micros), 0)::text
+              AS estimated_cost_micros,
+            percentile_disc(0.5) WITHIN GROUP (ORDER BY generation.latency_ms)
+              FILTER (WHERE generation.latency_ms IS NOT NULL)::double precision
+              AS latency_p50_ms,
+            percentile_disc(0.95) WITHIN GROUP (ORDER BY generation.latency_ms)
+              FILTER (WHERE generation.latency_ms IS NOT NULL)::double precision
+              AS latency_p95_ms
+     FROM addie_shadow_replay_generations generation
+     JOIN addie_shadow_replay_traces trace ON trace.trace_id = generation.trace_id
+     WHERE generation.started_at >= NOW() - ($2::integer * INTERVAL '1 day')
+       AND trace.capture_version = $1
+     GROUP BY trace.capture_version, trace.policy_version,
+              trace.source_config_version_id, trace.effective_model,
+              generation.requested_provider, generation.model,
+              generation.addie_code_version, generation.execution_policy_version,
+              generation.pricing_version,
+              generation.returned_provider,
+              generation.returned_model, generation.status, generation.reason
+     ORDER BY generation.requested_provider, generation.model,
+              generation.status, generation.reason`,
+    [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
   );
   return result.rows;
+}
+
+export async function getShadowReplayJudgmentSummary(
+  days: number,
+  dependencies: { query?: QueryFn } = {},
+): Promise<ShadowReplayJudgmentSummaryRow[]> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
+  const result = await runQuery<ShadowReplayJudgmentSummaryRow>(
+    `SELECT trace.capture_version,
+            trace.policy_version AS capture_policy_version,
+            trace.source_config_version_id,
+            trace.effective_model AS source_model,
+            judgment.human_evidence_content_hmac IS NOT NULL AS has_human_evidence,
+            generation.requested_provider,
+            generation.model AS requested_model,
+            generation.addie_code_version,
+            generation.execution_policy_version,
+            generation.returned_provider,
+            generation.returned_model,
+            judgment.judgment_policy_version,
+            judgment.judge_provider,
+            judgment.judge_model,
+            judgment.self_judged,
+            judgment.judge_prompt_version,
+            judgment.pricing_version,
+            judgment.status,
+            judgment.reason,
+            judgment.evaluation_valid,
+            judgment.evaluation_skipped,
+            judgment.knowledge_gap,
+            judgment.gap_severity,
+            judgment.shadow_quality,
+            judgment.deterministic_failure_labels,
+            COUNT(*)::integer AS count,
+            COALESCE(SUM(judgment.input_tokens), 0)::integer AS input_tokens,
+            COALESCE(SUM(judgment.output_tokens), 0)::integer AS output_tokens,
+            COALESCE(SUM(judgment.cache_read_tokens), 0)::integer AS cache_read_tokens,
+            COALESCE(SUM(judgment.cache_write_tokens), 0)::integer AS cache_write_tokens,
+            COUNT(*) FILTER (WHERE judgment.usage_complete)::integer AS usage_complete_count,
+            COUNT(judgment.latency_ms)::integer AS latency_count,
+            COALESCE(SUM(judgment.estimated_cost_micros), 0)::text
+              AS estimated_cost_micros,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY judgment.latency_ms)::double precision
+              AS latency_p50_ms,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY judgment.latency_ms)::double precision
+              AS latency_p95_ms
+     FROM addie_shadow_replay_judgments judgment
+     JOIN addie_shadow_replay_generations generation
+       ON generation.trace_id = judgment.trace_id
+     JOIN addie_shadow_replay_traces trace ON trace.trace_id = generation.trace_id
+     WHERE judgment.completed_at >= NOW() - ($2::integer * INTERVAL '1 day')
+       AND trace.capture_version = $1
+     GROUP BY trace.capture_version, trace.policy_version,
+              trace.source_config_version_id, trace.effective_model,
+              (judgment.human_evidence_content_hmac IS NOT NULL),
+              generation.requested_provider, generation.model,
+              generation.addie_code_version, generation.execution_policy_version,
+              generation.returned_provider, generation.returned_model,
+              judgment.judgment_policy_version, judgment.judge_provider,
+              judgment.judge_model, judgment.self_judged,
+              judgment.judge_prompt_version, judgment.pricing_version, judgment.status,
+              judgment.reason, judgment.evaluation_valid,
+              judgment.evaluation_skipped, judgment.knowledge_gap,
+              judgment.gap_severity, judgment.shadow_quality,
+              judgment.deterministic_failure_labels
+     ORDER BY generation.requested_provider, generation.model,
+              judgment.judge_provider, judgment.judge_model,
+              judgment.status, judgment.reason`,
+    [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
+  );
+  return result.rows;
+}
+
+/** One no-payload funnel row; each count is per capture opportunity, never per message. */
+export async function getShadowReplayFunnelSummary(
+  days: number,
+  dependencies: { query?: QueryFn } = {},
+): Promise<ShadowReplayFunnelSummary> {
+  const runQuery = dependencies.query ?? query as QueryFn;
+  const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
+  const result = await runQuery<ShadowReplayFunnelSummary>(
+    `WITH cohort AS (
+       SELECT attempt.attempt_id,
+              trace.trace_id,
+              trace.capture_parity_verified,
+              CASE WHEN trace.trace_id IS NULL THEN attempt.status ELSE trace.capture_status END
+                AS capture_status,
+              generation.status AS generation_status,
+              judgment.status AS judgment_status
+       FROM addie_shadow_replay_capture_attempts attempt
+       LEFT JOIN addie_shadow_replay_traces trace
+         ON trace.trace_id = attempt.trace_id
+       LEFT JOIN addie_shadow_replay_generations generation
+         ON generation.trace_id = trace.trace_id
+       LEFT JOIN addie_shadow_replay_judgments judgment
+         ON judgment.trace_id = generation.trace_id
+       WHERE attempt.created_at >= NOW() - ($2::integer * INTERVAL '1 day')
+         AND attempt.capture_version = $1
+         AND (trace.trace_id IS NULL OR trace.capture_version = attempt.capture_version)
+         AND (attempt.trace_id IS NULL OR trace.trace_id IS NOT NULL)
+     )
+     SELECT
+       COUNT(*)::integer AS opportunities,
+       COUNT(trace_id)::integer AS traces_captured,
+       COUNT(*) FILTER (WHERE capture_parity_verified)::integer AS parity_verified,
+       COUNT(*) FILTER (WHERE capture_status = 'verified')::integer AS capture_verified,
+       COUNT(*) FILTER (WHERE capture_status = 'pending')::integer AS capture_pending,
+       COUNT(*) FILTER (WHERE capture_status = 'skipped')::integer AS capture_skipped,
+       COUNT(*) FILTER (WHERE capture_status = 'error')::integer AS capture_error,
+       COUNT(*) FILTER (WHERE generation_status IS NOT NULL)::integer AS generation_claimed,
+       COUNT(*) FILTER (WHERE generation_status = 'succeeded')::integer AS generation_succeeded,
+       COUNT(*) FILTER (WHERE generation_status = 'blocked')::integer AS generation_blocked,
+       COUNT(*) FILTER (WHERE generation_status = 'error')::integer AS generation_error,
+       COUNT(*) FILTER (WHERE generation_status = 'running')::integer AS generation_running,
+       COUNT(*) FILTER (WHERE judgment_status = 'judged')::integer AS judgment_judged,
+       COUNT(*) FILTER (WHERE judgment_status = 'deterministic_failure')::integer
+         AS judgment_deterministic_failure,
+       COUNT(*) FILTER (WHERE judgment_status = 'skipped')::integer AS judgment_skipped,
+       COUNT(*) FILTER (WHERE judgment_status = 'error')::integer AS judgment_error,
+       COUNT(*) FILTER (
+           WHERE generation_status = 'succeeded' AND judgment_status IS NULL
+         )::integer AS judgment_missing
+     FROM cohort`,
+    [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
+  );
+  return result.rows[0] ?? {
+    opportunities: 0,
+    traces_captured: 0,
+    parity_verified: 0,
+    capture_verified: 0,
+    capture_pending: 0,
+    capture_skipped: 0,
+    capture_error: 0,
+    generation_claimed: 0,
+    generation_succeeded: 0,
+    generation_blocked: 0,
+    generation_error: 0,
+    generation_running: 0,
+    judgment_judged: 0,
+    judgment_deterministic_failure: 0,
+    judgment_skipped: 0,
+    judgment_error: 0,
+    judgment_missing: 0,
+  };
 }

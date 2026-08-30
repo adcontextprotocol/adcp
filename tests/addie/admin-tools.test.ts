@@ -578,20 +578,36 @@ describe("ADMIN_TOOLS definitions", () => {
     });
   });
 
-  describe("get_platform_stats tool", () => {
+  describe("query_admin_analytics tool", () => {
     let tool: (typeof ADMIN_TOOLS)[number] | undefined;
 
     beforeEach(() => {
-      tool = ADMIN_TOOLS.find((t) => t.name === "get_platform_stats");
+      tool = ADMIN_TOOLS.find((t) => t.name === "query_admin_analytics");
     });
 
     it("exists in ADMIN_TOOLS", () => {
       expect(tool).toBeDefined();
     });
 
-    it("takes no required input", () => {
-      expect(tool?.input_schema.required).toEqual([]);
-      expect(tool?.input_schema.properties).toEqual({});
+    it("requires a bounded view and removes the legacy public definitions", () => {
+      expect(tool?.input_schema.required).toEqual(["view"]);
+      expect(tool?.input_schema.additionalProperties).toBe(false);
+      expect(tool?.input_schema.properties.view).toMatchObject({
+        enum: [
+          "platform_stats",
+          "member_search",
+          "organizations_by_users",
+          "users_by_engagement",
+        ],
+      });
+      for (const legacyName of [
+        "get_platform_stats",
+        "get_member_search_analytics",
+        "list_organizations_by_users",
+        "list_users_by_engagement",
+      ]) {
+        expect(ADMIN_TOOLS.some((candidate) => candidate.name === legacyName)).toBe(false);
+      }
     });
   });
 });
@@ -969,7 +985,7 @@ describe("log_conversation handler", () => {
 });
 
 // ── platform stats handler tests ─────────────────────────────────────────────
-describe("get_platform_stats handler", () => {
+describe("query_admin_analytics platform_stats handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -1008,7 +1024,9 @@ describe("get_platform_stats handler", () => {
     });
 
     const handlers = createAdminToolHandlers(adminMemberContext);
-    const result = await handlers.get("get_platform_stats")!({});
+    const result = await handlers.get("query_admin_analytics")!({
+      view: "platform_stats",
+    });
     const json = result.match(/```json\n([\s\S]+)\n```/)?.[1];
 
     expect(json).toBeDefined();
@@ -1171,8 +1189,9 @@ describe("community mirror review handlers", () => {
 
   beforeEach(() => {
     vi.unstubAllGlobals();
-    process.env.ADMIN_API_KEY = "test-admin-key";
-    process.env.BASE_URL = "https://registry.example";
+    vi.unstubAllEnvs();
+    vi.stubEnv('ADMIN_API_KEY', 'test-admin-key');
+    vi.stubEnv('BASE_URL', 'https://registry.example');
   });
 
   it("lists the moderator queue through the protected registry API", async () => {

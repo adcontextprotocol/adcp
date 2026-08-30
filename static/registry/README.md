@@ -33,6 +33,34 @@ Every file under `policies/*.json` must set:
 | `exemplars.pass` | At least one passing scenario. Each entry must have non-empty `scenario` and `explanation`. |
 | `exemplars.fail` | At least one failing scenario. Same shape as `pass`. |
 
+Platform policies may also publish an `acceptance_profile`. This is a reusable,
+machine-readable projection of the public acceptance rules, not a claim that a
+seller has adopted them. The profile must pin the containing `policy_id` and
+exact policy `version`; every rule must cite that policy. Use `coverage:
+"partial"` whenever unpublished rules, account state, market-specific tables,
+or case review can still affect acceptance. A `complete` profile must declare
+the exact category, surface, and jurisdiction scope within which it is
+exhaustive.
+
+Profiles carry an RFC 8785 `content_digest` (computed with that field omitted),
+and every `policy_refs[]` entry carries the digest of the referenced policy
+with `acceptance_profile` omitted. CI resolves these pins, validates category
+facets, and requires every rule's `policy_ids[]` to name a pinned policy.
+The policy resolver returns that exact digest as `content_digest` together with
+the immutable `canonical_content` object it covers. Consumers verify a pin by
+RFC 8785-canonicalizing `canonical_content` and comparing its SHA-256 with both
+the resolver's `content_digest` and the profile's pinned digest. The separately
+digested `acceptance_profile` is intentionally absent from `canonical_content`.
+
+Profile descriptions are display text. Consumers match only typed fields,
+expand only profile-declared `region_aliases`, reject unknown aliases, and
+compose applicable rules restrictively. Seller adoption occurs through an
+exact `registry_profiles[]` reference in the seller's digest-pinned acceptance
+catalog; merely appearing in this registry does not grant eligibility or bind
+a seller. A seller does not copy and modify a registry profile under its
+registry identity. Seller-specific narrowing belongs in a separate local
+profile that composes with the referenced profile.
+
 The pass/fail exemplar requirement is what makes registry entries useful for
 governance-agent calibration — an entry without both sides doesn't tell a
 downstream agent where the line actually sits.
@@ -55,9 +83,9 @@ This runs `scripts/check-registry-completeness.cjs` against every file under
 `policies/*.json` and fails the build if any entry is missing a required
 field. Hooked into the `JSON Schema Validation` workflow and runs on every PR.
 
-The linter only covers `policies/` today. `attributes/` and `policy-categories/`
-have their own shapes and aren't yet gated — add similar checks when those
-directories grow.
+The linter covers `policies/`, including embedded acceptance profiles, and
+checks policy-category facet uniqueness and profile facet references.
+`attributes/` remains schema-gated separately.
 
 ## Adding a new policy
 
@@ -66,11 +94,14 @@ directories grow.
 2. Fill in the required fields above plus relevant optional metadata
    (`policy_categories`, `region_aliases`, `requires_human_review`, `channels`,
    `guidance`).
-3. Write at least one pass and one fail exemplar. These are the calibration
+3. For a platform acceptance policy, add a version-pinned
+   `acceptance_profile` containing the public, typed rules. Keep coverage
+   partial unless the claimed scope is demonstrably exhaustive.
+4. Write at least one pass and one fail exemplar. These are the calibration
    signal for governance agents — they carry more weight than the policy text
    alone.
-4. Run `npm run check:registry` locally to confirm the entry passes the bar.
-5. Publish the entry to the DB-backed resolver in the same PR, following the
+5. Run `npm run check:registry` locally to confirm the entry passes the bar.
+6. Publish the entry to the DB-backed resolver in the same PR, following the
    procedure below. A checked-in JSON file alone is not live registry data.
 
 ## Publishing to the live resolver
@@ -87,9 +118,12 @@ node scripts/generate-policy-publication-migration.cjs \
 
 Fetch `origin/main` and check `server/src/db/migrations/` before choosing the
 next migration number. Commit the generated migration with the policy files;
-do not hand-edit its embedded data. The generated upsert is idempotent and only
+do not hand-edit its embedded data. The generated upsert is idempotent and
 updates an existing authoritative entry when its version exactly matches the
-source version. It will not replace a different — including later — version.
+source version. For an intentional transition, add `--replace
+<policy_id>=<prior_version>` before the policy IDs. The generated guard permits
+only that exact predecessor-to-source transition and leaves any other version,
+including a later one, untouched.
 
 After the main deployment completes, verify each pinned policy, the bulk
 resolver, and the applicable domain listing:
@@ -120,6 +154,13 @@ curl --fail --get 'https://adcontextprotocol.org/api/policies/registry' \
 Treat a policy text or metadata change as a new version: update the JSON
 `version`, generate a new migration, and deploy both together. Never edit an
 already-applied migration.
+
+When replacing a published version, preserve its exact checked-in source at
+`policy-versions/<policy_id>/<old_version>.json` and pass `--replace` to the
+generator. The migration publishes both the retired snapshot and the current
+snapshot to the append-only resolver store, so an existing exact-version pin
+continues to resolve. Archived files are immutable source records, not an
+alternate current-policy catalog.
 
 ## Policy-backed interoperability codes
 

@@ -44,12 +44,13 @@ const LATEST_DIR = path.join(REPO_ROOT, 'dist', 'schemas', 'latest');
 const PROJECTION_DIR = path.join(LATEST_DIR, 'mcp', MCP_PROTOCOL_VERSION);
 const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production');
 // Macro occurrence contracts and representation-set resolution add shared,
-// structurally enforced graphs to media-buy tasks. Keep those measured
-// increases isolated from the creative profile and retain main's 400 KiB hard
-// ceiling while the shared-dictionary projection is still experimental.
+// structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
+// adds one seller-bound destination contract to build_creative; keep that
+// measured increase isolated to the creative profile while retaining the
+// 400 KiB media-buy ceiling and a tight prompt-view bound.
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 400,
-  creative: 400,
+  creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -195,6 +196,8 @@ test('model-context presentation keeps request shape and omits validation-only d
         'x-adcp-validation': { verifier: 'uri' },
       },
       mode: { type: 'string', enum: ['direct', 'proposal'] },
+      mixed_mode: { type: 'string', enum: ['direct', 1] },
+      exactMode: { type: 'string', const: 'direct' },
       strict: {
         type: 'object',
         properties: { value: { type: 'string' } },
@@ -220,6 +223,10 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.destination['x-adcp-validation'], undefined);
   assert.deepEqual(projected.required, ['destination']);
   assert.deepEqual(projected.properties.mode.enum, ['direct', 'proposal']);
+  assert.equal(projected.properties.mode.type, undefined);
+  assert.equal(projected.properties.mixed_mode.type, 'string');
+  assert.equal(projected.properties.exactMode.const, 'direct');
+  assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
   assert.equal(projected.properties.extensions.additionalProperties, true);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');

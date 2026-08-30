@@ -1,0 +1,694 @@
+{
+  "schema_version": "1.0",
+  "evaluation_time": "2026-08-04T12:00:00Z",
+  "capabilities": {
+    "accepted_claim_types": [
+      "https://claims.example/audience/methodology-reviewed"
+    ],
+    "accepted_proof_formats": [
+      "https://formats.example/jcs-signed-json"
+    ],
+    "supported_delivery_methods": [
+      "credential_uri",
+      "issuer_credential_id",
+      "embedded"
+    ],
+    "accepted_issuers": [
+      {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "credential_origins": [
+          "https://credentials.example"
+        ],
+        "resolvers": [
+          {
+            "resolver_id": "primary",
+            "url": "https://resolver.credentials.example/v1/credentials",
+            "authentication": "evaluator_managed"
+          }
+        ]
+      }
+    ],
+    "accepted_verifiers": [
+      {
+        "agent_url": "https://verification.example/adcp"
+      }
+    ],
+    "max_embedded_credential_bytes": 262144
+  },
+  "vectors": [
+    {
+      "name": "resolved-credential-verified",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://credentials.example/credentials/cred_001"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "{\"claim_type\":\"https://claims.example/audience/methodology-reviewed\",\"expires_at\":\"2027-08-01T00:00:00Z\",\"issuer\":\"https://credentials.example\",\"revoked\":false,\"subject\":{\"id\":\"signal_urban_commuters\",\"namespace\":\"https://signals.meridian.example/adcp\",\"resource_type\":\"https://adcontextprotocol.org/claims/subjects/signal\",\"type\":\"resource\"},\"valid_from\":\"2026-08-01T00:00:00Z\"}"
+      },
+      "expected": {
+        "outcome": "verified",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "embedded-credential-verified",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "embedded_credential": {
+          "format": "https://formats.example/jcs-signed-json",
+          "value": {
+            "issuer": "https://credentials.example",
+            "claim_type": "https://claims.example/audience/methodology-reviewed",
+            "subject": {
+              "type": "resource",
+              "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+              "namespace": "https://signals.meridian.example/adcp",
+              "id": "signal_urban_commuters"
+            },
+            "valid_from": "2026-08-01T00:00:00Z",
+            "expires_at": "2027-08-01T00:00:00Z",
+            "revoked": false,
+            "delivery": "embedded"
+          }
+        },
+        "content_digest": "sha256:edee68c1849e266e65571ce2658e6c485eba4f68afdb6041640cd80f4ba76613"
+      },
+      "resolver_result": {
+        "status": "embedded",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false,
+          "delivery": "embedded"
+        },
+        "credential_bytes": "{\"claim_type\":\"https://claims.example/audience/methodology-reviewed\",\"delivery\":\"embedded\",\"expires_at\":\"2027-08-01T00:00:00Z\",\"issuer\":\"https://credentials.example\",\"revoked\":false,\"subject\":{\"id\":\"signal_urban_commuters\",\"namespace\":\"https://signals.meridian.example/adcp\",\"resource_type\":\"https://adcontextprotocol.org/claims/subjects/signal\",\"type\":\"resource\"},\"valid_from\":\"2026-08-01T00:00:00Z\"}"
+      },
+      "expected": {
+        "outcome": "verified",
+        "network_requests": 0
+      }
+    },
+    {
+      "name": "valid-signature-wrong-issuer-key",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_wrong_issuer_key",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "signing_key_authorized_for_issuer": false,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "valid-signature-wrong-issuer-key-bytes"
+      },
+      "expected": {
+        "outcome": "invalid",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "dual-delivery-matching-verified",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://credentials.example/credentials/cred_dual"
+        },
+        "embedded_credential": {
+          "format": "https://formats.example/jcs-signed-json",
+          "value": "dual-delivery-matching-credential-bytes"
+        },
+        "content_digest": "sha256:ff5e9e3ab1807dd59f81897dc34fe9018a948f72bacf1a0dbf51646d29004fee"
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "signing_key_authorized_for_issuer": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "dual-delivery-matching-credential-bytes",
+        "embedded_result": {
+          "proof_format": "https://formats.example/jcs-signed-json",
+          "signature_valid": true,
+          "signing_key_authorized_for_issuer": true,
+          "credential": {
+            "issuer": "https://credentials.example",
+            "claim_type": "https://claims.example/audience/methodology-reviewed",
+            "subject": {
+              "type": "resource",
+              "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+              "namespace": "https://signals.meridian.example/adcp",
+              "id": "signal_urban_commuters"
+            },
+            "valid_from": "2026-08-01T00:00:00Z",
+            "expires_at": "2027-08-01T00:00:00Z",
+            "revoked": false
+          },
+          "credential_bytes": "dual-delivery-matching-credential-bytes"
+        }
+      },
+      "expected": {
+        "outcome": "verified",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "dual-delivery-resolved-embedded-mismatch",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://credentials.example/credentials/cred_dual_mismatch"
+        },
+        "embedded_credential": {
+          "format": "https://formats.example/jcs-signed-json",
+          "value": "dual-delivery-matching-credential-bytes"
+        },
+        "content_digest": "sha256:ff5e9e3ab1807dd59f81897dc34fe9018a948f72bacf1a0dbf51646d29004fee"
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "signing_key_authorized_for_issuer": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "different-resolved-credential-bytes",
+        "embedded_result": {
+          "proof_format": "https://formats.example/jcs-signed-json",
+          "signature_valid": true,
+          "signing_key_authorized_for_issuer": true,
+          "credential": {
+            "issuer": "https://credentials.example",
+            "claim_type": "https://claims.example/audience/methodology-reviewed",
+            "subject": {
+              "type": "resource",
+              "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+              "namespace": "https://signals.meridian.example/adcp",
+              "id": "signal_urban_commuters"
+            },
+            "valid_from": "2026-08-01T00:00:00Z",
+            "expires_at": "2027-08-01T00:00:00Z",
+            "revoked": false
+          },
+          "credential_bytes": "dual-delivery-matching-credential-bytes"
+        }
+      },
+      "expected": {
+        "outcome": "digest_mismatch",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "untrusted-issuer-no-fetch",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://untrusted.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://untrusted.example/credentials/cred_001"
+        }
+      },
+      "expected": {
+        "outcome": "untrusted_issuer",
+        "network_requests": 0
+      }
+    },
+    {
+      "name": "untrusted-resolver-no-fetch",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_001",
+          "resolver_id": "presenter_selected"
+        }
+      },
+      "expected": {
+        "outcome": "untrusted_resolver",
+        "network_requests": 0
+      }
+    },
+    {
+      "name": "expired-credential",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_expired",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2025-08-01T00:00:00Z",
+          "expires_at": "2026-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "expired-credential-bytes"
+      },
+      "expected": {
+        "outcome": "expired",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "revoked-credential",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_revoked",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": true
+        },
+        "credential_bytes": "revoked-credential-bytes"
+      },
+      "expected": {
+        "outcome": "revoked",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "subject-mismatch",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_wrong_subject",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_different"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "subject-mismatch-credential-bytes"
+      },
+      "expected": {
+        "outcome": "subject_mismatch",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "same-id-different-namespace",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_wrong_namespace",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://other-signals.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "wrong-namespace-credential-bytes"
+      },
+      "expected": {
+        "outcome": "subject_mismatch",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "same-id-different-resource-type",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_wrong_resource_type",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/audience-evidence",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "wrong-resource-type-credential-bytes"
+      },
+      "expected": {
+        "outcome": "subject_mismatch",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "content-digest-mismatch",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "credential_uri",
+          "credential_uri": "https://credentials.example/credentials/cred_001"
+        },
+        "content_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "resolver_result": {
+        "status": "resolved",
+        "proof_format": "https://formats.example/jcs-signed-json",
+        "signature_valid": true,
+        "credential": {
+          "issuer": "https://credentials.example",
+          "claim_type": "https://claims.example/audience/methodology-reviewed",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "signal_urban_commuters"
+          },
+          "valid_from": "2026-08-01T00:00:00Z",
+          "expires_at": "2027-08-01T00:00:00Z",
+          "revoked": false
+        },
+        "credential_bytes": "{\"claim_type\":\"https://claims.example/audience/methodology-reviewed\",\"expires_at\":\"2027-08-01T00:00:00Z\",\"issuer\":\"https://credentials.example\",\"revoked\":false,\"subject\":{\"id\":\"signal_urban_commuters\",\"namespace\":\"https://signals.meridian.example/adcp\",\"resource_type\":\"https://adcontextprotocol.org/claims/subjects/signal\",\"type\":\"resource\"},\"valid_from\":\"2026-08-01T00:00:00Z\"}"
+      },
+      "expected": {
+        "outcome": "digest_mismatch",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "allowed-resolution-failure",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_timeout",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "failed"
+      },
+      "expected": {
+        "outcome": "resolution_failed",
+        "network_requests": 1
+      }
+    },
+    {
+      "name": "accepted-credential-not-found",
+      "presentation": {
+        "issuer": {
+          "type": "origin",
+          "origin": "https://credentials.example"
+        },
+        "claim_type": "https://claims.example/audience/methodology-reviewed",
+        "subject": {
+          "type": "resource",
+          "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+          "namespace": "https://signals.meridian.example/adcp",
+          "id": "signal_urban_commuters"
+        },
+        "locator": {
+          "type": "issuer_credential_id",
+          "credential_id": "cred_missing",
+          "resolver_id": "primary"
+        }
+      },
+      "resolver_result": {
+        "status": "not_found"
+      },
+      "expected": {
+        "outcome": "not_found",
+        "network_requests": 1
+      }
+    }
+  ]
+}

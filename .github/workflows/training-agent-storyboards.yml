@@ -9,14 +9,13 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-schemas.cjs'
       - 'scripts/build-compliance.cjs'
-      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
-      - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
@@ -30,14 +29,13 @@ on:
       - 'server/tests/manual/run-storyboards.ts'
       - 'package.json'
       - 'package-lock.json'
+      - 'scripts/build-schemas.cjs'
       - 'scripts/build-compliance.cjs'
-      - 'scripts/overlay-compliance-cache.sh'
       - 'scripts/run-storyboards-isolated.mjs'
       - 'scripts/run-storyboards-isolated-shards.sh'
       - 'scripts/run-storyboards-matrix.sh'
       - 'scripts/run-storyboards-sharded.sh'
       - 'scripts/run-storyboards-3-0-compat.sh'
-      - 'scripts/stage-sdk-schema-bundle.sh'
       - 'static/schemas/source/**'
       - 'static/compliance/source/**'
       - 'dist/compliance/**'
@@ -82,7 +80,7 @@ jobs:
           - surface: current
             tenant: governance
             min_clean_storyboards: 47
-            min_passing_steps: 157
+            min_passing_steps: 161
           - surface: current
             tenant: creative
             min_clean_storyboards: 49
@@ -103,10 +101,15 @@ jobs:
             tenant: signals
             min_clean_storyboards: 24
             min_passing_steps: 98
+          # SDK 14 beta.12 makes unsigned signing-required functional steps
+          # explicitly out of scope for immutable bundles that predate the
+          # functional_dispatch signing contract. The remaining 39 rows are
+          # still required to be clean, including the released identity
+          # lifecycle assertion below.
           - surface: 3.0-compat
             tenant: sales
-            min_clean_storyboards: 40
-            min_passing_steps: 224
+            min_clean_storyboards: 39
+            min_passing_steps: 219
           - surface: 3.0-compat
             tenant: governance
             min_clean_storyboards: 27
@@ -147,18 +150,11 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Overlay in-repo compliance source onto SDK cache
+      - name: Build current compliance and schema bundles
         if: matrix.surface == 'current'
-        # The storyboard runner loads from @adcp/sdk's bundled compliance
-        # cache (a snapshot synced from this repo's static/compliance/source/
-        # on each SDK publish). To grade current-PR fixtures rather than
-        # the published snapshot, rebuild the development compliance bundle
-        # and copy that generated bundle onto the cache so index.json includes
-        # newly-added storyboards.
-        # Logic lives in scripts/overlay-compliance-cache.sh so the
-        # pre-push hook (scripts/run-storyboards-matrix.sh) and CI grade
-        # against the same overlay.
-        run: bash scripts/overlay-compliance-cache.sh
+        run: |
+          node scripts/build-schemas.cjs
+          node scripts/build-compliance.cjs
 
       - name: Select latest released 3.0.x compliance bundle
         if: matrix.surface == '3.0-compat'
@@ -239,8 +235,8 @@ jobs:
         env:
           TENANT_PATH: ${{ matrix.tenant }}
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
-          ADCP_COMPLIANCE_DIR: ${{ steps.compat-bundle.outputs.dir }}
-          ADCP_SCHEMA_ROOT: ${{ steps.compat-bundle.outputs.schema_dir }}
+          ADCP_COMPLIANCE_DIR: ${{ matrix.surface == 'current' && 'dist/compliance/latest' || steps.compat-bundle.outputs.dir }}
+          ADCP_SCHEMA_ROOT: ${{ matrix.surface == 'current' && 'dist/schemas/latest' || steps.compat-bundle.outputs.schema_dir }}
         run: |
           set -uo pipefail
           # Creative-builder retains a large generated-schema graph after its
@@ -370,6 +366,23 @@ jobs:
             fi
           done
 
+      - name: Enforce governance seller-disposition evidence
+        if: matrix.surface == 'current' && matrix.tenant == 'governance'
+        run: |
+          set -euo pipefail
+          requirement="governance/failed_outcome_audit_persistence:4:0"
+          storyboard_id="${requirement%%:*}"
+          counts="${requirement#*:}"
+          expected_passed="${counts%%:*}"
+          expected_skipped="${counts##*:}"
+          if grep -E "^[[:space:]]+${storyboard_id}[[:space:]]+✓[[:space:]]+${expected_passed}P / ${expected_skipped}S" /tmp/storyboards.log >/dev/null; then
+            echo "Required-exact storyboard passed: ${storyboard_id} (${expected_passed}P / ${expected_skipped}S)"
+          else
+            echo "::error::Required-exact storyboard counts changed on /governance current surface: ${storyboard_id}"
+            grep -F "${storyboard_id}" /tmp/storyboards.log || true
+            exit 1
+          fi
+
       - name: Enforce creative required-clean storyboards
         if: matrix.surface == 'current' && matrix.tenant == 'creative'
         run: |
@@ -457,11 +470,13 @@ jobs:
         orchestrator: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       SALES_ORCHESTRATOR_COUNT: 8
-      # A 20-storyboard /sales calibration slice peaked at 2.06 GiB RSS and
-      # 28.7 seconds. These limits leave roughly 2x RSS and 4x time headroom
-      # while killing the observed 8–17 GiB pathologies before exhaustion.
+      ADCP_COMPLIANCE_DIR: dist/compliance/latest
+      ADCP_SCHEMA_ROOT: dist/schemas/latest
+      # SDK beta.11 keeps each storyboard inside the 4 GiB RSS envelope, but
+      # the heaviest lifecycle flows can approach two minutes on a loaded
+      # runner. Preserve the hard memory bound and allow teardown headroom.
       STORYBOARD_RSS_LIMIT_MB: 4096
-      STORYBOARD_TIMEOUT_MS: 120000
+      STORYBOARD_TIMEOUT_MS: 180000
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -476,8 +491,10 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Overlay in-repo compliance source onto SDK cache
-        run: bash scripts/overlay-compliance-cache.sh
+      - name: Build current compliance and schema bundles
+        run: |
+          node scripts/build-schemas.cjs
+          node scripts/build-compliance.cjs
 
       - name: Run isolated /sales storyboards
         env:
@@ -621,11 +638,11 @@ jobs:
         env:
           CLEAN: ${{ steps.aggregate.outputs.clean }}
           PASSED: ${{ steps.aggregate.outputs.passed }}
-          # First capability-resolved replay. Result-row totals include the
+          # Beta.12 capability-resolved replay. Result-row totals include the
           # three signed-request route profiles; storyboard applicability is
           # reported separately in the aggregate summary.
-          MIN_CLEAN: 126
-          MIN_PASSED: 556
+          MIN_CLEAN: 133
+          MIN_PASSED: 632
         run: |
           set -euo pipefail
           echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
@@ -643,14 +660,18 @@ jobs:
         run: |
           set -euo pipefail
           required_clean=(
+            "sales_non_guaranteed"
+            "sales_guaranteed"
             "media_buy_seller/billing_finality_delivery"
             "media_buy_seller/canonical_formats"
+            "media_buy_seller/external_audience_source_binding"
             "media_buy_seller/vendor_metric_catalog_precondition"
             "canonical_format_validate_input"
             "notification_config_event_scope"
             "notification_config_lifecycle"
             "notification_config_rejections"
             "wholesale_feed_products"
+            "wholesale_feed_products_scope_isolation"
             "wholesale_feed_product_webhooks"
             "wholesale_feed_bulk_webhooks"
           )
@@ -670,6 +691,11 @@ jobs:
             "media_buy_seller/declined_proposal_refinement:6:0"
             "media_buy_seller/declined_proposal_execution:8:0"
             "media_buy_seller/expired_proposal_execution:8:0"
+            "media_buy_seller/change_rights_state_projection:8:0"
+            "media_buy_seller/acceptance_policy_discovery:3:0"
+            "media_buy_seller/governance_agent_binding_acceptance:5:0"
+            "media_buy_seller/external_audience_source_binding:8:0"
+            "media_buy_seller/get_products_async:10:0"
           )
           for requirement in "${required_exact[@]}"; do
             storyboard_id="${requirement%%:*}"

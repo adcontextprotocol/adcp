@@ -60,8 +60,20 @@ import { runConversationInsightsJob } from "../addie/jobs/conversation-insights.
 import { guardEscalationResolution } from "../services/escalation-resolution-guard.js";
 import {
   getShadowReplayCaptureSummary,
+  getShadowReplayFunnelSummary,
   getShadowReplayGenerationSummary,
+  getShadowReplayJudgmentSummary,
 } from "../addie/jobs/shadow-replay-trace.js";
+import { evaluateShadowReplayPromotion } from '../addie/jobs/shadow-replay-rollout.js';
+import { getModelExecutionReadiness } from '../addie/model-execution-readiness.js';
+import {
+  ROUTER_SHADOW_RETENTION_DAYS,
+  getRouterShadowSummary,
+} from '../addie/router-shadow.js';
+import {
+  ROUTER_CANARY_SUMMARY_MAX_DAYS,
+  getRouterCanarySummary,
+} from '../addie/router-canary.js';
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -561,7 +573,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/threads/shadow-replay-captures
-  // Per-opportunity rollout accounting contains only categorical outcomes.
+  // Per-opportunity accounting and the advisory promotion gate contain only
+  // aggregate/categorical evidence. This endpoint cannot enable a canary.
   apiRouter.get("/threads/shadow-replay-captures", async (req, res) => {
     try {
       const parsedDays = typeof req.query.days === 'string'
@@ -570,10 +583,13 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
       if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 7) {
         return res.status(400).json({ error: 'days must be an integer from 1 to 7' });
       }
-      const [outcomes, generationOutcomes] = await Promise.all([
+      const [outcomes, generationOutcomes, judgmentOutcomes, funnel] = await Promise.all([
         getShadowReplayCaptureSummary(parsedDays),
         getShadowReplayGenerationSummary(parsedDays),
+        getShadowReplayJudgmentSummary(parsedDays),
+        getShadowReplayFunnelSummary(parsedDays),
       ]);
+      const rollout = evaluateShadowReplayPromotion(generationOutcomes, judgmentOutcomes);
       res.json({
         days: parsedDays,
         total: outcomes.reduce((sum, outcome) => sum + outcome.count, 0),
@@ -588,8 +604,62 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
             (sum, outcome) => sum + outcome.output_tokens,
             0,
           ),
+          cache_read_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_read_tokens,
+            0,
+          ),
+          cache_write_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_write_tokens,
+            0,
+          ),
+          usage_complete: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.usage_complete_count,
+            0,
+          ),
+          latency_complete: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.latency_count,
+            0,
+          ),
+          estimated_cost_micros: generationOutcomes.reduce(
+            (sum, outcome) => sum + BigInt(outcome.estimated_cost_micros),
+            0n,
+          ).toString(),
           outcomes: generationOutcomes,
         },
+        judgments: {
+          total: judgmentOutcomes.reduce((sum, outcome) => sum + outcome.count, 0),
+          input_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.input_tokens,
+            0,
+          ),
+          output_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.output_tokens,
+            0,
+          ),
+          cache_read_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_read_tokens,
+            0,
+          ),
+          cache_write_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_write_tokens,
+            0,
+          ),
+          usage_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.usage_complete_count,
+            0,
+          ),
+          latency_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.latency_count,
+            0,
+          ),
+          estimated_cost_micros: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + BigInt(outcome.estimated_cost_micros),
+            0n,
+          ).toString(),
+          outcomes: judgmentOutcomes,
+        },
+        rollout,
+        funnel,
       });
     } catch (error) {
       logger.error(
@@ -597,6 +667,78 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         "Error fetching shadow replay capture summary",
       );
       res.status(500).json({ error: "Unable to fetch shadow replay capture summary" });
+    }
+  });
+
+  // GET /api/admin/addie/threads/router-shadow-summary
+  // Aggregate-only rollout evidence. This endpoint never returns attempts,
+  // identifiers, prompts, responses, free-form reasons, or HMACs.
+  apiRouter.get('/threads/router-shadow-summary', async (req, res) => {
+    const days = typeof req.query.days === 'string' && req.query.days.trim() !== ''
+      ? Number(req.query.days)
+      : 7;
+    if (!Number.isInteger(days) || days < 1 || days > ROUTER_SHADOW_RETENTION_DAYS) {
+      return res.status(400).json({
+        error: `days must be an integer from 1 to ${ROUTER_SHADOW_RETENTION_DAYS}`,
+      });
+    }
+    try {
+      res.json(await getRouterShadowSummary(days));
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching router shadow summary',
+      );
+      res.status(500).json({ error: 'Unable to fetch router shadow summary' });
+    }
+  });
+
+  // GET /api/admin/addie/threads/router-canary-summary
+  // Aggregate-only admission, fallback, latency, cost, and rollback evidence.
+  apiRouter.get('/threads/router-canary-summary', async (req, res) => {
+    const days = typeof req.query.days === 'string' && req.query.days.trim() !== ''
+      ? Number(req.query.days)
+      : 7;
+    if (!Number.isInteger(days) || days < 1 || days > ROUTER_CANARY_SUMMARY_MAX_DAYS) {
+      return res.status(400).json({
+        error: `days must be an integer from 1 to ${ROUTER_CANARY_SUMMARY_MAX_DAYS}`,
+      });
+    }
+    try {
+      res.json(await getRouterCanarySummary(days));
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching router canary summary',
+      );
+      res.status(500).json({ error: 'Unable to fetch router canary summary' });
+    }
+  });
+
+  // GET /api/admin/addie/threads/model-execution-provenance-readiness
+  // Privacy-safe persisted-data signal. Deployment drain/error evidence is
+  // still required before a contract migration; provider canaries have their
+  // own target-provider quality and fallback gates.
+  apiRouter.get('/threads/model-execution-provenance-readiness', async (req, res) => {
+    const hours = typeof req.query.hours === 'string' && req.query.hours.trim() !== ''
+      ? Number(req.query.hours)
+      : 24;
+    const minimumSamples = typeof req.query.minimum_thread_message_samples === 'string'
+      && req.query.minimum_thread_message_samples.trim() !== ''
+      ? Number(req.query.minimum_thread_message_samples)
+      : 100;
+    try {
+      const readiness = await getModelExecutionReadiness({ hours, minimumSamples });
+      res.json(readiness);
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return res.status(400).json({ error: 'Invalid readiness query parameters' });
+      }
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching model execution readiness',
+      );
+      res.status(500).json({ error: 'Unable to fetch model execution readiness' });
     }
   });
 
