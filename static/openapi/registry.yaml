@@ -12129,7 +12129,7 @@ paths:
       description: |-
         Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).
 
-        **Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.
+        **Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Cross-owner support runs use the same saved owner credentials as the periodic heartbeat when available. Badge fan-out reissues verification badges off the new run. If the compliance call fails or the verifier cannot authenticate (timeout, missing/rejected credentials, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string and no compliance verdict is persisted.
 
         **Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.
 
@@ -12192,7 +12192,7 @@ paths:
                     properties:
                       ran:
                         type: boolean
-                        description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed.
+                        description: True if the full storyboard suite ran and agent_storyboard_status was updated. False when the verifier could not authenticate or the compliance call itself failed; those inconclusive results are not persisted.
                       run_id:
                         type: string
                         description: Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence.

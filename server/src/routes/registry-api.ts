@@ -4019,7 +4019,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Badge fan-out reissues verification badges off the new run. If the compliance call fails (timeout, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms), capability snapshot (inferred type, discovered tools), and compliance verdict (storyboard pass/fail counts). Use after fixing your agent so the registry shows fresh data without waiting for the periodic heartbeat (~1h).\n\n**Compliance re-run:** when the caller owns the agent or is an AAO admin and the capability probe succeeds, the full storyboard suite can run for several minutes on capability-rich agents with a fresh test session, and `agent_storyboard_status` is updated. Owner-triggered runs use `triggered_by: 'owner_test'`; admin-triggered support runs use `triggered_by: 'manual'`. Cross-owner support runs use the same saved owner credentials as the periodic heartbeat when available. Badge fan-out reissues verification badges off the new run. If the compliance call fails or the verifier cannot authenticate (timeout, missing/rejected credentials, OAuth wall, internal error), the capability/health portion still returns successfully — `compliance.ran` is `false` with an `error` string and no compliance verdict is persisted.\n\n**Auth:** owner of the agent, AAO admin, or static `ADMIN_API_KEY`.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4051,7 +4051,7 @@ registry.registerPath({
             checked_at: z.string(),
             error: z.string().optional(),
             compliance: z.object({
-              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
+              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when the verifier could not authenticate or the compliance call itself failed; those inconclusive results are not persisted." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
               requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
@@ -7559,6 +7559,40 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   }, REFRESH_AGENT_RATE_LIMIT_MS);
   refreshRateLimitCleanupInterval.unref();
 
+  // Match transport/authentication failures, not arbitrary mentions such as
+  // "expected HTTP 401" inside an authentication-conformance assertion.
+  const verifierAuthFailurePattern = /(?:agent returned (?:http )?(?:401|403)\b|request failed (?:with )?(?:http )?(?:status(?: code)? )?(?:401|403)\b|(?:401|403) (?:unauthori[sz]ed|forbidden)\b|authentication required|requires (?:oauth )?authorization|AUTH_(?:MISSING|REQUIRED|INVALID))/i;
+
+  /**
+   * A verifier that lacks usable credentials cannot establish an agent's
+   * conformance. Keep that infrastructure failure out of canonical registry
+   * state even when an SDK version grades the surrounding run as failing or
+   * partial instead of the more precise auth_required status.
+   */
+  function hasVerifierAuthenticationFailure(result: Awaited<ReturnType<typeof comply>>): boolean {
+    if (result.overall_status === 'auth_required') return true;
+
+    if (result.observations.some((observation) =>
+      observation.source?.kind === 'probe' &&
+      (observation.source.code === 'auth-401' || observation.source.code === 'auth-oauth-required')
+    )) return true;
+
+    if (result.failures?.some((failure) =>
+      verifierAuthFailurePattern.test(failure.error ?? '')
+    )) return true;
+
+    return result.tracks.some((track) => track.scenarios.some((scenario) =>
+      scenario.steps?.some((step) =>
+        !step.passed && !step.skipped && verifierAuthFailurePattern.test([
+          step.error,
+          step.details,
+          step.response_preview,
+          ...(step.warnings ?? []),
+        ].filter((value): value is string => typeof value === 'string').join(' '))
+      ) === true
+    ));
+  }
+
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
     try {
       const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
@@ -7619,17 +7653,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       // Owner sees 502/409 error → has 60s to fix and try again.
       refreshAgentRateLimits.set(agentUrl, now);
 
-      // Resolve saved owner auth (static bearer / basic / OAuth) so the
-      // probe sees the same credentials evaluate_agent_quality uses. The
-      // periodic crawl path also now resolves owner credentials when any
-      // org has registered them (see CrawlerService.resolveProbeAuth); this
-      // route still scopes auth to the caller's own org so an AAO admin
-      // refreshing someone else's agent probes anonymously rather than
-      // accidentally running with the owner's tokens.
+      // Resolve saved owner auth (static bearer / basic / OAuth) so the probe
+      // and compliance suite see the same credentials as the heartbeat. An
+      // owner is scoped to their selected org. A privileged cross-owner
+      // support refresh uses ComplianceDatabase's owner-only lookup: it joins
+      // agent_contexts to the organization that registered this exact agent
+      // URL and never borrows credentials from an unrelated tenant.
       let resolvedAuth: SdkAuth | undefined;
       if (ownerOrgId) {
         const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
         resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
+      } else if (canRunCompliance) {
+        const auth = await complianceDb.resolveOwnerAuth(agentUrl);
+        resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `support-refresh:${agentUrl}` });
       }
 
       let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
@@ -7712,8 +7748,11 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             response_time_ms: Date.now() - complianceStart,
             success: true,
           });
-          if (complyResult.overall_status === 'auth_required') {
-            complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
+          if (hasVerifierAuthenticationFailure(complyResult)) {
+            complianceSummary = {
+              ran: false,
+              error: 'Verifier could not authenticate to the agent; compliance result was not persisted',
+            };
           } else {
             const metadata = await complianceDb.getRegistryMetadata(agentUrl);
             const dbInput = complianceResultToDbInput(

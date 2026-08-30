@@ -43,6 +43,10 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('canonical-saved-bearer'),
   ownedAgentUrl('badge-fanout'),
   ownedAgentUrl('static-admin'),
+  ownedAgentUrl('static-admin-saved-bearer'),
+  ownedAgentUrl('static-admin-auth-required'),
+  ownedAgentUrl('static-admin-task-auth'),
+  ownedAgentUrl('static-admin-auth-conformance-failure'),
   ownedAgentUrl('applicable-oauth'),
   ownedAgentUrl('selected-org-refresh'),
   ownedAgentUrl('selected-org-challenge'),
@@ -485,6 +489,142 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       triggered_by: 'manual',
       triggered_org_id: null,
     });
+  });
+
+  it('uses stored owner auth for a cross-owner static-admin compliance rerun', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('static-admin-saved-bearer');
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const FAKE_BEARER = 'fake-static-admin-bearer-do-not-use-in-prod';
+    await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
+
+    try {
+      const res = await request(app).post(url(agentUrl)).send();
+
+      expect(res.status).toBe(200);
+      expect(res.body.compliance.ran).toBe(true);
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({ auth: { type: 'bearer', token: FAKE_BEARER } }),
+      );
+      expect(complyMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({ auth: { type: 'bearer', token: FAKE_BEARER } }),
+      );
+    } finally {
+      await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
+    }
+  });
+
+  it('does not persist a support run when discovery reports authentication required', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('static-admin-auth-required');
+    complyMock.mockResolvedValue({
+      ...makeComplianceResult(),
+      overall_status: 'auth_required',
+      tracks: [],
+      observations: [{
+        category: 'auth',
+        severity: 'error',
+        message: 'Agent returned 401. Check the verifier token.',
+        source: { kind: 'probe', code: 'auth-401' },
+      }],
+    });
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance).toEqual({
+      ran: false,
+      error: 'Verifier could not authenticate to the agent; compliance result was not persisted',
+    });
+    const runs = await pool.query(
+      'SELECT id FROM agent_compliance_runs WHERE agent_url = $1',
+      [agentUrl],
+    );
+    expect(runs.rowCount).toBe(0);
+  });
+
+  it('does not persist a support run when public discovery masks task-level auth', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('static-admin-task-auth');
+    complyMock.mockResolvedValue({
+      ...makeComplianceResult(),
+      overall_status: 'failing',
+      tracks: [{
+        track: 'media_buy',
+        status: 'fail',
+        duration_ms: 42,
+        scenarios: [{
+          scenario: 'media_buy_seller/capability_discovery',
+          overall_passed: false,
+          steps: [{
+            step: 'Call get_products',
+            task: 'get_products',
+            passed: false,
+            duration_ms: 10,
+            error: 'Agent returned 401 Unauthorized',
+          }],
+        }],
+      }],
+      failures: [{
+        track: 'media_buy',
+        storyboard_id: 'media_buy_seller',
+        step_id: 'get_products',
+        step_title: 'Call get_products',
+        task: 'get_products',
+        error: 'Agent returned 401 Unauthorized',
+        fix_command: 'adcp storyboard run --step get_products',
+      }],
+    });
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance.ran).toBe(false);
+    expect(res.body.compliance.error).toMatch(/Verifier could not authenticate/);
+    const runs = await pool.query(
+      'SELECT id FROM agent_compliance_runs WHERE agent_url = $1',
+      [agentUrl],
+    );
+    expect(runs.rowCount).toBe(0);
+  });
+
+  it('persists a target-agent authentication conformance failure', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('static-admin-auth-conformance-failure');
+    complyMock.mockResolvedValue({
+      ...makeComplianceResult(),
+      overall_status: 'failing',
+      failures: [{
+        track: 'security_transport',
+        storyboard_id: 'security_baseline',
+        step_id: 'reject_unauthenticated_request',
+        step_title: 'Reject unauthenticated request',
+        task: 'get_products',
+        error: 'Expected HTTP 401 but agent returned 200',
+        fix_command: 'adcp storyboard run --step reject_unauthenticated_request',
+      }],
+    });
+
+    const res = await request(app).post(url(agentUrl)).send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.compliance).toMatchObject({
+      ran: true,
+      overall_status: 'failing',
+    });
+    const runs = await pool.query(
+      'SELECT id FROM agent_compliance_runs WHERE agent_url = $1',
+      [agentUrl],
+    );
+    expect(runs.rowCount).toBe(1);
   });
 
   it('non-owner non-admin gets 403', async () => {
