@@ -236,6 +236,11 @@ export interface ShadowReplayJudgmentCompletion {
   humanEvidenceContentHmac: string | null;
   inputTokens: number;
   outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  usageAvailable: boolean;
+  pricingVersion: string;
+  latencyMs: number | null;
   startedAt: Date;
   completedAt: Date;
 }
@@ -257,6 +262,7 @@ export interface ShadowReplayJudgmentSummaryRow extends QueryResultRow {
   judge_model: string | null;
   self_judged: boolean | null;
   judge_prompt_version: string | null;
+  pricing_version: string;
   status: string;
   reason: string;
   evaluation_valid: boolean;
@@ -268,6 +274,13 @@ export interface ShadowReplayJudgmentSummaryRow extends QueryResultRow {
   count: number;
   input_tokens: number;
   output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  usage_complete_count: number;
+  latency_count: number;
+  estimated_cost_micros: string;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
 }
 
 export interface ShadowReplayFunnelSummary extends QueryResultRow {
@@ -1452,10 +1465,33 @@ function validateJudgmentCompletion(
   if (
     !Number.isSafeInteger(judgment.inputTokens) || judgment.inputTokens < 0
     || !Number.isSafeInteger(judgment.outputTokens) || judgment.outputTokens < 0
+    || !Number.isSafeInteger(judgment.cacheReadTokens) || judgment.cacheReadTokens < 0
+    || !Number.isSafeInteger(judgment.cacheWriteTokens) || judgment.cacheWriteTokens < 0
     || judgment.inputTokens > 2_147_483_647
     || judgment.outputTokens > 2_147_483_647
+    || judgment.cacheReadTokens > 2_147_483_647
+    || judgment.cacheWriteTokens > 2_147_483_647
   ) {
     throw new Error('shadow_replay_judgment_usage_invalid');
+  }
+  if (typeof judgment.usageAvailable !== 'boolean'
+    || (!judgment.usageAvailable && (
+      judgment.inputTokens !== 0
+      || judgment.outputTokens !== 0
+      || judgment.cacheReadTokens !== 0
+      || judgment.cacheWriteTokens !== 0
+    ))) {
+    throw new Error('shadow_replay_judgment_usage_completeness_invalid');
+  }
+  if (!BOUNDED_VERSION.test(judgment.pricingVersion)) {
+    throw new Error('shadow_replay_judgment_pricing_version_invalid');
+  }
+  if (judgment.latencyMs !== null && (
+    !Number.isSafeInteger(judgment.latencyMs)
+    || judgment.latencyMs < 0
+    || judgment.latencyMs > 900_000
+  )) {
+    throw new Error('shadow_replay_judgment_latency_invalid');
   }
   if (
     !Number.isSafeInteger(judgment.shapeWordCount)
@@ -1515,6 +1551,13 @@ function validateJudgmentCompletion(
   ) {
     throw new Error('shadow_replay_judgment_provenance_incomplete');
   }
+  if ((!judgeExecuted && (
+    judgment.pricingVersion !== 'not-applicable'
+    || judgment.usageAvailable
+    || judgment.latencyMs !== null
+  )) || (judgeExecuted && judgment.pricingVersion === 'not-applicable')) {
+    throw new Error('shadow_replay_judgment_cost_provenance_invalid');
+  }
   if (
     !judgment.sourceOutputHmac
     || !equalDigest(judgment.sourceOutputHmac, outcome.outputHmac)
@@ -1567,6 +1610,8 @@ function validateJudgmentCompletion(
         judgment.shadowQuality,
       )
       || judgment.deterministicFailureLabels.length !== 0
+      || !judgment.usageAvailable
+      || judgment.latencyMs === null
       || (judgment.knowledgeGap && judgment.gapSeverity === 'none')
       || (!judgment.knowledgeGap && judgment.gapSeverity !== 'none')
     ) {
@@ -1769,6 +1814,24 @@ export async function completeShadowReplayGeneration(
       cacheWriteTokens: outcome.cacheWriteTokens,
     })
     : null;
+  let judgmentEstimatedCostMicros: number | null = null;
+  if (judgment?.judgeModel) {
+    const judgmentPricing = resolveShadowReplayPricing(
+      providerForModel(judgment.judgeModel) as ModelProviderId,
+      judgment.judgeModel,
+    );
+    if (!judgmentPricing || judgmentPricing.version !== judgment.pricingVersion) {
+      throw new Error('shadow_replay_judgment_pricing_unavailable');
+    }
+    judgmentEstimatedCostMicros = judgment.usageAvailable
+      ? judgmentPricing.estimateCostMicros({
+        inputTokens: judgment.inputTokens,
+        outputTokens: judgment.outputTokens,
+        cacheReadTokens: judgment.cacheReadTokens,
+        cacheWriteTokens: judgment.cacheWriteTokens,
+      })
+      : null;
+  }
   const context = {
     shadow_eval_status: outcome.status === 'error' ? 'error' : 'skipped',
     shadow_eval_type: 'suppressed_opportunity',
@@ -1837,14 +1900,17 @@ export async function completeShadowReplayGeneration(
          judge_prompt_version, judge_prompt_hmac,
          judge_request_hmac, judge_response_hmac,
          question_hmac, source_output_hmac, human_evidence_content_hmac,
-         input_tokens, output_tokens, started_at, completed_at, retained_until
+         input_tokens, output_tokens, started_at, completed_at, retained_until,
+         pricing_version, usage_complete, cache_read_tokens, cache_write_tokens,
+         latency_ms, estimated_cost_micros
        )
        SELECT
          trace_completed.trace_id, $16, $17, $18,
          $19, $20, $21, $22, $23, $24::text[],
          $25, $26, $27,
          $28, $29, $30, $31, $32, $33, $34,
-         $35, $36, $37, $38, $39, $40, $41, $42
+         $35, $36, $37, $38, $39, $40, $41, $42,
+         $54, $55, $56, $57, $58, $59
        FROM trace_completed
        WHERE $15::boolean
        RETURNING trace_id
@@ -1913,6 +1979,12 @@ export async function completeShadowReplayGeneration(
       outcome.latencyMs,
       estimatedCostMicros,
       pricing.version,
+      judgment?.pricingVersion ?? null,
+      judgment?.usageAvailable ?? null,
+      judgment?.cacheReadTokens ?? null,
+      judgment?.cacheWriteTokens ?? null,
+      judgment?.latencyMs ?? null,
+      judgmentEstimatedCostMicros,
     ],
   );
   return result.rows[0]?.completed === true;
@@ -2075,6 +2147,7 @@ export async function getShadowReplayJudgmentSummary(
             judgment.judge_model,
             judgment.self_judged,
             judgment.judge_prompt_version,
+            judgment.pricing_version,
             judgment.status,
             judgment.reason,
             judgment.evaluation_valid,
@@ -2085,7 +2158,17 @@ export async function getShadowReplayJudgmentSummary(
             judgment.deterministic_failure_labels,
             COUNT(*)::integer AS count,
             COALESCE(SUM(judgment.input_tokens), 0)::integer AS input_tokens,
-            COALESCE(SUM(judgment.output_tokens), 0)::integer AS output_tokens
+            COALESCE(SUM(judgment.output_tokens), 0)::integer AS output_tokens,
+            COALESCE(SUM(judgment.cache_read_tokens), 0)::integer AS cache_read_tokens,
+            COALESCE(SUM(judgment.cache_write_tokens), 0)::integer AS cache_write_tokens,
+            COUNT(*) FILTER (WHERE judgment.usage_complete)::integer AS usage_complete_count,
+            COUNT(judgment.latency_ms)::integer AS latency_count,
+            COALESCE(SUM(judgment.estimated_cost_micros), 0)::text
+              AS estimated_cost_micros,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY judgment.latency_ms)::double precision
+              AS latency_p50_ms,
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY judgment.latency_ms)::double precision
+              AS latency_p95_ms
      FROM addie_shadow_replay_judgments judgment
      JOIN addie_shadow_replay_generations generation
        ON generation.trace_id = judgment.trace_id
@@ -2100,7 +2183,7 @@ export async function getShadowReplayJudgmentSummary(
               generation.returned_provider, generation.returned_model,
               judgment.judgment_policy_version, judgment.judge_provider,
               judgment.judge_model, judgment.self_judged,
-              judgment.judge_prompt_version, judgment.status,
+              judgment.judge_prompt_version, judgment.pricing_version, judgment.status,
               judgment.reason, judgment.evaluation_valid,
               judgment.evaluation_skipped, judgment.knowledge_gap,
               judgment.gap_severity, judgment.shadow_quality,

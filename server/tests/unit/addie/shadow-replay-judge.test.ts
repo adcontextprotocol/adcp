@@ -74,11 +74,16 @@ function judgeResponse(text: string, stopReason = 'end_turn') {
     id: 'msg_fixture',
     type: 'message',
     role: 'assistant',
-    model: 'claude-opus-fixture',
+    model: 'claude-opus-4-6',
     content: [{ type: 'text', text }],
     stop_reason: stopReason,
     stop_sequence: null,
-    usage: { input_tokens: 23, output_tokens: 11 },
+    usage: {
+      input_tokens: 23,
+      output_tokens: 11,
+      cache_read_input_tokens: 5,
+      cache_creation_input_tokens: 2,
+    },
   };
 }
 
@@ -170,7 +175,7 @@ describe('shadow replay independent judge', () => {
       trace: resolvedTrace,
       humanEvidence: null,
       judgeEnabled: true,
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
     }, {
       client: { messages: { create } } as never,
       renewLease: vi.fn(async () => true),
@@ -201,7 +206,7 @@ describe('shadow replay independent judge', () => {
       trace: resolvedTrace,
       humanEvidence: null,
       judgeEnabled: true,
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
     }, {})({
       text: output,
       outputHmac: 'a'.repeat(64),
@@ -239,18 +244,19 @@ describe('shadow replay independent judge', () => {
       guardedOutput: 'The task lifecycle is request, delivery, and completion.',
       outputHmac: 'a'.repeat(64),
       generatorModel: 'claude-sonnet-5',
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
       judgeEnabled: true,
     }, {
       client: { messages: { create } } as never,
       renewLease,
+      monotonicNow: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(350),
     });
 
     expect(order).toEqual(['lease', 'provider']);
     expect(create).toHaveBeenCalledTimes(1);
     const [request, options] = create.mock.calls[0];
     expect(request).toMatchObject({
-      model: 'claude-opus-fixture',
+      model: 'claude-opus-4-6',
       max_tokens: MAX_SHADOW_REPLAY_JUDGE_TOKENS,
     });
     expect(request.messages[0].content).toContain('knowledge_gap=true only');
@@ -269,10 +275,15 @@ describe('shadow replay independent judge', () => {
       gapSeverity: 'none',
       shadowQuality: 'equivalent',
       judgeProvider: 'anthropic',
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
       selfJudged: false,
       inputTokens: 23,
       outputTokens: 11,
+      cacheReadTokens: 5,
+      cacheWriteTokens: 2,
+      usageAvailable: true,
+      pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+      latencyMs: 250,
     });
     expect(result.judgePromptHmac).toMatch(/^[0-9a-f]{64}$/);
     expect(result.judgeRequestHmac).toMatch(/^[0-9a-f]{64}$/);
@@ -307,6 +318,33 @@ describe('shadow replay independent judge', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('rejects an unpriced judge model before lease renewal or provider dispatch', async () => {
+    const create = vi.fn();
+    const renewLease = vi.fn();
+    const result = await executeIndependentShadowReplayJudge({
+      trace: trace(),
+      humanEvidence: humanEvidence(),
+      guardedOutput: 'A concise response.',
+      outputHmac: 'a'.repeat(64),
+      generatorModel: 'claude-sonnet-5',
+      judgeModel: 'claude-unpriced-fixture',
+      judgeEnabled: true,
+    }, {
+      client: { messages: { create } } as never,
+      renewLease,
+    });
+
+    expect(result).toMatchObject({
+      status: 'skipped',
+      reason: 'judge_pricing_unavailable',
+      pricingVersion: 'not-applicable',
+      usageAvailable: false,
+      latencyMs: null,
+    });
+    expect(renewLease).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('fails closed when low-level judge activation is omitted at runtime', async () => {
     const create = vi.fn();
     const renewLease = vi.fn();
@@ -316,7 +354,7 @@ describe('shadow replay independent judge', () => {
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
       generatorModel: 'claude-sonnet-5',
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
     } as unknown as Parameters<typeof executeIndependentShadowReplayJudge>[0];
 
     const result = await executeIndependentShadowReplayJudge(input, {
@@ -342,7 +380,7 @@ describe('shadow replay independent judge', () => {
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
       generatorModel: 'claude-sonnet-5',
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
       judgeEnabled: true,
     }, {
       client: { messages: { create } } as never,
@@ -352,6 +390,109 @@ describe('shadow replay independent judge', () => {
     expect(result).toMatchObject({ status: 'error', reason: 'judge_output_invalid' });
     expect(result.judgeResponseHmac).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(result)).not.toContain(PRIVATE_SENTINEL);
+  });
+
+  it('retains provider-call timing but not invented usage when the judge fails', async () => {
+    const result = await executeIndependentShadowReplayJudge({
+      trace: trace(),
+      humanEvidence: humanEvidence(),
+      guardedOutput: 'A concise response.',
+      outputHmac: 'a'.repeat(64),
+      generatorModel: 'claude-sonnet-5',
+      judgeModel: 'claude-opus-4-6',
+      judgeEnabled: true,
+    }, {
+      client: { messages: { create: vi.fn(async () => { throw new Error('provider down'); }) } } as never,
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(50).mockReturnValueOnce(125),
+    });
+
+    expect(result).toMatchObject({
+      status: 'error',
+      reason: 'judge_provider_error',
+      pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+      usageAvailable: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      latencyMs: 75,
+    });
+  });
+
+  it('records malformed terminal usage as unavailable instead of zero-token success', async () => {
+    const response = {
+      ...judgeResponse(JSON.stringify({
+        knowledge_gap: false,
+        gap_severity: 'none',
+        shadow_quality: 'equivalent',
+      })),
+      usage: { input_tokens: Number.NaN, output_tokens: 11 },
+    };
+    const result = await executeIndependentShadowReplayJudge({
+      trace: trace(),
+      humanEvidence: humanEvidence(),
+      guardedOutput: 'A concise response.',
+      outputHmac: 'a'.repeat(64),
+      generatorModel: 'claude-sonnet-5',
+      judgeModel: 'claude-opus-4-6',
+      judgeEnabled: true,
+    }, {
+      client: { messages: { create: vi.fn(async () => response) } } as never,
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(20),
+    });
+
+    expect(result).toMatchObject({
+      status: 'error',
+      reason: 'judge_usage_unavailable',
+      usageAvailable: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      latencyMs: 10,
+    });
+  });
+
+  it('normalizes nullable cache usage counters to zero', async () => {
+    const response = {
+      ...judgeResponse(JSON.stringify({
+        knowledge_gap: false,
+        gap_severity: 'none',
+        shadow_quality: 'equivalent',
+      })),
+      usage: {
+        input_tokens: 23,
+        output_tokens: 11,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+      },
+    };
+    const result = await executeIndependentShadowReplayJudge({
+      trace: trace(),
+      humanEvidence: humanEvidence(),
+      guardedOutput: 'A concise response.',
+      outputHmac: 'a'.repeat(64),
+      generatorModel: 'claude-sonnet-5',
+      judgeModel: 'claude-opus-4-6',
+      judgeEnabled: true,
+    }, {
+      client: { messages: { create: vi.fn(async () => response) } } as never,
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(20),
+    });
+
+    expect(result).toMatchObject({
+      status: 'judged',
+      reason: 'judgment_succeeded',
+      usageAvailable: true,
+      inputTokens: 23,
+      outputTokens: 11,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      latencyMs: 10,
+    });
   });
 
   it.each([
@@ -396,7 +537,7 @@ describe('shadow replay independent judge', () => {
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
       generatorModel: 'claude-sonnet-5',
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
       judgeEnabled: true,
     }, {
       client: { messages: { create: vi.fn(async () => response) } } as never,
@@ -413,7 +554,7 @@ describe('shadow replay independent judge', () => {
       trace: trace(false),
       humanEvidence: null,
       judgeEnabled: false,
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
     }, {});
     const output = {
       text: 'A concise response.',
@@ -435,7 +576,7 @@ describe('shadow replay independent judge', () => {
       trace: resolvedTrace,
       humanEvidence: humanEvidence(),
       judgeEnabled: true,
-      judgeModel: 'claude-opus-fixture',
+      judgeModel: 'claude-opus-4-6',
     }, {
       client: { messages: { create: vi.fn() } } as never,
       renewLease: async () => { throw new Error(PRIVATE_SENTINEL); },

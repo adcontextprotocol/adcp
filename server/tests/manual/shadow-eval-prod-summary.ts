@@ -122,6 +122,11 @@ interface CaptureSummary {
     total: number;
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    usage_complete: number;
+    latency_complete: number;
+    estimated_cost_micros: string;
     outcomes: Array<{
       capture_version: number;
       capture_policy_version: string;
@@ -139,6 +144,7 @@ interface CaptureSummary {
       judge_model: string | null;
       self_judged: boolean | null;
       judge_prompt_version: string | null;
+      pricing_version: string;
       status: string;
       reason: string;
       evaluation_valid: boolean;
@@ -150,6 +156,13 @@ interface CaptureSummary {
       count: number;
       input_tokens: number;
       output_tokens: number;
+      cache_read_tokens: number;
+      cache_write_tokens: number;
+      usage_complete_count: number;
+      latency_count: number;
+      estimated_cost_micros: string;
+      latency_p50_ms: number | null;
+      latency_p95_ms: number | null;
     }>;
   };
   funnel?: {
@@ -424,7 +437,13 @@ async function main() {
       console.log(
         `Judgment outcomes: ${captureSummary.judgments.total} `
         + `(${captureSummary.judgments.input_tokens} input / `
-        + `${captureSummary.judgments.output_tokens} output tokens)`,
+        + `${captureSummary.judgments.output_tokens} output / `
+        + `${captureSummary.judgments.cache_read_tokens} cache-read / `
+        + `${captureSummary.judgments.cache_write_tokens} cache-write tokens; `
+        + `${captureSummary.judgments.usage_complete}/${captureSummary.judgments.total} `
+        + `complete usage; ${captureSummary.judgments.latency_complete}/`
+        + `${captureSummary.judgments.total} timed; `
+        + `${captureSummary.judgments.estimated_cost_micros} cost micros)`,
       );
       for (const outcome of captureSummary.judgments.outcomes) {
         const returned = outcome.returned_provider && outcome.returned_model
@@ -443,11 +462,19 @@ async function main() {
           + `judge=${judge} self_judged=${String(outcome.self_judged)} `
           + `judgment=${outcome.judgment_policy_version}/`
           + `${outcome.judge_prompt_version ?? 'none'} `
+          + `pricing=${outcome.pricing_version} `
           + `quality=${outcome.shadow_quality ?? 'none'} `
           + `gap=${outcome.gap_severity ?? 'none'} `
           + `shape_failures=${outcome.deterministic_failure_labels.join(',') || 'none'} `
           + `${outcome.status}:${outcome.reason} ${outcome.count} `
-          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+          + `usage=${outcome.usage_complete_count}/${outcome.count} `
+          + `timed=${outcome.latency_count}/${outcome.count} `
+          + `latency_p50/p95=${outcome.latency_p50_ms ?? 'none'}/`
+          + `${outcome.latency_p95_ms ?? 'none'}ms `
+          + `cost=${outcome.estimated_cost_micros}µUSD `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output / `
+          + `${outcome.cache_read_tokens} cache-read / `
+          + `${outcome.cache_write_tokens} cache-write tokens)`,
         );
       }
     }
