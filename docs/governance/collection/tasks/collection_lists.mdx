@@ -39,6 +39,8 @@ Collection lists start with a base set of collections selected through three pat
 
 Select collections by platform-independent identifiers. The primary mechanism for cross-publisher exclusion — an IMDb ID identifies a program regardless of which CTV platform carries it.
 
+`platform_channel_id` is not valid here (or in `exclude_distribution_ids`): its identity is the tuple `(publisher_domain, value)`, which this bare `{type, value}` shape cannot carry, and a value like `1005` would silently collide across hosts. To select or exclude a specific channel, use `publisher_collections` with the channel owner's domain and `collection_id`, or a platform-scoped type such as `roku_channel_id`.
+
 ```json
 {
   "selection_type": "distribution_ids",

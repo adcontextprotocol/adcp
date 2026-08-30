@@ -80,7 +80,7 @@
     },
     "deadline_policy": {
       "$ref": "/schemas/core/deadline-policy.json",
-      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy."
+      "description": "Default deadline rules for installments of this collection. Agents compute absolute deadlines from each installment's scheduled_at and these lead times. Installments with explicit deadlines override this policy. Only meaningful when installments carry scheduled_at; a continuously programmed channel collection without enumerated installments has no deadlines to derive."
     },
     "related_collections": {
       "type": "array",

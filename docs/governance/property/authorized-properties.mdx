@@ -93,7 +93,7 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
   - **authorized_for**: Human-readable description of authorization scope
   - **authorization_type**: How properties are selected (`property_ids`, `property_tags`, `inline_properties`, `publisher_properties`)
   - **delegation_type**: Whether this path is `direct`, `delegated`, or `ad_network`
-  - **collections**: Optional collection selectors that narrow authorization to specific content programs
+  - **collections**: Optional collection selectors that narrow authorization to specific content programs. The selector's `publisher_domain` may be an external channel owner's domain (owner-sold carriage), and a selector without `collection_ids` is a bulk grant for every collection declared at that domain — see [owner-sold channel carriage](/docs/governance/property/adagents#owner-sold-channel-carriage)
   - **placement_ids**: Optional placement IDs from the publisher's placement registry in `adagents.json`
   - **countries**: Optional ISO 3166-1 alpha-2 country codes
   - **effective_from / effective_until**: Optional authorization window

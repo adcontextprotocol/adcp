@@ -7659,6 +7659,168 @@ paths:
                   - validation_scope
                   - checked_at
                 additionalProperties: {}
+  /api/registry/verify/supply-path:
+    post:
+      operationId: verifySupplyPath
+      summary: Verify an owner-sold supply path
+      description: "Joins the owner's and host's cached adagents.json manifests (plus the host's ads.txt/app-ads.txt inventorypartnerdomain lines when needed) and returns the verification state of one owner-sold carriage path, leg by leg. States follow the documented ladder: verified_owner_sold (host adagents.json authorizes the agent for the host property, collection-scoped), host_delegated (ads.txt inventorypartnerdomain + owner-side declarations, policy-gated), owner_attested (owner distribution claim only — discovery, never authorization), unverified. The response is evidence-bearing so callers can reproduce the verdict from the authoritative files; the registry cache is a convenience, not the trust root. For a live-fetch check of a file you just changed, use POST /api/adagents/validate."
+      tags:
+        - Authorization Lookups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                owner_domain:
+                  type: string
+                  minLength: 1
+                  description: Channel owner's publisher domain — where the canonical collection is declared.
+                host_domain:
+                  type: string
+                  minLength: 1
+                  description: Host publisher domain — where the carrying property (e.g. CTV app) is declared.
+                agent_url:
+                  type: string
+                  minLength: 1
+                  description: Sales agent URL the buyer would transact with. Canonicalized server-side.
+                collection_id:
+                  type: string
+                  minLength: 1
+                  description: Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals).
+              required:
+                - owner_domain
+                - host_domain
+                - agent_url
+      responses:
+        "200":
+          description: Supply-path verification verdict with per-leg evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - verified_owner_sold
+                      - host_delegated
+                      - owner_attested
+                      - unverified
+                  legs:
+                    type: object
+                    properties:
+                      owner_collection_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_distribution_carriage:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_agent_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      host_authorization:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      inventory_partner_domain:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                    required:
+                      - owner_collection_declared
+                      - owner_distribution_carriage
+                      - owner_agent_declared
+                      - host_authorization
+                      - inventory_partner_domain
+                  owner_domain:
+                    type: string
+                  host_domain:
+                    type: string
+                  agent_url:
+                    type: string
+                  collection_id:
+                    type: string
+                  sources:
+                    type: object
+                    properties:
+                      owner_adagents_url:
+                        type: string
+                      host_adagents_url:
+                        type: string
+                      cached:
+                        type: boolean
+                        description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
+                    required:
+                      - owner_adagents_url
+                      - host_adagents_url
+                      - cached
+                  checked_at:
+                    type: string
+                required:
+                  - state
+                  - legs
+                  - owner_domain
+                  - host_domain
+                  - agent_url
+                  - sources
+                  - checked_at
+                additionalProperties: {}
+        "400":
+          description: Invalid request body or uncanonicalizable domain
   /api/registry/expand/product-identifiers:
     post:
       operationId: expandProductIdentifiers

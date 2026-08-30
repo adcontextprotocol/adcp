@@ -847,7 +847,7 @@ export class MCPToolHandler {
           property_id: args?.property_id as string | undefined,
           property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
           collections: Array.isArray(args?.collections)
-            ? args.collections as Array<{ publisher_domain: string; collection_ids: string[] }>
+            ? args.collections as Array<{ publisher_domain: string; collection_ids?: string[] }>
             : undefined,
           collection_ids: Array.isArray(args?.collection_ids) ? args.collection_ids as string[] : undefined,
           placement_ids: Array.isArray(args?.placement_ids) ? args.placement_ids as string[] : undefined,

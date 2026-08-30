@@ -49,7 +49,7 @@ A collection is a persistent content program that produces installments over tim
 | `genre_taxonomy` | string | No | Taxonomy system for genre values (e.g., `iab_content_3.0`). Recommended for machine-readable brand safety. |
 | `language` | string | No | Primary language (BCP 47) |
 | `content_rating` | object | No | Baseline rating: `system` + `rating`. Systems: `tv_parental`, `mpaa`, `podcast`, `esrb`, `bbfc`, `fsk`, `acb`, `custom`. Episodes can override. |
-| `cadence` | string | No | `daily`, `weekly`, `seasonal`, `event`, `irregular` |
+| `cadence` | string | No | `daily`, `weekly`, `monthly`, `seasonal`, `event`, `irregular`. Continuously programmed `channel` collections typically omit it. |
 | `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
@@ -1008,7 +1008,7 @@ AdCP does not predict content safety for unknown future installments. A buyer wh
 
 ## Distribution identifiers
 
-Each collection's `distribution` array maps it to specific publisher platforms with platform-specific identifiers. This enables cross-seller matching: when two different sellers both offer products for the same collection, a buyer agent can match them via shared identifiers.
+Each collection's `distribution` array maps it to specific publisher platforms using host `property_ids`, platform identifiers, or both. Identifiers enable cross-seller matching: when two different sellers both offer products for the same collection, a buyer agent can match them via shared identifiers.
 
 ### Cross-seller matching
 
@@ -1020,7 +1020,7 @@ Platform-independent identifiers are the most reliable for deduplication:
 | `gracenote_id` | `EP012345678` | Industry standard for TV metadata |
 | `eidr_id` | `10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C` | ISO 10528 for audiovisual content |
 
-Shows SHOULD include at least one platform-independent identifier when available.
+Collections SHOULD include at least one platform-independent identifier when available.
 
 ### Platform-specific identifiers
 
