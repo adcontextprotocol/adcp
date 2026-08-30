@@ -37,6 +37,7 @@ import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
 } from '../../services/hosted-compliance-version.js';
+import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();

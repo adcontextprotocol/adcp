@@ -8185,16 +8185,18 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         });
       } catch (error) {
         if (error instanceof ComplianceRefreshRateLimitError) {
+          logger.warn({ agentUrl, scope: error.scope, retryAfter: error.retryAfterSeconds }, 'Compliance refresh rate limited');
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(429).json({
-            error: error.message,
+            error: 'Rate limit exceeded',
             retry_after: error.retryAfterSeconds,
           });
         }
         if (error instanceof ComplianceRefreshInProgressError) {
+          logger.info({ agentUrl, retryAfter: error.retryAfterSeconds }, 'Compliance refresh already in progress');
           res.setHeader('Retry-After', String(error.retryAfterSeconds));
           return res.status(409).json({
-            error: error.message,
+            error: 'A compliance refresh is already in progress for this agent',
             code: 'refresh_in_progress',
             retry_after: error.retryAfterSeconds,
           });
