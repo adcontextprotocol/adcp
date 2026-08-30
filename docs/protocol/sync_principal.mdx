@@ -41,7 +41,18 @@ Every applied or current readback carries the seller-resolved `principal_kind` �
 
 The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
 
-In the normal call sequence, a client reads capabilities first, calls `sync_principal` when advertised, and then configures or authorizes advertiser accounts. A destination can be registered before account setup, but it cannot receive account data until a later account-scoped feed binding succeeds.
+## Establishing a connection
+
+The principal layer begins **after authentication**. AdCP defines no credential-registration protocol: the seller's authorization system — OAuth, API keys, signed requests, workload identity — issues and maps credentials before the first call. The same lifecycle then works for an autonomous buyer agent, a person in an interactive client, an API-key integration, or M2M OAuth:
+
+1. **Authenticate.** Autonomous software presents its workload identity; a person presents their delegated user identity. No `register_buyer_agent` step exists or is needed.
+2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
+3. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
+4. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–3 grants account authority.
+5. **Bind each account's feeds** to the reusable `destination_ref`s.
+6. **Observe readiness.** [`get_principal`](/docs/protocol/get_principal) shows destination and declaration state; `principal.changed` keeps it fresh.
+
+That yields four deliberately separate objects: the **credential** (seller's authorization system, out of AdCP scope), the **principal record** (this layer — one party's standing configuration), **account authorization** (which advertiser data the principal may access), and **delivery configuration** (where authorized data goes). A destination can be registered before any account exists, but it cannot receive account data until an account-scoped feed binding succeeds.
 
 ## Discovery
 
@@ -118,10 +129,10 @@ When `expected_configuration_version` is present, the seller applies a new opera
 One subscriber registered here can carry every webhook the relationship needs — the "sign me up for everything, once" surface:
 
 - **Caller-anchored events** (`capabilities.changed`, `principal.changed`) fire principal-wide. `principal.changed` is the invalidation doorbell for seller-driven state transitions — a destination reaching `ready`, a setup action expiring, the accepted declarations intersection changing — and receivers repair by re-reading [`get_principal`](/docs/protocol/get_principal).
-- **Account-anchored events** (`creative.status_changed`, `account.change_recorded`, `product.*`, …) may be listed on caller-level subscribers. Authorization is evaluated **at fire time**: each fire covers only accounts the caller is currently authorized for, so losing account authority silently stops that account's fires without touching the subscription. Registration itself requires no account authority and grants none.
+- **Account-anchored events** (`creative.status_changed`, `account.change_recorded`, `product.*`, …) may be listed on caller-level subscribers, and require the explicit `all_authorized_accounts: true` acknowledgment — subscribing an endpoint to every account is never implicit. Authorization is evaluated **at each delivery attempt, including retries**: losing authority for an account both stops new fires and suppresses queued retries carrying that account's data, without touching the subscription. Registration itself requires no account authority and grants none.
 - **Media-buy-anchored delivery reports** stay on each buy's `push_notification_config` — they carry per-buy cadence choices this layer deliberately does not own.
 
-There is no wildcard. Callers enumerate `event_types` and may set `include_future_event_types: true` to opt into caller-eligible types added by later AdCP versions. Sellers advertise which types they can emit here in `principal.caller_event_types`; an out-of-offering type fails the request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+There is no wildcard. Callers enumerate `event_types` and may set `include_future_event_types: true` — which extends only to future caller-eligible types classified **invalidation-only** (identifiers plus a repair pointer, no domain data). Payload-bearing types always require explicit enumeration, so the flag can never silently opt a caller into more-sensitive payloads. Sellers advertise which types they can emit here in `principal.caller_event_types`; an out-of-offering type fails the request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
 
 Caller-level and account-level subscriptions to the same event are independent: both fire, and receivers dedupe by the event's logical `notification_id`. Setting a subscriber's `active: false` is the webhook kill switch — all fires to that endpoint, across every account, halt within the advertised `suspension_interval_seconds`.
 
@@ -148,6 +159,7 @@ Rules:
 - Unknown `experimental_features` identifiers are accepted and simply excluded from the intersection, so one declaration works across sellers with different surfaces.
 - An empty `webhook_signing_algorithms` intersection while any webhook subscriber is active fails the request with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) — fires would be unverifiable.
 - A later seller-side change to the accepted intersection fires `principal.changed` with reason `declarations_intersection_changed` and does not advance `configuration_version`.
+- The readback persists the full negotiation record: the declared set, the accepted intersection, the `selected_async_adcp_version` the seller will actually use for pushes, and an `exclusions` entry with a reason for every declared value not accepted — so "what can this buyer implementation consume, and what did the seller decide?" always has one durable answer.
 - Submitting `{}` clears the declared set.
 
 ## Reusable reporting destinations

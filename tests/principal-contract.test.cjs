@@ -464,11 +464,22 @@ describe('sync_principal contract', () => {
     for (const eventTypes of [
       ['capabilities.changed'],
       ['principal.changed'],
-      ['capabilities.changed', 'principal.changed', 'creative.status_changed', 'account.change_recorded'],
     ]) {
       assert.equal(validateNotificationConfig({ ...base, event_types: eventTypes }), true,
         JSON.stringify(validateNotificationConfig.errors));
     }
+
+    // Account-anchored types require the explicit all-accounts scope
+    // acknowledgment — never implicit.
+    const accountScoped = ['capabilities.changed', 'principal.changed', 'creative.status_changed', 'account.change_recorded'];
+    assert.equal(validateNotificationConfig({ ...base, event_types: accountScoped }), false,
+      'account-anchored types without all_authorized_accounts must be rejected');
+    assert.equal(validateNotificationConfig({ ...base, event_types: accountScoped, all_authorized_accounts: false }), false);
+    assert.equal(validateNotificationConfig({
+      ...base,
+      event_types: accountScoped,
+      all_authorized_accounts: true,
+    }), true, JSON.stringify(validateNotificationConfig.errors));
 
     for (const mediaBuyType of ['scheduled', 'final', 'delayed', 'adjusted', 'window_update', 'impairment']) {
       assert.equal(validateNotificationConfig({ ...base, event_types: [mediaBuyType] }), false, mediaBuyType);
@@ -479,6 +490,11 @@ describe('sync_principal contract', () => {
       event_types: ['capabilities.changed'],
       include_future_event_types: true,
     }), true, JSON.stringify(validateNotificationConfig.errors));
+
+    const config = readSchema('/schemas/core/agent-notification-config.json');
+    assert.match(config.properties.include_future_event_types.description, /invalidation-only/);
+    assert.match(config.properties.all_authorized_accounts.description, /never implicit/);
+    assert.match(config.properties.all_authorized_accounts.description, /queued retries/);
   });
 
   it('round-trips declarations with a seller-computed accepted intersection', async () => {
@@ -515,6 +531,19 @@ describe('sync_principal contract', () => {
               async_adcp_versions: ['3.2'],
               webhook_signing_algorithms: ['ed25519'],
             },
+            selected_async_adcp_version: '3.2',
+            exclusions: [
+              {
+                axis: 'webhook_signing_algorithms',
+                value: 'ecdsa-p256-sha256',
+                reason: 'This seller signs webhooks with ed25519 only.',
+              },
+              {
+                axis: 'experimental_features',
+                value: 'protocol.principal',
+                reason: 'Declared feature is not an async payload opt-in on this seller.',
+              },
+            ],
           },
         },
       },
@@ -533,7 +562,8 @@ describe('sync_principal contract', () => {
 
     const request = readSchema('/schemas/protocol/sync-principal-request.json');
     assert.match(request['x-adcp-validation'].declarations_intersection, /UNSUPPORTED_FEATURE/);
-    assert.match(request['x-adcp-validation'].caller_level_account_events, /fire time/);
+    assert.match(request['x-adcp-validation'].caller_level_account_events, /each delivery attempt/);
+    assert.match(request['x-adcp-validation'].caller_level_account_events, /all_authorized_accounts/);
   });
 
   it('couples suspension state to inactive configuration in both directions', () => {
