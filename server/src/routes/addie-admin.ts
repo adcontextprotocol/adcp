@@ -20,6 +20,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import { disableAdaptiveThinking, ModelConfig } from "../config/models.js";
 import { AddieRouter, type RoutingContext } from "../addie/router.js";
+import { createProductionRouter } from "../addie/router-runtime.js";
 import { sanitizeInput } from "../addie/security.js";
 import { runSlackHistoryBackfill } from "../addie/jobs/slack-history-backfill.js";
 import { getWorkos } from "../auth/workos-client.js";
@@ -82,11 +83,14 @@ const addieDb = new AddieDatabase();
 let addieRouter: AddieRouter | null = null;
 function getAddieRouter(): AddieRouter {
   if (!addieRouter) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    const anthropicApiKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+    if (!anthropicApiKey) {
       throw new Error("ANTHROPIC_API_KEY not configured");
     }
-    addieRouter = new AddieRouter(apiKey);
+    addieRouter = createProductionRouter(
+      anthropicApiKey,
+      process.env.OPENAI_API_KEY,
+    ).router;
   }
   return addieRouter;
 }
@@ -1674,7 +1678,7 @@ Be specific and actionable. Focus on patterns that could help improve Addie's be
   // =========================================================================
 
   /**
-   * POST /api/admin/addie/test-router - Test the Haiku router with a simulated message
+   * POST /api/admin/addie/test-router - Test the production router with a simulated message
    *
    * This endpoint simulates a Slack channel message to test the router decision logic
    * and verify router_decision metadata is being logged correctly.

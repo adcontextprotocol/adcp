@@ -57,7 +57,7 @@ import {
  * Execution plan types
  */
 export type ExecutionPlanBase = {
-  /** How the decision was made: 'quick_match' (pattern) or 'llm' (Claude Haiku) */
+  /** How the decision was made: 'quick_match' (pattern) or 'llm' (model router) */
   decision_method: "quick_match" | "llm";
   /** Time spent making the routing decision (ms) */
   latency_ms?: number;
@@ -1116,6 +1116,10 @@ export interface AddieRouterProviderOptions {
   reasoning?: ModelRequest['reasoning'];
   /** Reject malformed, incomplete, or unauthorized plans instead of normalizing them. */
   strictOutput?: boolean;
+  /** Router to invoke when this provider fails or returns invalid strict output. */
+  fallbackRouter?: AddieRouter;
+  /** Hard deadline for this provider before invoking the fallback router. */
+  primaryDeadlineMs?: number;
 }
 
 function queueRouterObserver(
@@ -1137,7 +1141,7 @@ function queueRouterObserver(
 /**
  * Addie Router class
  *
- * Uses Claude Haiku for fast routing decisions
+ * Uses a fast model for routing decisions, with an optional provider fallback.
  */
 export class AddieRouter {
   private readonly provider: ModelProvider;
@@ -1145,6 +1149,8 @@ export class AddieRouter {
   private readonly model: string;
   private readonly reasoning?: ModelRequest['reasoning'];
   private readonly strictOutput: boolean;
+  private readonly fallbackRouter?: AddieRouter;
+  private readonly primaryDeadlineMs?: number;
 
   constructor(
     apiKey: string,
@@ -1159,6 +1165,16 @@ export class AddieRouter {
     this.model = options.model ?? ModelConfig.fast;
     this.reasoning = options.reasoning;
     this.strictOutput = options.strictOutput ?? false;
+    this.fallbackRouter = options.fallbackRouter;
+    if (
+      options.primaryDeadlineMs !== undefined
+      && (!Number.isSafeInteger(options.primaryDeadlineMs)
+        || options.primaryDeadlineMs < 1
+        || options.primaryDeadlineMs > 60_000)
+    ) {
+      throw new RangeError('Invalid router primary deadline');
+    }
+    this.primaryDeadlineMs = options.primaryDeadlineMs;
   }
 
   /**
@@ -1178,18 +1194,42 @@ export class AddieRouter {
     let primaryInvocation: PreparedModelInvocation | null = null;
     let primaryResponse: ModelResponse | null = null;
     let rawResponseText: string | null = null;
+    const deadlineController = this.primaryDeadlineMs === undefined
+      ? null
+      : new AbortController();
+    let primaryTimedOut = false;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let callerAbortListener: (() => void) | undefined;
+    if (deadlineController) {
+      if (options.signal?.aborted) {
+        deadlineController.abort(options.signal.reason);
+      } else if (options.signal) {
+        callerAbortListener = () => deadlineController.abort(options.signal?.reason);
+        options.signal.addEventListener('abort', callerAbortListener, { once: true });
+      }
+      deadlineTimer = setTimeout(() => {
+        primaryTimedOut = true;
+        deadlineController.abort(new Error('router_primary_timeout'));
+      }, this.primaryDeadlineMs);
+    }
+    const cleanupPrimaryRequest = () => {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+      if (callerAbortListener && options.signal) {
+        options.signal.removeEventListener('abort', callerAbortListener);
+      }
+    };
 
     try {
       const availability = this.providerHealth.acquire(this.provider.id, 'router');
       if (!availability.allowed) throw new ProviderCircuitOpenError(availability);
       const response = await collectModelResponse(
         this.provider.respond(canonicalRequest, {
-          // This callback is deliberately assignment-only. Shadow evidence can
-          // never throw before or otherwise interfere with Haiku dispatch.
+          // This callback is deliberately assignment-only. Observability can
+          // never throw before or otherwise interfere with provider dispatch.
           beforeDispatch: (prepared) => {
             primaryInvocation = prepared;
           },
-          signal: options.signal,
+          signal: deadlineController?.signal ?? options.signal,
         }),
         this.provider.id,
       );
@@ -1295,16 +1335,37 @@ export class AddieRouter {
         latencyMs,
       });
 
+      cleanupPrimaryRequest();
       return plan;
     } catch (error) {
+      cleanupPrimaryRequest();
       if (!(error instanceof ProviderCircuitOpenError)) {
         this.providerHealth.recordFailure(this.provider.id, 'router', error);
       }
       const category = classifyRouterError(error);
       logger.error(
-        { category },
+        { category, primaryTimedOut },
         "Router: Failed to generate execution plan",
       );
+      const failureLatencyMs = Date.now() - startTime;
+      if (primaryResponse) {
+        // Strict-output failures still incur provider cost. Track that attempt
+        // separately from the successful fallback call.
+        void trackApiCall({
+          model: this.model,
+          purpose: ApiPurpose.ROUTER,
+          tokens_input: primaryResponse.usage.inputTokens,
+          tokens_output: primaryResponse.usage.outputTokens,
+          latency_ms: failureLatencyMs,
+        });
+      }
+      if (this.fallbackRouter) {
+        logger.warn(
+          { category, primaryTimedOut, primaryProvider: this.provider.id },
+          "Router: Primary failed, invoking fallback provider",
+        );
+        return this.fallbackRouter.route(ctx, options);
+      }
       // On error, retain the pre-split safe read-only knowledge domains.
       const fallbackPlan: ExecutionPlan = {
         action: "respond",
@@ -1312,7 +1373,7 @@ export class AddieRouter {
         confidence: "high",
         reason: "Router error - defaulting to safe knowledge tools",
         decision_method: "llm",
-        latency_ms: Date.now() - startTime,
+        latency_ms: failureLatencyMs,
       };
       queueRouterObserver(options.observer, {
         canonicalRequest,
@@ -1331,7 +1392,7 @@ export class AddieRouter {
         outputTokens: primaryResponse?.usage.outputTokens ?? null,
         cacheReadTokens: primaryResponse?.usage.cacheReadTokens ?? null,
         cacheWriteTokens: primaryResponse?.usage.cacheWriteTokens ?? null,
-        latencyMs: Date.now() - startTime,
+        latencyMs: failureLatencyMs,
       });
       if (options.failureMode === 'throw') throw error;
       return fallbackPlan;
