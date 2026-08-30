@@ -125,7 +125,7 @@ function makeTextStream(text: string) {
   };
 }
 
-describe('Addie sibling-model fallback runtime', () => {
+describe('Addie provider delivery runtime', () => {
   beforeEach(() => {
     mocks.createMessage.mockReset();
     mocks.streamMessage.mockReset();
@@ -293,6 +293,55 @@ describe('Addie sibling-model fallback runtime', () => {
       { type: 'text', text: 'Fallback answer.' },
     ]);
     expect(events.some(event => event.type === 'stream_error')).toBe(false);
+  });
+
+  it('prepares identical canonical inputs for streaming and non-streaming delivery', async () => {
+    mocks.createMessage.mockResolvedValue({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Prepared answer.' }],
+      usage: { input_tokens: 12, output_tokens: 4 },
+    });
+    mocks.streamMessage.mockReturnValue(makeTextStream('Prepared answer.'));
+
+    const client = new AddieClaudeClient('unused', AddieModelConfig.chat);
+    client.setWebSearchEnabled(false);
+    const threadContext = [
+      { user: 'user', text: 'Earlier question' },
+      { user: 'assistant', text: 'Earlier answer' },
+    ];
+    const options = {
+      uncapped: true,
+      requestContext: 'Account context',
+      currentSpeakerName: 'Casey',
+    } as const;
+
+    await client.processMessage(
+      'Current question',
+      threadContext,
+      githubIssueTools,
+      undefined,
+      options,
+    );
+    for await (const _event of client.processMessageStream(
+      'Current question',
+      threadContext,
+      githubIssueTools,
+      options,
+    )) {
+      // Consume the complete streaming response.
+    }
+
+    const nonStreamingPayload = mocks.createMessage.mock.calls[0]?.[0];
+    const streamingPayload = mocks.streamMessage.mock.calls[0]?.[0];
+    if (!nonStreamingPayload || !streamingPayload) {
+      throw new Error('Expected both delivery modes to dispatch one provider request');
+    }
+    expect(streamingPayload).toEqual(expect.objectContaining({
+      model: nonStreamingPayload.model,
+      system: nonStreamingPayload.system,
+      messages: nonStreamingPayload.messages,
+      tools: nonStreamingPayload.tools,
+    }));
   });
 
   it('does not change models after any streamed delta was received', async () => {
