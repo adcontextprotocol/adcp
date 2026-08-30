@@ -48,6 +48,7 @@ import {
 import type { AddieInputAttachment } from './chat-attachments.js';
 import type {
   ModelExecution,
+  ModelFallbackReason,
   ModelMessage,
   ModelMessageContent,
   ModelProvider,
@@ -61,6 +62,7 @@ import type {
   ModelUsage,
   PreparedModelInvocation,
 } from './model-providers/model-provider.js';
+import { selectSiblingModelFallback } from './model-providers/model-fallback.js';
 import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
@@ -809,15 +811,28 @@ function providerModelExecution(
   response: Pick<ModelResponse, 'provider' | 'model'>,
   requestedProvider: ModelProviderId,
   requestedModel: string,
+  fallbackReason: ModelFallbackReason | null = null,
 ): ModelExecution {
+  // A configured alias can resolve to the same provider model as the original
+  // request. Persist that as exact/canonicalized rather than violating the DB
+  // invariant that fallback provenance must identify a genuinely different
+  // provider or model; the attempted fallback remains in bounded server logs.
+  const effectiveFallbackReason = fallbackReason
+    && (response.provider !== requestedProvider || response.model !== requestedModel)
+    ? fallbackReason
+    : null;
   return {
     source: 'provider',
     requested_provider: requestedProvider,
     requested_model: requestedModel,
     provider: response.provider,
     model: response.model,
-    model_resolution: response.model === requestedModel ? 'exact' : 'provider_canonicalized',
-    fallback_reason: null,
+    model_resolution: effectiveFallbackReason
+      ? 'fallback'
+      : response.model === requestedModel
+        ? 'exact'
+        : 'provider_canonicalized',
+    fallback_reason: effectiveFallbackReason,
   };
 }
 
@@ -1561,6 +1576,9 @@ export class AddieClaudeClient {
     }
     let iteration = 0;
     let hasExecutedCustomTool = false;
+    let activeModel = effectiveModel;
+    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
+    let modelFallbackReason: ModelFallbackReason | null = null;
 
     while (modelLoop.hasRemaining) {
       const activeTurn = modelLoop.beginNext();
@@ -1568,45 +1586,45 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      let response: ModelResponse;
+      let response!: ModelResponse;
       let reusedEmptyResponse = false;
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
       const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      try {
-        const invokeProvider = async (exactlyOnce: boolean) => {
-          invocationAttempt++;
-          const modelRequest = this.buildModelRequest(
-            effectiveModel,
-            systemBlocks,
-            invocationTools,
-            modelMessages,
-            recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
-            recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
-            false,
-            iteration === 1 && invocationTools.length > 0
-              ? options?.initialToolChoice
-              : undefined,
-          );
-          const provider = exactlyOnce
-            ? this.exactlyOnceModelProvider
-            : this.modelProvider;
-          return activeTurn.invoke(
-            provider,
-            modelRequest,
-            {
-              beforeDispatch: async (preparedInvocation) => {
-                await this.notifyInvocationPrepared(
-                  options,
-                  modelRequest,
-                  preparedInvocation,
-                  iteration,
-                  invocationAttempt,
-                );
-              },
+      const invokeProvider = async (exactlyOnce: boolean, model = activeModel) => {
+        invocationAttempt++;
+        const modelRequest = this.buildModelRequest(
+          model,
+          systemBlocks,
+          invocationTools,
+          modelMessages,
+          recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
+          recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+          false,
+          iteration === 1 && invocationTools.length > 0
+            ? options?.initialToolChoice
+            : undefined,
+        );
+        const provider = exactlyOnce
+          ? this.exactlyOnceModelProvider
+          : this.modelProvider;
+        return activeTurn.invoke(
+          provider,
+          modelRequest,
+          {
+            beforeDispatch: async (preparedInvocation) => {
+              await this.notifyInvocationPrepared(
+                options,
+                modelRequest,
+                preparedInvocation,
+                iteration,
+                invocationAttempt,
+              );
             },
-          );
-        };
+          },
+        );
+      };
+      try {
         // Replay and shadow are exactly-once paid experiments. A timeout can
         // occur after provider acceptance, so neither our outer retry helper
         // nor the provider SDK may submit the request again.
@@ -1620,53 +1638,103 @@ export class AddieClaudeClient {
         if (operationalExecution) this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
         modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
       } catch (error) {
-        const fallbackResponse = modelLoop.emptyResponseRecovery
-          .fallbackAfterInvocationFailure(recoveryInvocation);
-        if (fallbackResponse) {
-          // The empty end_turn was a valid terminal response. Recovery is
-          // best-effort: if its one extra call fails, retain that terminal and
-          // its already-accounted usage rather than turning fallback into an
-          // exception. Do not log a provider error that may echo input text.
-          logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
-          response = fallbackResponse;
-          reusedEmptyResponse = true;
-        } else {
-          const stats = this.buildPayloadDebugStats(
-            effectiveModel,
-            systemBlocks,
-            customTools,
-            anthropicMessages,
-            iteration,
-            requestWebSearchEnabled ? 1 : 0,
-            options?.requestContext?.trim() ? options.requestContext.length : 0,
-          );
-          if (isIsolatedExecution(options)) {
-            // Provider errors may echo request text. Isolated executions log
-            // only categorical metadata; the caller's ledger records the outcome.
-            logger.error(
-              { source: 'processMessage', payload: stats },
-              'Addie: Isolated provider invocation failed',
-            );
-          } else {
-            this.logPromptOverflow(error, stats, 'processMessage');
-          }
-          if (operationalExecution) {
-            const availability = this.providerHealth.recordFailure(
-              this.modelProvider.id,
-              'chat',
-              error,
-            );
-            if (!availability.allowed) {
-              return providerUnavailableResponse(
-                availability,
-                this.modelProvider.id,
-                requestedModel,
-                toolsUsed,
-                toolExecutions,
-              );
+        let invocationError = error;
+        let fallbackSucceeded = false;
+        const fallback = selectSiblingModelFallback({
+          provider: this.modelProvider.id,
+          model: activeModel,
+          executionMode: options?.executionMode ?? 'production',
+          iteration,
+          retriesExhausted: error instanceof RetriesExhaustedError,
+          isRecoveryInvocation: recoveryInvocation.isRecovery,
+          hasExecutedCustomTool,
+          hasProviderContinuation: modelLoop.pinnedProvider !== null,
+          receivedDeltaCount: 0,
+          error,
+        });
+        if (fallback) {
+          try {
+            response = await invokeProvider(true, fallback.model);
+            activeModel = fallback.model;
+            costModel = fallback.model;
+            modelFallbackReason = fallback.reason;
+            modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
+            if (operationalExecution) {
+              this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
             }
+            logger.warn(
+              {
+                event: 'addie_model_fallback',
+                requestedModel,
+                fallbackModel: fallback.model,
+                reason: fallback.reason,
+                disclosure: fallback.disclosure,
+              },
+              'Addie: Preferred model unavailable; sibling fallback succeeded',
+            );
+            fallbackSucceeded = true;
+          } catch (fallbackError) {
+            invocationError = fallbackError;
+            logger.warn(
+              {
+                event: 'addie_model_fallback_failed',
+                requestedModel,
+                fallbackModel: fallback.model,
+                reason: fallback.reason,
+              },
+              'Addie: Sibling model fallback failed',
+            );
           }
-          throw error;
+        }
+        if (!fallbackSucceeded) {
+          const fallbackResponse = modelLoop.emptyResponseRecovery
+            .fallbackAfterInvocationFailure(recoveryInvocation);
+          if (fallbackResponse) {
+            // The empty end_turn was a valid terminal response. Recovery is
+            // best-effort: if its one extra call fails, retain that terminal and
+            // its already-accounted usage rather than turning fallback into an
+            // exception. Do not log a provider error that may echo input text.
+            logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
+            response = fallbackResponse;
+            reusedEmptyResponse = true;
+          } else {
+            const stats = this.buildPayloadDebugStats(
+              effectiveModel,
+              systemBlocks,
+              customTools,
+              anthropicMessages,
+              iteration,
+              requestWebSearchEnabled ? 1 : 0,
+              options?.requestContext?.trim() ? options.requestContext.length : 0,
+            );
+            if (isIsolatedExecution(options)) {
+              // Provider errors may echo request text. Isolated executions log
+              // only categorical metadata; the caller's ledger records the outcome.
+              logger.error(
+                { source: 'processMessage', payload: stats },
+                'Addie: Isolated provider invocation failed',
+              );
+            } else {
+              this.logPromptOverflow(invocationError, stats, 'processMessage');
+            }
+            if (operationalExecution) {
+              const availability = this.providerHealth.recordFailure(
+                this.modelProvider.id,
+                'chat',
+                invocationError,
+              );
+              if (!availability.allowed) {
+                return providerUnavailableResponse(
+                  availability,
+                  this.modelProvider.id,
+                  requestedModel,
+                  toolsUsed,
+                  toolExecutions,
+                );
+              }
+            }
+            throw invocationError;
+          }
         }
       }
 
@@ -1749,7 +1817,7 @@ export class AddieClaudeClient {
         if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
-            options.modelOverride ?? AddieModelConfig.chat,
+            costModel,
             finalUsage,
           );
         }
@@ -1765,7 +1833,12 @@ export class AddieClaudeClient {
             ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
             : finalized.localReplacementReason
               ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-            : providerModelExecution(response, this.modelProvider.id, effectiveModel),
+            : providerModelExecution(
+                response,
+                this.modelProvider.id,
+                effectiveModel,
+                modelFallbackReason,
+              ),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1847,7 +1920,7 @@ export class AddieClaudeClient {
         if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
-            options?.modelOverride ?? AddieModelConfig.chat,
+            costModel,
             finalUsage,
           );
         }
@@ -1864,7 +1937,12 @@ export class AddieClaudeClient {
             ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
             : finalized.localReplacementReason
               ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-            : providerModelExecution(response, this.modelProvider.id, effectiveModel),
+            : providerModelExecution(
+                response,
+                this.modelProvider.id,
+                effectiveModel,
+                modelFallbackReason,
+              ),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1908,7 +1986,7 @@ export class AddieClaudeClient {
     if (operationalExecution && options?.costScope) {
       await recordCost(
         options.costScope.userId,
-        options?.modelOverride ?? AddieModelConfig.chat,
+        costModel,
         maxIterationsUsage,
       );
     }
@@ -2142,6 +2220,9 @@ export class AddieClaudeClient {
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
     let lastProviderModel: string | undefined;
+    let activeModel = effectiveModel;
+    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
+    let modelFallbackReason: ModelFallbackReason | null = null;
 
       while (modelLoop.hasRemaining) {
         const activeTurn = modelLoop.beginNext();
@@ -2167,7 +2248,7 @@ export class AddieClaudeClient {
           try {
             const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
-              effectiveModel,
+              activeModel,
               systemBlocks,
               invocationTools,
               modelMessages,
@@ -2251,11 +2332,91 @@ export class AddieClaudeClient {
               const isExhausted = retryable && (
                 streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
               );
+              let terminalError = streamError;
+              const fallback = selectSiblingModelFallback({
+                provider: this.modelProvider.id,
+                model: activeModel,
+                executionMode: options?.executionMode ?? 'production',
+                iteration,
+                retriesExhausted: isExhausted,
+                isRecoveryInvocation: recoveryInvocation.isRecovery,
+                hasExecutedCustomTool: toolExecutions.length > 0,
+                hasProviderContinuation: modelLoop.pinnedProvider !== null,
+                receivedDeltaCount: totalReceivedDeltas,
+                error: streamError,
+              });
+              if (fallback) {
+                try {
+                  const fallbackTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+                  const fallbackRequest = this.buildModelRequest(
+                    fallback.model,
+                    systemBlocks,
+                    fallbackTools,
+                    modelMessages,
+                    false,
+                    undefined,
+                    true,
+                    iteration === 1 && fallbackTools.length > 0
+                      ? options?.initialToolChoice
+                      : undefined,
+                  );
+                  currentResponse = await activeTurn.invoke(
+                    this.exactlyOnceModelProvider,
+                    fallbackRequest,
+                    {
+                      stream: true,
+                      onStreamProgress: () => {
+                        totalReceivedDeltas++;
+                        receivedDeltaCount++;
+                      },
+                      beforeDispatch: async (preparedInvocation) => {
+                        await this.notifyInvocationPrepared(
+                          options,
+                          fallbackRequest,
+                          preparedInvocation,
+                          iteration,
+                          streamRetryCount + 1,
+                        );
+                      },
+                    },
+                  );
+                  activeModel = fallback.model;
+                  costModel = fallback.model;
+                  modelFallbackReason = fallback.reason;
+                  lastProviderModel = currentResponse.model;
+                  modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
+                  if (operationalExecution) {
+                    this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
+                  }
+                  logger.warn(
+                    {
+                      event: 'addie_model_fallback',
+                      requestedModel,
+                      fallbackModel: fallback.model,
+                      reason: fallback.reason,
+                      disclosure: fallback.disclosure,
+                    },
+                    'Addie Stream: Preferred model unavailable; sibling fallback succeeded',
+                  );
+                  break;
+                } catch (fallbackError) {
+                  terminalError = fallbackError;
+                  logger.warn(
+                    {
+                      event: 'addie_model_fallback_failed',
+                      requestedModel,
+                      fallbackModel: fallback.model,
+                      reason: fallback.reason,
+                    },
+                    'Addie Stream: Sibling model fallback failed',
+                  );
+                }
+              }
               if (operationalExecution) {
                 const availability = this.providerHealth.recordFailure(
                   this.modelProvider.id,
                   'chat',
-                  streamError,
+                  terminalError,
                 );
                 if (!availability.allowed) {
                   const terminalResponse = providerUnavailableResponse(
@@ -2281,7 +2442,9 @@ export class AddieClaudeClient {
               }
               if (isExhausted) {
                 if (receivedDeltaCount > 0) {
-                  const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                  const errorMsg = terminalError instanceof Error
+                    ? terminalError.message
+                    : String(terminalError);
                   const reason = errorMsg.includes('overloaded') ? 'API is busy' :
                                 errorMsg.includes('rate') ? 'Rate limited' :
                                 errorMsg.includes('timeout') ? 'Request timed out' :
@@ -2295,10 +2458,10 @@ export class AddieClaudeClient {
                     certification_reserve_used: certificationReserveUsed,
                   };
                 }
-                throw new RetriesExhaustedError(streamError, streamRetryCount);
+                throw new RetriesExhaustedError(terminalError, streamRetryCount);
               }
               // Non-retryable failures are surfaced by the outer error path.
-              throw streamError;
+              throw terminalError;
             }
 
             // Calculate delay with exponential backoff
@@ -2400,7 +2563,7 @@ export class AddieClaudeClient {
           if (operationalExecution && options?.costScope) {
             await recordCost(
               options.costScope.userId,
-              options?.modelOverride ?? AddieModelConfig.chat,
+              costModel,
               usage,
             );
           }
@@ -2458,7 +2621,12 @@ export class AddieClaudeClient {
                 ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
                 : finalized.localReplacementReason
                   ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-                : providerModelExecution(currentResponse, this.modelProvider.id, effectiveModel),
+                : providerModelExecution(
+                    currentResponse,
+                    this.modelProvider.id,
+                    effectiveModel,
+                    modelFallbackReason,
+                  ),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2542,7 +2710,12 @@ export class AddieClaudeClient {
                 ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
                 : finalized.localReplacementReason
                   ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-                : providerModelExecution(currentResponse, this.modelProvider.id, effectiveModel),
+                : providerModelExecution(
+                    currentResponse,
+                    this.modelProvider.id,
+                    effectiveModel,
+                    modelFallbackReason,
+                  ),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2609,7 +2782,7 @@ export class AddieClaudeClient {
       if (operationalExecution && options?.costScope) {
         await recordCost(
           options.costScope.userId,
-          options?.modelOverride ?? AddieModelConfig.chat,
+          costModel,
           maxIterUsage,
         );
       }
@@ -2642,6 +2815,7 @@ export class AddieClaudeClient {
                 { provider: this.modelProvider.id, model: lastProviderModel },
                 this.modelProvider.id,
                 effectiveModel,
+                modelFallbackReason,
               )
             : localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
           timing: {
