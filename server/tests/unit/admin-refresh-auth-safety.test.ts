@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 
 /**
- * The auth fallback decision from registry-api.ts:7565-7576.
+ * The auth fallback decision from registry-api.ts (search for #7070).
  * Extracted here for testability without the full route setup.
  *
  * The actual code in registry-api.ts:
