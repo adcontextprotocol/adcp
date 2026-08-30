@@ -177,9 +177,14 @@ export type ShadowReplayGenerationClaimDecision =
   | 'trace_unavailable';
 
 export interface ShadowReplayGenerationSummaryRow extends QueryResultRow {
+  capture_version: number;
+  capture_policy_version: string;
+  source_config_version_id: number;
+  source_model: string;
   requested_provider: ModelProviderId;
   requested_model: string;
   addie_code_version: string;
+  execution_policy_version: string;
   returned_provider: ModelProviderId | null;
   returned_model: string | null;
   status: string;
@@ -223,8 +228,30 @@ export interface ShadowReplayJudgmentCompletion {
 }
 
 export interface ShadowReplayJudgmentSummaryRow extends QueryResultRow {
+  capture_version: number;
+  capture_policy_version: string;
+  source_config_version_id: number;
+  source_model: string;
+  has_human_evidence: boolean;
+  requested_provider: ModelProviderId;
+  requested_model: string;
+  addie_code_version: string;
+  execution_policy_version: string;
+  returned_provider: ModelProviderId | null;
+  returned_model: string | null;
+  judgment_policy_version: string;
+  judge_provider: ShadowReplayJudgeProvider | null;
+  judge_model: string | null;
+  self_judged: boolean | null;
+  judge_prompt_version: string | null;
   status: string;
   reason: string;
+  evaluation_valid: boolean;
+  evaluation_skipped: boolean;
+  knowledge_gap: boolean | null;
+  gap_severity: ShadowReplayGapSeverity | null;
+  shadow_quality: ShadowReplayQuality | null;
+  deterministic_failure_labels: string[];
   count: number;
   input_tokens: number;
   output_tokens: number;
@@ -1909,9 +1936,14 @@ export async function getShadowReplayGenerationSummary(
   const runQuery = dependencies.query ?? query as QueryFn;
   const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
   const result = await runQuery<ShadowReplayGenerationSummaryRow>(
-    `SELECT generation.requested_provider,
+    `SELECT trace.capture_version,
+            trace.policy_version AS capture_policy_version,
+            trace.source_config_version_id,
+            trace.effective_model AS source_model,
+            generation.requested_provider,
             generation.model AS requested_model,
             generation.addie_code_version,
+            generation.execution_policy_version,
             generation.returned_provider,
             generation.returned_model,
             generation.status,
@@ -1923,8 +1955,11 @@ export async function getShadowReplayGenerationSummary(
      JOIN addie_shadow_replay_traces trace ON trace.trace_id = generation.trace_id
      WHERE generation.started_at >= NOW() - ($2::integer * INTERVAL '1 day')
        AND trace.capture_version = $1
-     GROUP BY generation.requested_provider, generation.model,
-              generation.addie_code_version, generation.returned_provider,
+     GROUP BY trace.capture_version, trace.policy_version,
+              trace.source_config_version_id, trace.effective_model,
+              generation.requested_provider, generation.model,
+              generation.addie_code_version, generation.execution_policy_version,
+              generation.returned_provider,
               generation.returned_model, generation.status, generation.reason
      ORDER BY generation.requested_provider, generation.model,
               generation.status, generation.reason`,
@@ -1940,17 +1975,55 @@ export async function getShadowReplayJudgmentSummary(
   const runQuery = dependencies.query ?? query as QueryFn;
   const boundedDays = Math.max(1, Math.min(7, Math.trunc(days)));
   const result = await runQuery<ShadowReplayJudgmentSummaryRow>(
-    `SELECT judgment.status,
+    `SELECT trace.capture_version,
+            trace.policy_version AS capture_policy_version,
+            trace.source_config_version_id,
+            trace.effective_model AS source_model,
+            judgment.human_evidence_content_hmac IS NOT NULL AS has_human_evidence,
+            generation.requested_provider,
+            generation.model AS requested_model,
+            generation.addie_code_version,
+            generation.execution_policy_version,
+            generation.returned_provider,
+            generation.returned_model,
+            judgment.judgment_policy_version,
+            judgment.judge_provider,
+            judgment.judge_model,
+            judgment.self_judged,
+            judgment.judge_prompt_version,
+            judgment.status,
             judgment.reason,
+            judgment.evaluation_valid,
+            judgment.evaluation_skipped,
+            judgment.knowledge_gap,
+            judgment.gap_severity,
+            judgment.shadow_quality,
+            judgment.deterministic_failure_labels,
             COUNT(*)::integer AS count,
             COALESCE(SUM(judgment.input_tokens), 0)::integer AS input_tokens,
             COALESCE(SUM(judgment.output_tokens), 0)::integer AS output_tokens
      FROM addie_shadow_replay_judgments judgment
-     JOIN addie_shadow_replay_traces trace ON trace.trace_id = judgment.trace_id
+     JOIN addie_shadow_replay_generations generation
+       ON generation.trace_id = judgment.trace_id
+     JOIN addie_shadow_replay_traces trace ON trace.trace_id = generation.trace_id
      WHERE judgment.completed_at >= NOW() - ($2::integer * INTERVAL '1 day')
        AND trace.capture_version = $1
-     GROUP BY judgment.status, judgment.reason
-     ORDER BY judgment.status, judgment.reason`,
+     GROUP BY trace.capture_version, trace.policy_version,
+              trace.source_config_version_id, trace.effective_model,
+              (judgment.human_evidence_content_hmac IS NOT NULL),
+              generation.requested_provider, generation.model,
+              generation.addie_code_version, generation.execution_policy_version,
+              generation.returned_provider, generation.returned_model,
+              judgment.judgment_policy_version, judgment.judge_provider,
+              judgment.judge_model, judgment.self_judged,
+              judgment.judge_prompt_version, judgment.status,
+              judgment.reason, judgment.evaluation_valid,
+              judgment.evaluation_skipped, judgment.knowledge_gap,
+              judgment.gap_severity, judgment.shadow_quality,
+              judgment.deterministic_failure_labels
+     ORDER BY generation.requested_provider, generation.model,
+              judgment.judge_provider, judgment.judge_model,
+              judgment.status, judgment.reason`,
     [SHADOW_REPLAY_TRACE_CAPTURE_VERSION, boundedDays],
   );
   return result.rows;

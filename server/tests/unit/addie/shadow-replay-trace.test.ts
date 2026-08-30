@@ -1128,9 +1128,14 @@ describe('shadow replay trace authorization', () => {
 
   it('reports only categorical generation outcomes and token totals', async () => {
     const rows = [{
+      capture_version: 3,
+      capture_policy_version: 'official-docs-capture:v3',
+      source_config_version_id: 42,
+      source_model: 'claude-sonnet-5',
       requested_provider: 'google',
       requested_model: 'gemini-3.7-flash',
       addie_code_version: '2026.08.109',
+      execution_policy_version: 'official-docs-read-only:v1',
       returned_provider: 'google',
       returned_model: 'gemini-3.7-flash-20260801',
       status: 'succeeded',
@@ -1145,13 +1150,37 @@ describe('shadow replay trace authorization', () => {
     expect(runQuery.mock.calls[0][1]).toEqual([3, 7]);
     expect(runQuery.mock.calls[0][0]).toContain('generation.requested_provider');
     expect(runQuery.mock.calls[0][0]).toContain('generation.addie_code_version');
+    expect(runQuery.mock.calls[0][0]).toContain('generation.execution_policy_version');
+    expect(runQuery.mock.calls[0][0]).toContain('trace.source_config_version_id');
     expect(runQuery.mock.calls[0][0]).not.toContain('question_hmac');
   });
 
   it('reports categorical judgment totals and a no-payload opportunity funnel', async () => {
     const judgments = [{
+      capture_version: 3,
+      capture_policy_version: 'official-docs-capture:v3',
+      source_config_version_id: 42,
+      source_model: 'claude-sonnet-5',
+      has_human_evidence: true,
+      requested_provider: 'google',
+      requested_model: 'gemini-3.7-flash',
+      addie_code_version: '2026.08.111',
+      execution_policy_version: 'official-docs-read-only:v1',
+      returned_provider: 'google',
+      returned_model: 'gemini-3.7-flash-20260801',
+      judgment_policy_version: 'official-docs-judgment:v1',
+      judge_provider: 'anthropic',
+      judge_model: 'claude-sonnet-5',
+      self_judged: false,
+      judge_prompt_version: 'shadow-replay-judge:v1',
       status: 'judged',
       reason: 'judgment_completed',
+      evaluation_valid: true,
+      evaluation_skipped: false,
+      knowledge_gap: false,
+      gap_severity: 'none',
+      shadow_quality: 'equivalent',
+      deterministic_failure_labels: [],
       count: 2,
       input_tokens: 80,
       output_tokens: 20,
@@ -1160,6 +1189,11 @@ describe('shadow replay trace authorization', () => {
     await expect(getShadowReplayJudgmentSummary(999, { query: judgmentQuery as never }))
       .resolves.toEqual(judgments);
     expect(judgmentQuery.mock.calls[0][1]).toEqual([3, 7]);
+    expect(judgmentQuery.mock.calls[0][0]).toContain('generation.requested_provider');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.judge_provider');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.shadow_quality');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('has_human_evidence');
+    expect(judgmentQuery.mock.calls[0][0]).not.toMatch(/question_hmac|source_output_hmac/);
 
     const funnel = {
       opportunities: 5,
