@@ -239,9 +239,9 @@ function parseOptionalFeedbackText(
 }
 
 /**
- * Anonymous users get directory tools only (fast DB lookups, public data).
- * Knowledge/doc search tools require login — Haiku can't reliably synthesize
- * multi-step research within the anonymous iteration limit.
+ * Anonymous users get public directory and knowledge tools plus AdCP execution
+ * against the embedded training agent. User-selected agents remain gated behind
+ * authentication so anonymous chat cannot act as a general outbound proxy.
  */
 
 /**
@@ -295,7 +295,7 @@ export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean, is
 /**
  * Initialize the chat client
  *
- * Anonymous users get Haiku with read-only directory tools.
+ * Anonymous users get Haiku with public read tools and training-agent execution.
  * Authenticated users get Sonnet with full tools (billing, schema, Slack, etc.).
  */
 async function initializeChatClient(): Promise<void> {
@@ -352,6 +352,21 @@ async function initializeChatClient(): Promise<void> {
   for (const tool of KNOWLEDGE_TOOLS) {
     if (!ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name)) continue;
     const handler = anonymousKnowledgeHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Let anonymous visitors run a real AdCP sandbox demo. The scoped handlers
+  // reject every target except the embedded public training agent; authenticated
+  // requests shadow them with member-scoped, unrestricted handlers.
+  const anonymousAdcpHandlers = createAdcpToolHandlers(
+    null,
+    undefined,
+    { trainingAgentOnly: true },
+  );
+  for (const tool of ADCP_TOOLS) {
+    const handler = anonymousAdcpHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }
@@ -746,7 +761,7 @@ export async function prepareRequestWithMemberTools(
     moduleId: certificationModuleId,
   };
 
-  // Anonymous users get no per-request tools (saves tokens and prevents data leakage)
+  // Anonymous-safe tools are registered globally; no user-scoped tools are added here.
   if (!isAuthenticated) {
     return {
       messageToProcess,

@@ -27,6 +27,11 @@ import {
 } from '@adcp/sdk';
 import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
+import {
+  PROPOSAL_NEGOTIATION_PROFILES,
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  type ProposalNegotiationProfile,
+} from '../../training-agent/types.js';
 import { agentConfigAuthFields, type SdkAuth } from '../../services/sdk-auth-adapter.js';
 import { withSdkSafeTransport } from '../../utils/sdk-safe-fetch.js';
 
@@ -165,6 +170,40 @@ export function validateAccountRefParam(account: unknown): string | null {
 
 export const ADCP_TASK_REGISTRY: Record<string, AdcpTaskMeta> = {
   // Media Buy
+  list_products: {
+    area: 'media-buy',
+    description: 'List versioned published offers without asking the seller to construct a plan',
+  },
+  request_proposals: {
+    area: 'media-buy',
+    description: 'Ask a seller to create immutable draft media plans from a campaign brief',
+    validate: validateIdempotencyKey,
+  },
+  refine_proposals: {
+    area: 'media-buy',
+    description: 'Create immutable proposal revisions or finalize drafts into inventory holds',
+    validate: validateIdempotencyKey,
+  },
+  decline_proposals: {
+    area: 'media-buy',
+    description: 'Terminally decline immutable proposals and record structured disposition feedback',
+    validate: validateIdempotencyKey,
+  },
+  buy_products: {
+    area: 'media-buy',
+    description: 'Buy exact published offers using their feed and pricing versions',
+    validate: validateIdempotencyKey,
+  },
+  accept_proposal: {
+    area: 'media-buy',
+    description: 'Accept a committed proposal hold into a new, amended, or canceled MediaBuy',
+    validate: validateIdempotencyKey,
+  },
+  control_media_buy: {
+    area: 'media-buy',
+    description: 'Apply revision-checked operational controls inside accepted commercial terms',
+    validate: validateIdempotencyKey,
+  },
   get_products: {
     area: 'media-buy',
     description: 'Discover advertising products from a sales agent using natural language briefs',
@@ -323,6 +362,13 @@ const TASK_NAMES = Object.keys(ADCP_TASK_REGISTRY);
 
 export const CANONICAL_ADCP_TASK_NAMES = [
   'get_products',
+  'list_products',
+  'request_proposals',
+  'refine_proposals',
+  'decline_proposals',
+  'buy_products',
+  'accept_proposal',
+  'control_media_buy',
   'create_media_buy',
   'update_media_buy',
   'sync_creatives',
@@ -711,6 +757,13 @@ const callAdcpTaskTool: AddieTool = {
         type: 'object',
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
+          '• list_products: { adcp_version, adcp_major_version: 3, account?, brand?, criteria?, pagination? }',
+          '• request_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, brand: { domain }, brief, criteria? }',
+          '• refine_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, refinements: [{ proposal_id, action: "revise" | "finalize", ... }] }',
+          '• decline_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, declines: [{ proposal_id, reason, detail? }] }',
+          '• buy_products: { adcp_version, adcp_major_version: 3, idempotency_key, account, brand, feed_version, pricing_version?, purchases: [...] }',
+          '• accept_proposal: { adcp_version, adcp_major_version: 3, idempotency_key, account, proposal_id, proposal_terms_digest }',
+          '• control_media_buy: { adcp_version, adcp_major_version: 3, idempotency_key, account, media_buy_id, revision, ...control }',
           '• get_products: { idempotency_key, brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
           '• create_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator: "operator.example" }, brand: { domain }, packages: [...] OR proposal_id + total_budget, start_time: "asap" | "2024-06-01T00:00:00Z", end_time: "2024-06-30T23:59:59Z" }',
           '• update_media_buy: { idempotency_key, account: { account_id } OR { brand:{domain}, operator }, media_buy_id, paused?, canceled?, packages?: [{ package_id, budget? }] }',
@@ -744,6 +797,14 @@ const getAdcpCapabilitiesTool: AddieTool = {
         description: 'The agent URL to query (must be HTTPS)',
       },
       debug: { type: 'boolean' },
+      adcp_version: {
+        type: 'string',
+        description: 'Optional exact release pin, for example "3.2-beta.9" during prerelease testing',
+      },
+      adcp_major_version: {
+        type: 'integer',
+        description: 'Deprecated compatibility selector; send 3 alongside a 3.x adcp_version when required by the peer',
+      },
     },
     required: ['agent_url'],
   },
@@ -759,6 +820,11 @@ export const ADCP_TOOLS: AddieTool[] = [
   getAdcpCapabilitiesTool,
 ];
 
+export interface AdcpToolAccess {
+  /** Restrict protocol execution to the embedded public training agent. */
+  trainingAgentOnly?: boolean;
+}
+
 // ============================================
 // TOOL HANDLERS
 // ============================================
@@ -770,6 +836,7 @@ export const ADCP_TOOLS: AddieTool[] = [
 export function createAdcpToolHandlers(
   memberContext: MemberContext | null,
   trainingModuleContext?: { moduleId?: string },
+  access: AdcpToolAccess = {},
 ): Map<string, ToolHandler> {
   const handlers = new Map<string, ToolHandler>();
   const agentContextDb = new AgentContextDatabase();
@@ -838,8 +905,31 @@ export function createAdcpToolHandlers(
   // on the main server. Recognize any of them for the in-process shortcut.
   function isTrainingAgentUrl(url: URL): boolean {
     if (TRAINING_AGENT_HOSTNAMES.has(url.hostname)) return true;
-    const selfHost = new URL(getBaseUrl()).hostname;
-    return url.pathname.startsWith('/api/training-agent') && url.hostname === selfHost;
+    if (!url.pathname.startsWith('/api/training-agent')) return false;
+    try {
+      return url.hostname === new URL(getBaseUrl()).hostname;
+    } catch {
+      return false;
+    }
+  }
+
+  function proposalNegotiationProfileFromUrl(
+    url: URL,
+  ): ProposalNegotiationProfile | undefined {
+    const match = url.pathname.match(
+      /(?:^|\/)sales\/profiles\/([^/]+)\/mcp\/?$/,
+    );
+    const candidate = match?.[1];
+    if (
+      !candidate
+      || candidate === 'ask-only'
+      || !PROPOSAL_NEGOTIATION_PROFILES.includes(
+        candidate as ProposalNegotiationProfile,
+      )
+    ) {
+      return undefined;
+    }
+    return candidate as ProposalNegotiationProfile;
   }
 
   // Helper to validate agent URL
@@ -850,6 +940,10 @@ export function createAdcpToolHandlers(
       // Allow the embedded training agent (same-origin or dedicated hostname)
       if (isTrainingAgentUrl(url)) {
         return null;
+      }
+
+      if (access.trainingAgentOnly) {
+        return 'The anonymous demo can only call the AdCP training agent. Sign in to connect Addie to another agent.';
       }
 
       if (url.protocol !== 'https:') {
@@ -899,6 +993,7 @@ export function createAdcpToolHandlers(
       const parsedUrl = new URL(agentUrl);
       if (isTrainingAgentUrl(parsedUrl)) {
         const { executeTrainingAgentTool } = await import('../../training-agent/task-handlers.js');
+        const proposalNegotiationProfile = proposalNegotiationProfileFromUrl(parsedUrl);
         const userId = memberContext?.workos_user?.workos_user_id;
         const memberModuleId = memberContext?.certification?.status === 'in_progress'
           ? memberContext.certification.module_id ?? undefined
@@ -907,8 +1002,19 @@ export function createAdcpToolHandlers(
           mode: 'training' as const,
           userId,
           moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
+          ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
         };
-        const result = await executeTrainingAgentTool(task, requestParams, ctx);
+        const trainingRequestParams = task === 'get_adcp_capabilities'
+          && proposalNegotiationProfile
+          && requestParams.adcp_version === undefined
+          && requestParams.adcp_major_version === undefined
+          ? {
+              ...requestParams,
+              adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION,
+              adcp_major_version: 3,
+            }
+          : requestParams;
+        const result = await executeTrainingAgentTool(task, trainingRequestParams, ctx);
         if (!result.success) {
           return [
             `**Task failed:** \`${task}\`\n`,
@@ -1069,7 +1175,7 @@ export function createAdcpToolHandlers(
     // In well-formed requests this branch is unreachable because 'get_adcp_capabilities'
     // is not in TASK_NAMES and will be rejected by the input schema first.
     if (task === 'get_adcp_capabilities') {
-      return '**Error:** `get_adcp_capabilities` is a protocol-layer handshake, not an AdCP task — use the dedicated `get_adcp_capabilities` tool directly (it takes only `agent_url`, no `task` parameter).';
+      return '**Error:** `get_adcp_capabilities` is a protocol-layer handshake, not an AdCP task — use the dedicated `get_adcp_capabilities` tool directly.';
     }
 
     const meta = ADCP_TASK_REGISTRY[task];
@@ -1085,11 +1191,19 @@ export function createAdcpToolHandlers(
     return executeTask(agentUrl, task, params, debug);
   });
 
-  // get_adcp_capabilities handler (unchanged — uses executeTask with empty params)
+  // get_adcp_capabilities handler
   handlers.set('get_adcp_capabilities', async (input: Record<string, unknown>) => {
     const agentUrl = input.agent_url as string;
     const debug = input.debug as boolean | undefined;
-    return executeTask(agentUrl, 'get_adcp_capabilities', {}, debug);
+    const params = {
+      ...(typeof input.adcp_version === 'string' && {
+        adcp_version: input.adcp_version,
+      }),
+      ...(typeof input.adcp_major_version === 'number' && {
+        adcp_major_version: input.adcp_major_version,
+      }),
+    };
+    return executeTask(agentUrl, 'get_adcp_capabilities', params, debug);
   });
 
   return handlers;

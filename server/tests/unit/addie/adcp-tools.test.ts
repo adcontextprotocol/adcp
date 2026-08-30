@@ -15,6 +15,7 @@ import {
   createAdcpToolHandlers,
   validateAccountRefParam,
 } from '../../../src/addie/mcp/adcp-tools.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../../src/training-agent/types.js';
 
 describe('AdCP SDK execution boundaries', () => {
   it('classifies every registered task in exactly one explicit SDK boundary', () => {
@@ -28,8 +29,15 @@ describe('AdCP SDK execution boundaries', () => {
     expect(new Set(classifications).size).toBe(classifications.length);
   });
 
-  it('uses canonical execution for primary v13 tasks', () => {
+  it('uses canonical execution for primary AdCP tasks', () => {
     expect(adcpExecutionMode('get_products')).toBe('canonical');
+    expect(adcpExecutionMode('list_products')).toBe('canonical');
+    expect(adcpExecutionMode('request_proposals')).toBe('canonical');
+    expect(adcpExecutionMode('refine_proposals')).toBe('canonical');
+    expect(adcpExecutionMode('decline_proposals')).toBe('canonical');
+    expect(adcpExecutionMode('buy_products')).toBe('canonical');
+    expect(adcpExecutionMode('accept_proposal')).toBe('canonical');
+    expect(adcpExecutionMode('control_media_buy')).toBe('canonical');
     expect(adcpExecutionMode('create_media_buy')).toBe('canonical');
     expect(adcpExecutionMode('sync_creatives')).toBe('canonical');
   });
@@ -342,6 +350,92 @@ describe('call_adcp_task handler validation boundary', () => {
 });
 
 describe('call_adcp_task training module isolation', () => {
+  it('limits anonymous demo execution to the training agent', async () => {
+    const handlers = createAdcpToolHandlers(
+      null,
+      undefined,
+      { trainingAgentOnly: true },
+    );
+    const getCapabilities = handlers.get('get_adcp_capabilities');
+
+    await expect(getCapabilities?.({
+      agent_url: 'https://sales-agent.example/mcp',
+    })).resolves.toContain('anonymous demo can only call the AdCP training agent');
+  });
+
+  it('allows anonymous demo execution against a proposal training profile', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { tasks: [] } });
+    const handlers = createAdcpToolHandlers(
+      null,
+      undefined,
+      { trainingAgentOnly: true },
+    );
+    const getCapabilities = handlers.get('get_adcp_capabilities');
+
+    await getCapabilities?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/profiles/typed-negotiation/mcp',
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'get_adcp_capabilities',
+      { adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION, adcp_major_version: 3 },
+      expect.objectContaining({ proposalNegotiationProfile: 'typed-negotiation' }),
+    );
+  });
+
+  it('preserves the proposal profile selected by the training-agent URL', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { results: [] } });
+    const handlers = createAdcpToolHandlers({
+      workos_user: { workos_user_id: 'user_training' },
+    } as any, { moduleId: 'S1' });
+    const callAdcpTask = handlers.get('call_adcp_task');
+    const params = {
+      adcp_version: '3.2-beta.9',
+      adcp_major_version: 3,
+      idempotency_key: 'proposal-refinement-key',
+      refinements: [{ proposal_id: 'proposal_123', action: 'finalize' }],
+    };
+
+    await callAdcpTask?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/profiles/constrained-seller/mcp',
+      task: 'refine_proposals',
+      params,
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'refine_proposals',
+      params,
+      expect.objectContaining({
+        mode: 'training',
+        userId: 'user_training',
+        moduleId: 'S1',
+        proposalNegotiationProfile: 'constrained-seller',
+      }),
+    );
+  });
+
+  it('uses the current prerelease when Addie discovers an unpinned proposal profile', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { media_buy: {} } });
+    const handlers = createAdcpToolHandlers(null);
+    const getCapabilities = handlers.get('get_adcp_capabilities');
+
+    await getCapabilities?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/profiles/typed-negotiation/mcp',
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'get_adcp_capabilities',
+      { adcp_version: TRAINING_AGENT_CURRENT_ADCP_VERSION, adcp_major_version: 3 },
+      expect.objectContaining({
+        mode: 'training',
+        proposalNegotiationProfile: 'typed-negotiation',
+      }),
+    );
+  });
+
   it('forwards the exact caller-owned get_products idempotency key', async () => {
     executeTrainingAgentTool.mockReset();
     executeTrainingAgentTool.mockResolvedValue({ success: true, data: { products: [] } });

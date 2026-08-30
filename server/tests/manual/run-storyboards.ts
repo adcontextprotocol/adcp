@@ -27,6 +27,7 @@ import {
   runStoryboard,
   testCapabilityDiscovery,
   getComplianceCacheDir,
+  withExternalSchemaRoot,
 } from '@adcp/sdk/testing';
 import type { AgentProfile, StoryboardResult, Storyboard, StoryboardRunOptions } from '@adcp/sdk/testing';
 import {
@@ -620,12 +621,23 @@ async function selectStoryboardsForTenant(
   agentUrl: string,
   everything: Storyboard[],
 ): Promise<StoryboardSelection> {
-  const discovery = await testCapabilityDiscovery(agentUrl, {
+  const discover = () => testCapabilityDiscovery(agentUrl, {
     auth: { type: 'bearer', token: AUTH_TOKEN },
     allow_http: true,
     ...(releasedComplianceVersion && { adcpVersion: releasedComplianceVersion }),
     ...(wireAdcpVersion && { wireAdcpVersion }),
   });
+  // A Version Packages PR creates the next schema bundle before any published
+  // SDK can embed it. Register that candidate root around capability discovery
+  // just as runStoryboard does around execution; otherwise SDK construction
+  // fails on the new exact version before the training agent is contacted.
+  const discovery = complianceOptions.schemaRoot && releasedComplianceVersion
+    ? await withExternalSchemaRoot(
+        releasedComplianceVersion,
+        complianceOptions.schemaRoot,
+        discover,
+      )
+    : await discover();
   const profile = discovery.profile;
   if (!profile) {
     throw new Error('Capability discovery returned no agent profile; refusing to guess storyboard applicability');

@@ -17,6 +17,29 @@ Each principle has the same structure: the rule, why we chose it, what it rules 
 
 ---
 
+## Enterprise objective
+
+AdCP is designed to become the protocol that can coordinate a trillion-dollar
+global advertising economy. Spend-committing systems need deterministic
+identity, authorization, commercial state, concurrency, retries, audit, and
+recovery. A protocol can hide those problems in prose or proprietary platform
+behavior, but it cannot make them disappear.
+
+The design goal is therefore **robustness with concentrated complexity**:
+normative schemas and conformance assets define the hard edges; maintained
+[SDKs](/docs/building/by-layer/L4/choose-your-sdk) implement them once for many
+adopters; and application teams focus on pricing, planning, creative, policy,
+and operations. Raw-wire implementation remains open, but a production
+implementation is an enterprise systems commitment, not a casual JSON
+integration.
+
+This objective is not permission for accidental complexity. Every task is a
+permanent ecosystem coordination cost. Every field still has to earn its place,
+and the principles below deliberately reject additions that do not create a
+necessary interoperable guarantee.
+
+---
+
 ## The two principles that bounce most RFCs
 
 ### 1. The schema is the spec
@@ -108,7 +131,7 @@ Trust in AdCP is bilateral and verifiable, not blessed by a registry. Operators 
 
 **Why we chose it.** Every centralized trust authority eventually becomes a tax. ads.txt and sellers.json got the model right: declarations are public and machine-readable; verification is bilateral; the network discovers truth without a single gatekeeper deciding who counts. AdCP follows that pattern deliberately — adding a "well-known brand registry" or a "verified buyer" tier would re-create the exact ad tech tax structure the protocol is meant to replace.
 
-**What this rules out.** Proposals that frame brand verification as a centralized validation problem — "who decides which brands are well-known?", "should AAO verify brand.json submissions before allowing them in the registry?" The premise is the error: `/.well-known/` is a [URI convention from RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615), not a quality signal. A `brand.json` at a domain proves only that whoever controls that domain published it. Trust is built by composing that proof with adagents.json, account-level commercial relationships, and (when needed) signed requests — not by a third party blessing the brand list.
+**What this rules out.** Proposals that frame brand verification as a centralized validation problem — "who decides which brands are well-known?", "should AgenticAdvertising.org verify brand.json submissions before allowing them in the registry?" The premise is the error: `/.well-known/` is a [URI convention from RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615), not a quality signal. A `brand.json` at a domain proves only that whoever controls that domain published it. Trust is built by composing that proof with adagents.json, account-level commercial relationships, and (when needed) signed requests — not by a third party blessing the brand list.
 
 **When you'd be right to push.** When you have evidence of a trust failure that bilateral declarations *demonstrably can't* address — not "what if a fraud declares themselves," but "here's a class of fraud the bilateral model misses, here's the cost, here's the smallest amount of centralization that closes it." Trust extensions are accepted; trust centralization needs receipts. The unresolved question on the substrate (CDN takeovers, DNS games, stale `/.well-known/` crawls) is real — see [Trust & Security](/docs/trust) for what AdCP provides versus what it explicitly does not.
 

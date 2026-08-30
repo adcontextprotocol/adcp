@@ -12,6 +12,60 @@ The AdCP roadmap is a public [GitHub Project board](https://github.com/orgs/adco
 
 ---
 
+## Active release cycles
+
+### 3.2 release-candidate readiness
+
+The final beta and RC preparation are focused on making the compact commercial
+lifecycle usable, verifiable, and legible—not adding another broad feature wave.
+
+| Workstream | Release outcome |
+|---|---|
+| [Hosted verification reliability](https://github.com/adcontextprotocol/adcp/issues/7061) | External agents are not failed by runner discovery, capability-gating, credential, version, or timeout defects. |
+| [Enterprise protocol positioning](https://github.com/adcontextprotocol/adcp/issues/7062) | The docs explain why production adopters should use maintained SDKs and where the 3.2 commercial boundary sits. |
+| [Publish the elected AgenticAdvertising.org board](https://github.com/adcontextprotocol/adcp/issues/7055) | The post-AGM board and governance record replace incorporation-era interim information. |
+
+The exact candidate scope remains visible in the
+[3.2.0 milestone](https://github.com/adcontextprotocol/adcp/milestone/7).
+
+### 3.3 working-group cycle
+
+3.3 will deepen production operation around the lifecycle without forcing
+breaking changes that belong in 4.0.
+
+| Workstream | Questions to resolve |
+|---|---|
+| [Acts-for authority and multi-agent delegation](https://github.com/adcontextprotocol/adcp/issues/7063) | Portable delegation, revocation, pure-buyer signing, and specialist-agent boundaries. |
+| [Post-acceptance commercial lifecycle](https://github.com/adcontextprotocol/adcp/issues/7064) | Payment terms, FX, fees, settlement, disputes, credits, and makegoods. |
+| [Cross-channel maturity and offline depth](https://github.com/adcontextprotocol/adcp/issues/7065) | Channel-by-lifecycle evidence and the highest-value print, broadcast, OOH, and audio gaps. |
+| [Production security profile](https://github.com/adcontextprotocol/adcp/issues/7066) | A stronger testable 3.x deployment floor and migration path to mandatory 4.0 controls. |
+| [Capability and routing ergonomics](https://github.com/adcontextprotocol/adcp/issues/7067) | Role-oriented views and precise claims for partial lifecycle implementations. |
+| [Production evidence program](https://github.com/adcontextprotocol/adcp/issues/7068) | Consent-based, machine-observed evidence of exact versions, tasks, environments, and lifecycle stages. |
+
+Each issue starts in exploration and carries `needs-wg-review`. Working groups
+will select bounded 3.3 slices from adopter evidence; incompatible identity,
+account, or security changes move to the 4.0 accumulation window.
+
+## Where contributions are needed now
+
+AdCP is actively seeking implementations and domain expertise—not only schema
+suggestions—in these areas:
+
+| Area | Useful contribution |
+|---|---|
+| Verification | Run the RC profile against an independently operated agent and contribute reproducible runner failures or fixes. |
+| Authorization | Bring real buyer, agency, delegated-operator, and specialist-agent topologies with revocation requirements. |
+| Commercial operations | Bring finance and ad-operations workflows for invoicing, FX, disputes, credits, and makegoods. |
+| Offline channels | Bring print, broadcast, OOH, and place-based-audio examples through delivery evidence and reconciliation. |
+| Security | Review the production profile, threat model, key lifecycle, SSRF boundaries, and compromised-agent controls. |
+| Production evidence | Contribute opt-in, redacted observations that distinguish sandbox, transaction, delivery, and reconciliation. |
+
+Join the relevant [working group](/docs/community/working-group), comment on the
+linked issue, or bring a runnable implementation and test fixture. Evidence
+from production behavior carries more weight than a hypothetical object model.
+
+---
+
 ## How the Roadmap Works
 
 The board has four columns representing the lifecycle of a roadmap item:
@@ -53,25 +107,17 @@ Any issue labeled `rfc` or `epic` is automatically added to the board. To propos
 
 ---
 
-## Triage
+## Triage and working-group review
 
-Each protocol area has a triage owner responsible for reviewing new issues weekly (~15 minutes) and deciding what gets the `rfc` or `epic` label. The triage owner also reviews the board monthly to ensure items reflect reality.
+Maintainers triage new roadmap candidates into the relevant working group.
+Items carrying `needs-wg-review` are explicit agenda candidates: the group must
+validate the adopter problem, choose the smallest interoperable slice, identify
+an implementation owner, and decide whether the work is additive in 3.3 or
+belongs in the 4.0 breaking-change window.
 
-| Protocol Area | Triage Owner |
-|---|---|
-| Creative | _TBD_ |
-| Media Buy | _TBD_ |
-| Signals | _TBD_ |
-| Brand Protocol | _TBD_ |
-| Governance | _TBD_ |
-| SI | _TBD_ |
-| TMP | _TBD_ |
-| Platform | _TBD_ |
-| Website | _TBD_ |
-| Addie | _TBD_ |
-| Certification | _TBD_ |
-
-Triage owners rotate quarterly. To volunteer, reach out in the relevant working group channel on Slack.
+The board is reviewed monthly for stale status, missing owners, and roadmap
+items that lack implementation evidence. To lead or contribute to a cycle,
+comment on its issue and join the relevant working-group channel on Slack.
 
 ---
 
