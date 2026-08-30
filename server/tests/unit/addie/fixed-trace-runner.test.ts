@@ -190,7 +190,10 @@ describe('fixed trace artifact runner', () => {
         name: 'search_docs',
         input: { query: 'task model' },
       }], 'tool_calls', 'generation-tool'),
-      response([{ type: 'text', text: 'The protocol uses task-based requests.' }], 'stop', 'generation-final'),
+      response([{
+        type: 'text',
+        text: 'A buyer calls a defined task on the seller with structured input, and the seller returns the task response.',
+      }], 'stop', 'generation-final'),
     ]);
     const selectedTrace = trace('knowledge-task-model');
 
@@ -203,7 +206,7 @@ describe('fixed trace artifact runner', () => {
       boundaryReason: null,
       localReplacementReason: null,
       finishReason: 'stop',
-      output: 'The protocol uses task-based requests.',
+      output: 'A buyer calls a defined task on the seller with structured input, and the seller returns the task response.',
       route: { action: 'respond', toolSets: ['knowledge'] },
       flagged: false,
       tools: [{

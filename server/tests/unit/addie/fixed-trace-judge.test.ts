@@ -185,7 +185,7 @@ describe('fixed-trace independent judge', () => {
     const serialized = JSON.stringify(request);
     expect(serialized).not.toContain('candidate-secret');
     expect(serialized).not.toContain('anthropic');
-    expect(serialized).not.toContain('Official overview: buyers and sellers exchange typed tasks.');
+    expect(serialized).not.toContain('Official task lifecycle: if work is asynchronous');
     expect(serialized).toContain('candidate_answer');
     expect(serialized).toContain('Search synthetic official documentation.');
     expect(serialized).toContain('task model');
