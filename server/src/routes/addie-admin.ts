@@ -633,6 +633,26 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
             (sum, outcome) => sum + outcome.output_tokens,
             0,
           ),
+          cache_read_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_read_tokens,
+            0,
+          ),
+          cache_write_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_write_tokens,
+            0,
+          ),
+          usage_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.usage_complete_count,
+            0,
+          ),
+          latency_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.latency_count,
+            0,
+          ),
+          estimated_cost_micros: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + BigInt(outcome.estimated_cost_micros),
+            0n,
+          ).toString(),
           outcomes: judgmentOutcomes,
         },
         funnel,

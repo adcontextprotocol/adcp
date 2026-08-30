@@ -25,7 +25,7 @@ const MIGRATION_556_SQL = readFileSync(
   'utf8',
 );
 
-describe('migrations 552 through 568: shadow replay traces', () => {
+describe('migrations 552 through 569: shadow replay traces', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -307,6 +307,12 @@ describe('migrations 552 through 568: shadow replay traces', () => {
         'human_evidence_content_hmac',
         'input_tokens',
         'output_tokens',
+        'pricing_version',
+        'usage_complete',
+        'cache_read_tokens',
+        'cache_write_tokens',
+        'latency_ms',
+        'estimated_cost_micros',
         'started_at',
         'completed_at',
         'retained_until',
@@ -315,8 +321,8 @@ describe('migrations 552 through 568: shadow replay traces', () => {
     expect(judgmentColumns.rows.map(({ column_name }) => column_name)).not.toEqual(
       expect.arrayContaining(['question', 'human_response', 'generated_output']),
     );
-    const judgmentConstraints = await pool.query<{ definition: string }>(
-      `SELECT pg_get_constraintdef(oid) AS definition
+    const judgmentConstraints = await pool.query<{ constraint_name: string; definition: string }>(
+      `SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS definition
        FROM pg_constraint
        WHERE conrelid = 'addie_shadow_replay_judgments'::regclass`,
     );
@@ -324,6 +330,14 @@ describe('migrations 552 through 568: shadow replay traces', () => {
       definition.includes('self_judged = false'))).toBe(true);
     expect(judgmentConstraints.rows.some(({ definition }) =>
       definition.includes('array_to_string(deterministic_failure_labels'))).toBe(true);
+    expect(judgmentConstraints.rows.some(({ constraint_name, definition }) =>
+      constraint_name === 'shadow_replay_judgment_new_success_evidence'
+      && definition.includes('pricing_version')
+      && definition.includes('legacy-unrecorded')
+      && definition.includes('status')
+      && definition.includes('judged')
+      && definition.includes('usage_complete')
+      && definition.includes('latency_ms'))).toBe(true);
   });
 
   it('categorically closes existing pending v2 traces instead of upgrading them', async () => {

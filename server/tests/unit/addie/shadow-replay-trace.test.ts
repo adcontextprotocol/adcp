@@ -46,6 +46,20 @@ const UNAVAILABLE_GENERATION_USAGE = {
   usageAvailable: false,
   latencyMs: null,
 } as const;
+const COMPLETE_JUDGMENT_USAGE = {
+  cacheReadTokens: 6,
+  cacheWriteTokens: 3,
+  usageAvailable: true,
+  pricingVersion: 'anthropic-standard-2026-08:claude-opus-4-6',
+  latencyMs: 125,
+} as const;
+const NO_JUDGE_USAGE = {
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  usageAvailable: false,
+  pricingVersion: 'not-applicable',
+  latencyMs: null,
+} as const;
 
 function snapshot(): InvocationPreparedSnapshot {
   return {
@@ -836,8 +850,8 @@ describe('shadow replay trace authorization', () => {
         shapeWordCount: 24,
         shapeExpectedMaxWords: 100,
         shapeRatioToExpected: 0.24,
-        judgeProvider: 'openai',
-        judgeModel: 'gpt-test',
+        judgeProvider: 'anthropic',
+        judgeModel: 'claude-opus-4-6',
         selfJudged: false,
         judgePromptVersion: 'official-docs-judge:v1',
         judgePromptHmac: '4'.repeat(64),
@@ -847,6 +861,7 @@ describe('shadow replay trace authorization', () => {
         humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
         inputTokens: 30,
         outputTokens: 12,
+        ...COMPLETE_JUDGMENT_USAGE,
         startedAt: new Date(NOW.getTime() - 1_000),
         completedAt: NOW,
       },
@@ -858,6 +873,14 @@ describe('shadow replay trace authorization', () => {
       shadow_eval_judgment_status: 'judged',
       shadow_eval_judgment_reason: 'judgment_completed',
     });
+    expect(runQuery.mock.calls[0][1].slice(53, 59)).toEqual([
+      COMPLETE_JUDGMENT_USAGE.pricingVersion,
+      true,
+      COMPLETE_JUDGMENT_USAGE.cacheReadTokens,
+      COMPLETE_JUDGMENT_USAGE.cacheWriteTokens,
+      COMPLETE_JUDGMENT_USAGE.latencyMs,
+      472,
+    ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(HUMAN_RESPONSE);
   });
@@ -902,8 +925,8 @@ describe('shadow replay trace authorization', () => {
         shapeWordCount: 20,
         shapeExpectedMaxWords: 100,
         shapeRatioToExpected: 0.2,
-        judgeProvider: 'openai',
-        judgeModel: 'gpt-test',
+        judgeProvider: 'anthropic',
+        judgeModel: 'claude-opus-4-6',
         selfJudged: false,
         judgePromptVersion: 'official-docs-judge:v1',
         judgePromptHmac: '4'.repeat(64),
@@ -913,6 +936,7 @@ describe('shadow replay trace authorization', () => {
         humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
         inputTokens: 1,
         outputTokens: 1,
+        ...COMPLETE_JUDGMENT_USAGE,
         startedAt: new Date(NOW.getTime() - 1_000),
         completedAt: NOW,
       },
@@ -960,6 +984,11 @@ describe('shadow replay trace authorization', () => {
         humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
         inputTokens: 1,
         outputTokens: 1,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        usageAvailable: true,
+        pricingVersion: 'anthropic-standard-2026-08:claude-sonnet-5',
+        latencyMs: 125,
         startedAt: new Date(NOW.getTime() - 1_000),
         completedAt: NOW,
       },
@@ -1019,6 +1048,7 @@ describe('shadow replay trace authorization', () => {
         humanEvidenceContentHmac: trace.humanEvidence!.contentHmac,
         inputTokens: 0,
         outputTokens: 0,
+        ...NO_JUDGE_USAGE,
         startedAt: new Date(NOW.getTime() - 1_000),
         completedAt: NOW,
       },
@@ -1276,6 +1306,7 @@ describe('shadow replay trace authorization', () => {
       judge_model: 'claude-sonnet-5',
       self_judged: false,
       judge_prompt_version: 'shadow-replay-judge:v1',
+      pricing_version: 'anthropic-standard-2026-08:claude-sonnet-5',
       status: 'judged',
       reason: 'judgment_completed',
       evaluation_valid: true,
@@ -1287,6 +1318,13 @@ describe('shadow replay trace authorization', () => {
       count: 2,
       input_tokens: 80,
       output_tokens: 20,
+      cache_read_tokens: 10,
+      cache_write_tokens: 4,
+      usage_complete_count: 2,
+      latency_count: 2,
+      estimated_cost_micros: '600',
+      latency_p50_ms: 300,
+      latency_p95_ms: 450,
     }];
     const judgmentQuery = vi.fn(async () => ({ rows: judgments, rowCount: 1 }));
     await expect(getShadowReplayJudgmentSummary(999, { query: judgmentQuery as never }))
@@ -1295,6 +1333,11 @@ describe('shadow replay trace authorization', () => {
     expect(judgmentQuery.mock.calls[0][0]).toContain('generation.requested_provider');
     expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.judge_provider');
     expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.shadow_quality');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.pricing_version');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.usage_complete');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('judgment.estimated_cost_micros');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('COUNT(judgment.latency_ms)');
+    expect(judgmentQuery.mock.calls[0][0]).toContain('PERCENTILE_CONT(0.95)');
     expect(judgmentQuery.mock.calls[0][0]).toContain('has_human_evidence');
     expect(judgmentQuery.mock.calls[0][0]).not.toMatch(/question_hmac|source_output_hmac/);
 

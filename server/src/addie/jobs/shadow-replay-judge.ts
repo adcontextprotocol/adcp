@@ -8,6 +8,7 @@ import {
   type ResolvedShadowReplayTrace,
   type ShadowReplayJudgmentCompletion,
 } from './shadow-replay-trace.js';
+import { resolveShadowReplayPricing } from './shadow-replay-pricing.js';
 import type { TrustedOfficialDocsReplayOutput } from './shadow-replay.js';
 
 export const SHADOW_REPLAY_JUDGE_PROMPT_VERSION =
@@ -66,6 +67,7 @@ export interface ExecuteShadowReplayJudgeDependencies {
   client?: JudgeClient;
   renewLease?: () => Promise<boolean>;
   now?: () => Date;
+  monotonicNow?: () => number;
 }
 
 export interface CreateShadowReplayOutputConsumerInput {
@@ -235,10 +237,42 @@ function parseStrictVerdict(text: string): ParsedJudgeVerdict | null {
   }
 }
 
-function boundedUsage(value: number | undefined): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : 0;
+function normalizeJudgeUsage(usage: unknown): {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  usageAvailable: boolean;
+} {
+  const candidate = usage && typeof usage === 'object'
+    ? usage as Record<string, unknown>
+    : {};
+  const validRequired = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
+  const validOptional = (value: unknown) => value === undefined || validRequired(value);
+  const complete = validRequired(candidate.input_tokens)
+    && validRequired(candidate.output_tokens)
+    && validOptional(candidate.cache_read_input_tokens)
+    && validOptional(candidate.cache_creation_input_tokens);
+  return complete ? {
+    inputTokens: candidate.input_tokens as number,
+    outputTokens: candidate.output_tokens as number,
+    cacheReadTokens: (candidate.cache_read_input_tokens as number | undefined) ?? 0,
+    cacheWriteTokens: (candidate.cache_creation_input_tokens as number | undefined) ?? 0,
+    usageAvailable: true,
+  } : {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    usageAvailable: false,
+  };
+}
+
+function judgeLatencyMs(startedAt: number, completedAt: number): number | null {
+  const duration = completedAt - startedAt;
+  return Number.isFinite(duration) && duration >= 0 && duration <= 900_000
+    ? Math.ceil(duration)
+    : null;
 }
 
 function shapeEvidence(question: string, output: string): ShadowReplayDeterministicShapeEvidence {
@@ -260,7 +294,8 @@ type EvidenceBase = Omit<
   ShadowReplayJudgeEvidence,
   'status' | 'reason' | 'evaluationValid' | 'evaluationSkipped'
   | 'knowledgeGap' | 'gapSeverity' | 'shadowQuality' | 'judgeResponseHmac'
-  | 'inputTokens' | 'outputTokens' | 'completedAt'
+  | 'inputTokens' | 'outputTokens' | 'cacheReadTokens' | 'cacheWriteTokens'
+  | 'usageAvailable' | 'pricingVersion' | 'latencyMs' | 'completedAt'
 >;
 
 function terminalEvidence(
@@ -274,6 +309,11 @@ function terminalEvidence(
     responseHmac?: string | null;
     inputTokens?: number;
     outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    usageAvailable?: boolean;
+    pricingVersion?: string;
+    latencyMs?: number | null;
     verdict?: ParsedJudgeVerdict;
   },
 ): ShadowReplayJudgeEvidence {
@@ -289,6 +329,11 @@ function terminalEvidence(
     judgeResponseHmac: input.responseHmac ?? null,
     inputTokens: input.inputTokens ?? 0,
     outputTokens: input.outputTokens ?? 0,
+    cacheReadTokens: input.cacheReadTokens ?? 0,
+    cacheWriteTokens: input.cacheWriteTokens ?? 0,
+    usageAvailable: input.usageAvailable ?? false,
+    pricingVersion: input.pricingVersion ?? 'not-applicable',
+    latencyMs: input.latencyMs ?? null,
     completedAt,
   };
 }
@@ -371,6 +416,14 @@ export async function executeIndependentShadowReplayJudge(
       evaluationSkipped: true,
     });
   }
+  const pricing = resolveShadowReplayPricing('anthropic', input.judgeModel);
+  if (!pricing || (pricing.validBefore && startedAt >= pricing.validBefore)) {
+    return terminalEvidence(baseWithoutRequest, now(), {
+      status: 'skipped',
+      reason: 'judge_pricing_unavailable',
+      evaluationSkipped: true,
+    });
+  }
   if (byteLength(input.trace.question) > MAX_SHADOW_REPLAY_JUDGE_QUESTION_BYTES
     || byteLength(input.humanEvidence.content) > MAX_SHADOW_REPLAY_JUDGE_HUMAN_BYTES
     || byteLength(input.guardedOutput) > MAX_SHADOW_REPLAY_JUDGE_OUTPUT_BYTES) {
@@ -426,6 +479,8 @@ export async function executeIndependentShadowReplayJudge(
   }
 
   let response: Anthropic.Message;
+  const monotonicNow = dependencies.monotonicNow ?? (() => performance.now());
+  const providerStartedAt = monotonicNow();
   try {
     response = await dependencies.client.messages.create(
       providerRequest,
@@ -435,26 +490,28 @@ export async function executeIndependentShadowReplayJudge(
       },
     );
   } catch {
+    const latencyMs = judgeLatencyMs(providerStartedAt, monotonicNow());
     return terminalEvidence(base, now(), {
       status: 'error',
       reason: 'judge_provider_error',
+      pricingVersion: pricing.version,
+      latencyMs,
     });
   }
+  const latencyMs = judgeLatencyMs(providerStartedAt, monotonicNow());
 
   const responseHmac = judgeHmac(input.trace, 'provider-response', {
     content: response.content,
     stop_reason: response.stop_reason,
   });
-  const usage = {
-    inputTokens: boundedUsage(response.usage?.input_tokens),
-    outputTokens: boundedUsage(response.usage?.output_tokens),
-  };
+  const usage = normalizeJudgeUsage(response.usage);
+  const pricedUsage = { ...usage, pricingVersion: pricing.version, latencyMs };
   if (response.stop_reason === 'max_tokens') {
     return terminalEvidence(base, now(), {
       status: 'error',
       reason: 'judge_output_truncated',
       responseHmac,
-      ...usage,
+      ...pricedUsage,
     });
   }
   if (
@@ -466,7 +523,7 @@ export async function executeIndependentShadowReplayJudge(
       status: 'error',
       reason: 'judge_output_invalid',
       responseHmac,
-      ...usage,
+      ...pricedUsage,
     });
   }
   const text = response.content[0].text;
@@ -476,7 +533,15 @@ export async function executeIndependentShadowReplayJudge(
       status: 'error',
       reason: 'judge_output_invalid',
       responseHmac,
-      ...usage,
+      ...pricedUsage,
+    });
+  }
+  if (!usage.usageAvailable) {
+    return terminalEvidence(base, now(), {
+      status: 'error',
+      reason: 'judge_usage_unavailable',
+      responseHmac,
+      ...pricedUsage,
     });
   }
   return terminalEvidence(base, now(), {
@@ -484,7 +549,7 @@ export async function executeIndependentShadowReplayJudge(
     reason: 'judgment_succeeded',
     evaluationValid: true,
     responseHmac,
-    ...usage,
+    ...pricedUsage,
     verdict,
   });
 }
@@ -560,6 +625,11 @@ export function createShadowReplayInternalErrorEvidence(
     humanEvidenceContentHmac: trace.humanEvidence?.contentHmac ?? null,
     inputTokens: 0,
     outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    usageAvailable: false,
+    pricingVersion: 'not-applicable',
+    latencyMs: null,
     startedAt,
     completedAt: now(),
     deterministicShape: {
