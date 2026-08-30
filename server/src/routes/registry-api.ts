@@ -7675,6 +7675,19 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         error?: string;
       } = { ran: false };
 
+      // For admin callers without their own org credentials, fall back to
+      // heartbeat-style owner auth so the compliance result reflects the
+      // same credential state the periodic heartbeat uses. Without this,
+      // an admin refresh overwrites a valid credential-aware heartbeat
+      // verdict with an anonymous failure result (#7070).
+      let complianceAuth = resolvedAuth;
+      if (!complianceAuth && canRunCompliance && !ownerOrgId) {
+        const ownerAuth = await complianceDb.resolveOwnerAuth(agentUrl);
+        if (ownerAuth) {
+          complianceAuth = await adaptAuthForSdk(ownerAuth, { tokenEndpointLabel: `admin-refresh:${agentUrl}` });
+        }
+      }
+
       if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
         const complianceStart = Date.now();
         try {
@@ -7684,7 +7697,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
             test_session_id: testSessionId,
             timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
             userAgent: AAO_UA_COMPLIANCE,
-            ...(resolvedAuth && { auth: resolvedAuth }),
+            ...(complianceAuth && { auth: complianceAuth }),
           };
           const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
           const runTargetSelection = await selectComplianceTargetForAgentSelection(
@@ -7783,7 +7796,13 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
       }
 
-      return res.json({ ...probeResult, compliance: complianceSummary });
+      return res.json({
+        ...probeResult,
+        compliance: {
+          ...complianceSummary,
+          auth_available: !!complianceAuth,
+        },
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to refresh agent");
       res.status(500).json({ error: "Failed to refresh agent" });
