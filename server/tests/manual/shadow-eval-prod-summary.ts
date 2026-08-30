@@ -87,6 +87,11 @@ interface CaptureSummary {
     total: number;
     input_tokens: number;
     output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    usage_complete: number;
+    latency_complete: number;
+    estimated_cost_micros: string;
     outcomes: Array<{
       capture_version: number;
       capture_policy_version: string;
@@ -96,6 +101,7 @@ interface CaptureSummary {
       requested_model: string;
       addie_code_version: string;
       execution_policy_version: string;
+      pricing_version: string;
       returned_provider: string | null;
       returned_model: string | null;
       status: string;
@@ -103,6 +109,13 @@ interface CaptureSummary {
       count: number;
       input_tokens: number;
       output_tokens: number;
+      cache_read_tokens: number;
+      cache_write_tokens: number;
+      usage_complete_count: number;
+      latency_count: number;
+      estimated_cost_micros: string;
+      latency_p50_ms: number | null;
+      latency_p95_ms: number | null;
     }>;
   };
   judgments?: {
@@ -377,7 +390,13 @@ async function main() {
       console.log(
         `Generation-only replays: ${captureSummary.generations.total} `
         + `(${captureSummary.generations.input_tokens} input / `
-        + `${captureSummary.generations.output_tokens} output tokens)`,
+        + `${captureSummary.generations.output_tokens} output / `
+        + `${captureSummary.generations.cache_read_tokens} cache-read / `
+        + `${captureSummary.generations.cache_write_tokens} cache-write tokens; `
+        + `${captureSummary.generations.usage_complete}/${captureSummary.generations.total} `
+        + `complete usage; ${captureSummary.generations.latency_complete}/`
+        + `${captureSummary.generations.total} timed; `
+        + `${captureSummary.generations.estimated_cost_micros} cost micros)`,
       );
       for (const outcome of captureSummary.generations.outcomes) {
         const returned = outcome.returned_provider && outcome.returned_model
@@ -388,9 +407,16 @@ async function main() {
           + `source=${outcome.source_model}@config:${outcome.source_config_version_id} `
           + `returned=${returned} code=${outcome.addie_code_version} `
           + `capture=v${outcome.capture_version}/${outcome.capture_policy_version} `
-          + `execution=${outcome.execution_policy_version} `
+          + `execution=${outcome.execution_policy_version} pricing=${outcome.pricing_version} `
           + `${outcome.status}:${outcome.reason} ${outcome.count} `
-          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
+          + `usage=${outcome.usage_complete_count}/${outcome.count} `
+          + `timed=${outcome.latency_count}/${outcome.count} `
+          + `latency_p50/p95=${outcome.latency_p50_ms ?? 'none'}/`
+          + `${outcome.latency_p95_ms ?? 'none'}ms `
+          + `cost=${outcome.estimated_cost_micros}µUSD `
+          + `(${outcome.input_tokens} input / ${outcome.output_tokens} output / `
+          + `${outcome.cache_read_tokens} cache-read / `
+          + `${outcome.cache_write_tokens} cache-write tokens)`,
         );
       }
     }

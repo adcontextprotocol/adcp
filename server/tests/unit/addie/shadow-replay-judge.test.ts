@@ -53,7 +53,7 @@ function trace(withHuman = true): ResolvedShadowReplayTrace {
       contentHmac: traceDigest('human-response-content', HUMAN_TEXT),
     } : null,
     expected: {
-      effective_model: 'claude-sonnet-fixture',
+      effective_model: 'claude-sonnet-5',
       provider_request_hmac: 'b'.repeat(64),
       tool_schema_hmacs: [],
       retained_until: new Date(Date.now() + 60_000),
@@ -102,6 +102,10 @@ async function expectJudgmentPersists(
     blockedCapabilities: [],
     inputTokens: 100,
     outputTokens: 20,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    usageAvailable: true,
+    latencyMs: 25,
   }, {
     judgment,
     query: query as never,
@@ -177,7 +181,7 @@ describe('shadow replay independent judge', () => {
       text: longOutput,
       outputHmac: 'a'.repeat(64),
       outputBytes: Buffer.byteLength(longOutput),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
     });
 
     expect(result.status).toBe('deterministic_failure');
@@ -202,7 +206,7 @@ describe('shadow replay independent judge', () => {
       text: output,
       outputHmac: 'a'.repeat(64),
       outputBytes: Buffer.byteLength(output),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
     });
 
     expect(result).toMatchObject({
@@ -234,7 +238,7 @@ describe('shadow replay independent judge', () => {
       humanEvidence: humanEvidence(),
       guardedOutput: 'The task lifecycle is request, delivery, and completion.',
       outputHmac: 'a'.repeat(64),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
       judgeModel: 'claude-opus-fixture',
       judgeEnabled: true,
     }, {
@@ -311,7 +315,7 @@ describe('shadow replay independent judge', () => {
       humanEvidence: humanEvidence(),
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
       judgeModel: 'claude-opus-fixture',
     } as unknown as Parameters<typeof executeIndependentShadowReplayJudge>[0];
 
@@ -337,7 +341,7 @@ describe('shadow replay independent judge', () => {
       humanEvidence: humanEvidence(),
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
       judgeModel: 'claude-opus-fixture',
       judgeEnabled: true,
     }, {
@@ -391,7 +395,7 @@ describe('shadow replay independent judge', () => {
       humanEvidence: humanEvidence(),
       guardedOutput: 'A concise response.',
       outputHmac: 'a'.repeat(64),
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
       judgeModel: 'claude-opus-fixture',
       judgeEnabled: true,
     }, {
@@ -415,7 +419,7 @@ describe('shadow replay independent judge', () => {
       text: 'A concise response.',
       outputHmac: 'a'.repeat(64),
       outputBytes: 19,
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
     };
 
     await expect(consumer(output)).resolves.toMatchObject({
@@ -441,7 +445,7 @@ describe('shadow replay independent judge', () => {
       text: 'A concise response.',
       outputHmac: 'a'.repeat(64),
       outputBytes: 19,
-      generatorModel: 'claude-sonnet-fixture',
+      generatorModel: 'claude-sonnet-5',
     });
 
     expect(result).toMatchObject({
