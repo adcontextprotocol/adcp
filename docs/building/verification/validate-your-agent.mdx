@@ -180,7 +180,7 @@ Each step builds confidence. Storyboards prove protocol compliance. RFP and IO t
 
 ## Sandbox mode
 
-All storyboard runs use sandbox mode by default. The storyboard runner sets `sandbox: true` on every account reference, so your agent processes requests without real platform calls or spend.
+All storyboard runs use sandbox mode by default. For buyer-declared accounts, the runner includes `sandbox: true` in every natural-key account reference. For account-ID namespaces, it first resolves and verifies a sandbox account, then sends `{ "account_id": "..." }` without a sandbox flag. In either model, your agent processes the selected sandbox account without real platform calls or spend.
 
 Your agent should declare sandbox support in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities):
 
@@ -194,7 +194,7 @@ Your agent should declare sandbox support in [`get_adcp_capabilities`](/docs/pro
 
 When a request references a sandbox account, your agent MUST NOT persist production state or cause real-world side effects — no real orders, no real billing, no real ad platform API calls. Return realistic response shapes with simulated data and include `sandbox: true` in success responses.
 
-See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the two account model paths (implicit vs explicit).
+See [Sandbox mode](/docs/media-buy/advanced-topics/sandbox) for full implementation details and the natural-key and account-ID paths.
 
 ## Verifying cross-instance state
 

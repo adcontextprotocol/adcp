@@ -10,6 +10,10 @@ Sandbox mode lets buyers test the full media buying lifecycle — discovery, cam
 
 Sandbox is **account-level**, not per-request. Once a request references a sandbox account, the entire request is treated as sandbox. This eliminates the risk of accidentally mixing real and test traffic in a multi-step flow.
 
+<Warning>
+`account.sandbox` in `get_adcp_capabilities` only advertises support; it does not turn the next media-buy request into a test request. In a natural-key account reference, `sandbox: true` is part of the key that selects the distinct sandbox account and must be repeated on every account-scoped request. In an account-ID namespace, sandbox status belongs to the pre-existing account selected by `account_id`; adding a sandbox boolean to `{ "account_id": "..." }` is invalid and cannot convert a production account. Discover or otherwise obtain the sandbox ID, verify the returned account has `sandbox: true`, and then use only that ID. Resolve and verify the sandbox account before any spend-committing call. Omitting the selector from a natural key defaults to production and can book real inventory.
+</Warning>
+
 ## Capabilities discovery
 
 Sellers declare sandbox support in `get_adcp_capabilities`:
@@ -218,7 +222,7 @@ You can combine them — `dry_run: true` on a sandbox account previews the sync 
 The `X-Dry-Run`, `X-Test-Session-ID`, and `X-Mock-Time` HTTP headers are **deprecated**. Sandbox mode replaces them as a protocol-level parameter.
 
 - **Sellers MUST NOT** alter behavior based on these headers. Sandbox mode is determined solely by the account reference. Sellers SHOULD ignore the headers entirely and MAY log a deprecation warning to help buyers identify stale integrations.
-- **Buyers MUST NOT** rely on these headers to prevent production side effects. Only `sandbox: true` on the account reference guarantees sandbox semantics.
+- **Buyers MUST NOT** rely on these headers to prevent production side effects. Use a natural-key account reference with `sandbox: true`, or a preverified sandbox `account_id`; an account ID cannot carry a sandbox flag or convert a production account.
 </Warning>
 
 ## Seller implementation
