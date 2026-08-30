@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { claimShadowReplayGeneration } from '../../src/addie/jobs/shadow-replay-trace.js';
+import { CODE_VERSION } from '../../src/addie/config-version.js';
 
 const EXTERNAL_ID = 'shadow-replay-migration-test:1000.0001';
 const CORRECTED_EXTERNAL_ID = 'shadow-replay-migration-test:1000.0002';
@@ -24,7 +25,7 @@ const MIGRATION_556_SQL = readFileSync(
   'utf8',
 );
 
-describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
+describe('migrations 552 through 567: shadow replay traces', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -218,7 +219,11 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
         'execution_policy_version',
         'status',
         'reason',
+        'requested_provider',
         'model',
+        'addie_code_version',
+        'returned_provider',
+        'returned_model',
         'quota_date',
         'quota_slot',
         'first_provider_request_hmac',
@@ -246,6 +251,12 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       definition.includes('jsonb_array_length(tool_executions) <= 8'))).toBe(true);
     expect(generationConstraints.rows.some(({ definition }) =>
       definition.includes('UNIQUE (quota_date, quota_slot)'))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes("requested_provider")
+      && definition.includes("'unknown'"))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes('(returned_provider IS NULL)')
+      && definition.includes('(returned_model IS NULL)'))).toBe(true);
 
     const judgmentColumns = await pool.query<{ column_name: string }>(
       `SELECT column_name
@@ -497,14 +508,21 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
         provider_request_hmac: '3'.repeat(64),
       },
     } as never;
+    const target = {
+      provider: 'google' as const,
+      model: 'gemini-3.7-flash',
+      firstProviderRequestHmac: '9'.repeat(64),
+    };
     const sameTraceDecisions = await Promise.all([
       claimShadowReplayGeneration(sameTraceAuthorization, 1, {
         query: sameTraceQuery as never,
         now,
+        target,
       }),
       claimShadowReplayGeneration(sameTraceAuthorization, 1, {
         query: sameTraceQuery as never,
         now,
+        target,
       }),
     ]);
     expect(sameTraceDecisions.sort()).toEqual(['already_claimed', 'claimed']);
@@ -513,5 +531,23 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       [sameTrace.traceId],
     );
     expect(traceStatus.rows[0].capture_status).toBe('pending');
+    const generation = await pool.query<{
+      requested_provider: string;
+      model: string;
+      addie_code_version: string;
+      first_provider_request_hmac: string;
+    }>(
+      `SELECT requested_provider, model, addie_code_version,
+              first_provider_request_hmac
+       FROM addie_shadow_replay_generations
+       WHERE trace_id = $1`,
+      [sameTrace.traceId],
+    );
+    expect(generation.rows[0]).toEqual({
+      requested_provider: target.provider,
+      model: target.model,
+      addie_code_version: CODE_VERSION,
+      first_provider_request_hmac: target.firstProviderRequestHmac,
+    });
   });
 });

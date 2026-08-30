@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { InvocationPreparedSnapshot } from '../../../src/addie/claude-client.js';
+import { CODE_VERSION } from '../../../src/addie/config-version.js';
 import {
   beginShadowReplayCaptureAttempt,
   claimShadowReplayGeneration,
@@ -605,7 +606,36 @@ describe('shadow replay trace authorization', () => {
     expect(runQuery.mock.calls[0][0]).toContain('parity_marked AS');
     expect(runQuery.mock.calls[0][0]).toContain('SET capture_parity_verified = TRUE');
     expect(runQuery.mock.calls[0][1][9]).toBe(100);
+    expect(runQuery.mock.calls[0][1].slice(10, 14)).toEqual([
+      'anthropic',
+      trace.expected.effective_model,
+      trace.expected.provider_request_hmac,
+      CODE_VERSION,
+    ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
+  });
+
+  it('atomically claims an explicit alternate-provider target', async () => {
+    const { trace } = await authorizedTrace();
+    const target = {
+      provider: 'google' as const,
+      model: 'gemini-3.7-flash',
+      firstProviderRequestHmac: '9'.repeat(64),
+    };
+    const runQuery = vi.fn(async () => ({ rows: [{ decision: 'claimed' }], rowCount: 1 }));
+    await expect(claimShadowReplayGeneration(trace, 1, {
+      query: runQuery as never,
+      now: NOW,
+      target,
+    })).resolves.toBe('claimed');
+    expect(runQuery.mock.calls[0][0]).toContain('requested_provider, model');
+    expect(runQuery.mock.calls[0][0]).toContain('addie_code_version');
+    expect(runQuery.mock.calls[0][1].slice(10, 14)).toEqual([
+      target.provider,
+      target.model,
+      target.firstProviderRequestHmac,
+      CODE_VERSION,
+    ]);
   });
 
   it('fails closed before SQL when the generation quota is not bounded', async () => {
@@ -618,6 +648,21 @@ describe('shadow replay trace authorization', () => {
     await expect(claimShadowReplayGeneration(trace, 101, {
       query: runQuery as never,
       now: NOW,
+    })).resolves.toBe('trace_unavailable');
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before SQL for an inconsistent provider target', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    await expect(claimShadowReplayGeneration(trace, 1, {
+      query: runQuery as never,
+      now: NOW,
+      target: {
+        provider: 'openai',
+        model: 'gemini-3.7-flash',
+        firstProviderRequestHmac: '9'.repeat(64),
+      },
     })).resolves.toBe('trace_unavailable');
     expect(runQuery).not.toHaveBeenCalled();
   });
@@ -650,6 +695,11 @@ describe('shadow replay trace authorization', () => {
   it('atomically completes a hash-only generation and its trace outcome', async () => {
     const { trace } = await authorizedTrace();
     const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
+    const target = {
+      provider: 'google' as const,
+      model: 'gemini-3.7-flash',
+      firstProviderRequestHmac: '9'.repeat(64),
+    };
     const outcome = {
       status: 'succeeded' as const,
       reason: 'generation_succeeded',
@@ -658,7 +708,7 @@ describe('shadow replay trace authorization', () => {
       invocations: [{
         iteration: 1,
         attempt: 1,
-        provider_request_hmac: trace.expected.provider_request_hmac!,
+        provider_request_hmac: target.firstProviderRequestHmac,
       }],
       toolExecutions: [{
         sequence: 1,
@@ -671,10 +721,13 @@ describe('shadow replay trace authorization', () => {
       blockedCapabilities: [],
       inputTokens: 20,
       outputTokens: 10,
+      returnedProvider: 'google' as const,
+      returnedModel: 'gemini-3.7-flash-20260801',
     };
     await expect(completeShadowReplayGeneration(trace, outcome, {
       query: runQuery as never,
       now: NOW,
+      target,
     })).resolves.toBe(true);
     expect(runQuery.mock.calls[0][0]).toContain("generation.status = 'running'");
     expect(runQuery.mock.calls[0][0]).toContain("trace.capture_status = 'pending'");
@@ -683,6 +736,13 @@ describe('shadow replay trace authorization', () => {
       shadow_eval_capture_parity_verified: true,
       shadow_eval_replay_generation_status: 'succeeded',
     });
+    expect(runQuery.mock.calls[0][1].slice(42, 47)).toEqual([
+      target.provider,
+      target.model,
+      target.firstProviderRequestHmac,
+      outcome.returnedProvider,
+      outcome.returnedModel,
+    ]);
     expect(JSON.stringify(runQuery.mock.calls)).not.toContain(QUESTION);
   });
 
@@ -938,6 +998,27 @@ describe('shadow replay trace authorization', () => {
     expect(runQuery).not.toHaveBeenCalled();
   });
 
+  it('rejects incomplete returned provider metadata before persistence', async () => {
+    const { trace } = await authorizedTrace();
+    const runQuery = vi.fn();
+    await expect(completeShadowReplayGeneration(trace, {
+      status: 'blocked',
+      reason: 'provider_identity_drift',
+      outputHmac: null,
+      outputBytes: 0,
+      invocations: [],
+      toolExecutions: [],
+      blockedCapabilities: ['provider_identity_drift'],
+      inputTokens: 0,
+      outputTokens: 0,
+      returnedProvider: 'google',
+      returnedModel: null,
+    }, { query: runQuery as never })).rejects.toThrow(
+      'shadow_replay_generation_returned_model_invalid',
+    );
+    expect(runQuery).not.toHaveBeenCalled();
+  });
+
   it('persists a pre-provider boundary outcome with no invocation evidence', async () => {
     const { trace } = await authorizedTrace();
     const runQuery = vi.fn(async () => ({ rows: [{ completed: true }], rowCount: 1 }));
@@ -1047,6 +1128,11 @@ describe('shadow replay trace authorization', () => {
 
   it('reports only categorical generation outcomes and token totals', async () => {
     const rows = [{
+      requested_provider: 'google',
+      requested_model: 'gemini-3.7-flash',
+      addie_code_version: '2026.08.109',
+      returned_provider: 'google',
+      returned_model: 'gemini-3.7-flash-20260801',
       status: 'succeeded',
       reason: 'replay_generation_succeeded',
       count: 2,
@@ -1057,6 +1143,8 @@ describe('shadow replay trace authorization', () => {
     await expect(getShadowReplayGenerationSummary(999, { query: runQuery as never }))
       .resolves.toEqual(rows);
     expect(runQuery.mock.calls[0][1]).toEqual([3, 7]);
+    expect(runQuery.mock.calls[0][0]).toContain('generation.requested_provider');
+    expect(runQuery.mock.calls[0][0]).toContain('generation.addie_code_version');
     expect(runQuery.mock.calls[0][0]).not.toContain('question_hmac');
   });
 
