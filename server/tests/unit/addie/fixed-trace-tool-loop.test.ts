@@ -105,7 +105,7 @@ describe('executeFixedTraceToolLoop', () => {
       type: 'tool_result',
       tool_use_id: 'tool_1',
       content: expect.stringMatching(
-        /<tool_result_evidence status="ok">\nOfficial docs: AdCP uses task-based interactions between agents\.\n<\/tool_result_evidence>/,
+        /<tool_result_evidence status="ok">\nOfficial docs: A buyer agent calls a defined task on a seller agent with structured input\. The seller returns that task's structured response, including its status\.\n<\/tool_result_evidence>/,
       ),
     }]);
     expect(result.text).toBe('AdCP uses task-based interactions.');

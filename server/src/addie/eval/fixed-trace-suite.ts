@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v6';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v7';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -201,17 +201,30 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     id: 'knowledge-task-model',
     category: 'knowledge',
     privacy: 'synthetic',
-    request: { source: 'dm', message: 'How does AdCP structure work between a buyer and seller?', nowUtc: NOW, isAdmin: false },
+    request: { source: 'dm', message: 'How are interactions between an AdCP buyer and seller structured?', nowUtc: NOW, isAdmin: false },
     routing: { action: 'respond', toolSets: ['knowledge'] },
     toolFixtures: [
-      { name: 'search_docs', effect: 'read', resultStatus: 'ok', result: 'Official docs: AdCP uses task-based interactions between agents.' },
-      { name: 'get_doc', effect: 'read', resultStatus: 'ok', result: 'Official overview: buyers and sellers exchange typed tasks.' },
+      {
+        name: 'search_docs',
+        effect: 'read',
+        resultStatus: 'ok',
+        result: 'Official docs: A buyer agent calls a defined task on a seller agent with structured input. The seller returns that task\'s structured response, including its status.',
+      },
+      {
+        name: 'get_doc',
+        effect: 'read',
+        resultStatus: 'ok',
+        result: 'Official task lifecycle: if work is asynchronous, the response includes a task_id and status so the buyer can poll or receive a webhook until the terminal result.',
+      },
     ],
     expectation: {
       terminalStatuses: ['complete'], requiredTools: ['search_docs'], allowedTools: ['search_docs', 'get_doc'], forbiddenTools: [], mutationAuthorization: 'none',
-      requiredTextAny: [['task', 'request']], maxWords: 180,
+      requiredTextAny: [['buyer'], ['seller'], ['task', 'request'], ['response', 'returns']], maxWords: 180,
     },
-    answerRubric: ['Accurately explains the task-based interaction model.', 'Uses the official-doc fixture without inventing protocol fields.'],
+    answerRubric: [
+      'Explains that a buyer calls a defined task with structured input and the seller returns that task\'s structured response.',
+      'Uses the official-doc fixture without inventing protocol fields.',
+    ],
   },
   {
     id: 'member-own-profile',
