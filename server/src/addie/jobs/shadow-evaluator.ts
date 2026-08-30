@@ -36,6 +36,7 @@ import {
   recoverStaleShadowReplayGenerations,
   renewShadowReplayGenerationLease,
   resolveShadowReplayTrace,
+  type ShadowReplayGenerationTarget,
   verifyShadowReplayTraceContext,
 } from './shadow-replay-trace.js';
 import {
@@ -48,6 +49,8 @@ import {
   OfficialDocsReplayBoundaryError,
   OfficialDocsReplayExecutionError,
   OfficialDocsReplayOutputConsumerError,
+  prepareVerifiedOfficialDocsReplayTarget,
+  type VerifiedOfficialDocsReplayTarget,
 } from './shadow-replay.js';
 import {
   createShadowReplayInternalErrorEvidence,
@@ -62,6 +65,10 @@ import {
   resolveShadowJudgeModel,
   type ShadowEvalType,
 } from './shadow-eval-metadata.js';
+import {
+  createGoogleShadowReplayProvider,
+  selectShadowReplayTarget,
+} from './shadow-replay-target.js';
 
 const logger = createLogger('shadow-evaluator');
 
@@ -422,6 +429,9 @@ export async function runShadowEvaluatorJob(
     getChannel?: typeof buildChannelContext;
     buildInvocation?: typeof buildChannelResponseInvocation;
     selectReplayActivation?: typeof selectOfficialDocsReplayActivation;
+    selectReplayTarget?: typeof selectShadowReplayTarget;
+    createGoogleProvider?: typeof createGoogleShadowReplayProvider;
+    prepareReplayTarget?: typeof prepareVerifiedOfficialDocsReplayTarget;
     selectJudgeActivation?: typeof selectOfficialDocsJudgeActivation;
     claimGeneration?: typeof claimShadowReplayGeneration;
     executeReplay?: typeof executeVerifiedOfficialDocsReplay;
@@ -577,6 +587,54 @@ export async function runShadowEvaluatorJob(
         continue;
       }
 
+      const targetSelection = (
+        dependencies.selectReplayTarget ?? selectShadowReplayTarget
+      )();
+      if (targetSelection.mode === 'blocked') {
+        await finishCapture(capture, 'verified', `replay_${targetSelection.reason}`, {
+          parityVerified: true,
+        });
+        result.skipped++;
+        continue;
+      }
+
+      let replayClient = client;
+      let replayTarget: VerifiedOfficialDocsReplayTarget | undefined;
+      let generationTarget: ShadowReplayGenerationTarget | undefined;
+      if (targetSelection.mode === 'alternate') {
+        const provider = (
+          dependencies.createGoogleProvider ?? createGoogleShadowReplayProvider
+        )();
+        if (!provider || provider.id !== targetSelection.provider) {
+          await finishCapture(capture, 'verified', 'replay_google_provider_unavailable', {
+            parityVerified: true,
+          });
+          result.skipped++;
+          continue;
+        }
+        try {
+          replayClient = client.forkForIsolatedProvider(targetSelection.model, { provider });
+          replayTarget = (
+            dependencies.prepareReplayTarget ?? prepareVerifiedOfficialDocsReplayTarget
+          )({
+            trace: authorization.trace,
+            invocation,
+            docsCorpusFingerprint,
+          }, targetSelection, replayClient);
+          generationTarget = {
+            provider: replayTarget.provider,
+            model: replayTarget.model,
+            firstProviderRequestHmac: replayTarget.firstInvocation.provider_request_sha256,
+          };
+        } catch {
+          await finishCapture(capture, 'verified', 'replay_google_target_unavailable', {
+            parityVerified: true,
+          });
+          result.skipped++;
+          continue;
+        }
+      }
+
       const judgeActivation = (
         dependencies.selectJudgeActivation ?? selectOfficialDocsJudgeActivation
       )({
@@ -602,9 +660,12 @@ export async function runShadowEvaluatorJob(
             continue;
           }
           try {
+            const excludedJudgeModels = replayTarget
+              ? [invocation.effectiveModel, replayTarget.model]
+              : [invocation.effectiveModel];
             judgeModel = (
               dependencies.resolveJudgeModel ?? resolveShadowJudgeModel
-            )([invocation.effectiveModel]);
+            )([...new Set(excludedJudgeModels)]);
           } catch {
             await finishCapture(capture, 'skipped', 'judge_model_unavailable', {
               parityVerified: true,
@@ -612,7 +673,7 @@ export async function runShadowEvaluatorJob(
             result.skipped++;
             continue;
           }
-          if (judgeModel === invocation.effectiveModel) {
+          if (judgeModel === invocation.effectiveModel || judgeModel === replayTarget?.model) {
             await finishCapture(capture, 'skipped', 'judge_model_not_independent', {
               parityVerified: true,
             });
@@ -630,9 +691,12 @@ export async function runShadowEvaluatorJob(
         }
       }
 
-      const claim = await (
-        dependencies.claimGeneration ?? claimShadowReplayGeneration
-      )(authorization.trace, activation.dailyLimit);
+      const claimGeneration = dependencies.claimGeneration ?? claimShadowReplayGeneration;
+      const claim = generationTarget
+        ? await claimGeneration(authorization.trace, activation.dailyLimit, {
+          target: generationTarget,
+        })
+        : await claimGeneration(authorization.trace, activation.dailyLimit);
       if (claim === 'already_claimed') {
         // Another worker owns this exact trace. It alone may complete the
         // generation ledger; this worker must not call either model.
@@ -667,15 +731,17 @@ export async function runShadowEvaluatorJob(
           client: judgeClient ?? undefined,
           renewLease,
         });
-        const generation = await (
-          dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay
-        )({
+        const executeReplay = dependencies.executeReplay ?? executeVerifiedOfficialDocsReplay;
+        const replayInput = {
           trace: authorization.trace,
           invocation,
           docsCorpusFingerprint,
-        }, {
+          ...(replayTarget ? { target: replayTarget } : {}),
+        };
+        const generation = await executeReplay(replayInput, {
           renewLease,
           outputConsumer,
+          ...(replayTarget ? { client: replayClient } : {}),
         });
         const completeGeneration = dependencies.completeGeneration
           ?? completeShadowReplayGeneration;
@@ -685,13 +751,20 @@ export async function runShadowEvaluatorJob(
             generation.outputHmac!,
           )
           : generation.judgment;
+        const targetDependency = generationTarget ? { target: generationTarget } : {};
         const completed = judgment
           ? await completeGeneration(
             authorization.trace,
             generation,
-            { judgment },
+            { judgment, ...targetDependency },
           )
-          : await completeGeneration(authorization.trace, generation);
+          : generationTarget
+            ? await completeGeneration(
+              authorization.trace,
+              generation,
+              targetDependency,
+            )
+            : await completeGeneration(authorization.trace, generation);
         if (!completed) {
           logger.warn('Shadow evaluator: Claimed replay generation was not completed');
           result.errors++;
@@ -737,9 +810,20 @@ export async function runShadowEvaluatorJob(
               safeGeneration.outputHmac,
             )
             : null;
+          const targetDependency = generationTarget ? { target: generationTarget } : {};
           completed = judgment
-            ? await completeGeneration(authorization.trace, terminal, { judgment })
-            : await completeGeneration(authorization.trace, terminal);
+            ? await completeGeneration(
+              authorization.trace,
+              terminal,
+              { judgment, ...targetDependency },
+            )
+            : generationTarget
+              ? await completeGeneration(
+                authorization.trace,
+                terminal,
+                targetDependency,
+              )
+              : await completeGeneration(authorization.trace, terminal);
         } catch {
           // Keep the one-attempt row running. Stale recovery will close it;
           // never fall through to mutable capture completion after a claim.

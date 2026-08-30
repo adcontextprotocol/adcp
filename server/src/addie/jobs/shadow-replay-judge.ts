@@ -402,7 +402,7 @@ export async function executeIndependentShadowReplayJudge(
     ...baseWithoutRequest,
     judgeProvider: 'anthropic',
     judgeModel: input.judgeModel,
-    selfJudged: input.judgeModel === input.trace.expected.effective_model,
+    selfJudged: input.judgeModel === input.generatorModel,
     judgePromptVersion: SHADOW_REPLAY_JUDGE_PROMPT_VERSION,
     judgeRequestHmac: requestHmac,
     judgePromptHmac: promptHmac,
