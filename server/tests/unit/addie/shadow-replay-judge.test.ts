@@ -455,6 +455,46 @@ describe('shadow replay independent judge', () => {
     });
   });
 
+  it('normalizes nullable cache usage counters to zero', async () => {
+    const response = {
+      ...judgeResponse(JSON.stringify({
+        knowledge_gap: false,
+        gap_severity: 'none',
+        shadow_quality: 'equivalent',
+      })),
+      usage: {
+        input_tokens: 23,
+        output_tokens: 11,
+        cache_read_input_tokens: null,
+        cache_creation_input_tokens: null,
+      },
+    };
+    const result = await executeIndependentShadowReplayJudge({
+      trace: trace(),
+      humanEvidence: humanEvidence(),
+      guardedOutput: 'A concise response.',
+      outputHmac: 'a'.repeat(64),
+      generatorModel: 'claude-sonnet-5',
+      judgeModel: 'claude-opus-4-6',
+      judgeEnabled: true,
+    }, {
+      client: { messages: { create: vi.fn(async () => response) } } as never,
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(10).mockReturnValueOnce(20),
+    });
+
+    expect(result).toMatchObject({
+      status: 'judged',
+      reason: 'judgment_succeeded',
+      usageAvailable: true,
+      inputTokens: 23,
+      outputTokens: 11,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      latencyMs: 10,
+    });
+  });
+
   it.each([
     {
       name: 'array-valued enums',

@@ -248,7 +248,7 @@ function normalizeJudgeUsage(usage: unknown): {
     ? usage as Record<string, unknown>
     : {};
   const validRequired = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
-  const validOptional = (value: unknown) => value === undefined || validRequired(value);
+  const validOptional = (value: unknown) => value == null || validRequired(value);
   const complete = validRequired(candidate.input_tokens)
     && validRequired(candidate.output_tokens)
     && validOptional(candidate.cache_read_input_tokens)
