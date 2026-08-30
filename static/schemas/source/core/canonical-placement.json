@@ -4,6 +4,59 @@
   "title": "Canonical Product Placement",
   "description": "Compact product placement with canonical format narrowing. Publisher references carry their publisher authority. New seller-inline placements SHOULD carry seller_agent as their defining authority; legacy seller-inline placements without it remain valid in product context.",
   "type": "object",
+  "definitions": {
+    "CanonicalDoohScreenResolution": {
+      "title": "Canonical DOOH Screen Resolution",
+      "type": "object",
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance.",
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["width", "height"],
+      "additionalProperties": false
+    },
+    "CanonicalDoohPlacementAttributes": {
+      "title": "Canonical DOOH Placement Attributes",
+      "type": "object",
+      "description": "DOOH screen and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Scheduled duration of one ad slot in seconds; not the creative-duration contract."
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration."
+        },
+        "screen_resolution": { "$ref": "#/definitions/CanonicalDoohScreenResolution" },
+        "motion": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capability, not an accepted-format declaration."
+        }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds",
+            "evaluate_after": "publisher_ref_resolution"
+          },
+          "publisher_ref_resolution": {
+            "override_fields": ["slot_duration_seconds", "loop_duration_seconds"],
+            "inherit_when_omitted": true,
+            "must_equal_fields": ["screen_resolution", "motion"],
+            "identifier_merge": "union_by_type_and_value"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "kind": { "type": "string", "enum": ["publisher_ref", "seller_inline"] },
     "placement_id": { "type": "string", "minLength": 1, "x-entity": "placement" },
@@ -37,7 +90,7 @@
       "uniqueItems": true,
       "minItems": 1
     },
-    "dooh_placement_attributes": { "$ref": "/schemas/core/dooh-placement-attributes.json" }
+    "dooh_placement_attributes": { "$ref": "#/definitions/CanonicalDoohPlacementAttributes" }
   },
   "required": ["kind", "placement_id", "mode"],
   "oneOf": [

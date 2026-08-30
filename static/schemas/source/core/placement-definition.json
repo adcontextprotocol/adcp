@@ -4,6 +4,52 @@
   "title": "Placement Definition",
   "description": "Canonical placement definition published in a publisher's adagents.json. Defines stable placement IDs that products can reuse and that authorization rules can reference. When a product reuses a registered placement_id, it is referring to this same semantic placement, not inventing a new one with the same ID.",
   "type": "object",
+  "definitions": {
+    "PublisherDoohScreenResolution": {
+      "title": "Publisher DOOH Screen Resolution",
+      "type": "object",
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
+      "properties": {
+        "width": { "type": "integer", "description": "Screen width in pixels.", "minimum": 1 },
+        "height": { "type": "integer", "description": "Screen height in pixels.", "minimum": 1 }
+      },
+      "required": ["width", "height"],
+      "additionalProperties": false
+    },
+    "PublisherDoohPlacementAttributes": {
+      "title": "Publisher DOOH Placement Attributes",
+      "type": "object",
+      "description": "Publisher-declared DOOH screen and default scheduled-loop facts, not creative acceptance. Referencing products may override slot_duration_seconds and loop_duration_seconds; screen_resolution and motion are intrinsic publisher facts and MUST NOT be changed.",
+      "properties": {
+        "slot_duration_seconds": {
+          "type": "integer",
+          "description": "Default scheduled duration of one ad slot in seconds. This is an inventory fact used for loop and share calculations, not the creative-duration contract.",
+          "minimum": 1
+        },
+        "loop_duration_seconds": {
+          "type": "integer",
+          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration.",
+          "minimum": 1
+        },
+        "screen_resolution": { "$ref": "#/definitions/PublisherDoohScreenResolution" },
+        "motion": {
+          "$ref": "/schemas/enums/dooh-motion-type.json",
+          "description": "Physical motion capability of the DOOH screen, not an accepted-format declaration."
+        }
+      },
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "slot_fits_loop": {
+            "left_path": "slot_duration_seconds",
+            "operator": "less_than_or_equal",
+            "right_path": "loop_duration_seconds"
+          }
+        },
+        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
+      },
+      "additionalProperties": true
+    }
+  },
   "properties": {
     "placement_id": {
       "type": "string",
@@ -159,7 +205,7 @@
       "uniqueItems": true,
       "minItems": 1
     },
-    "dooh_placement_attributes": { "$ref": "/schemas/core/dooh-placement-attributes.json" },
+    "dooh_placement_attributes": { "$ref": "#/definitions/PublisherDoohPlacementAttributes" },
     "ext": {
       "$ref": "/schemas/core/ext.json"
     }
