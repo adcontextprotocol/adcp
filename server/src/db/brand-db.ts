@@ -275,6 +275,10 @@ export function resolveBrandFromJson(
     || (brandJson.name as string)
     || domain;
 
+  // Taglines are brand-level in the canonical portfolio shape, with a
+  // top-level fallback for legacy/single-brand documents.
+  const brandTagline = (primaryBrand?.tagline as string) || (brandJson.tagline as string);
+
   // Resolve description
   const brandDescription = (primaryBrand?.description as string) || (brandJson.description as string);
 
@@ -303,6 +307,7 @@ export function resolveBrandFromJson(
     brand_color: colors?.primary as string | undefined,
     verified,
     name: brandName,
+    tagline: brandTagline,
     description: brandDescription,
     contact: contact && (contact.name || contact.email) ? contact : undefined,
     agent_types: allAgentTypes.length > 0 ? allAgentTypes : undefined,
@@ -412,6 +417,33 @@ const DOMAIN_CONTROL_VERIFIED_SQL =
 /** The row carries manifest content, rather than an empty placeholder. */
 const HAS_MANIFEST_SQL =
   `(brands.brand_manifest IS NOT NULL AND brands.brand_manifest <> '{}'::jsonb)`;
+
+/**
+ * Whether a registry row is safe to use as an organization's public identity.
+ *
+ * A valid brand.json served by the domain is direct proof of control. Hosted
+ * community data is authoritative only after the same organization completes
+ * the claim flow. Plain enriched/community rows remain useful for discovery,
+ * but must not rename or describe a member organization.
+ */
+export function canSurfaceBrandForMember(
+  brand: Pick<DiscoveredBrand,
+    | 'brand_manifest'
+    | 'domain_verified'
+    | 'is_public'
+    | 'manifest_orphaned'
+    | 'source_type'
+    | 'workos_organization_id'> | null | undefined,
+  workosOrganizationId: string,
+): boolean {
+  if (!brand?.brand_manifest || brand.manifest_orphaned || brand.is_public === false) {
+    return false;
+  }
+
+  return brand.source_type === 'brand_json'
+    || (brand.domain_verified === true
+      && brand.workos_organization_id === workosOrganizationId);
+}
 
 // Column list for queries returning HostedBrand (aliases brands columns to match the interface)
 const HOSTED_BRAND_COLUMNS = `id, workos_organization_id, created_by_user_id, created_by_email,

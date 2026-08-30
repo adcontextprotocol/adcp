@@ -99,7 +99,7 @@ Each agent declares its `supported_protocols` (domains) and `specialisms` on `ge
 
 | Skill | Typical `supported_protocols` | Typical `specialisms` (pick one or combine) |
 |---|---|---|
-| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed` |
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed`, `sales-dooh` |
 | `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` + `sales-non-guaranteed` |
 | `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
 | `build-signals-agent` | `["signals"]` | `signal-owned`, `signal-marketplace` |
@@ -108,6 +108,7 @@ Each agent declares its `supported_protocols` (domains) and `specialisms` on `ge
 **Picking a sales specialism:** See [Choosing a sales specialism](/docs/building/verification/compliance-catalog#choosing-a-sales-specialism) in the Compliance Catalog for the full decision tree. Quick reference:
 - **`sales-guaranteed`** — IO approval, fixed pricing. Set `media_buy.supports_proposals: true` if you support RFP/proposal flows; `false` (or omit) for direct-buy only.
 - **`sales-non-guaranteed`** — auction / PMP.
+- **`sales-dooh`** — non-guaranteed digital out-of-home venue and screen inventory.
 - **`sales-broadcast-tv`**, **`sales-catalog-driven`**, **`sales-social`** — channel-specific; see the decision tree.
 
 You can claim more than one. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and per-specialism storyboards.

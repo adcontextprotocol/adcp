@@ -62,7 +62,39 @@ import { buildAaoVerificationBlock } from "../services/aao-verification-enrichme
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
-import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
+import { validateCrawlDomain, validateExternalUrl, safeFetchAxiosLike } from "../utils/url-security.js";
+import { verifySupplyPath, parseInventoryPartnerDomains } from "../services/supply-path-verifier.js";
+import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
+import { AAO_UA_VALIDATOR } from "../config/user-agents.js";
+
+/**
+ * Union of inventorypartnerdomain= declarations from the host's
+ * app-ads.txt and ads.txt. Returns null only when neither file could be
+ * fetched — distinct from fetched-and-absent (empty array), which the
+ * verifier treats as an explicit "not declared".
+ */
+async function fetchHostInventoryPartnerDomains(hostDomain: string): Promise<string[] | null> {
+  const partners = new Set<string>();
+  let anyFetched = false;
+  for (const file of ["app-ads.txt", "ads.txt"]) {
+    try {
+      const response = await safeFetchAxiosLike(`https://${hostDomain}/${file}`, {
+        timeoutMs: 10000,
+        maxRedirects: 3,
+        headers: { Accept: "text/plain", "User-Agent": AAO_UA_VALIDATOR },
+      });
+      if (response.status === 200) {
+        anyFetched = true;
+        for (const partner of parseInventoryPartnerDomains(response.data.toString("utf-8"))) {
+          partners.add(partner);
+        }
+      }
+    } catch {
+      // Unreachable file — treated as unavailable unless the other resolves.
+    }
+  }
+  return anyFetched ? [...partners] : null;
+}
 import {
   projectPublicComplianceNotices,
   type PublicComplianceNotice,
@@ -1957,9 +1989,9 @@ registry.registerPath({
   method: "post",
   path: "/api/registry/validate/product-authorization",
   operationId: "validateProductAuthorization",
-  summary: "Validate product authorization",
+  summary: "Validate product property coverage",
   description:
-    "Check whether an agent is authorized to sell a product based on its publisher_properties.",
+    "Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.",
   tags: ["Authorization Lookups"],
   request: {
     body: {
@@ -1974,7 +2006,73 @@ registry.registerPath({
     },
   },
   responses: {
-    200: { description: "Authorization validation result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), checked_at: z.string() }).passthrough() } } },
+    200: { description: "Publisher-property coverage result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), validation_scope: z.literal("publisher_properties_only"), checked_at: z.string() }).passthrough() } } },
+  },
+});
+
+const SupplyPathLegSchema = z
+  .object({
+    ok: z.boolean(),
+    failure: z.string().optional().openapi({ description: "Machine-readable reason this leg failed. Absent when ok." }),
+    detail: z.string().optional().openapi({ description: "Human-readable diagnosis for the failing (or notable) leg." }),
+  })
+  .passthrough();
+
+const VerifySupplyPathRequestSchema = z.object({
+  owner_domain: z.string().min(1).openapi({ description: "Channel owner's publisher domain — where the canonical collection is declared." }),
+  host_domain: z.string().min(1).openapi({ description: "Host publisher domain — where the carrying property (e.g. CTV app) is declared." }),
+  agent_url: z.string().min(1).openapi({ description: "Sales agent URL the buyer would transact with. Canonicalized server-side." }),
+  collection_id: z.string().min(1).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/verify/supply-path",
+  operationId: "verifySupplyPath",
+  summary: "Verify an owner-sold supply path",
+  description:
+    "Joins the owner's and host's cached adagents.json manifests (plus the host's ads.txt/app-ads.txt " +
+    "inventorypartnerdomain lines when needed) and returns the verification state of one owner-sold " +
+    "carriage path, leg by leg. States follow the documented ladder: verified_owner_sold (host " +
+    "adagents.json authorizes the agent for the host property, collection-scoped), host_delegated " +
+    "(ads.txt inventorypartnerdomain + owner-side declarations, policy-gated), owner_attested " +
+    "(owner distribution claim only — discovery, never authorization), unverified. The response is " +
+    "evidence-bearing so callers can reproduce the verdict from the authoritative files; the registry " +
+    "cache is a convenience, not the trust root. For a live-fetch check of a file you just changed, " +
+    "use POST /api/adagents/validate.",
+  tags: ["Authorization Lookups"],
+  request: {
+    body: { content: { "application/json": { schema: VerifySupplyPathRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: "Supply-path verification verdict with per-leg evidence",
+      content: {
+        "application/json": {
+          schema: z.object({
+            state: z.enum(["verified_owner_sold", "host_delegated", "owner_attested", "unverified"]),
+            legs: z.object({
+              owner_collection_declared: SupplyPathLegSchema,
+              owner_distribution_carriage: SupplyPathLegSchema,
+              owner_agent_declared: SupplyPathLegSchema,
+              host_authorization: SupplyPathLegSchema,
+              inventory_partner_domain: SupplyPathLegSchema,
+            }),
+            owner_domain: z.string(),
+            host_domain: z.string(),
+            agent_url: z.string(),
+            collection_id: z.string().optional(),
+            sources: z.object({
+              owner_adagents_url: z.string(),
+              host_adagents_url: z.string(),
+              cached: z.boolean().openapi({ description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement." }),
+            }),
+            checked_at: z.string(),
+          }).passthrough(),
+        },
+      },
+    },
+    400: { description: "Invalid request body or uncanonicalizable domain" },
   },
 });
 
@@ -2753,8 +2851,12 @@ const AuthorizationEventPayloadSchema = z
     property_id_slug: z.string().nullable().optional().openapi({ description: "Publisher-local property id for materialized per-property authorization rows." }),
     placement_ids: z.array(z.string()).optional(),
     placement_tags: z.array(z.string()).optional(),
+    // Nullable because caa_event_payload emits {"collections": null} on
+    // base-row events for unconstrained entries (the common case). A
+    // selector without collection_ids is the bulk-grant form.
     collections: z
-      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1) }).passthrough())
+      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+      .nullable()
       .optional(),
     countries: z.array(z.string()).optional(),
     delegation_type: z.string().optional(),
@@ -2971,6 +3073,17 @@ const AuthorizationRowSchema = z.object({
       "Null when the publisher declared no keys; consumers fall back to the " +
       "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
   }),
+  collections: z
+    .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+    .nullable()
+    .openapi({
+      description:
+        "Collection constraints (authorized_agents[*].collections) from the source " +
+        "adagents.json. Null when the entry is unconstrained. When set, the row does " +
+        "NOT authorize the property unqualified — consumers MUST scope it to these " +
+        "selectors. A selector without collection_ids is a bulk grant for all " +
+        "collections declared at that publisher_domain.",
+    }),
   override_applied: z.boolean(),
   override_reason: z.string().nullable(),
 });
@@ -9933,10 +10046,75 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
-      res.json({ agent_url, ...result, checked_at: new Date().toISOString() });
+      res.json({
+        agent_url,
+        ...result,
+        validation_scope: "publisher_properties_only",
+        checked_at: new Date().toISOString(),
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Product authorization validation failed");
       res.status(500).json({ error: "Product authorization validation failed" });
+    }
+  });
+
+  router.post("/registry/verify/supply-path", async (req, res) => {
+    try {
+      const parsed = VerifySupplyPathRequestSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", issues: parsed.error.issues });
+      }
+      const ownerDomain = canonicalizePublisherDomain(parsed.data.owner_domain);
+      const hostDomain = canonicalizePublisherDomain(parsed.data.host_domain);
+      if (!ownerDomain || !hostDomain) {
+        return res.status(400).json({ error: "owner_domain and host_domain must be valid publisher domains" });
+      }
+
+      const [ownerManifest, hostManifest] = await Promise.all([
+        publisherDb.getCachedAdagentsJson(ownerDomain),
+        publisherDb.getCachedAdagentsJson(hostDomain),
+      ]);
+
+      // First pass without ads.txt — the fetch is only needed when the
+      // enforcement-grade host leg fails and the ladder falls through to
+      // host_delegated.
+      let verdict = verifySupplyPath({
+        ownerDomain,
+        hostDomain,
+        agentUrl: parsed.data.agent_url,
+        collectionId: parsed.data.collection_id,
+        ownerManifest,
+        hostManifest,
+        hostInventoryPartnerDomains: null,
+      });
+      if (!verdict.legs.host_authorization.ok) {
+        verdict = verifySupplyPath({
+          ownerDomain,
+          hostDomain,
+          agentUrl: parsed.data.agent_url,
+          collectionId: parsed.data.collection_id,
+          ownerManifest,
+          hostManifest,
+          hostInventoryPartnerDomains: await fetchHostInventoryPartnerDomains(hostDomain),
+        });
+      }
+
+      res.json({
+        ...verdict,
+        owner_domain: ownerDomain,
+        host_domain: hostDomain,
+        agent_url: parsed.data.agent_url,
+        ...(parsed.data.collection_id !== undefined ? { collection_id: parsed.data.collection_id } : {}),
+        sources: {
+          owner_adagents_url: `https://${ownerDomain}/.well-known/adagents.json`,
+          host_adagents_url: `https://${hostDomain}/.well-known/adagents.json`,
+          cached: true,
+        },
+        checked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Supply-path verification failed");
+      res.status(500).json({ error: "Supply-path verification failed" });
     }
   });
 

@@ -199,11 +199,11 @@
     },
     "collection_list": {
       "$ref": "/schemas/core/collection-list-ref.json",
-      "description": "Reference to a collection list for including specific collections (programs, shows) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+      "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
     },
     "collection_list_exclude": {
       "$ref": "/schemas/core/collection-list-ref.json",
-      "description": "Reference to a collection list for excluding specific collections (programs, shows) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+      "description": "Reference to a collection list for excluding specific collections (programs, publications, channels) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
     },
     "placement_selection": {
       "$ref": "/schemas/core/placement-selection.json",

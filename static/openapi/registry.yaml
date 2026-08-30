@@ -1554,9 +1554,9 @@ components:
                 type: array
                 items:
                   type: string
+                minItems: 1
             required:
               - publisher_domain
-              - collection_ids
         placement_ids:
           type: array
           items:
@@ -4030,7 +4030,9 @@ components:
           items:
             type: string
         collections:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: object
             properties:
@@ -4043,7 +4045,6 @@ components:
                 minItems: 1
             required:
               - publisher_domain
-              - collection_ids
             additionalProperties: {}
         countries:
           type: array
@@ -4508,6 +4509,7 @@ components:
               - property-lists
               - sales-broadcast-tv
               - sales-catalog-driven
+              - sales-dooh
               - sales-guaranteed
               - sales-non-guaranteed
               - sales-proposal-mode
@@ -8119,8 +8121,8 @@ paths:
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
-      summary: Validate product authorization
-      description: Check whether an agent is authorized to sell a product based on its publisher_properties.
+      summary: Validate product property coverage
+      description: Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.
       tags:
         - Authorization Lookups
       requestBody:
@@ -8140,7 +8142,7 @@ paths:
                 - publisher_properties
       responses:
         "200":
-          description: Authorization validation result
+          description: Publisher-property coverage result
           content:
             application/json:
               schema:
@@ -8150,13 +8152,180 @@ paths:
                     type: string
                   authorized:
                     type: boolean
+                  validation_scope:
+                    type: string
+                    enum:
+                      - publisher_properties_only
                   checked_at:
                     type: string
                 required:
                   - agent_url
                   - authorized
+                  - validation_scope
                   - checked_at
                 additionalProperties: {}
+  /api/registry/verify/supply-path:
+    post:
+      operationId: verifySupplyPath
+      summary: Verify an owner-sold supply path
+      description: "Joins the owner's and host's cached adagents.json manifests (plus the host's ads.txt/app-ads.txt inventorypartnerdomain lines when needed) and returns the verification state of one owner-sold carriage path, leg by leg. States follow the documented ladder: verified_owner_sold (host adagents.json authorizes the agent for the host property, collection-scoped), host_delegated (ads.txt inventorypartnerdomain + owner-side declarations, policy-gated), owner_attested (owner distribution claim only — discovery, never authorization), unverified. The response is evidence-bearing so callers can reproduce the verdict from the authoritative files; the registry cache is a convenience, not the trust root. For a live-fetch check of a file you just changed, use POST /api/adagents/validate."
+      tags:
+        - Authorization Lookups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                owner_domain:
+                  type: string
+                  minLength: 1
+                  description: Channel owner's publisher domain — where the canonical collection is declared.
+                host_domain:
+                  type: string
+                  minLength: 1
+                  description: Host publisher domain — where the carrying property (e.g. CTV app) is declared.
+                agent_url:
+                  type: string
+                  minLength: 1
+                  description: Sales agent URL the buyer would transact with. Canonicalized server-side.
+                collection_id:
+                  type: string
+                  minLength: 1
+                  description: Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals).
+              required:
+                - owner_domain
+                - host_domain
+                - agent_url
+      responses:
+        "200":
+          description: Supply-path verification verdict with per-leg evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - verified_owner_sold
+                      - host_delegated
+                      - owner_attested
+                      - unverified
+                  legs:
+                    type: object
+                    properties:
+                      owner_collection_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_distribution_carriage:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_agent_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      host_authorization:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      inventory_partner_domain:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                    required:
+                      - owner_collection_declared
+                      - owner_distribution_carriage
+                      - owner_agent_declared
+                      - host_authorization
+                      - inventory_partner_domain
+                  owner_domain:
+                    type: string
+                  host_domain:
+                    type: string
+                  agent_url:
+                    type: string
+                  collection_id:
+                    type: string
+                  sources:
+                    type: object
+                    properties:
+                      owner_adagents_url:
+                        type: string
+                      host_adagents_url:
+                        type: string
+                      cached:
+                        type: boolean
+                        description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
+                    required:
+                      - owner_adagents_url
+                      - host_adagents_url
+                      - cached
+                  checked_at:
+                    type: string
+                required:
+                  - state
+                  - legs
+                  - owner_domain
+                  - host_domain
+                  - agent_url
+                  - sources
+                  - checked_at
+                additionalProperties: {}
+        "400":
+          description: Invalid request body or uncanonicalizable domain
   /api/registry/expand/product-identifiers:
     post:
       operationId: expandProductIdentifiers
@@ -10091,6 +10260,24 @@ paths:
                           items:
                             $ref: "#/components/schemas/SigningKey"
                           description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
+                        collections:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            type: object
+                            properties:
+                              publisher_domain:
+                                type: string
+                              collection_ids:
+                                type: array
+                                items:
+                                  type: string
+                                minItems: 1
+                            required:
+                              - publisher_domain
+                            additionalProperties: {}
+                          description: Collection constraints (authorized_agents[*].collections) from the source adagents.json. Null when the entry is unconstrained. When set, the row does NOT authorize the property unqualified — consumers MUST scope it to these selectors. A selector without collection_ids is a bulk grant for all collections declared at that publisher_domain.
                         override_applied:
                           type: boolean
                         override_reason:
@@ -10112,6 +10299,7 @@ paths:
                         - created_at
                         - updated_at
                         - signing_keys
+                        - collections
                         - override_applied
                         - override_reason
                   count:

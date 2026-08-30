@@ -14673,6 +14673,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       spend,
       impressions,
       clicks,
+      ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
       ...audioMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
@@ -14840,6 +14842,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedViewability = simDelivery?.viewability
     ? { viewability: simDelivery.viewability }
     : {};
+  const simulatedDoohMetrics = simDelivery
+    ? {
+      ...(simDelivery.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(simDelivery.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
+    }
+    : {};
 
   const totals: Record<string, unknown> = {
     impressions: totalImpressions,
@@ -14862,6 +14870,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ...conversionTotals,
     ...conversionValueTotals,
     ...simulatedViewability,
+    ...simulatedDoohMetrics,
     ...(totalTwoSecondViews > 0 || totalSixSecondViews > 0 ? {
       time_based_views: [{
         threshold_seconds: 2,
@@ -21367,7 +21376,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(body) }],
+          content: [{ type: 'text', text: `${name} replay completed successfully.` }],
           structuredContent: body,
         };
         cachableResponse = { ...(outcome.response as Record<string, unknown>) };
@@ -21509,7 +21518,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           body.adcp_version = servedAdcpVersion;
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
-            content: [{ type: 'text', text: JSON.stringify(body) }],
+            content: [{
+              type: 'text',
+              text: `${name} completed with ${resultObj.errors!.length} reported error${resultObj.errors!.length === 1 ? '' : 's'}.`,
+            }],
             structuredContent: body,
           };
         } else {

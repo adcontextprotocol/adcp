@@ -271,7 +271,7 @@
                   },
                   "collections": {
                     "type": "array",
-                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections. A selector without collection_ids grants for all collections declared in that selector's publisher_domain adagents.json (the bulk-grant form for owner-sold carriage).",
                     "items": {
                       "$ref": "/schemas/core/collection-selector.json"
                     },
@@ -357,7 +357,7 @@
                   },
                   "collections": {
                     "type": "array",
-                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections. A selector without collection_ids grants for all collections declared in that selector's publisher_domain adagents.json (the bulk-grant form for owner-sold carriage).",
                     "items": {
                       "$ref": "/schemas/core/collection-selector.json"
                     },
@@ -443,7 +443,7 @@
                   },
                   "collections": {
                     "type": "array",
-                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections. A selector without collection_ids grants for all collections declared in that selector's publisher_domain adagents.json (the bulk-grant form for owner-sold carriage).",
                     "items": {
                       "$ref": "/schemas/core/collection-selector.json"
                     },
@@ -529,7 +529,7 @@
                   },
                   "collections": {
                     "type": "array",
-                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections.",
+                    "description": "Optional collection constraints. When present, authorization only applies to inventory associated with these collections. A selector without collection_ids grants for all collections declared in that selector's publisher_domain adagents.json (the bulk-grant form for owner-sold carriage).",
                     "items": {
                       "$ref": "/schemas/core/collection-selector.json"
                     },

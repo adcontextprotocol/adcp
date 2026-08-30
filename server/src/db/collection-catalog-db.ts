@@ -126,13 +126,17 @@ function normalizeCollectionKind(value: unknown): string | null | undefined {
   return value;
 }
 
-function extractDistributionIdentifiers(collection: Record<string, unknown>): Array<{
+interface NormalizedCollectionDistribution extends Record<string, unknown> {
   publisher_domain: string;
-  type: string;
-  value: string;
-}> {
+  property_ids?: string[];
+  identifiers?: Array<{ type: string; value: string }>;
+}
+
+const PROPERTY_ID_PATTERN = /^[a-z0-9_]+$/;
+
+function normalizeCollectionDistribution(collection: Record<string, unknown>): NormalizedCollectionDistribution[] {
   const distribution = Array.isArray(collection.distribution) ? collection.distribution : [];
-  const identifiers: Array<{ publisher_domain: string; type: string; value: string }> = [];
+  const normalized: NormalizedCollectionDistribution[] = [];
 
   for (const entry of distribution) {
     if (!entry || typeof entry !== 'object') continue;
@@ -141,6 +145,13 @@ function extractDistributionIdentifiers(collection: Record<string, unknown>): Ar
 
     const publisherDomain = canonicalizePublisherDomain(record.publisher_domain);
     if (!isValidCollectionPublisherDomain(publisherDomain)) continue;
+    const propertyIds = Array.isArray(record.property_ids)
+      ? [...new Set(record.property_ids
+        .filter((value): value is string => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter((value) => PROPERTY_ID_PATTERN.test(value)))]
+      : [];
+    const identifiers: Array<{ type: string; value: string }> = [];
     const rawIdentifiers = Array.isArray(record.identifiers) ? record.identifiers : [];
 
     for (const raw of rawIdentifiers) {
@@ -150,11 +161,37 @@ function extractDistributionIdentifiers(collection: Record<string, unknown>): Ar
       const rawType = ident.type.trim();
       const rawValue = ident.value.trim();
       if (!isValidDistributionIdentifierType(rawType) || rawValue.length === 0) continue;
-      const norm = normalizeDistributionIdentifier(ident.type, ident.value);
+      identifiers.push(normalizeDistributionIdentifier(rawType, rawValue));
+    }
+
+    if (propertyIds.length === 0 && identifiers.length === 0) continue;
+    // Rebuild from known fields only. The source schema allows additional
+    // properties on the wire, but the catalog projection is re-served to
+    // other parties, so publisher-authored unknown keys stop here.
+    const normalizedEntry: NormalizedCollectionDistribution = {
+      publisher_domain: publisherDomain,
+    };
+    if (propertyIds.length > 0) normalizedEntry.property_ids = propertyIds;
+    if (identifiers.length > 0) normalizedEntry.identifiers = identifiers;
+    normalized.push(normalizedEntry);
+  }
+
+  return normalized;
+}
+
+function extractDistributionIdentifiers(distribution: NormalizedCollectionDistribution[]): Array<{
+  publisher_domain: string;
+  type: string;
+  value: string;
+}> {
+  const identifiers: Array<{ publisher_domain: string; type: string; value: string }> = [];
+
+  for (const entry of distribution) {
+    for (const ident of entry.identifiers ?? []) {
       identifiers.push({
-        publisher_domain: publisherDomain,
-        type: norm.type,
-        value: norm.value,
+        publisher_domain: entry.publisher_domain,
+        type: ident.type,
+        value: ident.value,
       });
     }
   }
@@ -167,15 +204,8 @@ function collectionWithNormalizedDistribution(
   collectionId: string,
   name: string,
   kind: string | null,
-  identifiers: Array<{ publisher_domain: string; type: string; value: string }>,
+  distribution: NormalizedCollectionDistribution[],
 ): Record<string, unknown> {
-  const grouped = new Map<string, Array<{ type: string; value: string }>>();
-  for (const identifier of identifiers) {
-    const existing = grouped.get(identifier.publisher_domain) ?? [];
-    existing.push({ type: identifier.type, value: identifier.value });
-    grouped.set(identifier.publisher_domain, existing);
-  }
-
   const normalized: Record<string, unknown> = {
     ...collection,
     collection_id: collectionId,
@@ -187,10 +217,7 @@ function collectionWithNormalizedDistribution(
     delete normalized.kind;
   }
   if (Array.isArray(collection.distribution)) {
-    normalized.distribution = [...grouped.entries()].map(([publisher_domain, ids]) => ({
-      publisher_domain,
-      identifiers: ids,
-    }));
+    normalized.distribution = distribution;
   }
   return normalized;
 }
@@ -283,13 +310,14 @@ export class CollectionCatalogDatabase {
     if (!name) return null;
     const kind = normalizeCollectionKind(input.collection.kind);
     if (kind === undefined) return null;
-    const identifiers = extractDistributionIdentifiers(input.collection);
+    const distribution = normalizeCollectionDistribution(input.collection);
+    const identifiers = extractDistributionIdentifiers(distribution);
     const normalizedCollection = collectionWithNormalizedDistribution(
       input.collection,
       collectionId,
       name,
       kind,
-      identifiers,
+      distribution,
     );
     const adagentsUrl = input.adagentsUrl ?? `https://${publisherDomain}/.well-known/adagents.json`;
 
