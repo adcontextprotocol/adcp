@@ -197,6 +197,23 @@ export class RegistrySync extends EventEmitter {
         }
         break;
 
+      case 'agent.profile_updated':
+        // Unlike agent.discovered's full snapshot, this payload may carry
+        // only the fields that changed (see payload.changed_fields in the
+        // registry-event schema), so merge onto the existing profile rather
+        // than reconstructing it — mirrors property.updated below.
+        if (this.agents && payload.agent_url) {
+          const existing = this.agents.get(payload.agent_url as string);
+          if (existing) {
+            this.agents.upsert({
+              ...existing,
+              ...(payload as Partial<AgentProfile>),
+              updated_at: event.created_at.toString(),
+            });
+          }
+        }
+        break;
+
       case 'property.created':
         if (this.properties && payload.property_rid) {
           this.properties.upsert({
