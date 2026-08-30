@@ -32,7 +32,7 @@ const definitionSnapshots = new WeakMap<AddieTool, AddieTool>();
 export const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 
 export type ToolHandler = (input: Record<string, unknown>) => Promise<ToolHandlerResult>;
-export type AddieExecutionMode = 'production' | 'evaluation' | 'replay';
+export type AddieExecutionMode = 'production' | 'evaluation' | 'replay' | 'shadow';
 
 export interface ToolExecutionPolicyRequest {
   toolName: string;
@@ -195,8 +195,8 @@ interface RegisteredTool {
   handler?: ToolHandler;
 }
 
-function isEvaluationExecution(mode: AddieExecutionMode): boolean {
-  return mode === 'evaluation' || mode === 'replay';
+function isIsolatedExecution(mode: AddieExecutionMode): boolean {
+  return mode === 'evaluation' || mode === 'replay' || mode === 'shadow';
 }
 
 function deepFreeze<T>(value: T): T {
@@ -217,7 +217,7 @@ function recordedParameters(
   mode: AddieExecutionMode,
   input: Record<string, unknown>,
 ): Record<string, unknown> {
-  return isEvaluationExecution(mode) ? {} : structuredClone(input);
+  return isIsolatedExecution(mode) ? {} : structuredClone(input);
 }
 
 function recordedResult(
@@ -225,7 +225,7 @@ function recordedResult(
   result: string,
   kind: 'success' | 'error' | 'blocked',
 ): string {
-  if (!isEvaluationExecution(mode)) return result;
+  if (!isIsolatedExecution(mode)) return result;
   if (kind === 'blocked') return BLOCKED_TOOL_RESULT;
   return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
 }
@@ -234,7 +234,7 @@ function recordedPresentation(
   mode: AddieExecutionMode,
   normalized: NormalizedToolResult,
 ): ToolResultPresentation {
-  if (!isEvaluationExecution(mode)) return normalized.presentation;
+  if (!isIsolatedExecution(mode)) return normalized.presentation;
   return {
     status: normalized.status,
     user_summary: isToolResultError(normalized.status)
@@ -314,7 +314,7 @@ export function recordProviderToolResults(
       ? provider.deriveProviderToolReceipt(
           call,
           result,
-          isEvaluationExecution(options.executionMode) ? 'redacted' : 'production',
+          isIsolatedExecution(options.executionMode) ? 'redacted' : 'production',
         )
       : fallbackProviderToolReceipt(result);
     const normalized = observeNormalizedToolResult(result.name, normalizeToolResult(result.name, {
@@ -504,7 +504,7 @@ export function createAddieToolExecutor(
       );
     }
 
-    let allowed = !isEvaluationExecution(options.executionMode);
+    let allowed = !isIsolatedExecution(options.executionMode);
     if (options.policy) {
       try {
         const decision = await options.policy({

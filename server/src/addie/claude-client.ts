@@ -112,7 +112,7 @@ export interface InvocationPreparedSnapshot {
   tool_schemas: Array<{ index: number; name: string; sha256: string }>;
   message_payloads: Array<{ index: number; sha256: string }>;
   message_count: number;
-  /** HMAC/SHA-256 of the exact object handed to the Anthropic SDK. */
+  /** HMAC/SHA-256 of the exact object handed to the selected provider SDK. */
   provider_request_sha256: string;
 }
 
@@ -146,8 +146,14 @@ function addieModelOutputControls(
   return { max_tokens: Math.min(DEFAULT_MAX_OUTPUT_TOKENS, maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) };
 }
 
-function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
-  return options?.executionMode === 'evaluation' || options?.executionMode === 'replay';
+function isIsolatedExecution(options?: ProcessMessageOptions): boolean {
+  return options?.executionMode === 'evaluation'
+    || options?.executionMode === 'replay'
+    || options?.executionMode === 'shadow';
+}
+
+function isExactlyOnceExecution(options?: ProcessMessageOptions): boolean {
+  return options?.executionMode === 'replay' || options?.executionMode === 'shadow';
 }
 
 function hashPreparedPayload(
@@ -163,7 +169,7 @@ function hashPreparedPayload(
   // inputs are present. A partial configuration must never silently fall back
   // to an unkeyed digest. Production callers that do not request HMAC hashing
   // retain the historical SHA-256 behavior.
-  if (hasKey || hasDomain || executionMode === 'evaluation' || executionMode === 'replay') {
+  if (hasKey || hasDomain || executionMode !== 'production') {
     if (!hasKey || !hasDomain) return 'unavailable';
     return createHmac('sha256', key)
       .update('addie-invocation\0', 'utf8')
@@ -595,7 +601,7 @@ function reportEmptyResponseFallback(
   model: string,
   iteration: number,
 ): void {
-  if (isEvaluationExecution(options)) return;
+  if (isIsolatedExecution(options)) return;
 
   const successful = toolExecutions.filter(t => !t.is_error).length;
   const errored = toolExecutions.length - successful;
@@ -668,7 +674,7 @@ export interface UserScopedToolsResult {
  * Options for message processing
  */
 export interface ProcessMessageOptions {
-  /** Request-local execution mode. Evaluation/replay suppress operational side effects. */
+  /** Request-local execution mode. Evaluation, replay, and shadow suppress operational side effects. */
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
   disableServerTools?: boolean;
@@ -689,7 +695,7 @@ export interface ProcessMessageOptions {
   /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
   toolExecutionPolicy?: ToolExecutionPolicy;
   /**
-   * Called immediately before an Anthropic invocation with hashes of the exact,
+   * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
    */
   onInvocationPrepared?: (
@@ -1144,7 +1150,7 @@ export class AddieClaudeClient {
     options: ProcessMessageOptions | undefined,
     toolInput: Record<string, unknown>,
   ): Record<string, unknown> {
-    return isEvaluationExecution(options) ? {} : toolInput;
+    return isIsolatedExecution(options) ? {} : toolInput;
   }
 
   /**
@@ -1176,7 +1182,7 @@ export class AddieClaudeClient {
     options?: ProcessMessageOptions,
   ) {
     const requestWebSearchEnabled = this.webSearchEnabled
-      && !isEvaluationExecution(options)
+      && !isIsolatedExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
     const allowedToolNames = options?.allowedToolNames
@@ -1339,7 +1345,7 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
-    const operationalExecution = !isEvaluationExecution(options);
+    const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
 
     // #2950: warn when a caller has neither `costScope` nor explicit
@@ -1522,10 +1528,10 @@ export class AddieClaudeClient {
             },
           );
         };
-        // A replay is an exactly-once paid experiment. A timeout can occur
-        // after provider acceptance, so neither our outer retry helper nor the
-        // Anthropic SDK may submit the request again.
-        response = options?.executionMode === 'replay' || recoveryInvocation.requiresExactlyOnce
+        // Replay and shadow are exactly-once paid experiments. A timeout can
+        // occur after provider acceptance, so neither our outer retry helper
+        // nor the provider SDK may submit the request again.
+        response = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),
@@ -1555,12 +1561,12 @@ export class AddieClaudeClient {
             requestWebSearchEnabled ? 1 : 0,
             options?.requestContext?.trim() ? options.requestContext.length : 0,
           );
-          if (options?.executionMode === 'replay') {
-            // Provider errors may echo request text. Replay logs only categorical
-            // metadata; the signed ledger records the terminal outcome.
+          if (isIsolatedExecution(options)) {
+            // Provider errors may echo request text. Isolated executions log
+            // only categorical metadata; the caller's ledger records the outcome.
             logger.error(
               { source: 'processMessage', payload: stats },
-              'Addie: Replay provider invocation failed',
+              'Addie: Isolated provider invocation failed',
             );
           } else {
             this.logPromptOverflow(error, stats, 'processMessage');
@@ -1859,7 +1865,7 @@ export class AddieClaudeClient {
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
-    const operationalExecution = !isEvaluationExecution(options);
+    const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
 
     // #2950: matching fail-closed warn on the stream path.
@@ -2062,7 +2068,7 @@ export class AddieClaudeClient {
         // Logical-turn buffering means no model output is exposed and no
         // custom tool executes until a complete response is assembled, so a
         // failed sample is safe to discard and retry even after deltas arrive.
-        const maxStreamRetries = 3;
+        const maxStreamRetries = isExactlyOnceExecution(options) ? 0 : 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;
         let receivedDeltaCount = 0;
@@ -2083,7 +2089,7 @@ export class AddieClaudeClient {
                 ? options?.initialToolChoice
                 : undefined,
             );
-            const provider = recoveryInvocation.requiresExactlyOnce
+            const provider = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
               ? this.exactlyOnceAnthropicProvider
               : this.anthropicProvider;
             currentResponse = await activeTurn.invoke(
@@ -2132,7 +2138,16 @@ export class AddieClaudeClient {
               0,
               options?.requestContext?.trim() ? options.requestContext.length : 0,
             );
-            this.logPromptOverflow(streamError, stats, 'processMessageStream');
+            if (isIsolatedExecution(options)) {
+              // Provider errors may echo request text. Isolated executions log
+              // only categorical metadata; the caller's ledger records the outcome.
+              logger.error(
+                { source: 'processMessageStream', payload: stats },
+                'Addie Stream: Isolated provider invocation failed',
+              );
+            } else {
+              this.logPromptOverflow(streamError, stats, 'processMessageStream');
+            }
 
             const retryable = isRetryableError(streamError);
             const retryAfterSeconds = getProviderRetryAfterSeconds(streamError);
@@ -2541,7 +2556,14 @@ export class AddieClaudeClient {
         },
       };
     } catch (error) {
-      logger.error({ error }, 'Addie Stream: Error during streaming');
+      if (isIsolatedExecution(options)) {
+        logger.error(
+          { source: 'processMessageStream' },
+          'Addie Stream: Isolated execution terminated',
+        );
+      } else {
+        logger.error({ error }, 'Addie Stream: Error during streaming');
+      }
       if (!streamErrorEmitted) {
         yield {
           type: 'stream_error',
