@@ -17,6 +17,7 @@ import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp
 import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
+import type { ComplianceRefreshQueue } from "./services/compliance-refresh-queue.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
@@ -1221,8 +1222,11 @@ export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
   private isWorker: boolean = false;
+  private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
+  private refreshOnlyBackground = false;
 
   private startWorkerCrawlers(): void {
+    this.complianceRefreshQueue?.start();
     // Drain durable explicit publisher recrawl requests first. Admission is
     // persisted by the web process before it returns 202; the worker claims
     // requests with expiring leases so deploys and crashes cannot lose work.
@@ -1275,7 +1279,12 @@ export class HTTPServer {
   private agentProfilesDb: AgentInventoryProfilesDatabase;
   private registryRequestsDb = registryRequestsDb;
 
-  constructor() {
+  constructor(private readonly options: {
+    backgroundServices?: 'auto' | 'refresh-only';
+    refreshLegacyWaitMs?: number;
+    refreshPollIntervalMs?: number;
+    refreshQueueIntervalMs?: number;
+  } = {}) {
     this.app = express();
     this.agentService = new AgentService();
     this.validator = new AgentValidator();
@@ -1841,7 +1850,11 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouters({
+    const {
+      router: registryApiRouter,
+      v1AgentsRouter,
+      complianceRefreshQueue,
+    } = createRegistryApiRouters({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
@@ -1854,7 +1867,11 @@ export class HTTPServer {
       profilesDb: this.agentProfilesDb,
       requireAuth,
       optionalAuth,
+      refreshLegacyWaitMs: this.options.refreshLegacyWaitMs,
+      refreshPollIntervalMs: this.options.refreshPollIntervalMs,
+      refreshQueueIntervalMs: this.options.refreshQueueIntervalMs,
     });
+    this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
@@ -10381,11 +10398,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // Scheduled jobs and crawlers only run on the worker process.
     // processRole is resolved once in logger.ts from FLY_PROCESS_GROUP;
     // locally it defaults to 'worker' so dev runs everything.
-    this.isWorker = processRole !== 'web';
+    this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
+    this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
     logger.info({ isWorker }, 'Process role resolved');
 
-    if (isWorker) {
+    if (this.refreshOnlyBackground) {
+      this.complianceRefreshQueue?.start();
+      logger.info('Refresh-only background services started');
+    } else if (isWorker) {
       this.startWorkerCrawlers();
 
       // Register and start all scheduled jobs
@@ -10420,7 +10441,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }, 'AdCP Registry HTTP server running');
 
       // Periodic background tasks only run on the worker process
-      if (isWorker) {
+      if (isWorker && !this.refreshOnlyBackground) {
         // Start seat request reminder scheduler
         if (workos) {
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
@@ -10480,22 +10501,27 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
-      // Stop every crawler scheduler before awaiting other drains. In-flight
-      // durable work remains protected by its expiring database lease.
-      await this.crawler.stopPeriodicCrawlers();
-      jobScheduler.stopAll();
+      if (this.refreshOnlyBackground) {
+        this.complianceRefreshQueue?.stop();
+      } else {
+        // Stop every crawler scheduler before awaiting other drains. In-flight
+        // durable work remains protected by its expiring database lease.
+        this.complianceRefreshQueue?.stop();
+        await this.crawler.stopPeriodicCrawlers();
+        jobScheduler.stopAll();
 
-      import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
-        stopSeatRequestReminders();
-      }).catch(() => {});
+        import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+          stopSeatRequestReminders();
+        }).catch(() => {});
 
-      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
-        stopAutoProvisionDigest();
-      }).catch(() => {});
+        import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+          stopAutoProvisionDigest();
+        }).catch(() => {});
 
-      import('./luma/sync.js').then(({ stopLumaSync }) => {
-        stopLumaSync();
-      }).catch(() => {});
+        import('./luma/sync.js').then(({ stopLumaSync }) => {
+          stopLumaSync();
+        }).catch(() => {});
+      }
     }
 
     // Drain tracked background work before closing connections

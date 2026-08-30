@@ -113,7 +113,8 @@
     "test:build-schemas-hoist-enums": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-enums.test.cjs",
     "test:build-schemas-hoist-marked": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-marked.test.cjs",
     "test:build-schemas-async-response-refs": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-async-response-refs.test.cjs",
-    "test:release-workflow": "node tests/release-workflow-immutability.test.cjs",
+    "test:release-workflow": "node tests/release-workflow-immutability.test.cjs && node tests/promote-release-candidate.test.cjs",
+    "promote:rc": "node scripts/promote-release-candidate.mjs",
     "test:immutable-release-artifacts": "node tests/immutable-release-artifacts.test.cjs",
     "test:patch-3-0-compat-bundle": "node --test --test-force-exit --test-timeout=30000 tests/patch-3-0-compat-bundle.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs && npm run test:seller-governance-policy-surfaces && npm run test:test-script-registration",
@@ -153,7 +154,7 @@
     "test:storyboards:3.0-compat": "bash scripts/run-storyboards-3-0-compat.sh",
     "prepare": "sh scripts/configure-git-hooks.sh",
     "changeset": "changeset",
-    "version": "changeset version && npm install --package-lock-only --ignore-scripts && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
+    "version": "node scripts/version-packages.mjs && npm install --package-lock-only --ignore-scripts && npm run build:schemas -- --release && npm run build:compliance -- --release && npm run build:protocol-tarball -- --release && npm run sign:protocol-tarball",
     "sign:protocol-tarball": "bash scripts/sign-protocol-tarball.sh",
     "update-schema-versions": "echo 'Schema versioning is now handled by build:schemas script'",
     "release": "npm run version && npm test && npm run build && git add -A && git commit -m 'Version packages' && git push",
@@ -175,7 +176,7 @@
     "eval:addie-google-read-only-tools": "tsx --import dotenv/config server/tests/manual/provider-read-only-tool-loop.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "14.0.0-beta.16",
+    "@adcp/sdk": "14.0.0-beta.22",
     "@anthropic-ai/sdk": "^0.120.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.1",
