@@ -4,6 +4,7 @@ import type {
   ModelMessage,
   ModelMessageContent,
   ModelProvider,
+  ModelProviderId,
   ModelRequest,
   ModelResponse,
 } from '../../../src/addie/model-providers/model-provider.js';
@@ -42,9 +43,10 @@ const request: ModelRequest = {
 
 function providerFor(
   respond: ModelProvider['respond'],
+  id: ModelProviderId = 'anthropic',
 ): ModelProvider {
   return {
-    id: 'anthropic',
+    id,
     capabilities: {
       streaming: true,
       structuredOutput: true,
@@ -429,5 +431,56 @@ describe('ModelTurnLoopState', () => {
     expect(attempts).toBe(2);
     await expect(activeTurn.invoke(provider, request)).rejects.toThrow('already accepted');
     expect(() => activeTurn.acceptResponse(terminal)).toThrow('already accepted');
+  });
+
+  it('allows cross-provider fallback before a response is accepted', async () => {
+    const loop = new ModelTurnLoopState(1);
+    const anthropic = providerFor(async function* () {
+      throw new Error('primary unavailable');
+    });
+    const googleResponse = {
+      ...response('stop', [{ type: 'text' as const, text: 'fallback answer' }]),
+      provider: 'google' as const,
+      model: 'fallback-model',
+    };
+    const google = providerFor(async function* () {
+      yield { type: 'response_start', provider: 'google', model: 'fallback-model' };
+      yield { type: 'text_delta', index: 0, text: 'fallback answer' };
+      yield { type: 'response_complete', response: googleResponse };
+    }, 'google');
+    const activeTurn = loop.beginNext();
+
+    await expect(activeTurn.invoke(anthropic, request)).rejects.toThrow('primary unavailable');
+    const invoked = await activeTurn.invoke(google, { ...request, model: 'fallback-model' });
+    activeTurn.acceptResponse(invoked);
+
+    expect(loop.pinnedProvider).toBeNull();
+  });
+
+  it('pins tool continuation before execution and rejects a provider switch', async () => {
+    const loop = new ModelTurnLoopState(2);
+    const toolResponse = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'call-1',
+      name: 'mutate_record',
+      input: {},
+    }]);
+    loop.beginNext().acceptResponse(toolResponse);
+
+    expect(loop.pinnedProvider).toBe('anthropic');
+
+    let googleInvoked = false;
+    const google = providerFor(async function* () {
+      googleInvoked = true;
+    }, 'google');
+    const continuation = loop.beginNext();
+
+    await expect(continuation.invoke(google, { ...request, model: 'fallback-model' }))
+      .rejects.toThrow('continuation is pinned to anthropic; cannot invoke google');
+    expect(googleInvoked).toBe(false);
+
+    const wrongProviderResponse = { ...response('stop'), provider: 'google' as const };
+    expect(() => continuation.acceptResponse(wrongProviderResponse))
+      .toThrow('continuation is pinned to anthropic; cannot invoke google');
   });
 });

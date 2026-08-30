@@ -1,6 +1,7 @@
 import type {
   ModelMessage,
   ModelProvider,
+  ModelProviderId,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
   ModelRequest,
@@ -175,6 +176,7 @@ export class ModelTurnLoopState {
   private readonly budget: ModelLoopBudget;
   private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   private awaitingResponse = false;
+  private continuationProvider: ModelProviderId | null = null;
 
   constructor(limit: number) {
     this.budget = new ModelLoopBudget(limit);
@@ -194,6 +196,23 @@ export class ModelTurnLoopState {
 
   get usage(): ModelUsage {
     return { ...this.accumulatedUsage };
+  }
+
+  /**
+   * Provider pinned by an accepted response that requires another model turn.
+   * Transport fallback remains possible before the first response is accepted,
+   * but canonical tool/provider continuation state must never cross providers.
+   */
+  get pinnedProvider(): ModelProviderId | null {
+    return this.continuationProvider;
+  }
+
+  assertProviderForInvocation(provider: ModelProviderId): void {
+    if (this.continuationProvider !== null && provider !== this.continuationProvider) {
+      throw new Error(
+        `Model loop continuation is pinned to ${this.continuationProvider}; cannot invoke ${provider}`,
+      );
+    }
   }
 
   startNext(): number {
@@ -230,6 +249,15 @@ export class ModelTurnLoopState {
         }
       : response;
     const turn = inspectModelTurn(acceptedResponse);
+    this.assertProviderForInvocation(acceptedResponse.provider);
+    if (
+      this.continuationProvider === null
+      && (turn.action === 'execute_tools'
+        || turn.action === 'continue'
+        || turn.action === 'continue_provider_tools')
+    ) {
+      this.continuationProvider = acceptedResponse.provider;
+    }
     if (options.countUsage !== false) {
       this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
     }
@@ -286,6 +314,7 @@ export class ActiveModelTurn {
   ): Promise<ModelResponse> {
     if (this.accepted) throw new Error('Model turn already accepted a response');
     if (this.invocationInFlight) throw new Error('Model turn provider invocation already in flight');
+    this.loop.assertProviderForInvocation(provider.id);
     this.invocationInFlight = true;
     try {
       return await collectModelResponse(
