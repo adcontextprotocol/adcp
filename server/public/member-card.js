@@ -44,8 +44,7 @@ function renderMemberCard(member, options = {}) {
   const displayName = member.display_name || brand?.name;
 
   const taglineText = member.tagline || brand?.tagline || '';
-  // Description: prefer brand.json, fallback to profile
-  const rawDesc = brand?.description || member.description || '';
+  const rawDesc = member.description || brand?.description || '';
   const truncatedDesc = rawDesc.length > 200 ? rawDesc.substring(0, 200) + '...' : rawDesc;
 
   // Agent types from brand.json (what they operate)

@@ -373,6 +373,20 @@ describe('runtime XSS regressions', () => {
       .toBe('Origin-published tagline');
     expect(dom.window.document.querySelector('.member-description')?.textContent)
       .toBe('Origin-published description');
+
+    const memberAuthoredHtml = renderMemberCard({
+      display_name: 'Acme Member',
+      description: 'Member-authored description',
+      slug: 'acme-member',
+      offerings: [],
+      credentials: [],
+      markets: [],
+      data_providers: [],
+      resolved_brand: { description: 'Origin-published description' },
+    });
+    const memberAuthoredDom = new JSDOM(`<body>${memberAuthoredHtml}</body>`);
+    expect(memberAuthoredDom.window.document.querySelector('.member-description')?.textContent)
+      .toBe('Member-authored description');
   });
 
   it('filters unsafe legacy profile URLs from the member detail view', () => {
