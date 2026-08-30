@@ -123,6 +123,26 @@ describe('Addie router prompt policy', () => {
     expect(adminPrompt).toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
   });
+
+  it('keeps direct mentions inside Addie\'s domain boundary', () => {
+    const mentionPrompt = buildRoutingPrompt({
+      message: 'Addie, what is the best recipe for soup?',
+      source: 'mention',
+    });
+
+    expect(mentionPrompt).toContain('A mention means the user addressed Addie');
+    expect(mentionPrompt).toContain('Ignore off-topic requests');
+  });
+
+  it('disambiguates working group meetings from working group membership', () => {
+    const prompt = buildRoutingPrompt({
+      message: 'What is on the next working group meeting agenda?',
+      source: 'dm',
+    });
+
+    expect(prompt).toContain('Working group membership or participation');
+    expect(prompt).toContain('select ["meetings"] and do NOT add ["community_groups"]');
+  });
 });
 
 function makeCtx(overrides: Partial<RoutingContext> = {}): RoutingContext {

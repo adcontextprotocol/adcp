@@ -618,7 +618,12 @@ The user is NOT an admin.
   const explicitlyNamedAddie = mentionsAddie && !thirdPersonAddie;
   const channelNameOverride =
     explicitlyNamedAddie && ctx.source === "channel"
-      ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy.\n`
+      ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy. Direct address does NOT expand Addie's scope: off-topic requests and questions outside Addie's expertise must still be ignored.\n`
+      : "";
+
+  const directMentionGuidance =
+    ctx.source === "mention"
+      ? `\n## Direct Mention Policy\nA mention means the user addressed Addie, but it does NOT automatically require a response or expand Addie's scope. Ignore off-topic requests and questions outside Addie's expertise, even when Addie is named explicitly.\n`
       : "";
 
   // Channel messages require a much higher bar for responding
@@ -653,6 +658,7 @@ ${conditionalRules}
 ${communityChannelGuidance}
 ${channelResponseGuidance}
 ${channelNameOverride}
+${directMentionGuidance}
 
 ## Available Tool Sets
 Select which CATEGORIES of tools will be needed. Each set contains multiple related tools.
@@ -668,7 +674,7 @@ ${
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_validation"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_validation"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
-- Working groups, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
+- Working group membership or participation, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
 - Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_validation"], or ["property_catalog"]
 - Testing or validating an AdCP agent implementation, endpoint, authorization, signing, OAuth, RFP response, or IO execution → ["agent_validation"]
@@ -691,6 +697,7 @@ ${isAAOAdmin
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
+- When "working group" only identifies which meeting or agenda the user means, select ["meetings"] and do NOT add ["community_groups"]. Add ["community_groups"] only when the user is asking about working group membership, participation, group information, or documents.
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
