@@ -38,6 +38,7 @@
       "minItems": 1
     },
     "dooh_placement_attributes": {
+      "title": "Canonical DOOH Placement Attributes",
       "type": "object",
       "description": "DOOH screen and scheduled-loop facts. These fields do not define creative acceptance, which is governed exclusively by effective canonical format_options. For publisher_ref placements, product slot and loop values override publisher defaults while repeated screen_resolution and motion values must equal the publisher facts.",
       "properties": {
@@ -52,6 +53,7 @@
           "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration."
         },
         "screen_resolution": {
+          "title": "Canonical DOOH Screen Resolution",
           "type": "object",
           "description": "Physical screen resolution; canonical format dimensions remain authoritative for creative acceptance.",
           "properties": {

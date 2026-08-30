@@ -160,6 +160,7 @@
       "minItems": 1
     },
     "dooh_placement_attributes": {
+      "title": "Publisher DOOH Placement Attributes",
       "type": "object",
       "description": "Publisher-declared DOOH inventory facts for digital out-of-home placements. These fields describe the screen and default scheduled loop; they do not define creative acceptance, which is governed exclusively by effective canonical format_options. Each field is optional and should only be populated when it is true for the placement being represented. A single screen/frame placement can include all fields; a package/network placement should include fields only when they are uniform across the included inventory. Referencing products may override slot_duration_seconds and loop_duration_seconds for a specific offer. screen_resolution and motion are intrinsic publisher facts and MUST NOT be changed by a referencing product.",
       "properties": {
@@ -174,6 +175,7 @@
           "minimum": 1
         },
         "screen_resolution": {
+          "title": "Publisher DOOH Screen Resolution",
           "type": "object",
           "description": "Physical screen resolution in pixels. Buyers can derive aspect ratio from width/height. This does not replace canonical format dimensions, which remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
           "properties": {
