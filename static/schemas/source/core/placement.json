@@ -118,64 +118,7 @@
       "uniqueItems": true,
       "minItems": 1
     },
-    "dooh_placement_attributes": {
-      "title": "Product DOOH Placement Attributes",
-      "type": "object",
-      "description": "DOOH-specific inventory facts for digital out-of-home placements. These fields describe the screen and scheduled loop; they do not define creative acceptance, which is governed exclusively by the placement's effective canonical format_options. Each field is optional and should only be populated when it is true for the placement being represented. A single screen/frame placement can include all fields; a package/network placement should include fields only when they are uniform across the included inventory. For kind: publisher_ref, resolve the publisher placement first. Product-level slot_duration_seconds and loop_duration_seconds override publisher defaults for this offer; omitted values inherit. screen_resolution and motion are intrinsic publisher facts: when repeated at product level they MUST equal the publisher values. A mismatch is a conformance error rather than an override.",
-      "properties": {
-        "slot_duration_seconds": {
-          "type": "integer",
-          "description": "Scheduled duration of one ad slot in seconds (e.g., 10, 15, 30). This is an inventory fact used for loop and share calculations, not the creative-duration contract; format_options remains authoritative for accepted creative durations.",
-          "minimum": 1
-        },
-        "loop_duration_seconds": {
-          "type": "integer",
-          "description": "Duration of the full ad loop rotation in seconds. Buyers can derive nominal slot share as slot_duration_seconds / loop_duration_seconds. This is the canonical source for loop duration; the pricing-layer field in flat-rate-option.json is superseded by this placement-level declaration.",
-          "minimum": 1
-        },
-        "screen_resolution": {
-          "title": "Product DOOH Screen Resolution",
-          "type": "object",
-          "description": "Physical screen resolution in pixels. Buyers can derive aspect ratio from width/height. This does not replace or broaden canonical format dimensions, which remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
-          "properties": {
-            "width": {
-              "type": "integer",
-              "description": "Screen width in pixels.",
-              "minimum": 1
-            },
-            "height": {
-              "type": "integer",
-              "description": "Screen height in pixels.",
-              "minimum": 1
-            }
-          },
-          "required": ["width", "height"],
-          "additionalProperties": false
-        },
-        "motion": {
-          "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Physical motion capability of the DOOH screen. This is discovery metadata, not an accepted-format declaration; effective format_options determines whether a particular full-motion, partial-motion, or static creative is accepted."
-        }
-      },
-      "x-adcp-validation": {
-        "verifier_constraints": {
-          "slot_fits_loop": {
-            "left_path": "slot_duration_seconds",
-            "operator": "less_than_or_equal",
-            "right_path": "loop_duration_seconds",
-            "evaluate_after": "publisher_ref_resolution"
-          },
-          "publisher_ref_resolution": {
-            "override_fields": ["slot_duration_seconds", "loop_duration_seconds"],
-            "inherit_when_omitted": true,
-            "must_equal_fields": ["screen_resolution", "motion"],
-            "identifier_merge": "union_by_type_and_value"
-          }
-        },
-        "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
-      },
-      "additionalProperties": true
-    }
+    "dooh_placement_attributes": { "$ref": "/schemas/core/dooh-placement-attributes.json" }
   },
   "required": ["kind", "placement_id", "mode"],
   "$comment": "The anyOf(name OR publisher_domain) preserves the released compatibility shape. publisher_ref requires publisher_domain below; seller_inline requires name and should add seller_agent for self-contained identity.",
