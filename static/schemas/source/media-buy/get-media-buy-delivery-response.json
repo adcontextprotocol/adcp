@@ -811,7 +811,7 @@
                     },
                     "by_spot": {
                       "type": "array",
-                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape.",
+                      "description": "Spot-level as-run airing records for broadcast TV, radio, or other scheduled inventory. Available when the buyer requests spot breakdown and the product declares supports_spot_breakdown. Sellers MUST order rows by aired_at ascending. The same spot_id is reused when a later package measurement_window adds or revises metrics. Network and station are optional so station-direct radio and network-level TV records use the same channel-neutral shape. Sellers SHOULD populate creative_id whenever they can associate a specific airing with a creative, particularly when the package could serve more than one creative during any part of the reporting period, including a mid-period replacement. Sellers that cannot make that association MUST omit creative_id rather than emit a default or placeholder. Buyers MUST NOT aggregate by_spot rows by creative_id and expect the result to equal by_creative impressions for the same creative: the two dimensions are independently produced at different granularities and are subject to different metric-maturation and attribution semantics within the package measurement_window. by_creative is the authoritative creative-performance aggregate; creative_id on a by_spot row identifies which creative aired, not an independent metric roll-up source.",
                       "items": {
                         "allOf": [
                           {
@@ -825,6 +825,12 @@
                                 "minLength": 1,
                                 "description": "Stable seller-scoped identifier for this scheduled spot occurrence. Reused across measurement-window updates and available to later preemption or makegood workflows. Distinct from creative_id.",
                                 "x-entity": "spot_airing"
+                              },
+                              "creative_id": {
+                                "type": "string",
+                                "minLength": 1,
+                                "description": "Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment. For library-backed sellers this is the sync_creatives identifier; inline-only sellers use the packages[].creatives creative_id.",
+                                "x-entity": "creative"
                               },
                               "aired_at": {
                                 "type": "string",
