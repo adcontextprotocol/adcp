@@ -262,6 +262,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   afterAll(async () => {
     const allUrls = [...ALL_OWNED_URLS, OTHER_AGENT_URL];
     await pool.query('DELETE FROM agent_verification_badges WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM compliance_operations WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_step_diagnostics WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_storyboard_status WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = ANY($1)', [allUrls]);
@@ -309,24 +310,23 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   it('owner can refresh and gets the snapshot back', async () => {
     const agentUrl = ownedAgentUrl('owner');
     const res = await request(app).post(url(agentUrl)).send();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(res.body).toMatchObject({
       online: true,
       tools_count: 4,
       inferred_type: 'governance',
       type_promoted: true,
       compliance: {
-        ran: true,
-        run_id: expect.any(String),
-        test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
-        overall_status: 'passing',
-        storyboards_passing: 1,
-        storyboards_total: 1,
-        observations_count: 1,
-        notices_count: 1,
+        ran: false,
+        operation_id: expect.any(String),
+        status: 'running',
       },
     });
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+
+    // Let the setImmediate compliance callback complete.
+    await new Promise(r => setImmediate(r));
+    // comply() runs asynchronously; verify it was called.
     expect(complyMock).toHaveBeenCalledWith(
       agentUrl,
       expect.objectContaining({
@@ -376,7 +376,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   it('public compliance bounds notice output while retaining the raw private record', async () => {
     const agentUrl = ownedAgentUrl('public-notices');
     const refresh = await request(app).post(url(agentUrl)).send();
-    expect(refresh.status).toBe(200);
+    expect(refresh.status).toBe(202);
+    await new Promise(r => setImmediate(r));
 
     const rawNotices = [
       {
@@ -448,8 +449,9 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     currentUserId = ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('admin');
     const res = await request(app).post(url(agentUrl)).send();
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+    await new Promise(r => setImmediate(r));
   });
 
   it('static admin API key can refresh and rerun compliance for an agent it does not own', async () => {
@@ -458,14 +460,16 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     const res = await request(app).post(url(agentUrl)).send();
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(res.body.compliance).toMatchObject({
-      ran: true,
-      overall_status: 'passing',
-      storyboards_passing: 1,
-      storyboards_total: 1,
+      ran: false,
+      operation_id: expect.any(String),
+      status: 'running',
     });
     expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
+
+    await new Promise(r => setImmediate(r));
+
     expect(complyMock).toHaveBeenCalledWith(
       agentUrl,
       expect.objectContaining({
@@ -531,7 +535,8 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
   it('rate-limits a second refresh of the same agent within the window', async () => {
     const agentUrl = ownedAgentUrl('rate-limit');
     const first = await request(app).post(url(agentUrl)).send();
-    expect(first.status).toBe(200);
+    expect(first.status).toBe(202);
+    await new Promise(r => setImmediate(r));
 
     const second = await request(app).post(url(agentUrl)).send();
     expect(second.status).toBe(429);
@@ -557,7 +562,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     try {
       const res = await request(app).post(url(agentUrl)).send();
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
         agentUrl,
         expect.objectContaining({
@@ -565,6 +570,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
           ownerOrgId: TEST_ORG_ID,
         }),
       );
+      await new Promise(r => setImmediate(r));
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
@@ -587,7 +593,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     try {
       const res = await request(app).post(url(requestedUrl)).send();
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
         agentUrl,
         expect.objectContaining({
@@ -595,6 +601,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
           ownerOrgId: TEST_ORG_ID,
         }),
       );
+      await new Promise(r => setImmediate(r));
     } finally {
       await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
     }
@@ -652,7 +659,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         .post(url(agentUrl))
         .send({ organization_id: SECOND_ORG_ID });
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202);
       expect(refreshSingleAgentMock).toHaveBeenCalledWith(
         agentUrl,
         expect.objectContaining({
@@ -704,12 +711,14 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
 
     const res = await request(app).post(url(agentUrl)).send();
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
     expect(res.body.compliance).toMatchObject({
-      ran: true,
-      storyboards_passing: 1,
-      storyboards_total: 1,
+      ran: false,
+      operation_id: expect.any(String),
+      status: 'running',
     });
+
+    await new Promise(r => setImmediate(r));
 
     const badges = await pool.query(
       `SELECT role, status, verified_specialisms, membership_org_id
@@ -751,11 +760,15 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     try {
       const res = await request(app).post(url(agentUrl)).send();
 
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(202);
       expect(res.body.compliance).toMatchObject({
-        ran: true,
-        auth_available: true,
+        ran: false,
+        operation_id: expect.any(String),
+        status: 'running',
       });
+
+      await new Promise(r => setImmediate(r));
+
       expect(complyMock).toHaveBeenCalledWith(
         agentUrl,
         expect.objectContaining({

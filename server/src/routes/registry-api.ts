@@ -21,7 +21,7 @@ import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, te
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
-import { query, withDatabaseDeadline } from "../db/client.js";
+import { query, withDatabaseDeadline, isDatabaseInitialized } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
@@ -7591,6 +7591,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   refreshRateLimitCleanupInterval.unref();
 
   router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
+    reapOnce();
     try {
       const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(rawAgentUrl)) {
@@ -7887,11 +7888,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
   // Reap operations stuck in 'pending' longer than the compliance
   // timeout — these are from processes that died mid-run (deploy,
   // crash). The unique partial index then unblocks the next refresh.
-  complianceDb.reapStaleComplianceOperations(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + 60_000).then(reaped => {
-    if (reaped > 0) logger.info({ reaped }, 'Reaped stale compliance operations on startup');
-  }).catch(err => {
-    logger.warn({ err }, 'Failed to reap stale compliance operations on startup');
-  });
+  let reaperRan = false;
+  const reapOnce = () => {
+    if (reaperRan || !isDatabaseInitialized()) return;
+    reaperRan = true;
+    complianceDb.reapStaleComplianceOperations(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + 60_000).then(reaped => {
+      if (reaped > 0) logger.info({ reaped }, 'Reaped stale compliance operations on startup');
+    }).catch(err => {
+      logger.warn({ err }, 'Failed to reap stale compliance operations on startup');
+    });
+  };
 
   // ── Per-step compliance diagnostics (owner/static-admin, adcp#4738) ─
   //
