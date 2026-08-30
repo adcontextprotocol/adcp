@@ -793,6 +793,7 @@ export interface MemberBrandInfo {
   verified: boolean;
   // Extended fields resolved from brand.json
   name?: string;
+  tagline?: string;
   description?: string;
   contact?: { name?: string; email?: string; domain?: string };
   agent_types?: string[];

@@ -16,7 +16,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
-import { brandDb } from "./db/brand-db.js";
+import { brandDb, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
@@ -29,6 +29,7 @@ import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
+import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -729,14 +730,34 @@ export class MCPToolHandler {
           };
         }
 
+        const brandPrimaryDomain = member.workos_organization_id
+          ? await getBrandPrimaryDomain(member.workos_organization_id)
+          : null;
+        const brandRow = brandPrimaryDomain
+          ? await brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain)
+          : null;
+        const resolvedBrand = brandPrimaryDomain
+          && canSurfaceBrandForMember(brandRow, member.workos_organization_id)
+          ? resolveBrandFromJson(
+              brandPrimaryDomain,
+              brandRow!.brand_manifest as Record<string, unknown>,
+              brandRow!.domain_verified ?? false,
+            )
+          : undefined;
+
         // Public agents to everyone; members_only when the caller has API access
         const result = {
           slug: member.slug,
           display_name: member.display_name,
-          tagline: member.tagline,
-          description: member.description,
-          logo_url: member.resolved_brand?.logo_url,
-          brand_color: member.resolved_brand?.brand_color,
+          tagline: member.tagline || resolvedBrand?.tagline,
+          description: member.description || resolvedBrand?.description,
+          content_sources: {
+            tagline: member.tagline ? 'member_profile' : resolvedBrand?.tagline ? 'brand_json' : null,
+            description: member.description ? 'member_profile' : resolvedBrand?.description ? 'brand_json' : null,
+          },
+          logo_url: resolvedBrand?.logo_url,
+          brand_color: resolvedBrand?.brand_color,
+          brand_identity: resolvedBrand ?? null,
           offerings: member.offerings,
           headquarters: member.headquarters,
           markets: member.markets,

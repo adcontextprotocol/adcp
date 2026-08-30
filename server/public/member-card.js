@@ -39,10 +39,11 @@ function renderMemberCard(member, options = {}) {
   const contactWebsiteUrl = getSafeHttpsUrl(member.contact_website)
     || getSafeHttpsUrl(brand?.contact?.domain ? `https://${brand.contact.domain}` : null);
 
-  // Name: prefer brand.json, fallback to profile
-  const displayName = brand?.name || member.display_name;
+  // The member profile owns the directory identity. Brand data may fill
+  // missing presentation fields, but must never rename the organization.
+  const displayName = member.display_name || brand?.name;
 
-  const taglineText = member.tagline || '';
+  const taglineText = member.tagline || brand?.tagline || '';
   // Description: prefer brand.json, fallback to profile
   const rawDesc = brand?.description || member.description || '';
   const truncatedDesc = rawDesc.length > 200 ? rawDesc.substring(0, 200) + '...' : rawDesc;

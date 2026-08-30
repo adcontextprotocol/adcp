@@ -44,7 +44,7 @@ import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -9654,11 +9654,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
           if (brandPrimaryDomain) {
             const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
-            if (brand?.brand_manifest) {
+            if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
               profile.resolved_brand = resolveBrandFromJson(
                 brandPrimaryDomain,
-                brand.brand_manifest as Record<string, unknown>,
-                brand.domain_verified ?? false
+                brand!.brand_manifest as Record<string, unknown>,
+                brand!.domain_verified ?? false
               );
             }
           }
@@ -9698,11 +9698,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
           if (brandPrimaryDomain) {
             const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
-            if (brand?.brand_manifest) {
+            if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
               profile.resolved_brand = resolveBrandFromJson(
                 brandPrimaryDomain,
-                brand.brand_manifest as Record<string, unknown>,
-                brand.domain_verified ?? false
+                brand!.brand_manifest as Record<string, unknown>,
+                brand!.domain_verified ?? false
               );
             }
           }
@@ -9807,17 +9807,17 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.debug({ err }, 'Failed to load content for member profile');
         }
 
-        // Resolve brand data from registry if linked. Skip orphaned brands —
-        // the manifest is preserved server-side for adoption-at-claim-time
-        // but must not surface on the public member-profile endpoint.
+        // Resolve only authoritative brand data. Unclaimed enriched/community
+        // rows are registry hints, not permission to override a member's
+        // public identity.
         const brandPrimaryDomain = await getBrandPrimaryDomain(profile.workos_organization_id);
         if (brandPrimaryDomain) {
           const brand = await this.brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
-          if (brand?.brand_manifest && !brand.manifest_orphaned) {
+          if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
             profile.resolved_brand = resolveBrandFromJson(
               brandPrimaryDomain,
-              brand.brand_manifest as Record<string, unknown>,
-              brand.domain_verified ?? false
+              brand!.brand_manifest as Record<string, unknown>,
+              brand!.domain_verified ?? false
             );
           }
         }

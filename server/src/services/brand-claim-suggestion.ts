@@ -35,6 +35,7 @@ export const DISMISSAL_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export interface BrandClaimSuggestion {
   domain: string;
+  /** Omitted for automated enrichment because its inferred name is not authoritative. */
   brand_name: string | null;
   /** True when the suggestion is fresh (no recent dismissal). */
   active: boolean;
@@ -100,7 +101,7 @@ export async function getBrandClaimSuggestionForUser(
 
   return {
     domain,
-    brand_name: brand.brand_name ?? null,
+    brand_name: brand.source_type === 'enriched' ? null : brand.brand_name ?? null,
     active,
     dismissed_at: dismissal?.dismissed_at,
     claim_url: `/brand/builder?domain=${encodeURIComponent(domain)}`,
