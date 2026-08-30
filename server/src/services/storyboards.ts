@@ -154,7 +154,7 @@ export function getAllStoryboards(): Storyboard[] {
 }
 
 /**
- * Compare two release-precision AdCP version strings numerically.
+ * Compare two release- or patch-precision AdCP version strings numerically.
  * Returns -1 / 0 / 1 like a sort comparator. `'3.10'` is correctly
  * greater than `'3.2'`. Prereleases belong to the same compliance feature
  * line as their stable target, so `'3.2-beta.0'` compares equal to `'3.2'`.
@@ -167,7 +167,7 @@ export function getAllStoryboards(): Storyboard[] {
  */
 export function compareAdcpVersions(a: string, b: string): number {
   const parse = (s: string): [number, number] => {
-    const m = s.match(/^(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
+    const m = s.match(/^(\d+)\.(\d+)(?:\.\d+)?(?:-[0-9A-Za-z.-]+)?$/);
     if (m) return [Number(m[1]), Number(m[2])];
     logger.debug({ value: s }, 'compareAdcpVersions received malformed input — coercing to 0.0');
     return [0, 0];

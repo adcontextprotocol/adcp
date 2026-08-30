@@ -38,6 +38,8 @@ import {
   getSettingAuditHistory,
   getOrganizationAuthorizationEnforcement,
   setOrganizationAuthorizationEnforcement,
+  getVerificationProfileShadowRollout,
+  setVerificationProfileShadowRollout,
 } from '../../db/system-settings-db.js';
 import {
   getSlackChannels,
@@ -117,6 +119,7 @@ export function createAdminSettingsRouter(): Router {
       const announcementChannel = await getAnnouncementChannel();
       const s2CanonicalFormatsDeltaRelease = await getS2CanonicalFormatsDeltaRelease();
       const organizationAuthorizationEnforcement = await getOrganizationAuthorizationEnforcement();
+      const verificationProfileShadowRollout = await getVerificationProfileShadowRollout();
       const organizationAuthorizationEnvironmentBoundaries = Object.values(
         ORGANIZATION_AUTHORIZATION_BOUNDARIES,
       ).filter(isOrganizationAuthorizationBoundaryAllowedByEnvironment);
@@ -133,6 +136,7 @@ export function createAdminSettingsRouter(): Router {
         announcement_channel: announcementChannel,
         s2_canonical_formats_delta_release: s2CanonicalFormatsDeltaRelease,
         organization_authorization_enforcement: organizationAuthorizationEnforcement,
+        verification_profile_shadow_rollout: verificationProfileShadowRollout,
         organization_authorization_environment_ceiling: {
           boundaries: organizationAuthorizationEnvironmentBoundaries,
         },
@@ -607,6 +611,36 @@ export function createAdminSettingsRouter(): Router {
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to update organization authorization runtime enforcement setting');
+      res.status(500).json({ error: 'Failed to update setting' });
+    }
+  });
+
+  // PUT /api/admin/settings/verification-profile-shadow-rollout
+  // Audited, observation-only collection switch. This does not change public
+  // compliance status, badges, notifications, or traffic sent to an agent.
+  router.put('/verification-profile-shadow-rollout', ...requireGlobalAdmin, async (req: Request, res: Response) => {
+    try {
+      const enabled = req.body?.enabled;
+      if (typeof enabled !== 'boolean') {
+        res.status(400).json({
+          error: 'Invalid verification profile shadow rollout setting',
+          message: 'enabled must be a boolean',
+        });
+        return;
+      }
+
+      const actorCredentialId = getOrganizationAuthorizationUserId(req.user!);
+      const persisted = await setVerificationProfileShadowRollout({ enabled }, actorCredentialId);
+      logger.info(
+        { enabled, actorCredentialId },
+        'Verification profile shadow collection setting updated',
+      );
+      res.json({
+        success: true,
+        verification_profile_shadow_rollout: persisted,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to update verification profile shadow collection setting');
       res.status(500).json({ error: 'Failed to update setting' });
     }
   });

@@ -7,11 +7,15 @@ const {
   setSettingMock,
   invalidateCacheMock,
   environmentAllowsBoundaryMock,
+  getShadowSettingMock,
+  setShadowSettingMock,
 } = vi.hoisted(() => ({
   getSettingMock: vi.fn(),
   setSettingMock: vi.fn(),
   invalidateCacheMock: vi.fn(),
   environmentAllowsBoundaryMock: vi.fn(),
+  getShadowSettingMock: vi.fn(),
+  setShadowSettingMock: vi.fn(),
 }));
 
 vi.mock("../../src/middleware/auth.js", () => {
@@ -50,6 +54,8 @@ vi.mock("../../src/db/system-settings-db.js", async (importOriginal) => ({
   getS2CanonicalFormatsDeltaRelease: vi.fn().mockResolvedValue({}),
   getOrganizationAuthorizationEnforcement: getSettingMock,
   setOrganizationAuthorizationEnforcement: setSettingMock,
+  getVerificationProfileShadowRollout: getShadowSettingMock,
+  setVerificationProfileShadowRollout: setShadowSettingMock,
 }));
 
 import { createAdminSettingsRouter } from "../../src/routes/admin/settings.js";
@@ -67,6 +73,43 @@ describe("organization authorization runtime admin setting", () => {
     getSettingMock.mockResolvedValue({ enabled: false, boundaries: [] });
     setSettingMock.mockResolvedValue(undefined);
     environmentAllowsBoundaryMock.mockReturnValue(true);
+    getShadowSettingMock.mockResolvedValue({ enabled: false, expires_at: null });
+    setShadowSettingMock.mockResolvedValue({
+      enabled: true,
+      expires_at: '2026-09-02T10:00:00.000Z',
+    });
+  });
+
+  it('returns and auditably updates the observation-only verification profile shadow switch', async () => {
+    const getResponse = await request(createApp()).get('/api/admin/settings');
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.verification_profile_shadow_rollout).toEqual({
+      enabled: false,
+      expires_at: null,
+    });
+
+    const putResponse = await request(createApp())
+      .put('/api/admin/settings/verification-profile-shadow-rollout')
+      .send({ enabled: true });
+
+    expect(putResponse.status).toBe(200);
+    expect(setShadowSettingMock).toHaveBeenCalledWith(
+      { enabled: true },
+      'user_authenticated_admin',
+    );
+    expect(putResponse.body.verification_profile_shadow_rollout).toEqual({
+      enabled: true,
+      expires_at: '2026-09-02T10:00:00.000Z',
+    });
+  });
+
+  it('rejects a malformed verification profile shadow switch', async () => {
+    const response = await request(createApp())
+      .put('/api/admin/settings/verification-profile-shadow-rollout')
+      .send({ enabled: 'true' });
+
+    expect(response.status).toBe(400);
+    expect(setShadowSettingMock).not.toHaveBeenCalled();
   });
 
   it.each([

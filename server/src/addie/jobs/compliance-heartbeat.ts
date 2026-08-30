@@ -19,7 +19,7 @@ import {
   type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query } from '../../db/client.js';
+import { query, withDatabaseDeadline } from '../../db/client.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
@@ -27,6 +27,12 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
+import {
+  pruneVerificationProfileShadowAssessments,
+  recordVerificationProfileShadowAssessment,
+} from '../../db/verification-profile-shadow-db.js';
+import { deriveVerificationProfileShadowAssessment } from '../../services/verification-profile-shadow.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -47,6 +53,22 @@ interface HeartbeatResult {
   skipped: number;
 }
 
+type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadowAssessment>[0];
+
+async function pruneShadowLedgerBestEffort(): Promise<void> {
+  try {
+    const pruned = await pruneVerificationProfileShadowAssessments();
+    if (pruned > 0) {
+      logger.info({ pruned }, 'Pruned expired verification profile shadow assessments');
+    }
+  } catch (pruneError) {
+    logger.error(
+      { pruneError },
+      'Verification profile shadow retention cleanup failed without affecting public compliance',
+    );
+  }
+}
+
 export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
@@ -54,10 +76,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   const agentsDue = await complianceDb.getAgentsDueForCheck(limit);
 
   if (agentsDue.length === 0) {
+    await pruneShadowLedgerBestEffort();
     return result;
   }
 
   logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
+  const batchStartedAt = Date.now();
+  const pendingShadowAssessments: PendingShadowAssessment[] = [];
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
   // Agents are processed serially, so the lock must outlive the worst-case batch
@@ -242,6 +267,28 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           logger.error({ badgeError, agentUrl: agent.agent_url }, 'Unsupported public badge revocation failed');
         }
       }
+
+      // Derivation is pure and queued only after every public status,
+      // notification, and badge action for this agent has completed. Database
+      // reads/writes are deferred until the entire public batch is finished.
+      try {
+        pendingShadowAssessments.push({
+          sourceRunId: run.id,
+          agentUrl: agent.agent_url,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          adcpVersion: dbInput.adcp_version,
+          assessment: deriveVerificationProfileShadowAssessment(
+            complianceResult,
+            agent.lifecycle_stage as LifecycleStage,
+            dbInput.overall_status,
+          ),
+        });
+      } catch (shadowError) {
+        logger.error(
+          { shadowError, agentUrl: agent.agent_url, sourceRunId: run.id },
+          'Verification profile shadow derivation failed without affecting public compliance',
+        );
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
@@ -403,6 +450,90 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
     }
   }
+
+  // Shadow persistence is deliberately outside the public heartbeat loop.
+  // Re-check the audited switch with a short deadline before every write so a
+  // disable or automatic expiry takes effect within an already-running batch.
+  const publicProcessingDurationMs = Date.now() - batchStartedAt;
+  const shadowFlushStartedAt = Date.now();
+  const shadowStats = {
+    candidates: pendingShadowAssessments.length,
+    attempted: 0,
+    recorded: 0,
+    disabled: 0,
+    errors: 0,
+    setting_errors: 0,
+    total_write_latency_ms: 0,
+    max_write_latency_ms: 0,
+  };
+  for (const pending of pendingShadowAssessments) {
+    let enabled = false;
+    try {
+      enabled = (await withDatabaseDeadline(
+        Date.now() + 500,
+        () => getVerificationProfileShadowRollout(),
+        // Expiry is an audited compare-and-set write when the 72-hour window
+        // elapses, so this bounded operation cannot use a read-only transaction.
+        { readOnly: false },
+      )).enabled;
+    } catch (settingError) {
+      shadowStats.setting_errors++;
+      shadowStats.errors++;
+      logger.error(
+        { settingError, agentUrl: pending.agentUrl },
+        'Verification profile shadow setting could not be read; collection remains disabled',
+      );
+      continue;
+    }
+    if (!enabled) {
+      shadowStats.disabled++;
+      continue;
+    }
+
+    shadowStats.attempted++;
+    const writeStartedAt = Date.now();
+    try {
+      const recorded = await recordVerificationProfileShadowAssessment(pending);
+      if (!recorded) {
+        shadowStats.disabled++;
+        continue;
+      }
+      shadowStats.recorded++;
+      logger.info(
+        {
+          agentUrl: pending.agentUrl,
+          sourceRunId: pending.sourceRunId,
+          policyVersion: pending.assessment.policy_version,
+          publicStatus: pending.assessment.current_public_status,
+          specStatus: pending.assessment.proposed_spec_status,
+          sandboxStatus: pending.assessment.proposed_sandbox_status,
+          controllerGapPhases: pending.assessment.controller_gap_phase_count,
+        },
+        'Recorded observation-only verification profile shadow assessment',
+      );
+    } catch (shadowError) {
+      shadowStats.errors++;
+      logger.error(
+        { shadowError, agentUrl: pending.agentUrl, sourceRunId: pending.sourceRunId },
+        'Verification profile shadow assessment failed without affecting public compliance',
+      );
+    } finally {
+      const writeLatencyMs = Date.now() - writeStartedAt;
+      shadowStats.total_write_latency_ms += writeLatencyMs;
+      shadowStats.max_write_latency_ms = Math.max(shadowStats.max_write_latency_ms, writeLatencyMs);
+    }
+  }
+  if (pendingShadowAssessments.length > 0) {
+    logger.info(
+      {
+        publicProcessingDurationMs,
+        shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
+        shadow: shadowStats,
+      },
+      'Compliance heartbeat shadow flush completed after public processing',
+    );
+  }
+  await pruneShadowLedgerBestEffort();
 
   return result;
 }
