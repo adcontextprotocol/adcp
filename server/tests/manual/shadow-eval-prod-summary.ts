@@ -88,6 +88,16 @@ interface CaptureSummary {
     input_tokens: number;
     output_tokens: number;
     outcomes: Array<{
+      capture_version: number;
+      capture_policy_version: string;
+      source_config_version_id: number;
+      source_model: string;
+      requested_provider: string;
+      requested_model: string;
+      addie_code_version: string;
+      execution_policy_version: string;
+      returned_provider: string | null;
+      returned_model: string | null;
       status: string;
       reason: string;
       count: number;
@@ -100,8 +110,30 @@ interface CaptureSummary {
     input_tokens: number;
     output_tokens: number;
     outcomes: Array<{
+      capture_version: number;
+      capture_policy_version: string;
+      source_config_version_id: number;
+      source_model: string;
+      has_human_evidence: boolean;
+      requested_provider: string;
+      requested_model: string;
+      addie_code_version: string;
+      execution_policy_version: string;
+      returned_provider: string | null;
+      returned_model: string | null;
+      judgment_policy_version: string;
+      judge_provider: string | null;
+      judge_model: string | null;
+      self_judged: boolean | null;
+      judge_prompt_version: string | null;
       status: string;
       reason: string;
+      evaluation_valid: boolean;
+      evaluation_skipped: boolean;
+      knowledge_gap: boolean | null;
+      gap_severity: string | null;
+      shadow_quality: string | null;
+      deterministic_failure_labels: string[];
       count: number;
       input_tokens: number;
       output_tokens: number;
@@ -348,8 +380,16 @@ async function main() {
         + `${captureSummary.generations.output_tokens} output tokens)`,
       );
       for (const outcome of captureSummary.generations.outcomes) {
+        const returned = outcome.returned_provider && outcome.returned_model
+          ? `${outcome.returned_provider}/${outcome.returned_model}`
+          : 'none';
         console.log(
-          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          `  candidate=${outcome.requested_provider}/${outcome.requested_model} `
+          + `source=${outcome.source_model}@config:${outcome.source_config_version_id} `
+          + `returned=${returned} code=${outcome.addie_code_version} `
+          + `capture=v${outcome.capture_version}/${outcome.capture_policy_version} `
+          + `execution=${outcome.execution_policy_version} `
+          + `${outcome.status}:${outcome.reason} ${outcome.count} `
           + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
         );
       }
@@ -361,8 +401,26 @@ async function main() {
         + `${captureSummary.judgments.output_tokens} output tokens)`,
       );
       for (const outcome of captureSummary.judgments.outcomes) {
+        const returned = outcome.returned_provider && outcome.returned_model
+          ? `${outcome.returned_provider}/${outcome.returned_model}`
+          : 'none';
+        const judge = outcome.judge_provider && outcome.judge_model
+          ? `${outcome.judge_provider}/${outcome.judge_model}`
+          : 'none';
         console.log(
-          `  ${`${outcome.status}:${outcome.reason}`.padEnd(52)} ${outcome.count} `
+          `  candidate=${outcome.requested_provider}/${outcome.requested_model} `
+          + `source=${outcome.source_model}@config:${outcome.source_config_version_id} `
+          + `returned=${returned} code=${outcome.addie_code_version} `
+          + `capture=v${outcome.capture_version}/${outcome.capture_policy_version} `
+          + `execution=${outcome.execution_policy_version} `
+          + `human_evidence=${String(outcome.has_human_evidence)} `
+          + `judge=${judge} self_judged=${String(outcome.self_judged)} `
+          + `judgment=${outcome.judgment_policy_version}/`
+          + `${outcome.judge_prompt_version ?? 'none'} `
+          + `quality=${outcome.shadow_quality ?? 'none'} `
+          + `gap=${outcome.gap_severity ?? 'none'} `
+          + `shape_failures=${outcome.deterministic_failure_labels.join(',') || 'none'} `
+          + `${outcome.status}:${outcome.reason} ${outcome.count} `
           + `(${outcome.input_tokens} input / ${outcome.output_tokens} output tokens)`,
         );
       }
