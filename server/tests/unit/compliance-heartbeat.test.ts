@@ -1,0 +1,240 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  getAgentsDueForCheck: vi.fn(),
+  getRecentSupportedVersions: vi.fn(),
+  countComplianceRuns: vi.fn(),
+  deferComplianceCheckAfterInconclusiveTarget: vi.fn(),
+  resolveOwnerAuth: vi.fn(),
+  recordComplianceRun: vi.fn(),
+  query: vi.fn(),
+  comply: vi.fn(),
+  complianceResultToDbInput: vi.fn(),
+  classifyCapabilityResolutionError: vi.fn(),
+  presentCapabilityResolutionError: vi.fn(),
+  badgeEligibleVersionsForTargetSelection: vi.fn(),
+  selectComplianceTargetForAgentSelection: vi.fn(),
+  hostedComplianceTarget: vi.fn(),
+  logOutboundRequest: vi.fn(),
+  adaptAuthForSdk: vi.fn(),
+  revokeUnsupportedPublicBadges: vi.fn(),
+  runBadgeFanOut: vi.fn(),
+}));
+
+vi.mock('../../src/db/compliance-db.js', () => ({
+  ComplianceDatabase: class {
+    getAgentsDueForCheck = mocks.getAgentsDueForCheck;
+    getRecentSupportedVersions = mocks.getRecentSupportedVersions;
+    countComplianceRuns = mocks.countComplianceRuns;
+    deferComplianceCheckAfterInconclusiveTarget = mocks.deferComplianceCheckAfterInconclusiveTarget;
+    resolveOwnerAuth = mocks.resolveOwnerAuth;
+    recordComplianceRun = mocks.recordComplianceRun;
+    getBadgesForAgent = vi.fn().mockResolvedValue([]);
+    revokeBadge = vi.fn();
+  },
+}));
+
+vi.mock('../../src/db/client.js', () => ({
+  query: mocks.query,
+}));
+
+vi.mock('../../src/addie/services/compliance-testing.js', () => ({
+  HOSTED_TARGET_DISCOVERY_TIMEOUT_MS: 30_000,
+  comply: mocks.comply,
+  complianceResultToDbInput: mocks.complianceResultToDbInput,
+  classifyCapabilityResolutionError: mocks.classifyCapabilityResolutionError,
+  presentCapabilityResolutionError: mocks.presentCapabilityResolutionError,
+  badgeEligibleVersionsForTargetSelection: mocks.badgeEligibleVersionsForTargetSelection,
+  hasTrustworthyComplianceTarget: (selection: { source?: string }) => selection.source !== 'default',
+  storedComplianceTargetMatchesObservedProfile: (
+    selection: { source?: string; target?: { requested?: string } },
+    profile?: { adcp_supported_versions?: string[] },
+  ) => selection.source !== 'stored'
+    || Boolean(profile?.adcp_supported_versions?.includes(selection.target?.requested ?? '')),
+  selectComplianceTargetForAgentSelection: mocks.selectComplianceTargetForAgentSelection,
+}));
+
+vi.mock('../../src/services/hosted-compliance-version.js', () => ({
+  hostedComplianceTarget: mocks.hostedComplianceTarget,
+  HOSTED_FULL_COMPLIANCE_TIMEOUT_MS: 600_000,
+}));
+
+vi.mock('../../src/db/outbound-log-db.js', () => ({
+  logOutboundRequest: mocks.logOutboundRequest,
+}));
+
+vi.mock('../../src/services/sdk-auth-adapter.js', () => ({
+  adaptAuthForSdk: mocks.adaptAuthForSdk,
+}));
+
+vi.mock('../../src/services/badge-issuance.js', () => ({
+  revokeUnsupportedPublicBadges: mocks.revokeUnsupportedPublicBadges,
+  runBadgeFanOut: mocks.runBadgeFanOut,
+}));
+
+vi.mock('../../src/notifications/compliance.js', () => ({
+  notifyComplianceChange: vi.fn(),
+  notifyVerificationChange: vi.fn(),
+}));
+
+vi.mock('../../src/addie/error-notifier.js', () => ({
+  notifySystemError: vi.fn(),
+}));
+
+describe('runComplianceHeartbeatJob', () => {
+  const target = { requested: '3.1', version: '3.1.0' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.hostedComplianceTarget.mockReturnValue(target);
+    mocks.getAgentsDueForCheck.mockResolvedValue([
+      { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+    ]);
+    mocks.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mocks.resolveOwnerAuth.mockResolvedValue(undefined);
+    mocks.getRecentSupportedVersions.mockResolvedValue(['3.1']);
+    mocks.countComplianceRuns.mockResolvedValue(4);
+    mocks.adaptAuthForSdk.mockResolvedValue(undefined);
+    mocks.selectComplianceTargetForAgentSelection.mockResolvedValue({ target, confirmed: false, source: 'stored' });
+    mocks.classifyCapabilityResolutionError.mockReturnValue(null);
+    mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue([]);
+    mocks.complianceResultToDbInput.mockReturnValue({
+      agent_url: 'https://agent.example.com/mcp',
+      lifecycle_stage: 'testing',
+      overall_status: 'passing',
+      headline: 'All good',
+      tracks_json: [],
+      storyboard_statuses: [],
+      dry_run: true,
+    });
+    mocks.recordComplianceRun.mockResolvedValue({});
+  });
+
+  it('runs heartbeat against the selected canonical target and passes supported versions to badge fan-out', async () => {
+    const complianceResult = {
+      overall_status: 'passing',
+      summary: { headline: 'All good' },
+      agent_profile: {
+        specialisms: ['sales-broadcast-tv'],
+        adcp_supported_versions: ['3.0', '3.1'],
+      },
+    };
+    mocks.comply.mockResolvedValueOnce(complianceResult);
+    mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue(['3.1']);
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'run-31' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+    mocks.runBadgeFanOut.mockResolvedValueOnce({ issued: [], revoked: [], degraded: [], unchanged: [] });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 1, passed: 1, failed: 0, skipped: 0 });
+    expect(mocks.selectComplianceTargetForAgentSelection).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({ timeout_ms: 600_000 }),
+      target,
+      'canonical',
+      ['3.1'],
+    );
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining('make_interval'),
+      [['https://agent.example.com/mcp'], 960],
+    );
+    expect(mocks.comply).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      // storyboard_start_offset = runCount * 41 (stride for fast coverage,
+      // adcp#6632 / adcp-client#2639 rotation — mocked run count is 4)
+      expect.objectContaining({ timeout_ms: 600_000, storyboard_start_offset: 4 * 41 }),
+      target,
+    );
+    expect(mocks.runBadgeFanOut).toHaveBeenCalledWith(expect.objectContaining({
+      agentUrl: 'https://agent.example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      runId: 'run-31',
+      adcpVersions: ['3.1'],
+      supportedVersions: ['3.0', '3.1'],
+    }));
+  });
+
+  it('counts malformed saved Basic auth as a checked failure', async () => {
+    mocks.comply.mockRejectedValueOnce(new Error('step.auth.basic.username must be a non-empty string'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 1, passed: 0, failed: 1, skipped: 0 });
+    expect(mocks.comply).toHaveBeenCalledWith(
+      'https://agent.example.com/mcp',
+      expect.objectContaining({
+        timeout_ms: 600_000,
+      }),
+      target,
+    );
+    expect(mocks.recordComplianceRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agent_url: 'https://agent.example.com/mcp',
+        overall_status: 'failing',
+        headline: 'Saved Basic auth credentials are malformed',
+        observations_json: [{
+          category: 'authentication',
+          severity: 'warning',
+          message: 'The saved Basic auth credentials for this agent must include a non-empty username.',
+        }],
+      }),
+    );
+  });
+
+  it('defers on the normal cadence and skips when no trustworthy target exists', async () => {
+    mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+      { agent_url: 'https://agent.example.com/mcp', lifecycle_stage: 'testing', last_checked_at: null },
+    ]);
+    mocks.getRecentSupportedVersions.mockResolvedValueOnce([]);
+    mocks.selectComplianceTargetForAgentSelection.mockResolvedValueOnce({
+      target,
+      confirmed: false,
+      source: 'default',
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.comply).not.toHaveBeenCalled();
+    expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+
+  it('does not record a fallback failure when an error occurs before target selection', async () => {
+    mocks.resolveOwnerAuth.mockRejectedValueOnce(new Error('credential store unavailable'));
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.comply).not.toHaveBeenCalled();
+    expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+
+  it('does not publish a stored-target result superseded by the live run profile', async () => {
+    mocks.comply.mockResolvedValueOnce({
+      overall_status: 'failing',
+      summary: { headline: 'Version mismatch' },
+      agent_profile: { adcp_supported_versions: ['3.0'] },
+      observations: [],
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+  });
+});
