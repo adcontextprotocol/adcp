@@ -64,6 +64,7 @@ import {
   getShadowReplayGenerationSummary,
   getShadowReplayJudgmentSummary,
 } from "../addie/jobs/shadow-replay-trace.js";
+import { evaluateShadowReplayPromotion } from '../addie/jobs/shadow-replay-rollout.js';
 import { getModelExecutionReadiness } from '../addie/model-execution-readiness.js';
 import {
   ROUTER_SHADOW_RETENTION_DAYS,
@@ -572,7 +573,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/threads/shadow-replay-captures
-  // Per-opportunity rollout accounting contains only categorical outcomes.
+  // Per-opportunity accounting and the advisory promotion gate contain only
+  // aggregate/categorical evidence. This endpoint cannot enable a canary.
   apiRouter.get("/threads/shadow-replay-captures", async (req, res) => {
     try {
       const parsedDays = typeof req.query.days === 'string'
@@ -587,6 +589,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         getShadowReplayJudgmentSummary(parsedDays),
         getShadowReplayFunnelSummary(parsedDays),
       ]);
+      const rollout = evaluateShadowReplayPromotion(generationOutcomes, judgmentOutcomes);
       res.json({
         days: parsedDays,
         total: outcomes.reduce((sum, outcome) => sum + outcome.count, 0),
@@ -655,6 +658,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
           ).toString(),
           outcomes: judgmentOutcomes,
         },
+        rollout,
         funnel,
       });
     } catch (error) {
