@@ -4037,8 +4037,8 @@ registry.registerPath({
     },
   },
   responses: {
-    200: {
-      description: "Snapshot refreshed",
+    202: {
+      description: "Snapshot refreshed; compliance suite accepted for async execution",
       content: {
         "application/json": {
           schema: z.object({
@@ -4051,20 +4051,12 @@ registry.registerPath({
             checked_at: z.string(),
             error: z.string().optional(),
             compliance: z.object({
-              ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
-              run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
-              test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.1, 3.0, 3.1-rc, or 3.1-beta. Present when `ran` is true." }),
-              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.0.12 or 3.1.0-beta.7. Present when `ran` is true." }),
-              badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
-              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.0']." }),
-              overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
-              storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
-              storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
-              observations_count: z.number().int().optional().openapi({ description: "Number of advisory observations emitted by this run." }),
-              notices_count: z.number().int().optional().openapi({ description: "Number of run-summary notices emitted by this run." }),
-              error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
-            }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
+              ran: z.literal(false).openapi({ description: "Always false in the 202 response; the suite runs asynchronously. Poll /compliance/refresh-status?operation_id=... for completion." }),
+              operation_id: z.string().uuid().optional().openapi({ description: "Durable operation handle. Poll /compliance/refresh-status?operation_id=... to observe running, completed, or failed state." }),
+              status: z.enum(["running", "skipped"]).optional().openapi({ description: "running = suite accepted; skipped = compliance not eligible (probe error, oauth_required, no permission)." }),
+              auth_available: z.boolean().openapi({ description: "True when saved owner credentials were resolved for this run." }),
+              error: z.string().optional().openapi({ description: "Reason compliance was not started." }),
+            }).openapi({ description: "Async compliance operation. The capability/health probe is synchronous; the compliance suite runs in the background." }),
           }),
         },
       },
@@ -4072,7 +4064,7 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized — must be owner or AAO admin", content: { "application/json": { schema: ErrorSchema } } },
-    409: { description: "Monitoring paused for this agent", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Monitoring paused for this agent, or compliance refresh already in progress", content: { "application/json": { schema: ErrorSchema } } },
     429: {
       description: "Rate limit exceeded",
       content: {
@@ -4085,6 +4077,45 @@ registry.registerPath({
       },
     },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/compliance/refresh-status",
+  operationId: "getComplianceRefreshStatus",
+  summary: "Poll async compliance refresh status",
+  description:
+    "Return the status of an in-flight or completed async compliance refresh operation. Use the `operation_id` from the 202 response of POST /refresh. Completed operations include the `run_id` for use with /compliance and /compliance/diagnostics. Requires authentication; `triggered_by` is only surfaced to the agent's owner.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+    query: z.object({
+      operation_id: z.string().uuid().openapi({ description: "Operation ID from the 202 refresh response." }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Operation status",
+      content: {
+        "application/json": {
+          schema: z.object({
+            operation_id: z.string().uuid(),
+            status: z.enum(["pending", "completed", "failed"]),
+            run_id: z.string().uuid().nullable().openapi({ description: "Compliance run ID. Present when status is 'completed'." }),
+            error: z.string().nullable().openapi({ description: "Error message. Present when status is 'failed'." }),
+            created_at: z.string().datetime(),
+            completed_at: z.string().datetime().nullable(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL or operation_id", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Operation not found", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -7647,39 +7678,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         return res.status(502).json({ error: `Probe failed: ${message}` });
       }
 
-      // Also re-run compliance so the dashboard verdict updates alongside the
-      // capability/health probe. Prior to #4886, /refresh probed capabilities
-      // and health but left agent_storyboard_status untouched, leaving owners
-      // to stare at a stale verdict for up to a full heartbeat cycle after
-      // deploying a fix. The full storyboard suite can run for several minutes
-      // on capability-rich agents (bounded by HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).
-      // The per-agent 60s rate limit above only bounds repeat-clicks, not the
-      // duration of an in-flight run, so a second refresh of the same agent can
-      // start while the first is still running; that is acceptable for this
-      // owner/admin-gated path. comply() failure is a soft-fail — we still
-      // return the capability/health refresh so a partially-working agent still
-      // moves the snapshot forward.
-      let complianceSummary: {
-        ran: boolean;
-        requested_compliance_target?: string;
-        adcp_version?: string;
-        badge_eligible?: boolean;
-        badge_eligible_adcp_versions?: string[];
-        overall_status?: string;
-        storyboards_passing?: number;
-        storyboards_total?: number;
-        run_id?: string;
-        test_session_id?: string;
-        observations_count?: number;
-        notices_count?: number;
-        error?: string;
-      } = { ran: false };
-
-      // For admin callers without their own org credentials, fall back to
-      // heartbeat-style owner auth so the compliance result reflects the
-      // same credential state the periodic heartbeat uses. Without this,
-      // an admin refresh overwrites a valid credential-aware heartbeat
-      // verdict with an anonymous failure result (#7070).
+      // Resolve auth for compliance — admin callers without their own org
+      // credentials fall back to heartbeat-style owner auth (#7070).
       let complianceAuth = resolvedAuth;
       if (!complianceAuth && canRunCompliance && !ownerOrgId) {
         const ownerAuth = await complianceDb.resolveOwnerAuth(agentUrl);
@@ -7688,119 +7688,151 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
         }
       }
 
-      if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
-        const complianceStart = Date.now();
-        try {
-          const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
-          const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
-          // adcp#6632 — rotate storyboard starting point so budget-limited
-          // refreshes cover different tracks on each run, matching heartbeat.
-          const storyboardStartOffset = await complianceDb.countComplianceRuns(agentUrl);
-          const complyOptions = {
-            test_session_id: testSessionId,
-            timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
-            userAgent: AAO_UA_COMPLIANCE,
-            storyboard_start_offset: storyboardStartOffset,
-            ...(complianceAuth && { auth: complianceAuth }),
-          };
-          const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
-          const runTargetSelection = await selectComplianceTargetForAgentSelection(
-            agentUrl,
-            complyOptions,
-            complianceTarget,
-            'canonical',
-            seededSupportedVersions,
-          );
-          if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
-            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
-          }
-          const runTarget = runTargetSelection.target;
-          const complyResult = await comply(agentUrl, complyOptions, runTarget);
-          if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
-            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
-          }
-          const runBadgeEligibleVersions = [
-            ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
-          ];
-          logOutboundRequest({
-            agent_url: agentUrl,
-            request_type: 'compliance',
-            user_agent: AAO_UA_COMPLIANCE,
-            response_time_ms: Date.now() - complianceStart,
-            success: true,
-          });
-          if (complyResult.overall_status === 'auth_required') {
-            complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
-          } else {
-            const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-            const dbInput = complianceResultToDbInput(
-              complyResult,
-              agentUrl,
-              metadata?.lifecycle_stage || 'production',
-              triggeredBy,
-            );
-            dbInput.dry_run = false;
-            dbInput.triggered_org_id = ownerOrgId;
-            const { run, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
-            const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
-            complianceSummary = {
-              ran: true,
-              run_id: run.id,
-              test_session_id: testSessionId,
-              requested_compliance_target: runTarget.requested,
-              adcp_version: complyResult.adcp_version,
-              ...badgeEligibilityMetadata(runBadgeEligibleVersions),
-              overall_status: dbInput.overall_status,
-              storyboards_passing: passing,
-              storyboards_total: storyboardStatuses.length,
-              observations_count: Array.isArray(dbInput.observations_json) ? dbInput.observations_json.length : 0,
-              notices_count: Array.isArray(dbInput.notices_json) ? dbInput.notices_json.length : 0,
-            };
+      // #7083 — run compliance asynchronously. The full storyboard suite
+      // takes several minutes on capability-rich agents (bounded by
+      // HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600s), exceeding the ~125s
+      // Cloudflare edge timeout. Return 202 with an operation handle;
+      // comply() runs in-process and persists results on completion.
+      // The unique partial index on (agent_url, status='pending')
+      // coalesces concurrent requests across VMs.
+      let complianceSummary: {
+        ran: boolean;
+        operation_id?: string;
+        status?: string;
+        error?: string;
+      } = { ran: false };
 
-            // Fan out badge issuance so verification badges reflect the new
-            // verdict immediately. Matches the per-storyboard owner-test path.
-            const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0 && runBadgeEligibleVersions.length > 0) {
-              try {
-                await runBadgeFanOut({
-                  complianceDb,
-                  agentUrl,
-                  declaredSpecialisms,
-                  runId: run.id,
-                  adcpVersions: runBadgeEligibleVersions,
-                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-                });
-              } catch (badgeError) {
-                logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
+      if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
+        const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
+        const operation = await complianceDb.createComplianceOperation({
+          agentUrl,
+          triggeredBy,
+          triggeredOrgId: ownerOrgId,
+          userId: req.user.id,
+        });
+
+        if (!operation) {
+          const pending = await complianceDb.getPendingComplianceOperation(agentUrl);
+          complianceSummary = {
+            ran: false,
+            operation_id: pending?.id,
+            status: 'running',
+            error: 'Compliance refresh already in progress',
+          };
+        } else {
+          complianceSummary = {
+            ran: false,
+            operation_id: operation.id,
+            status: 'running',
+          };
+
+          // Capture values for the background closure.
+          const operationId = operation.id;
+          const capturedComplianceAuth = complianceAuth;
+          const capturedOwnerOrgId = ownerOrgId;
+
+          setImmediate(async () => {
+            const complianceStart = Date.now();
+            try {
+              const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
+              // adcp#6632 — rotate storyboard starting point so budget-limited
+              // refreshes cover different tracks on each run, matching heartbeat.
+              const storyboardStartOffset = await complianceDb.countComplianceRuns(agentUrl);
+              const complyOptions = {
+                test_session_id: testSessionId,
+                timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+                userAgent: AAO_UA_COMPLIANCE,
+                storyboard_start_offset: storyboardStartOffset,
+                ...(capturedComplianceAuth && { auth: capturedComplianceAuth }),
+              };
+              const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
+              const runTargetSelection = await selectComplianceTargetForAgentSelection(
+                agentUrl,
+                complyOptions,
+                complianceTarget,
+                'canonical',
+                seededSupportedVersions,
+              );
+              if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+                throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
               }
-            } else {
-              try {
-                await revokeUnsupportedPublicBadges({
-                  complianceDb,
-                  agentUrl,
-                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-                });
-              } catch (badgeError) {
-                logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after manual refresh');
+              const runTarget = runTargetSelection.target;
+              const complyResult = await comply(agentUrl, complyOptions, runTarget);
+              if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+                throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
               }
+              const runBadgeEligibleVersions = [
+                ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
+              ];
+              logOutboundRequest({
+                agent_url: agentUrl,
+                request_type: 'compliance',
+                user_agent: AAO_UA_COMPLIANCE,
+                response_time_ms: Date.now() - complianceStart,
+                success: true,
+              });
+              if (complyResult.overall_status === 'auth_required') {
+                await complianceDb.failComplianceOperation(operationId, 'Agent requires OAuth authorization');
+              } else {
+                const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+                const dbInput = complianceResultToDbInput(
+                  complyResult,
+                  agentUrl,
+                  metadata?.lifecycle_stage || 'production',
+                  triggeredBy,
+                );
+                dbInput.dry_run = false;
+                dbInput.triggered_org_id = capturedOwnerOrgId;
+                const { run, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+
+                await complianceDb.completeComplianceOperation(operationId, run.id);
+
+                const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
+                if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0 && runBadgeEligibleVersions.length > 0) {
+                  try {
+                    await runBadgeFanOut({
+                      complianceDb,
+                      agentUrl,
+                      declaredSpecialisms,
+                      runId: run.id,
+                      adcpVersions: runBadgeEligibleVersions,
+                      supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                    });
+                  } catch (badgeError) {
+                    logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after async refresh');
+                  }
+                } else {
+                  try {
+                    await revokeUnsupportedPublicBadges({
+                      complianceDb,
+                      agentUrl,
+                      supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
+                    });
+                  } catch (badgeError) {
+                    logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after async refresh');
+                  }
+                }
+              }
+            } catch (complyErr) {
+              const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
+              logOutboundRequest({
+                agent_url: agentUrl,
+                request_type: 'compliance',
+                user_agent: AAO_UA_COMPLIANCE,
+                response_time_ms: Date.now() - complianceStart,
+                success: false,
+                error_message: msg,
+              });
+              logger.warn({ agentUrl, err: complyErr }, 'Async compliance run failed during refresh');
+              await complianceDb.failComplianceOperation(operationId, msg).catch(dbErr => {
+                logger.error({ err: dbErr, operationId }, 'Failed to mark compliance operation as failed');
+              });
             }
-          }
-        } catch (complyErr) {
-          const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
-          logOutboundRequest({
-            agent_url: agentUrl,
-            request_type: 'compliance',
-            user_agent: AAO_UA_COMPLIANCE,
-            response_time_ms: Date.now() - complianceStart,
-            success: false,
-            error_message: msg,
           });
-          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during owner refresh');
-          complianceSummary = { ran: false, error: msg };
         }
       }
 
-      return res.json({
+      return res.status(202).json({
         ...probeResult,
         compliance: {
           ...complianceSummary,
@@ -7811,6 +7843,54 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       logger.error({ err: error, path: req.path }, "Failed to refresh agent");
       res.status(500).json({ error: "Failed to refresh agent" });
     }
+  });
+
+  // ── Async compliance refresh status polling (adcp#7083) ──────────
+  router.get(
+    "/registry/agents/:encodedUrl/compliance/refresh-status",
+    ...complianceWriteMiddleware,
+    async (req, res) => {
+      try {
+        const agentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(agentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+        const operationId = typeof req.query.operation_id === "string" ? req.query.operation_id : undefined;
+        if (!operationId || !isUuid(operationId)) {
+          return res.status(400).json({ error: "operation_id query parameter required (UUID)" });
+        }
+
+        const operation = await complianceDb.getComplianceOperation(operationId);
+        if (!operation || operation.agent_url !== canonicalizeAgentUrl(agentUrl) && operation.agent_url !== agentUrl) {
+          return res.status(404).json({ error: "Operation not found" });
+        }
+
+        return res.json({
+          operation_id: operation.id,
+          status: operation.status,
+          run_id: operation.run_id,
+          error: operation.error,
+          created_at: operation.created_at,
+          completed_at: operation.completed_at,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to get compliance refresh status");
+        res.status(500).json({ error: "Failed to get compliance refresh status" });
+      }
+    },
+  );
+
+  // ── Stale operation reaper (startup) ────────────────────────────
+  // Reap operations stuck in 'pending' longer than the compliance
+  // timeout — these are from processes that died mid-run (deploy,
+  // crash). The unique partial index then unblocks the next refresh.
+  complianceDb.reapStaleComplianceOperations(HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + 60_000).then(reaped => {
+    if (reaped > 0) logger.info({ reaped }, 'Reaped stale compliance operations on startup');
+  }).catch(err => {
+    logger.warn({ err }, 'Failed to reap stale compliance operations on startup');
   });
 
   // ── Per-step compliance diagnostics (owner/static-admin, adcp#4738) ─

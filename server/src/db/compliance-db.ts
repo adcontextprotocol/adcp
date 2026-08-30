@@ -2136,6 +2136,101 @@ export class ComplianceDatabase {
     return result.rows as AgentVerificationBadge[];
   }
 
+  // ── Compliance operations (async refresh, #7083) ─────────────────
+
+  async createComplianceOperation(input: {
+    agentUrl: string;
+    triggeredBy: string;
+    triggeredOrgId: string | null;
+    userId: string;
+  }): Promise<{ id: string; created_at: string } | null> {
+    try {
+      const result = await query(
+        `INSERT INTO compliance_operations (agent_url, triggered_by, triggered_org_id, user_id)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, created_at`,
+        [input.agentUrl, input.triggeredBy, input.triggeredOrgId, input.userId],
+      );
+      return result.rows[0] as { id: string; created_at: string };
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err as { code: string }).code === '23505') {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  async completeComplianceOperation(operationId: string, runId: string): Promise<void> {
+    await query(
+      `UPDATE compliance_operations
+       SET status = 'completed', run_id = $2, completed_at = NOW()
+       WHERE id = $1 AND status = 'pending'`,
+      [operationId, runId],
+    );
+  }
+
+  async failComplianceOperation(operationId: string, error: string): Promise<void> {
+    await query(
+      `UPDATE compliance_operations
+       SET status = 'failed', error = $2, completed_at = NOW()
+       WHERE id = $1 AND status = 'pending'`,
+      [operationId, error],
+    );
+  }
+
+  async getPendingComplianceOperation(agentUrl: string): Promise<{
+    id: string;
+    created_at: string;
+    triggered_by: string;
+  } | null> {
+    const result = await query(
+      `SELECT id, created_at, triggered_by
+       FROM compliance_operations
+       WHERE agent_url = $1 AND status = 'pending'
+       LIMIT 1`,
+      [agentUrl],
+    );
+    return (result.rows[0] as { id: string; created_at: string; triggered_by: string }) ?? null;
+  }
+
+  async getComplianceOperation(operationId: string): Promise<{
+    id: string;
+    agent_url: string;
+    status: string;
+    run_id: string | null;
+    error: string | null;
+    created_at: string;
+    completed_at: string | null;
+  } | null> {
+    const result = await query(
+      `SELECT id, agent_url, status, run_id, error, created_at, completed_at
+       FROM compliance_operations
+       WHERE id = $1`,
+      [operationId],
+    );
+    return (result.rows[0] as {
+      id: string;
+      agent_url: string;
+      status: string;
+      run_id: string | null;
+      error: string | null;
+      created_at: string;
+      completed_at: string | null;
+    }) ?? null;
+  }
+
+  async reapStaleComplianceOperations(maxAgeMs: number): Promise<number> {
+    const result = await query(
+      `UPDATE compliance_operations
+       SET status = 'failed', error = 'operation timed out (stale)', completed_at = NOW()
+       WHERE status = 'pending'
+         AND created_at < NOW() - make_interval(secs => $1)
+       RETURNING id`,
+      [Math.ceil(maxAgeMs / 1000)],
+    );
+    return result.rowCount ?? 0;
+  }
+
   private computeStatus(overallRunStatus: OverallRunStatus): ComplianceStatus {
     switch (overallRunStatus) {
       case 'passing': return 'passing';
