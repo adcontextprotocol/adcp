@@ -78,6 +78,14 @@ import {
   type StreamEvent,
 } from '../../src/addie/claude-client.js';
 import type { AddieTool } from '../../src/addie/types.js';
+import type {
+  ModelProvider,
+  ModelProviderId,
+  ModelRequest,
+  ModelRespondOptions,
+  NormalizedModelEvent,
+  PreparedModelInvocation,
+} from '../../src/addie/model-providers/model-provider.js';
 
 const usage = { input_tokens: 3, output_tokens: 2 };
 
@@ -127,6 +135,59 @@ function invocationHmac(key: string, domain: string, value: string): string {
     .update('\0', 'utf8')
     .update(value, 'utf8')
     .digest('hex');
+}
+
+function fakeProvider(
+  id: ModelProviderId,
+  responseText: string,
+): ModelProvider & {
+  prepare: ReturnType<typeof vi.fn<(request: ModelRequest) => PreparedModelInvocation>>;
+  respond: ReturnType<typeof vi.fn<(
+    request: ModelRequest,
+    options?: ModelRespondOptions,
+  ) => AsyncIterable<NormalizedModelEvent>>>;
+} {
+  const capabilities = {
+    streaming: false,
+    structuredOutput: true,
+    reasoning: true,
+    reasoningEfforts: ['provider_default', 'none', 'low', 'medium', 'high'] as const,
+    customTools: true,
+    providerWebSearch: false,
+    imageInput: false,
+    documentInput: false,
+  };
+  const prepare = vi.fn((request: ModelRequest): PreparedModelInvocation => ({
+    provider: id,
+    model: request.model,
+    capabilities,
+    providerRequest: structuredClone({
+      model: request.model,
+      system: request.system,
+      messages: request.messages,
+      tools: request.tools,
+      maxOutputTokens: request.maxOutputTokens,
+    }),
+  }));
+  const respond = vi.fn((request: ModelRequest, options?: ModelRespondOptions) => (async function* () {
+    const prepared = prepare(request);
+    await options?.beforeDispatch?.(prepared);
+    yield { type: 'response_start', provider: id, model: request.model, id: `${id}-response` };
+    yield { type: 'text_delta', index: 0, text: responseText };
+    yield {
+      type: 'response_complete',
+      response: {
+        provider: id,
+        model: request.model,
+        id: `${id}-response`,
+        content: [{ type: 'text', text: responseText }],
+        finishReason: 'stop',
+        providerFinishReason: 'stop',
+        usage: { inputTokens: 7, outputTokens: 3 },
+      },
+    };
+  })());
+  return { id, capabilities, prepare, respond };
 }
 
 beforeEach(() => {
@@ -678,6 +739,105 @@ describe('AddieClaudeClient isolated execution policy', () => {
     expect(replayTools.some((entry) => entry.name === 'web_search')).toBe(false);
     expect(shadowTools).toEqual(replayTools);
     expect(shadowTools.some((entry) => entry.name === 'web_search')).toBe(false);
+  });
+
+  it('runs an injected alternate provider exactly once for a full shadow response', async () => {
+    const normalProvider = fakeProvider('google', 'normal response must not run');
+    const exactlyOnceProvider = fakeProvider('google', 'shadow candidate');
+    const client = new AddieClaudeClient(
+      'unused',
+      'gemini-test',
+      undefined,
+      { provider: normalProvider, exactlyOnceProvider },
+    );
+    const prepared = client.prepareMessageInvocation(
+      'private question',
+      undefined,
+      undefined,
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'shadow',
+        disableServerTools: true,
+        invocationHashKey: 'alternate-provider-key',
+        invocationHashDomain: 'alternate-provider-shadow:v1',
+      },
+    );
+    const snapshots: InvocationPreparedSnapshot[] = [];
+
+    const response = await client.processMessage(
+      'private question',
+      undefined,
+      undefined,
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'shadow',
+        disableServerTools: true,
+        invocationHashKey: 'alternate-provider-key',
+        invocationHashDomain: 'alternate-provider-shadow:v1',
+        onInvocationPrepared: (snapshot) => snapshots.push(snapshot),
+      },
+    );
+
+    expect(normalProvider.respond).not.toHaveBeenCalled();
+    expect(exactlyOnceProvider.respond).toHaveBeenCalledOnce();
+    expect(sdkState.calls).toHaveLength(0);
+    expect(snapshots).toEqual([prepared]);
+    expect(response).toMatchObject({
+      text: 'Shadow candidate',
+      model_execution: {
+        source: 'provider',
+        requested_provider: 'google',
+        requested_model: 'gemini-test',
+        provider: 'google',
+        model: 'gemini-test',
+        model_resolution: 'exact',
+        fallback_reason: null,
+      },
+      usage: { input_tokens: 7, output_tokens: 3 },
+    });
+    const dispatchedRequest = exactlyOnceProvider.prepare.mock.calls[0][0];
+    expect(dispatchedRequest.system.every((block) => block.cacheHint === undefined)).toBe(true);
+    expect(dispatchedRequest.providerTools).toBeUndefined();
+  });
+
+  it('keeps alternate providers dormant for production delivery', async () => {
+    const provider = fakeProvider('openai', 'must not run');
+    const client = new AddieClaudeClient(
+      'unused',
+      'gpt-test',
+      undefined,
+      { provider },
+    );
+
+    await expect(client.processMessage(
+      'production question',
+      undefined,
+      undefined,
+      { systemPrompt: 'system' },
+      { uncapped: true },
+    )).rejects.toThrow('restricted to isolated execution');
+    const stream = client.processMessageStream(
+      'production stream',
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+    await expect(stream.next()).rejects.toThrow('restricted to isolated execution');
+
+    expect(provider.prepare).not.toHaveBeenCalled();
+    expect(provider.respond).not.toHaveBeenCalled();
+  });
+
+  it('rejects a binding whose exactly-once provider could cross provider state', () => {
+    expect(() => new AddieClaudeClient(
+      'unused',
+      'test-model',
+      undefined,
+      {
+        provider: fakeProvider('openai', 'unused'),
+        exactlyOnceProvider: fakeProvider('google', 'unused'),
+      },
+    )).toThrow('must use the same provider');
   });
 
   it('keeps the large cacheable prompt block stable across routed domains', () => {
