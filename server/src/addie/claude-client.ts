@@ -1259,14 +1259,17 @@ export class AddieClaudeClient {
     return fork;
   }
 
-  private prepareFirstNonStreamingInvocation(
+  /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
+  private prepareFirstInvocation(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
+    delivery: 'non_streaming' | 'streaming' = 'non_streaming',
   ) {
-    const requestWebSearchEnabled = this.webSearchEnabled
+    const requestWebSearchEnabled = delivery === 'non_streaming'
+      && this.webSearchEnabled
       && !isIsolatedExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
@@ -1388,7 +1391,7 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
   ): InvocationPreparedSnapshot {
-    const prepared = this.prepareFirstNonStreamingInvocation(
+    const prepared = this.prepareFirstInvocation(
       userMessage,
       threadContext,
       requestTools,
@@ -1512,7 +1515,7 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
-    const prepared = this.prepareFirstNonStreamingInvocation(
+    const prepared = this.prepareFirstInvocation(
       userMessage,
       threadContext,
       requestTools,
@@ -2132,38 +2135,33 @@ export class AddieClaudeClient {
       ? await getCurrentConfigVersionId()
       : undefined;
 
-    // Determine effective model (support precision mode override for billing/financial)
-    const effectiveModel = options?.modelOverride ?? this.model;
+    const prepared = this.prepareFirstInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      undefined,
+      options,
+      'streaming',
+    );
+    const {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      modelMessages,
+      customTools,
+      modelTools,
+    } = prepared;
+    systemPromptMs = prepared.systemPromptMs;
+
     if (options?.modelOverride && options.modelOverride !== this.model) {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools, deduplicating by name (last wins)
-    // Calculate tool count first to inform token budget for conversation history
-    const allowedToolNames = options?.allowedToolNames
-      ? new Set(options.allowedToolNames)
-      : null;
-    const allTools = mergeAddieToolDefinitions(
-      this.tools,
-      requestTools?.tools,
-      options?.allowedToolNames,
-    );
-    const allHandlers = new Map(
-      [...this.toolHandlers, ...(requestTools?.handlers || [])]
-        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
-    );
-
-    // Build the prompt after resolving the exact tool wire surface so domain
-    // guidance and the authoritative catalog cannot advertise omitted tools.
-    const promptStart = Date.now();
-    const systemBlocks = this.buildSystemBlocks(
-      allTools.map(tool => tool.name),
-      options?.selectedToolSetNames,
-      options?.requestContext,
-    );
-    systemPromptMs = Date.now() - promptStart;
-
-    const executeToolCall = createAddieToolExecutor(allTools, allHandlers, {
+    const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
       executionMode: options?.executionMode ?? 'production',
       policy: options?.toolExecutionPolicy,
       notificationContext: {
@@ -2171,19 +2169,6 @@ export class AddieClaudeClient {
         userDisplayName: options?.userDisplayName,
         threadId: options?.threadId,
       },
-    });
-    const toolCount = allTools.length; // Note: streaming doesn't use web search
-
-    // Build proper message turns from thread context
-    // This sends conversation history as actual user/assistant turns, not flattened text
-    // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Compact old tool results in all conversations to reclaim context
-    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: effectiveModel,
-      toolCount,
-      maxMessages: options?.maxMessages,
-      compactToolResults: true,
-      currentSpeakerName: options?.currentSpeakerName,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -2196,30 +2181,7 @@ export class AddieClaudeClient {
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
       );
-      // Inject dropped conversation summary so Addie has context from earlier turns
-      if (messageTurnsResult.messagesRemoved > 10) {
-        const summary = messageTurnsResult.droppedMessages
-          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
-          : null;
-        const contextWarning = summary
-          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
-        systemBlocks.push({ type: 'text', text: contextWarning });
-      }
     }
-
-    const messages: Anthropic.MessageParam[] = appendInputAttachments(
-      toAnthropicMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-    const modelMessages = appendModelInputAttachments(
-      toModelMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-
-    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
-    // Mark the last tool with cache_control so Anthropic caches all tool definitions.
-    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
-    const modelTools = buildModelToolDefinitions(allTools);
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
     let lastProviderModel: string | undefined;
