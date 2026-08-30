@@ -424,8 +424,12 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
 - Add, update, query, claim, triage, enrich, and suggest prospects. Do not fabricate missing research inputs.`,
   admin_feeds: `### Admin industry-feed operations
 - Search and maintain industry sources, review feed proposals, and add verified media contacts.`,
-  admin_groups: `### Admin group operations
-- Maintain chapters and temporary gatherings, committee leadership, and working-group membership or names.`,
+  admin_group_structure: `### Admin group-structure operations
+- Create or list chapters and temporary gatherings, and rename working groups.`,
+  admin_group_leadership: `### Admin group-leadership operations
+- List working groups before adding, removing, or reviewing committee leaders.`,
+  admin_group_membership: `### Admin group-membership operations
+- List working groups before adding or removing working-group members.`,
   admin_organizations: `### Admin organization operations
 - Diagnose domains and duplicates; inspect membership and roles; maintain profiles and logos. Profiles default to hidden until published, so check subscription and publication state before changing them.`,
   admin_workflows: `### Admin workflow operations
@@ -572,6 +576,13 @@ function selectedAdminModules(scope: AddieToolReferenceScope): string[] {
     TOOL_SETS[name]?.tools.some(toolName => available.has(toolName));
   if (selected.has('admin')) {
     return Object.keys(ADMIN_TOOL_REFERENCE_MODULES).filter(hasAvailableTool);
+  }
+  if (selected.has('admin_groups')) {
+    return [
+      'admin_group_structure',
+      'admin_group_leadership',
+      'admin_group_membership',
+    ].filter(hasAvailableTool);
   }
   if (selected.size > 0) {
     return Object.keys(ADMIN_TOOL_REFERENCE_MODULES)

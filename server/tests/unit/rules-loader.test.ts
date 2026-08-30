@@ -251,6 +251,24 @@ describe('Addie tool reference', () => {
     expect(reference).not.toContain('### Admin workflow operations');
   });
 
+  it('scopes group-admin guidance while preserving the hidden compatibility route', () => {
+    const leadership = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_group_leadership'], true, false),
+      selectedToolSetNames: ['admin_group_leadership'],
+    });
+    const legacy = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_groups'], true, false),
+      selectedToolSetNames: ['admin_groups'],
+    });
+
+    expect(leadership).toContain('### Admin group-leadership operations');
+    expect(leadership).not.toContain('### Admin group-membership operations');
+    expect(leadership).not.toContain('### Admin group-structure operations');
+    expect(legacy).toContain('### Admin group-leadership operations');
+    expect(legacy).toContain('### Admin group-membership operations');
+    expect(legacy).toContain('### Admin group-structure operations');
+  });
+
   it('keeps the cacheable guidance stable while domain instructions vary', () => {
     const stable = buildAddieStableToolReference();
     const scoped = buildAddieScopedToolReference({

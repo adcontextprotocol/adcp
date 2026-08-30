@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(64);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(64);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(66);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(66);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
@@ -150,11 +150,12 @@ describe('strict router eval', () => {
       'community_research', 'schema_reference',
       'member_billing', 'billing', 'events', 'meetings',
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
-      'admin_groups', 'admin_organizations', 'admin_workflows', 'admin_brands',
+      'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
+      'admin_organizations', 'admin_workflows', 'admin_brands',
       'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(63);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(65);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -196,6 +197,9 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('select exactly ["agent_validation", "property_catalog"]');
     expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
     expect(admin).toContain('always select exactly ["events", "admin_events"]');
+    expect(admin).toContain('→ ["admin_group_structure"]');
+    expect(admin).toContain('→ ["admin_group_leadership"]');
+    expect(admin).toContain('→ ["admin_group_membership"]');
   });
 
   it('routes equivalent conceptual protocol requirements to the same retrieval domain', () => {
