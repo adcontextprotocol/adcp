@@ -1097,6 +1097,25 @@ export class ComplianceDatabase {
    * window. This is a warm fallback for transient capability-discovery
    * failures; live discovery remains authoritative whenever it succeeds.
    */
+  /**
+   * Number of recorded compliance runs for an agent (all-time, including
+   * dry runs). Used as the persisted per-agent `storyboard_start_offset`
+   * for budget-limited heartbeat assessments (adcp#6632 /
+   * adcp-client#2639): the offset is applied modulo the runnable
+   * storyboard count, so any monotonically increasing integer distributes
+   * coverage across truncated runs — the run counter is exactly that, with
+   * no schema change.
+   */
+  async countComplianceRuns(agentUrl: string): Promise<number> {
+    const result = await query(
+      `SELECT COUNT(*)::int AS run_count FROM agent_compliance_runs WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    const raw = result.rows[0]?.run_count;
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? 0), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
   async getRecentSupportedVersions(agentUrl: string, maxAgeHours = 7 * 24): Promise<string[]> {
     if (!Number.isInteger(maxAgeHours) || maxAgeHours <= 0) {
       throw new Error('maxAgeHours must be a positive integer');
