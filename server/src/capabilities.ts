@@ -596,9 +596,10 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "mcp",
         ...agentConfigAuthFields(auth),
-      // TODO(adcp-client#1799): maxResponseBytes is currently dormant on
-      // getAgentInfo/listTools — the SDK doesn't yet wrap that path in
-      // withResponseSizeLimit. Re-verify when upstream lands.
+      // SDK 14 beta.15 applies maxResponseBytes to getAgentInfo/listTools,
+      // but MCP endpoint discovery and SSE responses remain outside that
+      // limit. Treat this as a guardrail, not a hostile-peer hard cap
+      // (adcp-client#1799).
       }], withSdkSafeTransport({
         userAgent: AAO_UA_DISCOVERY,
         transport: { maxResponseBytes: 4 * 1024 * 1024 },
@@ -642,7 +643,7 @@ export class CapabilityDiscovery {
         agent_uri: url,
         protocol: "a2a",
         ...agentConfigAuthFields(auth),
-      // TODO(adcp-client#1799): cap dormant on A2AClient.fromCardUrl until upstream wraps it.
+      // The discovery cap also covers A2AClient.fromCardUrl in SDK 14 beta.15.
       }], withSdkSafeTransport({
         userAgent: AAO_UA_DISCOVERY,
         transport: { maxResponseBytes: 4 * 1024 * 1024 },

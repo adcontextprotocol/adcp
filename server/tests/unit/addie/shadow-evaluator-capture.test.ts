@@ -76,6 +76,13 @@ function baseDependencies() {
   const getMember = vi.fn().mockResolvedValue({ slackUserId: 'U_TEST' });
   const getChannel = vi.fn().mockResolvedValue({ viewing_channel_is_private: false });
   const resolveTrace = vi.fn().mockResolvedValue(authorizedTrace());
+  const forkForIsolatedProvider = vi.fn();
+  const sourceClient = {
+    prepareMessageInvocation,
+    isWebSearchEnabled: () => true,
+    processMessage: providerCall,
+    forkForIsolatedProvider,
+  };
   return {
     providerCall,
     judgeCall,
@@ -83,17 +90,15 @@ function baseDependencies() {
     getMember,
     getChannel,
     resolveTrace,
+    sourceClient,
+    forkForIsolatedProvider,
     dependencies: {
       purgeTraces: vi.fn().mockResolvedValue(0),
       recoverGenerations: vi.fn().mockResolvedValue(0),
       listPending: vi.fn().mockResolvedValue([capture]),
       resolveTrace,
       completeCapture,
-      getClient: vi.fn().mockReturnValue({
-        prepareMessageInvocation,
-        isWebSearchEnabled: () => true,
-        processMessage: providerCall,
-      }),
+      getClient: vi.fn().mockReturnValue(sourceClient),
       getDocsFingerprint: vi.fn().mockReturnValue('docs-fingerprint'),
       getConfigVersionId: vi.fn().mockResolvedValue(42),
       getMember,
@@ -114,6 +119,12 @@ function baseDependencies() {
         reason: 'generation_disabled',
         dailyLimit: 0,
       }),
+      selectReplayTarget: vi.fn().mockReturnValue({
+        mode: 'source',
+        reason: 'google_disabled',
+      }),
+      createGoogleProvider: vi.fn(),
+      prepareReplayTarget: vi.fn(),
       selectJudgeActivation: vi.fn().mockReturnValue({
         enabled: false,
         reason: 'judge_disabled',
@@ -164,6 +175,135 @@ describe('shadow evaluator capture-only orchestration', () => {
       expect.objectContaining({ status: 'skipped', reason: 'config_version_drift' }),
     );
     expect(fixture.getMember).not.toHaveBeenCalled();
+    expect(fixture.providerCall).not.toHaveBeenCalled();
+  });
+
+  it('blocks a partially configured alternate target before claim', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.selectReplayTarget = vi.fn().mockReturnValue({
+      mode: 'blocked',
+      reason: 'google_model_invalid',
+    });
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ skipped: 1, errors: 0 });
+    expect(fixture.completeCapture).toHaveBeenCalledWith(
+      capture.trace_id,
+      capture.thread_id,
+      expect.objectContaining({
+        status: 'verified',
+        reason: 'replay_google_model_invalid',
+        parityVerified: true,
+      }),
+    );
+    expect(fixture.dependencies.claimGeneration).not.toHaveBeenCalled();
+    expect(fixture.forkForIsolatedProvider).not.toHaveBeenCalled();
+  });
+
+  it('binds one prepared Google target through claim, execution, and completion', async () => {
+    const fixture = baseDependencies();
+    fixture.dependencies.selectReplayActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    const selection = {
+      mode: 'alternate' as const,
+      reason: 'google_enabled' as const,
+      provider: 'google' as const,
+      model: 'gemini-3.7-flash' as const,
+    };
+    const provider = { id: 'google' as const };
+    const candidateClient = { processMessage: vi.fn() };
+    const target = {
+      provider: selection.provider,
+      model: selection.model,
+      firstInvocation: {
+        execution_mode: 'replay' as const,
+        model: selection.model,
+        iteration: 1,
+        attempt: 1,
+        system_blocks: [],
+        tool_schemas: [],
+        message_payloads: [],
+        message_count: 1,
+        provider_request_sha256: '9'.repeat(64),
+      },
+    };
+    const generationTarget = {
+      provider: selection.provider,
+      model: selection.model,
+      firstProviderRequestHmac: target.firstInvocation.provider_request_sha256,
+    };
+    fixture.dependencies.selectReplayTarget = vi.fn().mockReturnValue(selection);
+    fixture.dependencies.createGoogleProvider = vi.fn().mockReturnValue(provider);
+    fixture.forkForIsolatedProvider.mockReturnValue(candidateClient);
+    fixture.dependencies.prepareReplayTarget = vi.fn().mockReturnValue(target);
+    fixture.dependencies.selectJudgeActivation = vi.fn().mockReturnValue({
+      enabled: true,
+      reason: 'enabled',
+      dailyLimit: 5,
+    });
+    fixture.dependencies.hydrateHumanEvidence = vi.fn().mockResolvedValue({
+      slackMessageTs: '1000.3',
+      userId: 'U_HUMAN',
+      content: 'A substantive human answer used only in memory.',
+    });
+    fixture.dependencies.resolveJudgeModel = vi.fn().mockReturnValue('claude-judge');
+    fixture.dependencies.getJudgeClient = vi.fn().mockReturnValue({ messages: {} });
+    fixture.dependencies.claimGeneration = vi.fn().mockResolvedValue('claimed');
+    const generation = {
+      traceId: capture.trace_id,
+      provider: selection.provider,
+      model: selection.model,
+      returnedProvider: 'google' as const,
+      returnedModel: 'gemini-3.7-flash-20260801',
+      executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
+      completeFidelity: false,
+      status: 'blocked' as const,
+      reason: 'generation_blocked',
+      outputHmac: 'b'.repeat(64),
+      outputBytes: 42,
+      invocations: [{
+        iteration: 1,
+        attempt: 1,
+        provider_request_hmac: target.firstInvocation.provider_request_sha256,
+      }],
+      toolExecutions: [],
+      blockedCapabilities: ['generation_blocked'],
+      inputTokens: 20,
+      outputTokens: 10,
+    };
+    fixture.dependencies.executeReplay = vi.fn().mockResolvedValue(generation);
+
+    const result = await runShadowEvaluatorJob({ limit: 5 }, fixture.dependencies as never);
+
+    expect(result).toMatchObject({ skipped: 1, errors: 0 });
+    expect(fixture.forkForIsolatedProvider).toHaveBeenCalledWith(selection.model, { provider });
+    expect(fixture.dependencies.claimGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      5,
+      { target: generationTarget },
+    );
+    expect(fixture.dependencies.resolveJudgeModel).toHaveBeenCalledWith([
+      'claude-test',
+      selection.model,
+    ]);
+    expect(fixture.dependencies.executeReplay).toHaveBeenCalledWith(
+      expect.objectContaining({ target }),
+      expect.objectContaining({ client: candidateClient }),
+    );
+    expect(fixture.dependencies.completeGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({ traceId: capture.trace_id }),
+      generation,
+      { target: generationTarget },
+    );
     expect(fixture.providerCall).not.toHaveBeenCalled();
   });
 
@@ -544,6 +684,10 @@ describe('shadow evaluator capture-only orchestration', () => {
         blockedCapabilities: [],
         inputTokens: 0,
         outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        usageAvailable: false,
+        latencyMs: null,
       },
     );
     expect(fixture.completeCapture).not.toHaveBeenCalled();

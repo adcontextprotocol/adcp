@@ -102,7 +102,10 @@ describe('strict router eval', () => {
       { message: 'route failure safely', source: 'channel' },
       { observer },
     );
-    expect(plan).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+    expect(plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
+    });
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(observer).toHaveBeenCalledWith(expect.objectContaining({
       requestedProvider: 'openai',
@@ -138,18 +141,22 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(49);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(49);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(66);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(66);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member', 'directory', 'agent_testing', 'agent_conformance',
-      'adcp_operations', 'sponsored_intelligence', 'content', 'member_billing', 'billing', 'events', 'meetings',
+      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
+      'adcp_operations', 'sponsored_intelligence', 'content',
+      'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
+      'community_research', 'schema_reference',
+      'member_billing', 'billing', 'events', 'meetings',
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
-      'admin_groups', 'admin_organizations', 'admin_workflows', 'admin_brands',
+      'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
+      'admin_organizations', 'admin_workflows', 'admin_brands',
       'outreach', 'collaboration', 'certification',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(48);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(65);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -183,6 +190,31 @@ describe('strict router eval', () => {
     expect(admin).not.toContain('- **admin**:');
     expect(getValidToolSetNames(true).has('admin')).toBe(false);
     expect(nonAdmin).toContain('Exact bare acknowledgments');
+    expect(nonAdmin).toContain('Do not respond merely to disclaim expertise or recommend a professional');
+    expect(nonAdmin).toContain('A requirement that mentions an identifier or asset is still conceptual');
+    expect(nonAdmin).toContain('official docs say about package identifiers');
+    expect(nonAdmin).toContain('Never ignore a direct date/time question');
+    expect(nonAdmin).toContain('a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit');
+    expect(nonAdmin).toContain('select exactly ["agent_validation", "property_catalog"]');
+    expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
+    expect(admin).toContain('always select exactly ["events", "admin_events"]');
+    expect(admin).toContain('→ ["admin_group_structure"]');
+    expect(admin).toContain('→ ["admin_group_leadership"]');
+    expect(admin).toContain('→ ["admin_group_membership"]');
+  });
+
+  it('routes equivalent conceptual protocol requirements to the same retrieval domain', () => {
+    const channelCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'channel-protocol')!;
+    const mentionCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'mention-protocol')!;
+    expect(mentionCase.expected.toolSets).toEqual(channelCase.expected.toolSets);
+  });
+
+  it('keeps conceptual identifiers out of schema tools and answers trusted clock questions directly', () => {
+    const identifierCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'protocol-identifier-concept')!;
+    const dateCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'current-utc-date')!;
+
+    expect(identifierCase.expected).toMatchObject({ action: 'respond', toolSets: ['knowledge'] });
+    expect(dateCase.expected).toMatchObject({ action: 'respond', toolSets: [] });
   });
 
   it('accepts exact plans and rejects fallback-shaped, unauthorized, or extra-field output', () => {
@@ -373,12 +405,12 @@ describe('strict router eval', () => {
     };
     const first = {
       ...base,
-      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
+      plan: { action: 'respond' as const, tool_sets: ['knowledge', 'member_profile'], confidence: 'high' as const, requires_depth: false, reason: 'one' },
       scores: { actionExact: false, toolsExact: false, privilegeLeak: false, invalidToolSet: false, confidenceExact: true, depthExact: true, emojiExact: true },
     };
     const second = {
       ...base,
-      plan: { ...first.plan, tool_sets: ['member', 'knowledge'], reason: 'two' },
+      plan: { ...first.plan, tool_sets: ['member_profile', 'knowledge'], reason: 'two' },
       scores: first.scores,
     };
     const summary = summarizeRouterEval([first, second]);

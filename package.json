@@ -12,12 +12,13 @@
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
-    "build": "npm run test:addie-tools && tsc --project server/tsconfig.json && node scripts/copy-server-assets.cjs && npm run build:schemas && npm run build:compliance && npm run build:protocol-tarball",
+    "build": "npm run test:addie-tools && tsc --project server/tsconfig.json && node scripts/copy-server-assets.cjs && npm run build:schemas && npm run verify:training-agent-runtime && npm run build:compliance && npm run build:protocol-tarball",
     "build:openapi": "tsx scripts/generate-openapi.ts",
     "build:addie-tools": "tsx scripts/build-addie-tool-reference.ts && tsx scripts/build-addie-tool-surface-inventory.ts",
     "test:addie-tools": "tsx scripts/build-addie-tool-reference.ts --check && tsx scripts/build-addie-tool-surface-inventory.ts --check && node scripts/check-addie-tool-inventory-portability.mjs",
     "test:addie-fixed-traces": "vitest run --config server/vitest.config.ts server/tests/unit/addie/fixed-trace-suite.test.ts",
     "build:schemas": "node scripts/build-schemas.cjs",
+    "verify:training-agent-runtime": "node dist/scripts/verify-training-agent-runtime-assets.js",
     "test:mcp-schema-projection": "npm run build:schemas && node --test --test-force-exit --test-timeout=60000 tests/mcp-schema-projection.test.cjs tests/mcp-schema-analysis.test.cjs",
     "experiment:mcp-schema-context": "npm run build:schemas && node scripts/run-mcp-schema-context-experiment.cjs",
     "build:compliance": "node scripts/build-compliance.cjs",
@@ -173,7 +174,7 @@
     "eval:addie-google-read-only-tools": "tsx --import dotenv/config server/tests/manual/provider-read-only-tool-loop.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "14.0.0-beta.15",
+    "@adcp/sdk": "14.0.0-beta.16",
     "@anthropic-ai/sdk": "^0.120.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.1",

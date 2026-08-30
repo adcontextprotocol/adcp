@@ -6,6 +6,7 @@ import type {
   NormalizedModelEvent,
 } from '../../../src/addie/model-providers/model-provider.js';
 import {
+  ROUTER_SHADOW_PROMOTION_POLICY_VERSION,
   ROUTER_SHADOW_RESERVED_COST_MICROS,
   getRouterShadowSummary,
   maintainRouterShadowAttempts,
@@ -448,7 +449,54 @@ describe('Luna router shadow', () => {
       evidence_complete: true,
       comparison_eligible: true,
       cost_comparison_eligible: true,
+      rollout: {
+        policy_version: ROUTER_SHADOW_PROMOTION_POLICY_VERSION,
+        scope: 'shadow_evidence_only',
+        limitation: 'fixed_trace_gate_must_pass_separately',
+        pass: true,
+        failed_dimensions: [],
+      },
     });
+  });
+
+  it.each([
+    ['shadow validity', { shadow_valid: '29' }, 'shadow_validity'],
+    ['action agreement', { effective_matches: '28' }, 'valid_action_match'],
+    ['tool-set agreement', { tool_matches: '28' }, 'tool_set_agreement'],
+    ['privilege safety', { privilege_attempts: '1' }, 'privilege_attempts'],
+    ['invalid tool-set safety', { invalid_tool_set_attempts: '1' }, 'invalid_tool_set_attempts'],
+    ['latency', { shadow_p95: 15_001 }, 'shadow_latency_p95'],
+    ['absolute cost', { shadow_estimated_cost_micros: '150001' }, 'shadow_average_cost_micros'],
+    ['relative cost', { shadow_estimated_cost_micros: '120001' }, 'shadow_to_primary_cost_ratio'],
+  ] as const)('blocks promotion on %s', async (_name, overrides, dimension) => {
+    const query = vi.fn().mockResolvedValue({ rows: [cleanSummaryRow(overrides)] });
+    const summary = await getRouterShadowSummary(1, { query });
+    expect(summary.rollout.pass).toBe(false);
+    expect(summary.rollout.failed_dimensions).toContain(dimension);
+  });
+
+  it('fails promotion closed on missing rate, latency, and cost denominators', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [cleanSummaryRow({
+      primary_valid: '0',
+      shadow_valid: '0',
+      shadow_validity_denominator: '0',
+      effective_matches: '0',
+      tool_matches: '0',
+      tool_denominator: '0',
+      primary_estimated_cost_micros: '0',
+      shadow_estimated_cost_micros: '0',
+      shadow_p95: null,
+    })] });
+    const summary = await getRouterShadowSummary(1, { query });
+    expect(summary.rollout.pass).toBe(false);
+    expect(summary.rollout.failed_dimensions).toEqual(expect.arrayContaining([
+      'primary_validity',
+      'shadow_validity',
+      'valid_action_match',
+      'tool_set_agreement',
+      'shadow_latency_p95',
+      'shadow_to_primary_cost_ratio',
+    ]));
   });
 
   it.each([
@@ -502,13 +550,24 @@ function cleanSummaryRow(overrides: Record<string, unknown> = {}) {
   return {
     selected: '30', dispatched: '30', terminal: '30', authenticated_terminal: '30',
     running: '0', primary_valid: '30', shadow_valid: '30',
-    shadow_validity_denominator: '30', outcomes: [
+    shadow_validity_denominator: '30', effective_matches: '30',
+    action_matches: '30', action_denominator: '30',
+    tool_matches: '30', tool_denominator: '30',
+    confidence_matches: '30', confidence_denominator: '30',
+    depth_matches: '30', depth_denominator: '30', emoji_matches: '0', emoji_denominator: '0',
+    privilege_attempts: '0', invalid_tool_set_attempts: '0', outcomes: [
       { status: 'succeeded', reason: 'valid_plan', count: '30' },
     ],
     admission_sampled: '30', admission_claimed: '30', admission_duplicates: '0',
     admission_quota_exhausted: '0', primary_model_count: '1', shadow_model_count: '1',
     identity_failures: '0', primary_usage_missing: '0', shadow_usage_missing: '0',
     primary_model_missing: '0', shadow_model_missing: '0',
+    primary_input_tokens: '1200', primary_output_tokens: '300',
+    primary_cache_read_tokens: '0', primary_cache_write_tokens: '0',
+    primary_estimated_cost_micros: '120000',
+    shadow_input_tokens: '1200', shadow_output_tokens: '300',
+    shadow_estimated_cost_micros: '60000', reserved_cost_micros: '420000',
+    primary_p50: 700, primary_p95: 1400, shadow_p50: 500, shadow_p95: 1000,
     ...overrides,
   };
 }

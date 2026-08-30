@@ -1,4 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const loggerMock = vi.hoisted(() => ({
+  debug: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+}));
+const notifySystemErrorMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../../src/logger.js', () => ({
+  logger: { child: () => loggerMock },
+}));
+vi.mock('../../src/addie/error-notifier.js', () => ({
+  notifySystemError: notifySystemErrorMock,
+}));
+
 import { JobScheduler } from '../../src/addie/jobs/scheduler.js';
 
 function deferred() {
@@ -17,7 +33,46 @@ async function flushMicrotasks(times = 5) {
 
 describe('JobScheduler', () => {
   afterEach(() => {
+    vi.clearAllMocks();
     vi.useRealTimers();
+  });
+
+  it('does not page before a job reaches its consecutive failure threshold', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    scheduler.register({
+      name: 'flaky-job',
+      description: 'Run flaky job',
+      interval: { value: 1, unit: 'hours' },
+      initialDelay: { value: 1, unit: 'seconds' },
+      failureThreshold: 2,
+      runner: async () => {
+        throw new Error('transient failure');
+      },
+    });
+
+    scheduler.start('flaky-job');
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobName: 'flaky-job',
+        consecutiveFailures: 1,
+        threshold: 2,
+      }),
+      'Run flaky job: failed',
+    );
+    expect(loggerMock.error).not.toHaveBeenCalled();
+    expect(notifySystemErrorMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1_000 - 1_000);
+
+    expect(notifySystemErrorMock).toHaveBeenCalledWith({
+      source: 'job:flaky-job',
+      errorMessage: '[2 consecutive failures] transient failure',
+    });
+    scheduler.stopAll();
   });
 
   it('releases transferred concurrency slots after queued jobs finish', async () => {

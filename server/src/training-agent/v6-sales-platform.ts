@@ -1,8 +1,8 @@
 /**
  * v6 SalesPlatform for the `/sales` tenant.
  *
- * Single-specialism platform claiming `sales-non-guaranteed` +
- * `sales-guaranteed`. Implements `SalesPlatform` (5 required methods +
+ * Sales platform claiming `sales-non-guaranteed`, `sales-guaranteed`, and
+ * `sales-dooh`. Implements `SalesPlatform` (5 required methods +
  * 4 optional read-side methods).
  *
  * Spike-grade port: bodies shim through to existing v5 handlers via
@@ -11,6 +11,8 @@
  * bodies that throw `AdcpError` directly) is a follow-up.
  */
 
+import { randomUUID } from 'node:crypto';
+import { createLogger } from '../logger.js';
 import {
   AdcpError,
   type DecisioningPlatform,
@@ -23,6 +25,8 @@ import {
   type AudienceStatus,
   type CreateMediaBuyHandlerResult,
   type TaskRegistry,
+  type TaskRegistryScope,
+  type WebhookEmitParams,
 } from '@adcp/sdk/server';
 import {
   packageRefsForFormatOptions,
@@ -55,18 +59,188 @@ import {
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
+import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
 import { registerSharedPublicBrandPartition, runWithSessionContext } from './state.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
-import { taskRegistryScopeFromContext } from './task-registry-scope.js';
+import { validateWebhookUrl } from './webhook-fetch.js';
+import {
+  taskRegistryNamespaceForTenant,
+  taskRegistryScopeFromContext,
+} from './task-registry-scope.js';
 import { scopedPrincipal } from './idempotency.js';
 import {
   SellerManagedControlJobCoordinator,
   type SellerManagedControlJobContext,
 } from './seller-managed-control-jobs.js';
+
+const logger = createLogger('training-agent-v6-sales-platform');
+
+const PUSH_NOTIFICATION_TOKEN_MIN_LENGTH = 16;
+const PUSH_NOTIFICATION_TOKEN_MAX_LENGTH = 4096;
+const PUSH_NOTIFICATION_TOKEN_CONTROL_CHAR_RE = /[\x00-\x1f\x7f]/;
+const PUSH_NOTIFICATION_OPERATION_ID_RE = /^[A-Za-z0-9_.:-]{1,255}$/;
+
+interface AsyncGetProductsPushConfig {
+  url: string;
+  operationId: string;
+  token?: string;
+}
+
+type AsyncGetProductsTaskError = {
+  code: 'SERVICE_UNAVAILABLE';
+  recovery: 'transient';
+  message: string;
+};
+
+function invalidPushNotificationConfig(field: string, message: string): never {
+  throw new AdcpError('INVALID_REQUEST', {
+    recovery: 'correctable',
+    field: `push_notification_config.${field}`,
+    message,
+  });
+}
+
+/**
+ * The SDK's canonical decisioning path validates push registrations before it
+ * creates a task. The legacy get_products seam must preserve that admission
+ * boundary because it allocates the task itself after observing Submitted.
+ */
+export async function validateAsyncGetProductsPushConfig(
+  rawConfig: unknown,
+): Promise<AsyncGetProductsPushConfig | undefined> {
+  if (rawConfig === undefined) return undefined;
+  if (!rawConfig || typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+    invalidPushNotificationConfig('url', 'push_notification_config must be an object');
+  }
+  const config = rawConfig as Record<string, unknown>;
+  if (typeof config.url !== 'string' || config.url.length === 0) {
+    invalidPushNotificationConfig('url', 'push_notification_config.url is required');
+  }
+  const urlError = await validateWebhookUrl(config.url, { allowLoopback: true });
+  if (urlError) {
+    invalidPushNotificationConfig('url', urlError.message);
+  }
+  if (typeof config.operation_id !== 'string' || config.operation_id.length === 0) {
+    invalidPushNotificationConfig(
+      'operation_id',
+      'push_notification_config.operation_id is required for webhook delivery',
+    );
+  }
+  if (!PUSH_NOTIFICATION_OPERATION_ID_RE.test(config.operation_id)) {
+    invalidPushNotificationConfig(
+      'operation_id',
+      `push_notification_config.operation_id must match ${PUSH_NOTIFICATION_OPERATION_ID_RE.source}`,
+    );
+  }
+
+  let token: string | undefined;
+  if (config.token !== undefined) {
+    if (typeof config.token !== 'string') {
+      invalidPushNotificationConfig('token', 'push_notification_config.token must be a string');
+    }
+    if (config.token.length < PUSH_NOTIFICATION_TOKEN_MIN_LENGTH) {
+      invalidPushNotificationConfig(
+        'token',
+        `push_notification_config.token must contain at least ${PUSH_NOTIFICATION_TOKEN_MIN_LENGTH} characters`,
+      );
+    }
+    if (config.token.length > PUSH_NOTIFICATION_TOKEN_MAX_LENGTH) {
+      invalidPushNotificationConfig(
+        'token',
+        `push_notification_config.token must contain at most ${PUSH_NOTIFICATION_TOKEN_MAX_LENGTH} characters`,
+      );
+    }
+    if (PUSH_NOTIFICATION_TOKEN_CONTROL_CHAR_RE.test(config.token)) {
+      invalidPushNotificationConfig('token', 'push_notification_config.token must not contain control characters');
+    }
+    token = config.token;
+  }
+
+  return {
+    url: config.url,
+    operationId: config.operation_id,
+    ...(token !== undefined && { token }),
+  };
+}
+
+async function emitAsyncGetProductsTerminalWebhook(opts: {
+  accountId: string;
+  taskId: string;
+  pushConfig?: AsyncGetProductsPushConfig;
+  emitWebhook?: (params: WebhookEmitParams) => Promise<unknown>;
+  status: 'completed' | 'failed';
+  result?: Record<string, unknown>;
+  error?: AsyncGetProductsTaskError;
+}): Promise<void> {
+  if (!opts.pushConfig || !opts.emitWebhook) return;
+  const payload: Record<string, unknown> = {
+    idempotency_key: randomUUID(),
+    operation_id: opts.pushConfig.operationId,
+    task_id: opts.taskId,
+    task_type: 'get_products',
+    protocol: 'media-buy',
+    status: opts.status,
+    timestamp: new Date().toISOString(),
+    ...(opts.pushConfig.token !== undefined && { token: opts.pushConfig.token }),
+  };
+  if (opts.status === 'completed' && opts.result) {
+    payload.result = opts.result;
+  } else if (opts.status === 'failed' && opts.error) {
+    payload.result = { errors: [opts.error] };
+    payload.message = opts.error.message;
+  }
+  try {
+    await opts.emitWebhook({
+      url: opts.pushConfig.url,
+      delivery_id: `get_products.${opts.accountId}.${opts.taskId}.${opts.status}`,
+      payload,
+    });
+  } catch (error) {
+    // Task persistence is authoritative. Delivery owns independent retry and
+    // recovery and must never mutate or reject the already-terminal task.
+    logger.warn({ err: error, taskId: opts.taskId, status: opts.status }, 'Async get_products terminal webhook failed');
+  }
+}
+
+export async function settleAsyncGetProductsTask(opts: {
+  accountId: string;
+  taskId: string;
+  taskRef: TaskRegistryScope;
+  taskRegistry: TaskRegistry;
+  completionScope: Parameters<typeof waitForForcedTaskCompletion>[1];
+  pushConfig?: AsyncGetProductsPushConfig;
+  emitWebhook?: (params: WebhookEmitParams) => Promise<unknown>;
+  waitForCompletion?: typeof waitForForcedTaskCompletion;
+}): Promise<void> {
+  const waitForCompletion = opts.waitForCompletion ?? waitForForcedTaskCompletion;
+  let result: Record<string, unknown>;
+  try {
+    result = await waitForCompletion(opts.taskId, opts.completionScope);
+    await opts.taskRegistry.complete(opts.taskId, opts.taskRef, result);
+  } catch (error) {
+    const taskError: AsyncGetProductsTaskError = {
+      code: 'SERVICE_UNAVAILABLE',
+      recovery: 'transient',
+      message: error instanceof Error ? error.message : 'Async get_products failed',
+    };
+    await opts.taskRegistry.fail(opts.taskId, opts.taskRef, taskError, { errors: [taskError] });
+    await emitAsyncGetProductsTerminalWebhook({
+      ...opts,
+      status: 'failed',
+      error: taskError,
+    });
+    return;
+  }
+  await emitAsyncGetProductsTerminalWebhook({
+    ...opts,
+    status: 'completed',
+    result,
+  });
+}
 
 interface TrainingSalesMeta {
   brand_domain?: string;
@@ -221,10 +395,42 @@ export function restoreRawPackageSelectors(
   return restored;
 }
 
+// The in-repo schema adds this value before the published SDK's generated
+// AdCPSpecialism union can include it. Keep the cast at this single boundary;
+// the wire value remains the literal `sales-dooh` and is schema-tested here.
+const SALES_DOOH_SPECIALISM = 'sales-dooh' as never;
+
+const TRAINING_SALES_CHANNELS = [
+  'display',
+  'olv',
+  'ctv',
+  'email',
+  'streaming_audio',
+  'podcast',
+  'dooh',
+  'ooh',
+  'gaming',
+  'retail_media',
+  'linear_tv',
+  'social',
+  'influencer',
+  'search',
+  'radio',
+  'print',
+] as const;
+
 export const TRAINING_SALES_CAPABILITIES = {
-  specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+  specialisms: ['sales-non-guaranteed', 'sales-guaranteed', SALES_DOOH_SPECIALISM] as const,
   creative_agents: [],
-  channels: [] as const,
+  channels: TRAINING_SALES_CHANNELS,
+  overrides: {
+    media_buy: {
+      portfolio: {
+        publisher_domains: PUBLISHERS.map(publisher => publisher.domain),
+        primary_channels: [...TRAINING_SALES_CHANNELS],
+      },
+    },
+  },
   pricingModels: ['cpm', 'cpa'] as const,
   targeting: {
     geo_countries: true,
@@ -244,10 +450,10 @@ export const TRAINING_SALES_CAPABILITIES = {
     supported_hashed_identifiers: ['hashed_email' as const],
     supported_action_sources: ['website' as const, 'app' as const],
   },
-  // Seller-level rollup of metric-optimization capabilities. Honest union
-  // across catalog products (product-factory.ts assigns these by channel mix).
-  // The tenant router projects these fields onto get_adcp_capabilities until
-  // the SDK exposes them directly (adcp-client#1818).
+  // Seller-level rollup of metric-optimization capabilities. The SDK can
+  // derive this from an adopter-supplied static productCatalog (#1818); this
+  // training platform resolves products dynamically, so it declares the
+  // honest union explicitly and the tenant router preserves that declaration.
   supported_optimization_metrics: ['clicks' as const, 'views' as const, 'completed_views' as const, 'engagements' as const, 'reach' as const],
   vendor_metric_optimization: {
     supported_targets: ['threshold_rate' as const],
@@ -286,6 +492,7 @@ function buildTrainingCtx(
     authInfo?: { clientId?: string };
     agent?: { agent_url: string };
     input?: unknown;
+    servedAdcpVersion?: string;
     callerMutationScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
     proposalRefinementScope?: Readonly<{ tenant_id: string; principal_id: string; account_id?: string }>;
   } | undefined,
@@ -293,6 +500,14 @@ function buildTrainingCtx(
   proposalNegotiationProfile?: TrainingContext['proposalNegotiationProfile'],
 ): TrainingContext {
   const account = ctx?.account as { authInfo?: { principal?: string } } | undefined;
+  const requestInput = ctx?.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
+    ? ctx.input as Record<string, unknown>
+    : undefined;
+  const carriesVersionEnvelope = requestInput !== undefined
+    && (requestInput.adcp_version !== undefined || requestInput.adcp_major_version !== undefined);
+  const requestVersion = carriesVersionEnvelope ? resolveServedAdcpVersion(requestInput) : undefined;
+  const servedAdcpVersion = ctx?.servedAdcpVersion
+    ?? (requestVersion?.ok ? requestVersion.servedVersion : undefined);
   const legacySessionBrandDomain = storyboardCompat?.version === '3.0'
     ? brandDomainFromCtx(ctx?.account)
     : undefined;
@@ -308,9 +523,8 @@ function buildTrainingCtx(
     tenantId: 'sales',
     principal: ctx?.authInfo?.clientId ?? account?.authInfo?.principal ?? 'anonymous',
     ...(ctx?.agent?.agent_url && { authenticatedAgentUrl: ctx.agent.agent_url }),
-    ...(ctx?.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
-      ? { requestInput: ctx.input as Record<string, unknown> }
-      : {}),
+    ...(requestInput && { requestInput }),
+    ...(servedAdcpVersion && { servedAdcpVersion }),
     ...(resolvedAccount && { resolvedAccount }),
     ...(typeof (ctx?.account as { id?: unknown } | undefined)?.id === 'string'
       && { resolvedAccountId: (ctx!.account as { id: string }).id }),
@@ -566,7 +780,9 @@ function throwGetProductsExecutionError(message: string): never {
 /** The DecisioningPlatform contract is canonical even when the outer SDK
  * negotiates a legacy wire. Keep legacy selector echo metadata in our state,
  * but let the SDK reconstruct the 3.0 response from stable canonical refs.
- * Remove this adapter when adcontextprotocol/adcp-client#2497 ships. */
+ * adcontextprotocol/adcp-client#2497 added a raw lifecycle-handler escape
+ * hatch; remove this adapter only after create/update/get media-buy legacy
+ * handlers use that seam. */
 function canonicalMediaBuyPlatformResult<T>(result: T): T {
   const withoutLegacyPackageSelector = (value: unknown): unknown => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
@@ -813,6 +1029,7 @@ export async function resolveTrainingSalesRequestContext(
  */
 export function legacyGetProductsHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
+  taskRegistry?: TaskRegistry,
 ): NonNullable<LegacyMediaBuyHandlers['getProducts']> {
   return async (req, ctx) => {
     const normalizedReq = withResolvedAccountScope(
@@ -820,6 +1037,11 @@ export function legacyGetProductsHandler(
       ctx.account,
       storyboardCompat,
     );
+    const normalizedRecord = normalizedReq as unknown as Record<string, unknown>;
+    const buyingMode = normalizedRecord.buying_mode ?? 'brief';
+    const pushConfig = buyingMode === 'wholesale'
+      ? undefined
+      : await validateAsyncGetProductsPushConfig(normalizedRecord.push_notification_config);
     const versionResolution = resolveServedAdcpVersion(normalizedReq as unknown as Record<string, unknown>);
     const trainingCtx = buildTrainingCtx(ctx, storyboardCompat);
     const servedAdcpVersion = ctx.servedAdcpVersion
@@ -827,6 +1049,49 @@ export function legacyGetProductsHandler(
     if (servedAdcpVersion) trainingCtx.servedAdcpVersion = servedAdcpVersion;
     const executed = await executeTrainingAgentTool('get_products', normalizedReq, trainingCtx);
     if (!executed.success) throwGetProductsExecutionError(executed.error ?? 'get_products failed');
+    const rawResponse = executed.data as Record<string, unknown> | undefined;
+    if (
+      rawResponse?.status === 'submitted'
+      && typeof rawResponse.task_id === 'string'
+    ) {
+      // A replay has already registered its original task. The request-level
+      // idempotency cache adds replayed=true to the cached envelope, so do not
+      // allocate a duplicate registry row or completion worker here.
+      if (rawResponse.replayed !== true) {
+        if (!taskRegistry) {
+          throw new Error('Async get_products requires a configured task registry');
+        }
+        const account = ctx.account as { id?: unknown } | undefined;
+        if (typeof account?.id !== 'string' || account.id.length === 0) {
+          throw new Error('Async get_products requires a resolved account');
+        }
+        const taskId = rawResponse.task_id;
+        const ownerScope = taskOwnerScopeForPlatformContext(ctx, account.id);
+        const taskRef = await taskRegistry.create({
+          tool: 'get_products',
+          accountId: account.id,
+          ownerScope,
+          hasWebhook: pushConfig !== undefined,
+          overrideTaskId: taskId,
+        });
+        const completionScope = {
+          accountId: taskRef.accountId,
+          ownerScope: taskRef.ownerScope,
+          registryNamespace: taskRegistryNamespaceForTenant('sales'),
+        };
+        const completion = settleAsyncGetProductsTask({
+          accountId: account.id,
+          taskId,
+          taskRef,
+          taskRegistry,
+          completionScope,
+          pushConfig,
+          ...(ctx.emitWebhook && { emitWebhook: ctx.emitWebhook }),
+        });
+        taskRegistry._registerBackground(taskId, taskRef, completion);
+      }
+      return rawResponse as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['getProducts']>>>;
+    }
     const response = translateV5Result<{ products?: import('@adcp/sdk').LegacyProduct[] }>(
       executed.data,
       { allowAdvisories: true },
@@ -915,7 +1180,15 @@ export class TrainingSalesPlatform
     }
   }
 
-  capabilities = TRAINING_SALES_CAPABILITIES;
+  get capabilities() {
+    if (this.storyboardCompat?.version === '3.0') {
+      return {
+        ...TRAINING_SALES_CAPABILITIES,
+        specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+      };
+    }
+    return TRAINING_SALES_CAPABILITIES;
+  }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
     await this.sellerManagedControlJobs?.acknowledgeFrameworkWebhook(taskId);
@@ -938,7 +1211,7 @@ export class TrainingSalesPlatform
           ctx.account,
           this.storyboardCompat,
         )
-        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
       const v5Result = await handleCreateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       // Detect the submitted-arm envelope the v5 handler returns when the
       // `force_create_media_buy_arm` test-controller directive is set.
@@ -1003,7 +1276,7 @@ export class TrainingSalesPlatform
       );
       const args = this.storyboardCompat?.version === '3.0'
         ? withResolvedAccountScope(requestWithRawSelectors, ctx.account, this.storyboardCompat)
-        : withCurrentAccountScope(requestWithRawSelectors, ctx.account);
+        : withCurrentAccountScope(requestWithRawSelectors, ctx.account, ctx.input);
       const v5Result = await handleUpdateMediaBuy(args, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(canonicalMediaBuyPlatformResult(v5Result));
     },
@@ -1272,15 +1545,23 @@ export class TrainingSalesPlatform
   audiences: AudiencePlatform<TrainingSalesMeta> = {
     syncAudiences: async (audienceList, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);
+      const requestInput = ctx.input && typeof ctx.input === 'object' && !Array.isArray(ctx.input)
+        ? ctx.input as Record<string, unknown>
+        : undefined;
+      const isDiscovery = requestInput !== undefined
+        && !Object.prototype.hasOwnProperty.call(requestInput, 'audiences');
       // sync_audiences requires idempotency_key per schema. The framework
       // strips it from per-row params; synthesise one so the v5 handler's
       // shape validation passes. The v5 handler doesn't enforce uniqueness
-      // here — the framework already handled idempotency upstream.
-      const args = {
-        audiences: audienceList,
+      // here — the framework already handled idempotency upstream. Preserve
+      // the wire distinction between omitted audiences (discovery) and an
+      // authored list: AudiencePlatform projects omission to [], so the raw
+      // request context is the only place that distinction survives.
+      const args = withCurrentAccountScope({
+        ...(!isDiscovery && { audiences: audienceList }),
         idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-        ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
-      };
+        ...(brandDomain && { brand: { domain: brandDomain } }),
+      }, ctx.account, ctx.input);
       const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       const wrapped = translateV5Result<{ audiences?: SyncAudiencesRow[] }>(result);
       return (wrapped.audiences ?? []) as SyncAudiencesRow[];

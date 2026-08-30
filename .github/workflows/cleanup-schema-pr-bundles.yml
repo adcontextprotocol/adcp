@@ -1,0 +1,150 @@
+name: Clean up schema PR bundles
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List expired objects without deleting them
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanup-schema-pr-bundles
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete expired preview bundles
+    if: github.repository == 'adcontextprotocol/adcp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BUCKET: ${{ vars.ADCP_ARTIFACT_R2_BUCKET || 'adcp-artifacts' }}
+      RETENTION_DAYS: ${{ vars.SCHEMA_PR_BUNDLE_RETENTION_DAYS || '90' }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    steps:
+      - name: Delete expired commit-addressed previews
+        run: |
+          set -euo pipefail
+          if [[ ! "${RETENTION_DAYS}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::SCHEMA_PR_BUNDLE_RETENTION_DAYS must be a positive integer"
+            exit 1
+          fi
+          if [[ -z "${R2_ACCOUNT_ID:-}" || -z "${AWS_ACCESS_KEY_ID:-}" || -z "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+            echo "::error::Missing R2 cleanup credentials"
+            exit 1
+          fi
+
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          cutoff_epoch="$(date -u -d "${RETENTION_DAYS} days ago" +%s)"
+          cleanup_dir="$(mktemp -d)"
+          trap 'rm -rf "${cleanup_dir}"' EXIT
+
+          page=0
+          continuation_args=()
+          while true; do
+            page_file="${cleanup_dir}/page-${page}.json"
+            aws s3api list-objects-v2 \
+              --bucket "${BUCKET}" \
+              --prefix 'protocol/pr/' \
+              --max-keys 1000 \
+              --no-paginate \
+              --endpoint-url "${endpoint}" \
+              --region auto \
+              --no-cli-pager \
+              "${continuation_args[@]}" > "${page_file}"
+
+            next_token="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("NextContinuationToken", ""))' "${page_file}")"
+            if [[ -z "${next_token}" ]]; then
+              break
+            fi
+            continuation_args=(--continuation-token "${next_token}")
+            page=$((page + 1))
+          done
+
+          python3 - "${cleanup_dir}" "${cutoff_epoch}" <<'PY'
+          import datetime
+          import glob
+          import json
+          import pathlib
+          import re
+          import sys
+
+          cleanup_dir = pathlib.Path(sys.argv[1])
+          cutoff = datetime.datetime.fromtimestamp(int(sys.argv[2]), datetime.timezone.utc)
+          key_pattern = re.compile(
+              r"^protocol/pr/[0-9a-f]{40}/latest\.tgz(?:\.sha256|\.provenance\.json)?$"
+          )
+          objects_by_commit = {}
+
+          for page_path in sorted(glob.glob(str(cleanup_dir / "page-*.json"))):
+              with open(page_path, encoding="utf-8") as page_file:
+                  page = json.load(page_file)
+              for item in page.get("Contents", []):
+                  key = item["Key"]
+                  if not key_pattern.fullmatch(key):
+                      print(f"Skipping unrecognized preview key: {key}", file=sys.stderr)
+                      continue
+                  modified = datetime.datetime.fromisoformat(
+                      item["LastModified"].replace("Z", "+00:00")
+                  )
+                  commit = key.split("/")[2]
+                  objects_by_commit.setdefault(commit, []).append((key, modified))
+
+          stale_keys = []
+          for objects in objects_by_commit.values():
+              if max(modified for _, modified in objects) < cutoff:
+                  stale_keys.extend(key for key, _ in objects)
+          stale_keys.sort()
+
+          (cleanup_dir / "stale-keys.txt").write_text(
+              "".join(f"{key}\n" for key in stale_keys), encoding="utf-8"
+          )
+          for batch_number, start in enumerate(range(0, len(stale_keys), 1000)):
+              payload = {
+                  "Objects": [{"Key": key} for key in stale_keys[start:start + 1000]],
+                  "Quiet": True,
+              }
+              (cleanup_dir / f"delete-{batch_number}.json").write_text(
+                  json.dumps(payload), encoding="utf-8"
+              )
+          print(len(stale_keys))
+          PY
+
+          stale_count="$(wc -l < "${cleanup_dir}/stale-keys.txt" | tr -d ' ')"
+          if [[ "${stale_count}" == '0' ]]; then
+            echo "No schema PR bundle objects exceeded ${RETENTION_DAYS} days."
+          elif [[ "${DRY_RUN}" == 'true' ]]; then
+            echo "Dry run: ${stale_count} object(s) would be deleted:"
+            cat "${cleanup_dir}/stale-keys.txt"
+          else
+            shopt -s nullglob
+            for payload in "${cleanup_dir}"/delete-*.json; do
+              result="${payload%.json}-result.json"
+              aws s3api delete-objects \
+                --bucket "${BUCKET}" \
+                --delete "file://${payload}" \
+                --endpoint-url "${endpoint}" \
+                --region auto \
+                --no-cli-pager > "${result}"
+              python3 -c 'import json, sys; errors=json.load(open(sys.argv[1])).get("Errors", []); errors and sys.exit(f"R2 deletion errors: {errors}")' "${result}"
+            done
+            echo "Deleted ${stale_count} schema PR bundle object(s) older than ${RETENTION_DAYS} days."
+          fi
+
+          {
+            echo '### Schema PR bundle retention'
+            echo
+            echo "- Retention: ${RETENTION_DAYS} days"
+            echo "- Expired objects: ${stale_count}"
+            echo "- Dry run: ${DRY_RUN}"
+          } >> "${GITHUB_STEP_SUMMARY}"

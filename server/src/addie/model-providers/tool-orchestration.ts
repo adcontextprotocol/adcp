@@ -32,7 +32,7 @@ const definitionSnapshots = new WeakMap<AddieTool, AddieTool>();
 export const BLOCKED_TOOL_RESULT = 'Error: Tool execution blocked by policy';
 
 export type ToolHandler = (input: Record<string, unknown>) => Promise<ToolHandlerResult>;
-export type AddieExecutionMode = 'production' | 'evaluation' | 'replay';
+export type AddieExecutionMode = 'production' | 'evaluation' | 'replay' | 'shadow';
 
 export interface ToolExecutionPolicyRequest {
   toolName: string;
@@ -79,10 +79,115 @@ export interface AddieToolCallResult {
   execution: ToolExecution;
 }
 
+export type AddieToolExecutor = (
+  call: ModelToolCallContent,
+  sequence: number,
+) => Promise<AddieToolCallResult>;
+
+export type AddieToolExecutionEvent =
+  | {
+      type: 'start';
+      call: ModelToolCallContent;
+      sequence: number;
+    }
+  | {
+      type: 'end';
+      call: ModelToolCallContent;
+      sequence: number;
+      executed: AddieToolCallResult;
+    };
+
 export interface AddieProviderToolExecution {
   result: ModelProviderToolResultContent;
   receipt: ModelProviderToolReceipt;
   execution: ToolExecution;
+}
+
+/**
+ * Canonical execution ledger shared by delivery adapters. It owns tool order,
+ * global sequence numbering, and completed execution history while callers
+ * retain control of delivery-specific logs and stream events.
+ */
+export class AddieToolExecutionLedger {
+  private currentSequence = 0;
+  private pendingCustomSequence: number | null = null;
+  private readonly usedToolNames: string[] = [];
+  private readonly completedExecutions: ToolExecution[] = [];
+
+  get sequence(): number {
+    return this.currentSequence;
+  }
+
+  get toolsUsed(): readonly string[] {
+    return this.usedToolNames;
+  }
+
+  get executions(): readonly ToolExecution[] {
+    return this.completedExecutions;
+  }
+
+  recordProviderResults(
+    provider: Pick<ModelProvider, 'id' | 'deriveProviderToolReceipt'>,
+    calls: readonly ModelProviderToolCallContent[],
+    results: readonly ModelProviderToolResultContent[],
+    executionMode: AddieExecutionMode,
+  ): AddieProviderToolExecution[] {
+    if (this.pendingCustomSequence !== null) {
+      throw new Error('Cannot record provider tools during a custom-tool execution');
+    }
+    const recorded = recordProviderToolResults(provider, calls, results, {
+      executionMode,
+      startingSequence: this.currentSequence,
+    });
+    for (const entry of recorded) {
+      if (entry.execution.sequence !== this.currentSequence + 1) {
+        throw new Error('Provider tool execution sequence is not contiguous');
+      }
+      this.currentSequence = entry.execution.sequence;
+      this.usedToolNames.push(entry.execution.tool_name);
+      this.completedExecutions.push(entry.execution);
+    }
+    return recorded;
+  }
+
+  async *executeCustomCalls(
+    calls: readonly ModelToolCallContent[],
+    execute: AddieToolExecutor,
+    turnResults: ModelToolResultContent[],
+  ): AsyncGenerator<AddieToolExecutionEvent> {
+    for await (const event of executeAddieToolCalls(calls, execute, this.currentSequence)) {
+      this.recordCustomEvent(event, turnResults);
+      yield event;
+    }
+  }
+
+  private recordCustomEvent(
+    event: AddieToolExecutionEvent,
+    turnResults: ModelToolResultContent[],
+  ): void {
+    if (event.type === 'start') {
+      if (this.pendingCustomSequence !== null) {
+        throw new Error('Previous custom-tool execution has not completed');
+      }
+      if (event.sequence !== this.currentSequence + 1) {
+        throw new Error('Custom-tool execution sequence is not contiguous');
+      }
+      this.currentSequence = event.sequence;
+      this.pendingCustomSequence = event.sequence;
+      this.usedToolNames.push(event.call.name);
+      return;
+    }
+
+    if (
+      this.pendingCustomSequence !== event.sequence
+      || event.executed.execution.sequence !== event.sequence
+    ) {
+      throw new Error('Custom-tool completion does not match its start event');
+    }
+    turnResults.push(event.executed.result);
+    this.completedExecutions.push(event.executed.execution);
+    this.pendingCustomSequence = null;
+  }
 }
 
 interface RegisteredTool {
@@ -90,8 +195,8 @@ interface RegisteredTool {
   handler?: ToolHandler;
 }
 
-function isEvaluationExecution(mode: AddieExecutionMode): boolean {
-  return mode === 'evaluation' || mode === 'replay';
+function isIsolatedExecution(mode: AddieExecutionMode): boolean {
+  return mode === 'evaluation' || mode === 'replay' || mode === 'shadow';
 }
 
 function deepFreeze<T>(value: T): T {
@@ -112,7 +217,7 @@ function recordedParameters(
   mode: AddieExecutionMode,
   input: Record<string, unknown>,
 ): Record<string, unknown> {
-  return isEvaluationExecution(mode) ? {} : structuredClone(input);
+  return isIsolatedExecution(mode) ? {} : structuredClone(input);
 }
 
 function recordedResult(
@@ -120,7 +225,7 @@ function recordedResult(
   result: string,
   kind: 'success' | 'error' | 'blocked',
 ): string {
-  if (!isEvaluationExecution(mode)) return result;
+  if (!isIsolatedExecution(mode)) return result;
   if (kind === 'blocked') return BLOCKED_TOOL_RESULT;
   return kind === 'error' ? 'Error: Tool execution failed' : 'Tool execution completed';
 }
@@ -129,7 +234,7 @@ function recordedPresentation(
   mode: AddieExecutionMode,
   normalized: NormalizedToolResult,
 ): ToolResultPresentation {
-  if (!isEvaluationExecution(mode)) return normalized.presentation;
+  if (!isIsolatedExecution(mode)) return normalized.presentation;
   return {
     status: normalized.status,
     user_summary: isToolResultError(normalized.status)
@@ -209,7 +314,7 @@ export function recordProviderToolResults(
       ? provider.deriveProviderToolReceipt(
           call,
           result,
-          isEvaluationExecution(options.executionMode) ? 'redacted' : 'production',
+          isIsolatedExecution(options.executionMode) ? 'redacted' : 'production',
         )
       : fallbackProviderToolReceipt(result);
     const normalized = observeNormalizedToolResult(result.name, normalizeToolResult(result.name, {
@@ -341,7 +446,7 @@ export function createAddieToolExecutor(
   tools: readonly AddieTool[],
   handlers: ReadonlyMap<string, ToolHandler>,
   options: AddieToolExecutorOptions,
-): (call: ModelToolCallContent, sequence: number) => Promise<AddieToolCallResult> {
+): AddieToolExecutor {
   const registry = new Map<string, RegisteredTool>();
   for (const sourceDefinition of tools) {
     const definition = snapshotDefinition(sourceDefinition);
@@ -399,7 +504,7 @@ export function createAddieToolExecutor(
       );
     }
 
-    let allowed = !isEvaluationExecution(options.executionMode);
+    let allowed = !isIsolatedExecution(options.executionMode);
     if (options.policy) {
       try {
         const decision = await options.policy({
@@ -542,4 +647,23 @@ export function createAddieToolExecutor(
       return failureResult(call, sequence, options.executionMode, normalized, durationMs);
     }
   };
+}
+
+/**
+ * Execute one canonical custom-tool turn sequentially. The shared sequence is
+ * advanced before dispatch so delivery modes can emit a start event without
+ * taking ownership of mutation ordering or ledger numbering.
+ */
+export async function* executeAddieToolCalls(
+  calls: readonly ModelToolCallContent[],
+  execute: AddieToolExecutor,
+  startingSequence: number,
+): AsyncGenerator<AddieToolExecutionEvent> {
+  let sequence = startingSequence;
+  for (const call of calls) {
+    sequence++;
+    yield Object.freeze({ type: 'start', call, sequence });
+    const executed = await execute(call, sequence);
+    yield Object.freeze({ type: 'end', call, sequence, executed });
+  }
 }

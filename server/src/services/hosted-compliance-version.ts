@@ -16,13 +16,11 @@ export const HOSTED_COMPLIANCE_TARGET_PREFERENCE = [
   '3.1-beta',
   DEFAULT_HOSTED_COMPLIANCE_LINE,
 ] as const;
-// Budget for a full-suite comply() assessment. @adcp/sdk 9.0.0-beta.28 applies
-// this value as the wall-clock budget for the *entire* pre-flight assessment
-// (not per-call), and a capability-rich agent legitimately runs ~117s — the SDK
-// default (120s) grades such agents "unreachable" with 0 steps. 600s clears
-// that ceiling. Revisit when the SDK restores per-call timeout semantics
-// (adcontextprotocol/adcp-client#2221): a per-call ceiling this large would let
-// a single hung call hold a connection for 10 minutes.
+// Soft scheduling budget for a full-suite comply() assessment. SDK 14 beta.15
+// stops starting new storyboards when this expires and preserves completed
+// results as a timed-out partial run (adcontextprotocol/adcp-client#2221).
+// 600s gives capability-rich agents enough time to finish the hosted suite;
+// per-request network ceilings are configured separately on the transport.
 export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 
 // Interactive full-suite runs (evaluate_agent_quality via Addie) need a higher
@@ -30,7 +28,6 @@ export const HOSTED_FULL_COMPLIANCE_TIMEOUT_MS = 600_000;
 // for target discovery and network jitter.  The background callers (heartbeat,
 // registry refresh) keep the shared 600s constant so heartbeat lock TTLs and
 // hung-call risk stay bounded.
-// TODO(adcontextprotocol/adcp-client#2221): collapse when upstream per-call timeout is restored
 export const HOSTED_INTERACTIVE_COMPLIANCE_TIMEOUT_MS = 1_200_000;
 
 export interface HostedComplianceTarget {

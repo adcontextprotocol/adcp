@@ -28,6 +28,7 @@ describe("spot-level as-run delivery reporting", () => {
   let validateRequest;
   let validateSpot;
   let validateCapabilities;
+  let spotSchema;
 
   before(async () => {
     const request = readSchema(
@@ -41,10 +42,11 @@ describe("spot-level as-run delivery reporting", () => {
     const byPackageExtension = byPackage.allOf.find(
       (schema) => schema.properties
     );
+    spotSchema = byPackageExtension.properties.by_spot.items;
 
     [validateRequest, validateSpot, validateCapabilities] = await Promise.all([
       compile(request),
-      compile(byPackageExtension.properties.by_spot.items),
+      compile(spotSchema),
       compile(readSchema("/schemas/core/reporting-capabilities.json")),
     ]);
   });
@@ -65,6 +67,7 @@ describe("spot-level as-run delivery reporting", () => {
     for (const row of [
       {
         spot_id: "spot_tv_001",
+        creative_id: "creative_tv_30s",
         aired_at: "2026-08-15T20:14:00Z",
         network: "USA Network",
         station: "WABC-TV",
@@ -82,6 +85,27 @@ describe("spot-level as-run delivery reporting", () => {
     ]) {
       assert.equal(validateSpot(row), true, JSON.stringify(validateSpot.errors));
     }
+  });
+
+  it("optionally identifies the creative aired in each spot occurrence", () => {
+    const spotFields = spotSchema.allOf.find(
+      (schema) => schema.properties
+    ).properties;
+    assert.equal(spotFields.creative_id["x-entity"], "creative");
+
+    const airing = {
+      spot_id: "spot_rotation_001",
+      creative_id: "creative_rotation_a",
+      aired_at: "2026-08-15T20:14:00Z",
+    };
+    assert.equal(validateSpot(airing), true, JSON.stringify(validateSpot.errors));
+    assert.equal(
+      validateSpot({ ...airing, creative_id: "" }),
+      false,
+      "creative identity cannot be empty"
+    );
+    delete airing.creative_id;
+    assert.equal(validateSpot(airing), true, "creative identity remains optional");
   });
 
   it("requires stable identity and an RFC 3339 airing timestamp, not impressions", () => {

@@ -29,7 +29,7 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current prerelease schema bundle shipped by the server SDK. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.8' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.9' as const;
 
 /** Release checkpoints the reference training agent can serve. */
 export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
@@ -317,6 +317,10 @@ export interface RightsGrantState {
 export interface ComplyDeliveryAccumulator {
   impressions: number;
   clicks: number;
+  /** Raw DOOH/broadcast plays injected by simulate_delivery. */
+  plays?: number;
+  /** Latest DOOH delivery detail block injected by simulate_delivery. */
+  doohMetrics?: Record<string, unknown>;
   reportedSpend: { amount: number; currency: string };
   conversions: number;
   conversionValue?: number;
@@ -447,6 +451,12 @@ export interface ComplyExtensions {
   };
   /** Single-shot submitted response for the next brief-mode get_signals call. */
   forcedGetSignalsArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
+  /** Single-shot submitted response for the next brief-mode get_products call. */
+  forcedGetProductsArm?: {
     arm: 'submitted';
     taskId: string;
     message?: string;

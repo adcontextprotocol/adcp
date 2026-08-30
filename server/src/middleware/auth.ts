@@ -10,6 +10,8 @@ import { isWorkOSApiKeyFormat } from './api-key-format.js';
 import { verifyWorkOSJWT, looksLikeJWT } from '../auth/workos-jwt.js';
 import { storeRefreshedSession, getRefreshedSession, cleanExpiredRefreshes } from '../db/session-refresh-db.js';
 import { getPool } from '../db/client.js';
+import { getAuthorizationFingerprint } from '../db/authorization-epoch-db.js';
+import { getOrganizationAuthorizationUserId } from '../auth/organization-principal.js';
 import { constantTimeEqual } from '../utils/constant-time-equal.js';
 import { resolveEffectiveMembership } from '../db/org-filters.js';
 
@@ -29,6 +31,8 @@ interface CachedSession {
   accessToken: string;
   expiresAt: number;
   newSealedSession?: string; // Set if session was refreshed
+  /** Persisted authorization epoch observed when this entry was stored (#6827). */
+  authorizationFingerprint?: string;
 }
 const sessionCache = new Map<string, CachedSession>();
 
@@ -314,6 +318,8 @@ interface CachedBearerJWT {
   user: WorkOSUser;
   orgId?: string;
   expiresAt: number;
+  /** Persisted authorization epoch observed when this entry was stored (#6827). */
+  authorizationFingerprint?: string;
 }
 const bearerJwtCache = new Map<string, CachedBearerJWT>();
 const BEARER_JWT_CACHE_TTL_MS = 60 * 1000;
@@ -351,7 +357,11 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
   const now = Date.now();
   const cached = bearerJwtCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
-    return { user: cached.user, rawToken: token, orgId: cached.orgId };
+    if (await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint)) {
+      return { user: cached.user, rawToken: token, orgId: cached.orgId };
+    }
+    // Identity bindings changed since this entry was stored — re-verify.
+    bearerJwtCache.delete(cacheKey);
   }
 
   let verified: Awaited<ReturnType<typeof verifyWorkOSJWT>>;
@@ -400,7 +410,12 @@ export async function validateWorkOSBearerJWT(req: Request): Promise<ValidatedBe
       const oldest = bearerJwtCache.keys().next().value;
       if (oldest) bearerJwtCache.delete(oldest);
     }
-    bearerJwtCache.set(cacheKey, { user, orgId: verified.orgId, expiresAt: cacheUntil });
+    bearerJwtCache.set(cacheKey, {
+      user,
+      orgId: verified.orgId,
+      expiresAt: cacheUntil,
+      authorizationFingerprint: await authorizationFingerprintFor(user),
+    });
   }
 
   return { user, rawToken: token, orgId: verified.orgId };
@@ -767,6 +782,54 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
 }
 
 /**
+ * Authorization fingerprint for the credential that actually authenticated
+ * this session. `attachIdentityId` may swap `user.id` to the identity's
+ * canonical credential, so the authenticated credential is read through
+ * `getOrganizationAuthorizationUserId` — that value is stable across the
+ * swap, and every identity-binding mutation bumps the epoch for each
+ * credential bound to the identity, so a change always moves this value.
+ *
+ * Synthetic principals (admin API key, WorkOS API key) have no credential
+ * row and no identity binding; they return '' and never mismatch.
+ */
+async function authorizationFingerprintFor(
+  user: WorkOSUser,
+): Promise<string | undefined> {
+  if (isSyntheticUser(user.id)) return '';
+  try {
+    return await getAuthorizationFingerprint([getOrganizationAuthorizationUserId(user)]);
+  } catch (err) {
+    // Never fail authentication over the stamp: an unstamped entry reads as
+    // stale on its next hit, so the session is re-validated rather than
+    // served from a fingerprint we could not confirm.
+    logger.warn({ err }, 'Authorization epoch stamp failed — session will not be served from cache');
+    return undefined;
+  }
+}
+
+/**
+ * True when a cached entry still reflects persisted authorization state.
+ *
+ * Entries cached before an identity-binding change carry the pre-change
+ * fingerprint and must not be served — on any instance, not just the one
+ * that ran the mutation. A lookup failure returns false so the request
+ * falls through to full re-validation rather than serving state we could
+ * not confirm; that degrades the cache, it does not sign anyone out.
+ */
+async function isAuthorizationFingerprintCurrent(
+  user: WorkOSUser,
+  stamped: string | undefined,
+): Promise<boolean> {
+  if (isSyntheticUser(user.id)) return true;
+  try {
+    return (await authorizationFingerprintFor(user)) === (stamped ?? '');
+  } catch (err) {
+    logger.warn({ err }, 'Authorization epoch check failed — bypassing session cache');
+    return false;
+  }
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
@@ -909,7 +972,16 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       deadSessionCache.delete(cacheKey);
     }
 
-    if (cached && cached.expiresAt > now) {
+    if (
+      cached &&
+      cached.expiresAt > now &&
+      !(await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint))
+    ) {
+      // Identity bindings changed since this entry was stored. Drop it so
+      // this request re-resolves identity and organization context instead
+      // of inheriting pre-change authority.
+      sessionCache.delete(cacheKey);
+    } else if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session');
       req.user = cached.user;
@@ -1158,6 +1230,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       accessToken: result.accessToken,
       expiresAt: now + SESSION_CACHE_TTL_MS,
       newSealedSession,
+      authorizationFingerprint: await authorizationFingerprintFor(user),
     });
 
     req.user = user;
@@ -1891,7 +1964,13 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       deadSessionCache.delete(cacheKey);
     }
 
-    if (cached && cached.expiresAt > now) {
+    if (
+      cached &&
+      cached.expiresAt > now &&
+      !(await isAuthorizationFingerprintCurrent(cached.user, cached.authorizationFingerprint))
+    ) {
+      sessionCache.delete(cacheKey);
+    } else if (cached && cached.expiresAt > now) {
       // Cache hit - use cached session data
       logger.debug({ userId: cached.user.id }, 'Using cached session (optional auth)');
       req.user = cached.user;
@@ -2036,6 +2115,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
         accessToken: result.accessToken,
         expiresAt: now + SESSION_CACHE_TTL_MS,
         newSealedSession,
+        authorizationFingerprint: await authorizationFingerprintFor(user),
       });
 
       req.user = user;

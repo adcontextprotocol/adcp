@@ -34,6 +34,7 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelRequest,
+  ModelResponse,
   PreparedModelInvocation,
 } from "./model-providers/model-provider.js";
 import {
@@ -49,6 +50,7 @@ import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
   requiresPrecision as checkPrecision,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from "./tool-sets.js";
 
 /**
@@ -266,7 +268,6 @@ export const ROUTING_RULES = {
         "signup",
         "account",
         "profile",
-        "working group",
         "api key",
         "api keys",
         "api token",
@@ -276,10 +277,24 @@ export const ROUTING_RULES = {
         "update_my_profile",
         "get_company_listing",
         "update_company_listing",
+      ],
+      description: "AgenticAdvertising.org membership, profile, and account management",
+    },
+    community_groups: {
+      patterns: [
+        "working group",
+        "committee",
+        "council",
+        "join group",
+        "group post",
+      ],
+      tools: [
         "list_working_groups",
         "join_working_group",
+        "get_my_working_groups",
+        "list_committee_documents",
       ],
-      description: "AgenticAdvertising.org membership and API key management",
+      description: "Working-group, committee, and council participation",
     },
     find_help: {
       patterns: [
@@ -539,7 +554,7 @@ export function buildRoutingPrompt(ctx: RoutingContext): string {
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
-- If they ask about membership features, include the "member" tool set`;
+- If they ask about membership or account features, include the "member_profile" tool set`;
   }
   if (isAAOAdmin) {
     conditionalRules += `
@@ -622,32 +637,46 @@ ${
     ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n'
     : ""
 }IMPORTANT: Select tool SETS based on the user's INTENT:
-- Questions about AdCP, protocols, implementation → ["knowledge"]
-- Questions about member profile, working groups, account → ["member"]
-- Looking for companies/vendors/service providers/implementation partners or managing brand-registry canonical documents → ["directory"]
-- Testing/validating AdCP agent implementations or auditing publisher/property catalog setup → ["agent_testing"]
+- Questions about AdCP concepts, protocol behavior, or documented requirements → ["knowledge"]. A requirement that mentions an identifier or asset is still conceptual unless the user explicitly asks to inspect a schema field or structure. "What do the official docs say about package identifiers?" → exactly ["knowledge"]
+- Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating an implementation, select exactly ["schema_reference", "agent_validation"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_validation"]
+- Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
+- Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
+- Working groups, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
+- Looking for companies/vendors/service providers/implementation partners → ["directory"]
+- Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_validation"], or ["property_catalog"]
+- Testing or validating an AdCP agent implementation, endpoint, authorization, signing, OAuth, RFP response, or IO execution → ["agent_validation"]
+- Auditing, resolving, enriching, browsing, or disputing publisher property-registry or catalog entries → ["property_catalog"]. For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_validation", "property_catalog"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
-- Content workflows, GitHub issues, proposals → ["content"]
-- Questions about working group documents, brand guidelines, uploaded files → ["knowledge", "member"]
+- Committee documents and news-source proposals → ["content"]
+- Submitting or managing the current member's articles/perspectives, reading a Google Doc for publication, attaching an asset, or generating, regenerating, or checking a published cover illustration → ["publishing_author"]
+- Reviewing the editorial queue or approving, rejecting, or requesting revisions to a specific submission → ["publishing_review"]
+- Browsing published perspectives or drafting social posts that promote published content → ["publishing_promotion"]
+- Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
+- Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing_author"]
+- Questions about tracked working-group documents → ["knowledge", "community_groups"]. Questions about the current member's company listing or brand profile → ["member_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
     ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
-${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → ["events", "admin_events"]
+${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
 - Listing all members with payment/product/invoice status, organization domains, roles, profiles, or duplicate organizations → ["admin_organizations"]
 - Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
-${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing group memberships, chapters, or gatherings (admin action) → ["admin_groups"]
+${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
+- Adding/removing/listing committee or working-group leaders (admin action) → ["admin_group_leadership"]
+- Adding/removing working-group members (admin action) → ["admin_group_membership"]
 - Brand-logo review, registry gaps, community mirrors, ownership transfers, or orphaned brands → ["admin_brands"]
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
-- Multiple intents? Include multiple sets: ["knowledge", "agent_testing"]
+- Multiple intents? Include multiple sets: ["knowledge", "agent_validation"]
+- Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
+- Current date or time from the trusted request context → respond with []. Never ignore a direct date/time question
 - General questions needing no tools → []
 
 **directory note**: The directory lists MEMBER ORGANIZATIONS (companies), not individual people. If a user asks for "a contact in [role/department]" without specifying what service or capability they need, route to "respond" with ["directory"] — the handler can ask follow-up questions with full context.
@@ -656,13 +685,14 @@ ${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing g
 Use these for short social messages with some context. Exact bare acknowledgments
 such as "thanks" remain in the ignore category below.
 ${reactList}
+- Community introductions, announcements, and positive social updates with no question or request → react, not ignore. Example: "We hosted a meetup last week and had a great time"
 
 ## Messages to Ignore
+- Regardless of message source, ignore requests outside Addie's expertise such as legal, HR, medical, or unrelated general advice. Do not respond merely to disclaim expertise or recommend a professional
 - Simple acknowledgments: ok, got it, cool, thanks, etc.
 - Casual conversation unrelated to AdCP or AgenticAdvertising.org
 - Messages clearly directed at specific people (e.g., start with "<@USERID> ..." in Slack format)
 - Off-topic discussions
-- Community introductions, announcements, or social updates where the author is NOT asking a question and NOT requesting help from Addie — even if the topic relates to AdCP or events. Examples: "Hi everyone, I'm James from X, looking forward to the event", "We hosted an AdCP meetup last week", "Will register for the summit". React to these with an emoji instead.
 - Open questions to the channel ("does anyone know...", "has anyone tried...", "thoughts on...") — these are addressed to humans, not Addie
 - Opinion polls or community discussion prompts ("what do you all think about...", "what does everyone think about...") — even when the topic involves ad tech standards, IAB guidelines, or industry news. Exception: if the question is specifically about an AdCP protocol detail or schema that only Addie's docs can answer, apply the Channel Response Policy criteria above instead
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
@@ -706,7 +736,7 @@ ${
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
      - "suggest": The topic relates to AdCP but the answer is NOT definitively in Addie's docs — it's an open question, evolving standard, policy/governance decision, commercial/business terms not yet codified, or something a specific person/working group is better positioned to answer. Addie can point to the right people or group. Examples: "who pays the signal provider?", "does an AI impression count?", "what's the governance model?"
      - "low": Adjacent to Addie's domain but she has no verified answer and no specific person to point to.
-   - Set "requires_depth": true when the discussion involves protocol design, schema architecture, technical implementation details, standards discussion, or multi-stakeholder governance decisions. NOT for simple lookup questions or basic "what is X" questions.
+   - Set "requires_depth": true only when the user needs extended reasoning about protocol design, schema architecture, multi-part implementation analysis, standards or RFC/roadmap research, multi-stakeholder governance, or a follow-up that continues an existing technical protocol explanation thread. Set it to false for standalone straightforward requirement lookups, drafting an issue, executing an otherwise bounded tool action (including running a conformance suite), a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit. "Inspect the schema fields and then validate my implementation against them" is multi-part and requires depth; "What about reporting?" after an explanation of media buying continues the technical thread and also requires depth.
 
 Respond with ONLY the JSON object, no other text.`;
 }
@@ -718,6 +748,7 @@ Respond with ONLY the JSON object, no other text.`;
 export function buildRouterModelRequest(
   ctx: RoutingContext,
   model = ModelConfig.fast,
+  reasoning?: ModelRequest['reasoning'],
 ): ModelRequest {
   return {
     model,
@@ -728,6 +759,7 @@ export function buildRouterModelRequest(
     }],
     tools: [],
     maxOutputTokens: 300,
+    ...(reasoning && { reasoning }),
   };
 }
 
@@ -748,10 +780,17 @@ export function extractRouterResponseText(
 }
 
 function classifyRouterError(error: unknown):
+  | "invalid_json"
+  | "schema_invalid"
+  | "refusal"
+  | "truncated"
+  | "incomplete"
   | "unexpected_model_identity"
   | "invalid_provider_event_stream"
   | "unsupported_provider_capability"
   | "provider_error" {
+  if (error instanceof RouterPlanParseError) return error.category;
+  if (error instanceof RouterTerminalResponseError) return error.category;
   if (error instanceof UnexpectedModelIdentityError) {
     return "unexpected_model_identity";
   }
@@ -762,6 +801,13 @@ function classifyRouterError(error: unknown):
     return "unsupported_provider_capability";
   }
   return "provider_error";
+}
+
+class RouterTerminalResponseError extends Error {
+  constructor(readonly category: 'refusal' | 'truncated' | 'incomplete') {
+    super(`Router response was not terminal: ${category}`);
+    this.name = 'RouterTerminalResponseError';
+  }
 }
 
 /**
@@ -939,7 +985,7 @@ export function parseRouterResponse(response: string): ParsedPlan {
       // which can ask for clarification with full context and tools
       return {
         action: "respond",
-        tool_sets: ["knowledge"],
+        tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
         confidence: "suggest" as ConfidenceTier,
         reason: parsed.reason || "Needs clarification",
       };
@@ -966,16 +1012,34 @@ export function parseRouterResponse(response: string): ParsedPlan {
   } catch {
     logger.warn(
       { responseBytes: Buffer.byteLength(response, "utf8") },
-      "Router: Failed to parse response, using knowledge fallback",
+      "Router: Failed to parse response, using safe knowledge fallback",
     );
-    // On parse error, default to respond with knowledge tools (safe fallback)
+    // On parse error, retain the pre-split safe read-only knowledge domains.
     return {
       action: "respond",
-      tool_sets: ["knowledge"],
+      tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
       confidence: "high",
-      reason: "Parse error - defaulting to knowledge tools",
+      reason: "Parse error - defaulting to safe knowledge tools",
     };
   }
+}
+
+function strictPlanToParsedPlan(plan: StrictRouterPlan): ParsedPlan {
+  if (plan.action === 'ignore') return { action: 'ignore', reason: plan.reason };
+  if (plan.action === 'react') {
+    if (!plan.emoji) throw new RouterPlanParseError('schema_invalid', 'React response has no emoji');
+    return { action: 'react', emoji: plan.emoji, reason: plan.reason };
+  }
+  if (!plan.tool_sets || !plan.confidence || typeof plan.requires_depth !== 'boolean') {
+    throw new RouterPlanParseError('schema_invalid', 'Respond response is incomplete');
+  }
+  return {
+    action: 'respond',
+    tool_sets: plan.tool_sets,
+    confidence: plan.confidence,
+    requires_depth: plan.requires_depth,
+    reason: plan.reason,
+  };
 }
 
 export interface RouterModelObservation {
@@ -1004,6 +1068,17 @@ export interface RouterRouteOptions {
    * It cannot change or delay the production decision.
    */
   observer?: (observation: RouterModelObservation) => void | Promise<void>;
+  /** Used by a higher-level canary boundary so it can invoke the fallback provider. */
+  failureMode?: 'safe_fallback' | 'throw';
+  /** Cancels the provider request without changing the default fallback behavior. */
+  signal?: AbortSignal;
+}
+
+export interface AddieRouterProviderOptions {
+  model?: string;
+  reasoning?: ModelRequest['reasoning'];
+  /** Reject malformed, incomplete, or unauthorized plans instead of normalizing them. */
+  strictOutput?: boolean;
 }
 
 function queueRouterObserver(
@@ -1030,16 +1105,23 @@ function queueRouterObserver(
 export class AddieRouter {
   private readonly provider: ModelProvider;
   private readonly providerHealth: ProviderHealthController;
+  private readonly model: string;
+  private readonly reasoning?: ModelRequest['reasoning'];
+  private readonly strictOutput: boolean;
 
   constructor(
     apiKey: string,
     provider?: ModelProvider,
     providerHealth: ProviderHealthController = new ProviderHealthController(),
+    options: AddieRouterProviderOptions = {},
   ) {
     this.provider = provider ?? new AnthropicRouterProvider(apiKey, {
       maxRetries: 2,
     });
     this.providerHealth = providerHealth;
+    this.model = options.model ?? ModelConfig.fast;
+    this.reasoning = options.reasoning;
+    this.strictOutput = options.strictOutput ?? false;
   }
 
   /**
@@ -1053,8 +1135,12 @@ export class AddieRouter {
     options: RouterRouteOptions = {},
   ): Promise<ExecutionPlan> {
     const startTime = Date.now();
-    const canonicalRequest = deepFreezeRouterValue(buildRouterModelRequest(ctx));
+    const canonicalRequest = deepFreezeRouterValue(
+      buildRouterModelRequest(ctx, this.model, this.reasoning),
+    );
     let primaryInvocation: PreparedModelInvocation | null = null;
+    let primaryResponse: ModelResponse | null = null;
+    let rawResponseText: string | null = null;
 
     try {
       const availability = this.providerHealth.acquire(this.provider.id, 'router');
@@ -1066,14 +1152,28 @@ export class AddieRouter {
           beforeDispatch: (prepared) => {
             primaryInvocation = prepared;
           },
+          signal: options.signal,
         }),
         this.provider.id,
       );
-      this.providerHealth.recordSuccess(this.provider.id, 'router');
-
+      primaryResponse = response;
       const text = extractRouterResponseText(response.content);
+      rawResponseText = text;
 
-      const parsedPlan = parseRouterResponse(text);
+      if (this.strictOutput && response.finishReason !== 'stop') {
+        throw new RouterTerminalResponseError(
+          response.finishReason === 'length'
+            ? 'truncated'
+            : response.finishReason === 'refusal'
+              ? 'refusal'
+              : 'incomplete',
+        );
+      }
+
+      const parsedPlan = this.strictOutput
+        ? strictPlanToParsedPlan(parseStrictRouterPlan(text, ctx.isAAOAdmin ?? false))
+        : parseRouterResponse(text);
+      this.providerHealth.recordSuccess(this.provider.id, 'router');
       const latencyMs = Date.now() - startTime;
 
       // Filter tool sets to only valid/permitted sets for this user
@@ -1107,7 +1207,7 @@ export class AddieRouter {
         latency_ms: latencyMs,
         tokens_input: response.usage.inputTokens,
         tokens_output: response.usage.outputTokens,
-        model: ModelConfig.fast,
+        model: this.model,
         requires_precision: requiresPrecisionMode,
         requires_depth: requiresDepthMode,
       };
@@ -1131,7 +1231,7 @@ export class AddieRouter {
 
       // Track for performance metrics (fire-and-forget, errors handled internally)
       void trackApiCall({
-        model: ModelConfig.fast,
+        model: this.model,
         purpose: ApiPurpose.ROUTER,
         tokens_input: response.usage.inputTokens,
         tokens_output: response.usage.outputTokens,
@@ -1148,7 +1248,7 @@ export class AddieRouter {
         finishReason: response.finishReason,
         primaryErrorCategory: null,
         requestedProvider: this.provider.id,
-        requestedModel: ModelConfig.fast,
+        requestedModel: this.model,
         returnedProvider: response.provider,
         returnedModel: response.model,
         inputTokens: response.usage.inputTokens,
@@ -1168,12 +1268,12 @@ export class AddieRouter {
         { category },
         "Router: Failed to generate execution plan",
       );
-      // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
+      // On error, retain the pre-split safe read-only knowledge domains.
       const fallbackPlan: ExecutionPlan = {
         action: "respond",
-        tool_sets: ["knowledge"],
+        tool_sets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
         confidence: "high",
-        reason: "Router error - defaulting to knowledge tools",
+        reason: "Router error - defaulting to safe knowledge tools",
         decision_method: "llm",
         latency_ms: Date.now() - startTime,
       };
@@ -1182,20 +1282,21 @@ export class AddieRouter {
         primaryInvocation,
         isAdmin: ctx.isAAOAdmin ?? false,
         productionPlan: fallbackPlan,
-        rawResponseText: null,
-        responseContent: [],
-        finishReason: null,
+        rawResponseText,
+        responseContent: primaryResponse?.content ?? [],
+        finishReason: primaryResponse?.finishReason ?? null,
         primaryErrorCategory: category,
         requestedProvider: this.provider.id,
-        requestedModel: ModelConfig.fast,
-        returnedProvider: null,
-        returnedModel: null,
-        inputTokens: null,
-        outputTokens: null,
-        cacheReadTokens: null,
-        cacheWriteTokens: null,
+        requestedModel: this.model,
+        returnedProvider: primaryResponse?.provider ?? null,
+        returnedModel: primaryResponse?.model ?? null,
+        inputTokens: primaryResponse?.usage.inputTokens ?? null,
+        outputTokens: primaryResponse?.usage.outputTokens ?? null,
+        cacheReadTokens: primaryResponse?.usage.cacheReadTokens ?? null,
+        cacheWriteTokens: primaryResponse?.usage.cacheWriteTokens ?? null,
         latencyMs: Date.now() - startTime,
       });
+      if (options.failureMode === 'throw') throw error;
       return fallbackPlan;
     }
   }

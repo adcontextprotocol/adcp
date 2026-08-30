@@ -366,11 +366,11 @@ export function badgeEligibleVersionsForTargetSelection(
 // stale local cache), not platform errors — callers should log at warn and
 // return actionable coaching, not alarm on them as system failures.
 //
-// Until @adcp/sdk exports typed errors (tracked upstream at
-// adcontextprotocol/adcp-client#734), we classify by message regex. The
-// patterns match the exact strings thrown at
-// node_modules/@adcp/sdk/dist/lib/testing/storyboard/compliance.js:337
-// and :347. Swap to `instanceof` checks once the SDK emits coded errors.
+// SDK 14 beta.15 exports CapabilityResolutionError (#734), so current errors
+// are classified by class + code and use its structured specialism/protocol
+// fields. Anchored message patterns remain only as a compatibility fallback
+// for serialized/older-SDK errors and for unsupported-version detail, whose
+// structured fields are tracked in adcontextprotocol/adcp-client#2754.
 //
 // Security notes:
 //   - The captured groups echo agent-declared content. Regex is anchored at
@@ -479,13 +479,43 @@ export function classifyCapabilityResolutionError(
   const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
   if (!msg) return undefined;
 
-  if (err instanceof CapabilityResolutionError && err.code === 'unsupported_adcp_version') {
-    const match = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
-    return {
-      kind: 'unsupported_adcp_version',
-      complianceVersion: match ? sanitizeClassifiedValue(match[1], 80) : undefined,
-      supportedVersions: match ? parseSupportedVersionList(match[2]) : [],
-    };
+  if (err instanceof CapabilityResolutionError) {
+    if (err.code === 'unsupported_adcp_version') {
+      const match = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
+      return {
+        kind: 'unsupported_adcp_version',
+        complianceVersion: match ? sanitizeClassifiedValue(match[1], 80) : undefined,
+        supportedVersions: match ? parseSupportedVersionList(match[2]) : [],
+      };
+    }
+
+    if (err.code === 'unknown_specialism') {
+      return {
+        kind: 'unknown_specialism',
+        specialism: err.specialism ? sanitizeClassifiedValue(err.specialism) : undefined,
+      };
+    }
+
+    if (err.code === 'specialism_parent_protocol_missing') {
+      const specialism = err.specialism ? sanitizeClassifiedValue(err.specialism) : undefined;
+      const parentProtocol = err.parentProtocol ? sanitizeClassifiedValue(err.parentProtocol) : undefined;
+      if (!parentProtocol) return { kind: 'unknown_specialism', specialism };
+      const nearMiss = nearMissProtocolDeclaration(parentProtocol, declaredProtocols);
+      if (nearMiss) {
+        return {
+          kind: 'unrecognized_supported_protocol',
+          specialism,
+          parentProtocol,
+          declaredProtocol: nearMiss.declaredProtocol,
+          expectedProtocol: nearMiss.expectedProtocol,
+        };
+      }
+      return {
+        kind: 'specialism_parent_protocol_missing',
+        specialism,
+        parentProtocol,
+      };
+    }
   }
 
   const unsupportedVersionMatch = msg.match(UNSUPPORTED_ADCP_VERSION_RE);
@@ -1207,6 +1237,7 @@ const SPECIALISM_CATALOG: Record<string, SpecialismInfo> = {
   'audience-sync': { protocol: 'media-buy', storyboard_id: 'audience_sync' },
   'sales-broadcast-tv': { protocol: 'media-buy', storyboard_id: 'sales_broadcast_tv' },
   'sales-catalog-driven': { protocol: 'media-buy', storyboard_id: 'sales_catalog_driven' },
+  'sales-dooh': { protocol: 'media-buy', storyboard_id: 'sales_dooh' },
   'sales-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_guaranteed' },
   'sales-non-guaranteed': { protocol: 'media-buy', storyboard_id: 'sales_non_guaranteed' },
   'sales-proposal-mode': { protocol: 'media-buy', storyboard_id: 'sales_proposal_mode' },

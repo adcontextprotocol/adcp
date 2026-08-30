@@ -10,7 +10,7 @@
  * the DB value set, so the env fallback was dropped. Setting the env
  * var in a test here must NOT affect the resolver's return value.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { mockGetEditorialChannel } = vi.hoisted(() => ({
   mockGetEditorialChannel: vi.fn<any>(),
@@ -41,16 +41,9 @@ vi.mock('../../server/src/services/announcement-visual.js', () => ({
 
 import { resolveEditorialChannel } from '../../server/src/addie/jobs/announcement-trigger.js';
 
-const ORIGINAL_ENV = process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
-
 beforeEach(() => {
   mockGetEditorialChannel.mockReset();
-  delete process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
-});
-
-afterEach(() => {
-  if (ORIGINAL_ENV === undefined) delete process.env.SLACK_EDITORIAL_REVIEW_CHANNEL;
-  else process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = ORIGINAL_ENV;
+  vi.unstubAllEnvs();
 });
 
 describe('resolveEditorialChannel', () => {
@@ -69,7 +62,7 @@ describe('resolveEditorialChannel', () => {
       channel_id: 'C0FROMDB01',
       channel_name: 'admin-editorial-review',
     });
-    process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
+    vi.stubEnv('SLACK_EDITORIAL_REVIEW_CHANNEL', 'C0STALEENVCHANNEL');
 
     expect(await resolveEditorialChannel()).toBe('C0FROMDB01');
   });
@@ -78,7 +71,7 @@ describe('resolveEditorialChannel', () => {
     mockGetEditorialChannel.mockResolvedValueOnce({ channel_id: null, channel_name: null });
     // Previously this would fall back to the env var. After #3000 rollout
     // completed, a stale env var would otherwise mask a misconfigured DB.
-    process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
+    vi.stubEnv('SLACK_EDITORIAL_REVIEW_CHANNEL', 'C0STALEENVCHANNEL');
 
     expect(await resolveEditorialChannel()).toBeNull();
   });
@@ -108,7 +101,7 @@ describe('resolveEditorialChannel', () => {
     mockGetEditorialChannel.mockRejectedValueOnce(new Error('db connection reset'));
     // Even with env set, a DB failure no longer silently activates a
     // fallback — the job skips and logs instead.
-    process.env.SLACK_EDITORIAL_REVIEW_CHANNEL = 'C0STALEENVCHANNEL';
+    vi.stubEnv('SLACK_EDITORIAL_REVIEW_CHANNEL', 'C0STALEENVCHANNEL');
 
     expect(await resolveEditorialChannel()).toBeNull();
   });

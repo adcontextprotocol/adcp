@@ -23,7 +23,7 @@ const {
   mockMarkLinkedInPosted,
   mockRefreshReviewCardForOrg,
   mockLoadDraftAndState,
-  mockCurrentUser,
+  mockGetCurrentUser,
 } = vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
@@ -31,7 +31,7 @@ const {
     mockMarkLinkedInPosted: vi.fn<any>(),
     mockRefreshReviewCardForOrg: vi.fn<any>(),
     mockLoadDraftAndState: vi.fn<any>(),
-    mockCurrentUser: { id: 'user_wk_admin01', email: 'admin@example.com', is_admin: true },
+    mockGetCurrentUser: vi.fn(() => ({ id: 'user_wk_admin01', email: 'admin@example.com', is_admin: true })),
   };
 });
 
@@ -43,13 +43,13 @@ vi.mock('../../server/src/addie/jobs/announcement-handlers.js', () => ({
 
 vi.mock('../../server/src/middleware/auth.js', () => ({
   requireAuth: (req: any, _res: any, next: any) => {
-    req.user = mockCurrentUser;
+    req.user = mockGetCurrentUser();
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
   requireGlobalAdmin: [
     (req: any, _res: any, next: any) => {
-      req.user = mockCurrentUser;
+      req.user = mockGetCurrentUser();
       next();
     },
     (_req: any, _res: any, next: any) => next(),
@@ -85,7 +85,8 @@ beforeEach(() => {
   mockMarkLinkedInPosted.mockReset();
   mockRefreshReviewCardForOrg.mockReset();
   mockLoadDraftAndState.mockReset();
-  mockCurrentUser.id = 'user_wk_admin01';
+  mockGetCurrentUser.mockReset();
+  mockGetCurrentUser.mockReturnValue({ id: 'user_wk_admin01', email: 'admin@example.com', is_admin: true });
   mockRefreshReviewCardForOrg.mockResolvedValue(undefined);
 });
 
@@ -101,7 +102,7 @@ describe('POST /api/admin/accounts/:orgId/announcement/linkedin', () => {
   });
 
   it('403 when the caller is the static ADMIN_API_KEY', async () => {
-    mockCurrentUser.id = 'admin_api_key';
+    mockGetCurrentUser.mockReturnValue({ id: 'admin_api_key', email: 'admin@example.com', is_admin: true });
     const app = buildApp();
     const res = await request(app)
       .post(`/api/admin/accounts/${ORG_ID}/announcement/linkedin`)

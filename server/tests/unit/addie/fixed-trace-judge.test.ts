@@ -144,12 +144,15 @@ function observation(traceId: string, provider: ModelProviderId = 'anthropic'): 
     terminalStage: 'generation',
     terminalStatus: 'complete',
     boundaryReason: null,
+    localReplacementReason: null,
     finishReason: 'stop',
     output: 'AdCP uses typed tasks between buyer and seller agents.',
     flagged: false,
     route: { action: 'respond', toolSets: ['knowledge'] },
     tools: [{
       name: 'search_docs',
+      description: 'Search synthetic official documentation.',
+      input: { query: 'task model' },
       effect: 'read',
       policyDisposition: 'allowed',
       resultStatus: 'ok',
@@ -182,26 +185,28 @@ describe('fixed-trace independent judge', () => {
     const serialized = JSON.stringify(request);
     expect(serialized).not.toContain('candidate-secret');
     expect(serialized).not.toContain('anthropic');
-    expect(serialized).not.toContain('Official overview: buyers and sellers exchange typed tasks.');
+    expect(serialized).not.toContain('Official task lifecycle: if work is asynchronous');
     expect(serialized).toContain('candidate_answer');
+    expect(serialized).toContain('Search synthetic official documentation.');
+    expect(serialized).toContain('task model');
     expect(request.requestMetadata).toEqual({ purpose: 'fixed_trace_blinded_judge', trace_id: trace.id });
     expect(request.outputSchema).toMatchObject({
       name: 'fixed_trace_judge_verdict',
       strict: true,
       schema: {
-        required: ['pass', 'score', 'reason'],
+        required: ['pass', 'score', 'reason', 'finding'],
         additionalProperties: false,
       },
     });
   });
 
   it('accepts a strict, internally consistent verdict with complete provenance', async () => {
-    const provider = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct"}');
+    const provider = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct","finding":"The answer matches the executed tool evidence."}');
     const result = await judgeFixedTraceObservation(trace, observation(trace.id), config(provider));
     expect(result).toMatchObject({
       status: 'judged',
       failureReason: null,
-      verdict: { pass: true, score: 4, reason: 'correct' },
+      verdict: { pass: true, score: 4, reason: 'correct', finding: 'The answer matches the executed tool evidence.' },
       metadata: {
         candidateIdentityMetadataExposed: false,
         requestedProvider: 'openai',
@@ -222,7 +227,7 @@ describe('fixed-trace independent judge', () => {
   it('joins a valid verdict split across provider text blocks', async () => {
     const provider = new ScriptedJudgeProvider('openai', [
       '{"pass":true,',
-      '"score":3,"reason":"correct"}',
+      '"score":3,"reason":"correct","finding":"The answer is supported."}',
     ]);
     await expect(judgeFixedTraceObservation(trace, observation(trace.id), config(provider)))
       .resolves.toMatchObject({
@@ -234,7 +239,7 @@ describe('fixed-trace independent judge', () => {
   it('accepts a verdict accompanied only by authenticated provider thinking state', async () => {
     const provider = new ScriptedJudgeProvider(
       'anthropic',
-      '{"pass":true,"score":4,"reason":"correct"}',
+      '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}',
       'stop',
       true,
     );
@@ -252,6 +257,25 @@ describe('fixed-trace independent judge', () => {
       .resolves.toMatchObject({ status: 'invalid', failureReason: 'judge_output_invalid' });
     await expect(judgeFixedTraceObservation(trace, observation(trace.id), config(truncated)))
       .resolves.toMatchObject({ status: 'invalid', failureReason: 'judge_output_truncated' });
+  });
+
+  it('requires a bounded audit finding in every verdict', async () => {
+    const missing = new ScriptedJudgeProvider(
+      'openai',
+      '{"pass":true,"score":4,"reason":"correct"}',
+    );
+    const blank = new ScriptedJudgeProvider(
+      'openai',
+      '{"pass":true,"score":4,"reason":"correct","finding":""}',
+    );
+    const oversized = new ScriptedJudgeProvider(
+      'openai',
+      JSON.stringify({ pass: true, score: 4, reason: 'correct', finding: 'x'.repeat(241) }),
+    );
+    for (const provider of [missing, blank, oversized]) {
+      await expect(judgeFixedTraceObservation(trace, observation(trace.id), config(provider)))
+        .resolves.toMatchObject({ status: 'invalid', failureReason: 'judge_output_invalid' });
+    }
   });
 
   it('refuses a same-provider judge before dispatch', async () => {
@@ -288,8 +312,8 @@ describe('fixed-trace independent judge', () => {
 
   it('requires and summarizes two distinct non-candidate judge providers', async () => {
     const candidate = observation(trace.id);
-    const openai = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct"}');
-    const google = new ScriptedJudgeProvider('google', '{"pass":true,"score":3,"reason":"correct"}');
+    const openai = new ScriptedJudgeProvider('openai', '{"pass":true,"score":4,"reason":"correct","finding":"The answer is supported."}');
+    const google = new ScriptedJudgeProvider('google', '{"pass":true,"score":3,"reason":"correct","finding":"The answer is supported."}');
     const judgments = await runIndependentFixedTraceJudges(
       [trace],
       [candidate],
@@ -321,8 +345,8 @@ describe('fixed-trace independent judge', () => {
 
   it('records disagreement as a failed consensus without hiding completed coverage', async () => {
     const candidate = observation(trace.id);
-    const openai = new ScriptedJudgeProvider('openai', '{"pass":true,"score":3,"reason":"correct"}');
-    const google = new ScriptedJudgeProvider('google', '{"pass":false,"score":2,"reason":"incomplete"}');
+    const openai = new ScriptedJudgeProvider('openai', '{"pass":true,"score":3,"reason":"correct","finding":"The answer is supported."}');
+    const google = new ScriptedJudgeProvider('google', '{"pass":false,"score":2,"reason":"incomplete","finding":"The answer omits a required criterion."}');
     const judgments = await runIndependentFixedTraceJudges(
       [trace],
       [candidate],

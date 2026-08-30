@@ -72,12 +72,14 @@ test('released storyboard runs forward schemaRoot with adcpVersion', () => {
   }
 });
 
-test('storyboard runs pin the intended wire surface without changing schema selection', () => {
+test('storyboard runs use public roots and pin the intended wire surface', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(source, /import \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} from/);
-  assert.match(source, /const installedSdkSchemaRoot = join\([\s\S]*schemas-data[\s\S]*installedSdkVersion/);
-  assert.match(source, /: \{ schemaRoot: installedSdkSchemaRoot \}/);
-  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*releasedComplianceVersion === undefined[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
+  assert.match(source, /process\.env\.ADCP_COMPLIANCE_DIR[\s\S]*complianceDir:/);
+  assert.match(source, /process\.env\.ADCP_SCHEMA_ROOT[\s\S]*schemaRoot:/);
+  assert.doesNotMatch(source, /node_modules[\s\S]*@adcp[\s\S]*sdk/);
+  assert.doesNotMatch(source, /schemas-data/);
+  assert.match(source, /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*\? '3\.0'[\s\S]*isCurrentSourceRun[\s\S]*\? TRAINING_AGENT_CURRENT_ADCP_VERSION[\s\S]*: undefined/);
   assert.equal(
     (source.match(/\.\.\.\(wireAdcpVersion && \{ wireAdcpVersion \}\)/g) ?? []).length,
     3,

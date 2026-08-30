@@ -417,6 +417,11 @@
 #
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent | tmp_router)
+#     Descriptive authoring metadata, not a runner selection gate: agents do not
+#     publish one canonical interaction_model value on the wire. Authors MUST
+#     express executable scope through required_tools, requires_capability,
+#     requires_contract, supported_protocols, or specialisms instead. Runners
+#     MUST resolve those declared gates before context extraction or setup.
 #   capabilities: string[] (legacy descriptive capability labels; bundle selection is driven by get_adcp_capabilities.supported_protocols and specialisms)
 #   examples: string[] (real-world examples: "Celtra", "Innovid")
 #

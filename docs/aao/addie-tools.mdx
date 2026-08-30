@@ -16,7 +16,7 @@ If you're an integrator or admin and you want to know whether Addie can do X: se
 
 ## knowledge
 
-Search documentation, code repos, Slack history, curated resources, GitHub issues/PRs, and validate JSON against AdCP schemas for protocol questions, implementation help, roadmap/RFC lookups, and community discussions
+Search AdCP documentation and indexed ad tech specifications for protocol questions and implementation help
 
 ### `search_docs`
 
@@ -35,6 +35,10 @@ Get the full content of a specific documentation page by ID. Canonical IDs retur
 Search indexed external GitHub repositories for ad tech specifications and protocols. Includes: AdCP (core protocol spec, sales agent, signals agent, JS/Python/Go clients), A2A (Google Agent-to-Agent protocol and samples), MCP (Model Context Protocol spec, TypeScript/Python SDKs, reference servers), IAB Tech Lab specs (OpenRTB 2.x/3.0, AdCOM, OpenDirect, ARTF, UCP, GPP, TCF, US Privacy, UID2, VAST, ads.cert), Prebid (full documentation site with configuration guides, bidder adapter docs, ad ops workflows, GAM integration, troubleshooting, Prebid Mobile, and video; plus Prebid.js source with module docs, and Prebid Server source), and LangGraph. Use this for protocol details, spec comparisons, implementation examples, and SDK usage.
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
+
+## community_research
+
+When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack
 
 ### `search_slack`
 
@@ -72,11 +76,9 @@ Download and read a file that was shared in Slack. PROACTIVELY use this whenever
 
 *Source: `server/src/addie/mcp/url-tools.ts`*
 
-### `list_github_issues`
+## schema_reference
 
-Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
+Inspect, compare, and validate JSON against versioned AdCP schemas
 
 ### `validate_json`
 
@@ -102,9 +104,9 @@ Compare two schema versions to show what changed. Use this when users ask about 
 
 *Source: `server/src/addie/mcp/schema-tools.ts`*
 
-## member
+## member_profile
 
-Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.
+Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim
 
 ### `get_my_profile`
 
@@ -149,6 +151,10 @@ Issue a DNS TXT challenge so the caller's selected organization can claim a bran
 Run the WorkOS DNS lookup against a previously-issued challenge for the selected organization and, on success, apply the brand-registry update. ONLY call after request_brand_domain_challenge returned DNS instructions in this same conversation AND the user has explicitly confirmed they published the record. NEVER call speculatively, as a 'check status' tool, or in a retry loop — DNS propagation takes minutes and the server enforces a cooldown that will return still_pending if you call again too soon. If the call returns still_pending, STOP and ask the user to confirm before any retry. Response begins with an HTML comment '&lt;!-- STATUS: &lt;code> -->' (invisible in rendered markdown) — codes: verified, still_pending, no_challenge, workos_error, not_authenticated, no_org, org_selection_required, not_admin, missing_domain. After 'verified' the claim is complete; after 'still_pending' STOP and ask the user to confirm before retrying.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+## community_groups
+
+Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents
 
 ### `list_working_groups`
 
@@ -198,21 +204,9 @@ Get the current user's council interest signups. Shows which councils they've ex
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-### `list_perspectives`
-
-List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
 ### `create_working_group_post`
 
 Create a post in a working group on behalf of the current user. The user must be a member of the working group. Supports article, link, and discussion post types.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `attach_content_asset`
-
-Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -222,12 +216,6 @@ Save a useful web resource to the knowledge base for future reference. Use this 
 
 *Source: `server/src/addie/mcp/knowledge-search.ts`*
 
-### `draft_social_posts`
-
-Draft social media posts for the member based on an article or topic. In 'suggest' mode, find recent articles worth posting about and pitch them with member-specific angles. In 'draft' mode, generate 2 LinkedIn options and 1 X/Twitter option personalized to the member's company, role, and expertise. Use when a member asks for help writing a social post, or asks what they should be posting about. Do NOT use for general social media strategy advice or questions about social platforms.
-
-*Source: `server/src/addie/mcp/social-draft-tools.ts`*
-
 ### `list_committee_documents`
 
 List documents tracked by a committee. Shows document titles, status, and summaries.
@@ -236,7 +224,7 @@ List documents tracked by a committee. Shows document titles, status, and summar
 
 ## directory
 
-The searchable partner/vendor directory — find partners, vendors, consultants, service providers, and member organizations. Also: request introductions, browse the member directory, research brands, look up brand assets, and find registry gaps
+Search the member, agent, and publisher directory for organizations, partners, vendors, consultants, service providers, and introductions
 
 ### `search_members`
 
@@ -291,6 +279,10 @@ List all publishers that have published a /.well-known/adagents.json file, indic
 Find all agents authorized for a specific publisher domain. Shows both verified agents (from adagents.json) and claimed agents (from agent registrations).
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
+
+## brand_registry
+
+Research and manage brand-registry entries, logos, canonical brand documents, reciprocal brand.json assertions, and registry gaps
 
 ### `research_brand`
 
@@ -352,9 +344,9 @@ Send the SHOULD-level notification email to the house's contact.email when a lea
 
 *Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
 
-## agent_testing
+## agent_validation
 
-Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can't see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.
+Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.
 
 ### `validate_adagents`
 
@@ -427,6 +419,10 @@ Test whether a buyer agent can execute a real IO or proposal through the publish
 Validate if an agent is authorized for a publisher domain by checking their /.well-known/adagents.json file.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
+
+## property_catalog
+
+Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.
 
 ### `resolve_property`
 
@@ -618,6 +614,128 @@ Update a document tracked by a committee. Can change title, description, URL, or
 Remove a document from a committee. The document will no longer be tracked or displayed. Only committee leaders can delete documents.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+## publishing_author
+
+Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations
+
+### `propose_content`
+
+Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_my_content`
+
+Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `read_google_doc`
+
+Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
+
+*Source: `server/src/addie/mcp/google-docs.ts`*
+
+### `check_illustration_status`
+
+Check if a perspective article has an editorial illustration and whether the author can generate one.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `generate_perspective_illustration`
+
+Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `attach_content_asset`
+
+Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## publishing_review
+
+Review pending member content and approve, reject, or request revisions when the current member leads that collection or is an admin
+
+### `list_pending_content`
+
+List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `approve_content`
+
+Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `reject_content`
+
+Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `request_revisions`
+
+Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## publishing_promotion
+
+Browse published community perspectives and draft social posts promoting published content
+
+### `list_perspectives`
+
+List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `draft_social_posts`
+
+Draft social media posts for the member based on an article or topic. In 'suggest' mode, find recent articles worth posting about and pitch them with member-specific angles. In 'draft' mode, generate 2 LinkedIn options and 1 X/Twitter option personalized to the member's company, role, and expertise. Use when a member asks for help writing a social post, or asks what they should be posting about. Do NOT use for general social media strategy advice or questions about social platforms.
+
+*Source: `server/src/addie/mcp/social-draft-tools.ts`*
+
+## github
+
+Read a specific GitHub issue or pull request, draft a bug report or feature request, and create a confirmed issue
+
+### `draft_github_issue`
+
+Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool's entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_github_issue`
+
+File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_github_issue`
+
+Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `list_github_issues`
+
+Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## illustrations
+
+Search the approved illustration library when a user requests a diagram or a substantive explanation would materially benefit from a visual
+
+### `search_image_library`
+
+Search the approved illustration library for images that match a topic or concept. Returns image URLs and alt text that you can include in your response. All searches are logged automatically.
+
+*Source: `server/src/addie/mcp/image-tools.ts`*
 
 ## member_billing
 
@@ -973,7 +1091,7 @@ The invitation is recorded immediately; the outreach message is a draft for the 
 
 ## admin_events (admin only)
 
-Administer events: create or update events, manage registrations, check a person's status, and send invitations (admin only)
+Admin mutation companion for the events set: create or update events, manage registrations, check a person's status, and send invitations; always select together with events (admin only)
 
 ### `create_event`
 
@@ -1116,9 +1234,9 @@ Flag a Slack user as a known media contact (journalist, reporter, editor). Messa
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_groups (admin only)
+## admin_group_structure (admin only)
 
-Manage chapters, gatherings, committees, working groups, leaders, memberships, and group names (admin only)
+Create or list chapters and industry gatherings, and rename working groups (admin only)
 
 ### `create_chapter`
 
@@ -1143,6 +1261,16 @@ Create an industry gathering for conferences/trade shows. Auto-archives after ev
 List all industry gatherings with their dates, locations, and member counts.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `rename_working_group`
+
+Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_group_leadership (admin only)
+
+List working groups and manage their committee leaders (admin only)
 
 ### `list_working_groups`
 
@@ -1174,6 +1302,22 @@ List all leaders of a committee.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+## admin_group_membership (admin only)
+
+List working groups and add or remove working-group members (admin only)
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_working_group`
+
+Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
 ### `add_working_group_member`
 
 Add a user as a member of a working group, council, chapter, or industry gathering.
@@ -1183,12 +1327,6 @@ Add a user as a member of a working group, council, chapter, or industry gatheri
 ### `remove_working_group_member`
 
 Remove a user from a working group, council, chapter, or industry gathering. The user is deactivated, not deleted.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `rename_working_group`
-
-Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1610,84 +1748,6 @@ DO NOT use for:
 Set how often Addie sends proactive messages (tips, reminders, follow-ups). Choose a cadence or opt out entirely.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `search_image_library`
-
-Search the approved illustration library for images that match a topic or concept. Returns image URLs and alt text that you can include in your response. All searches are logged automatically.
-
-*Source: `server/src/addie/mcp/image-tools.ts`*
-
-### `draft_github_issue`
-
-Draft a GitHub issue and generate a pre-filled URL for the user to create it. Use this when users report bugs, request features, or ask you to create a GitHub issue. CRITICAL: Users CANNOT see tool outputs - you MUST copy this tool's entire output (the GitHub link, title, body preview) into your response. Never say "click the link above" without including the actual link. The user will click the link to create the issue from their own GitHub account. All issues go to the "adcp" repository which contains the protocol, schemas, AgenticAdvertising.org server, and documentation.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `create_github_issue`
-
-File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `get_github_issue`
-
-Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `propose_content`
-
-Submit a draft (article or link) for editorial review. Content lands in pending_review; a committee lead or admin approves it to publish. Default committee is "editorial" (site-wide Perspectives). Only `title` is required.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `get_my_content`
-
-Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `list_pending_content`
-
-List content pending review that the user can approve/reject. Only committee leads see their committee content; admins see all pending content.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `approve_content`
-
-Approve pending content for publication. Only committee leads (for their committees) and admins can approve content.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `reject_content`
-
-Permanently reject content. Only committee leads (for their committees) and admins can reject content. The proposer will see the rejection reason. Use request_revisions instead if the author should address feedback and resubmit.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `request_revisions`
-
-Ask the author to revise and resubmit content. The article stays visible in the review queue as "needs revisions" until the author resubmits. Use this instead of reject_content when the content is fixable.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `read_google_doc`
-
-Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
-
-*Source: `server/src/addie/mcp/google-docs.ts`*
-
-### `check_illustration_status`
-
-Check if a perspective article has an editorial illustration and whether the author can generate one.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
-
-### `generate_perspective_illustration`
-
-Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
 
 ## Always available (admin)
 

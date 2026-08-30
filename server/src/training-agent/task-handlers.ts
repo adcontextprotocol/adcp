@@ -165,7 +165,13 @@ type GetProductsRejectedResponse = {
   suggestions?: string[];
   context?: Record<string, unknown>;
 };
+type GetProductsSubmittedResponse = {
+  status: 'submitted';
+  task_id: string;
+  message?: string;
+};
 type GetProductsReadDirectives = {
+  submitted?: { arm: 'submitted'; taskId: string; message?: string };
   rejection?: { reason: string; suggestions?: string[] };
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
@@ -9155,7 +9161,7 @@ function productMatchesAudienceActivation(
   ));
 }
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const paginationOffset = req.pagination
     ? decodeOffsetCursor('products', req.pagination.cursor)
@@ -9211,6 +9217,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
       const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
+      let submittedSession = session;
+      let submitted = buyingMode === 'brief'
+        ? submittedSession.complyExtensions.forcedGetProductsArm
+        : undefined;
       let rejectionSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
         ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
@@ -9221,16 +9231,24 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         : undefined;
       if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
         const fixtureDirectiveSession = await getSession(fixtureSessionKey);
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = fixtureDirectiveSession;
+          submitted = fixtureDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         const fixtureDirective = fixtureDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         if (fixtureDirective?.tool === 'get_products') {
           staleDirectiveSession = fixtureDirectiveSession;
           staleDirective = fixtureDirective;
         }
       }
-      if (ctx.principal?.startsWith('static:') && (!rejection || !staleDirective)) {
+      if (ctx.principal?.startsWith('static:') && (!submitted || !rejection || !staleDirective)) {
         const globalDirectiveSession = await getSession(
           sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
         );
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = globalDirectiveSession;
+          submitted = globalDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         if (!rejection) {
           rejectionSession = globalDirectiveSession;
           rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
@@ -9242,14 +9260,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           staleDirective = globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         }
       }
+      if (submitted) {
+        submittedSession.complyExtensions.forcedGetProductsArm = undefined;
+      }
       if (rejection) {
         rejectionSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
-      directives = { rejection, staleDirective };
-      if (rejection || staleDirective) await flushDirtySessions();
+      directives = { submitted, rejection, staleDirective };
+      if (submitted || rejection || staleDirective) await flushDirtySessions();
     } finally {
       await store.release({ principal, key, claimToken: claim.claimToken });
     }
@@ -9273,7 +9294,7 @@ async function handleGetProductsUnlocked(
   ctx: TrainingContext,
   paginationOffset?: number,
   readDirectives?: GetProductsReadDirectives,
-): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as unknown as Record<string, unknown>).brief;
@@ -9343,6 +9364,15 @@ async function handleGetProductsUnlocked(
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
+
+  const submitted = readDirectives?.submitted;
+  if (submitted?.arm === 'submitted') {
+    return {
+      status: 'submitted',
+      task_id: submitted.taskId,
+      ...(submitted.message && { message: submitted.message }),
+    };
+  }
 
   const directivePrincipal = ctx.principal ?? 'anonymous';
   const rejection = readDirectives
@@ -10973,9 +11003,6 @@ function jsonPointerPath(pointer: string): Array<string | number> {
 }
 
 async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
-  // The protocol JSON Schema is authoritative. SDK 14 beta.15's generated
-  // Zod snapshot accidentally intersects macro-bearing URL strings with
-  // object-only branches, which rejects valid DAAST and tracker assets.
   // WHATWG URL parsing accepts the Unicode full-stop variants as DNS label
   // separators, while AJV's URI format check does not. Normalize only the
   // schema-validation copy so the later URL safety checks still inspect the
@@ -14646,6 +14673,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       spend,
       impressions,
       clicks,
+      ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
       ...audioMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
@@ -14813,6 +14842,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedViewability = simDelivery?.viewability
     ? { viewability: simDelivery.viewability }
     : {};
+  const simulatedDoohMetrics = simDelivery
+    ? {
+      ...(simDelivery.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(simDelivery.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
+    }
+    : {};
 
   const totals: Record<string, unknown> = {
     impressions: totalImpressions,
@@ -14835,6 +14870,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ...conversionTotals,
     ...conversionValueTotals,
     ...simulatedViewability,
+    ...simulatedDoohMetrics,
     ...(totalTwoSecondViews > 0 || totalSixSecondViews > 0 ? {
       time_based_views: [{
         threshold_seconds: 2,
@@ -17130,10 +17166,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       // union across catalog products (product-factory.ts assigns these
       // by channel mix). Gate scenarios — clicks_buy_flow / reach_buy_flow
       // / completed_views_buy_flow — read this field and grade
-      // not_applicable when missing. adcp-client#1818 will auto-derive
-      // from product-level metric_optimization.supported_metrics once
-      // the SDK ships the seller-level field; until then this is a
-      // manual declaration.
+      // not_applicable when missing. adcontextprotocol/adcp-client#1818
+      // derives the union when an adopter supplies a static productCatalog;
+      // this dynamic reference handler declares the same honest union.
       supported_optimization_metrics: ['clicks', 'views', 'completed_views', 'engagements', 'reach'],
       execution: {
         targeting: {
@@ -21341,7 +21376,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(body) }],
+          content: [{ type: 'text', text: `${name} replay completed successfully.` }],
           structuredContent: body,
         };
         cachableResponse = { ...(outcome.response as Record<string, unknown>) };
@@ -21483,7 +21518,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           body.adcp_version = servedAdcpVersion;
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
-            content: [{ type: 'text', text: JSON.stringify(body) }],
+            content: [{
+              type: 'text',
+              text: `${name} completed with ${resultObj.errors!.length} reported error${resultObj.errors!.length === 1 ? '' : 's'}.`,
+            }],
             structuredContent: body,
           };
         } else {

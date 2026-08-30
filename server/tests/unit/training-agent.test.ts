@@ -2672,7 +2672,7 @@ describe('validate_input handler', () => {
     ]);
   });
 
-  it('accepts protocol-valid macro-bearing URL assets under SDK beta.15', async () => {
+  it('accepts protocol-valid macro-bearing URL assets under SDK beta.16', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {
       manifest: {
@@ -2681,7 +2681,7 @@ describe('validate_input handler', () => {
           daast_tag: {
             asset_type: 'daast',
             delivery_type: 'url',
-            url: 'https://daast.acme.example/tag.xml',
+            url: 'https://daast.acme.example/tag.xml?cb=${CACHEBUSTER}&gdpr=[GDPR]',
           },
         },
       },
@@ -7845,6 +7845,338 @@ describe('create_media_buy handler', () => {
 
     expect(result.errors).toBeUndefined();
     expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('binds a declared external dataset source, preserves it in discovery, and accepts it for targeting', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'sourced-audience.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: bound } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'external-dataset-bind-0001',
+      audiences: [{
+        audience_id: 'sourced_loyalty',
+        name: 'Sourced loyalty audience',
+        audience_type: 'crm',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+        },
+      }],
+    });
+
+    expect(bound.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'sourced_loyalty',
+        action: 'created',
+        status: 'ready',
+        uploaded_count: 240,
+        total_uploaded_count: 240,
+        matched_count: 168,
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+          columns_read: ['external_id', 'hashed_email'],
+          access_status: 'active',
+        },
+      }),
+    ]);
+
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'external-dataset-list-0001',
+    });
+    expect(discovered.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'sourced_loyalty',
+        action: 'unchanged',
+        uploaded_count: 0,
+        total_uploaded_count: 240,
+        matched_count: 168,
+        source: expect.objectContaining({
+          kind: 'dataset',
+          locator: 'share://provider.example/pinnacle/loyalty.high_value',
+          access_status: 'active',
+        }),
+      }),
+    ]);
+
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'sourced-audience.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: { audience_include: ['sourced_loyalty'] },
+      }],
+    });
+
+    expect(created.errors).toBeUndefined();
+    expect(typeof created.media_buy_id).toBe('string');
+  });
+
+  it('rejects undeclared external source rails and cross-transport audience updates', async () => {
+    const account = { brand: { domain: 'source-rejections.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: unsupported } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'platform-segment-bind-0001',
+      audiences: [{
+        audience_id: 'unsupported_segment',
+        source: {
+          kind: 'platform_segment',
+          vendor: { domain: 'activation-hub.example' },
+          segment_ref: 'seg_88213',
+        },
+      }],
+    });
+    expect(unsupported.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'unsupported_segment',
+        action: 'failed',
+        errors: [expect.objectContaining({ code: 'UNSUPPORTED_FEATURE', field: 'source.kind' })],
+      }),
+    ]);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      idempotency_key: 'inline-audience-bind-0001',
+      audiences: [{
+        audience_id: 'fixed_inline_transport',
+        add: [{ external_id: 'inline-member-1' }],
+      }],
+    });
+    const { result: conflict } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'dataset-transport-change-0001',
+      audiences: [{
+        audience_id: 'fixed_inline_transport',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'share://provider.example/pinnacle/loyalty.changed',
+        },
+      }],
+    });
+    expect(conflict.audiences).toEqual([
+      expect.objectContaining({
+        audience_id: 'fixed_inline_transport',
+        action: 'failed',
+        errors: [expect.objectContaining({ code: 'CONFLICT', field: 'audience_id' })],
+      }),
+    ]);
+  });
+
+  it('does not authorize an audience_id registered to a different account', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const ownerAccount = { brand: { domain: 'audience-owner.example' }, operator: 'pinnacle-agency.example' };
+    const otherAccount = { brand: { domain: 'other-advertiser.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account: ownerAccount,
+      audiences: [{ audience_id: 'buyer_chosen_shared_id', add: [{ external_id: 'owner-member' }] }],
+    });
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account: otherAccount,
+      brand: { domain: 'other-advertiser.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: { audience_include: ['buyer_chosen_shared_id'] },
+      }],
+    });
+
+    expect(result).toMatchObject({
+      code: 'INVALID_REQUEST',
+      field: 'packages[0].targeting_overlay.audience_include[0]',
+    });
+  });
+
+  it.each(['3.0', '3.1'])('rejects external audience source input on the frozen %s line', async adcpVersion => {
+    const suffix = adcpVersion.replace('.', '_');
+    const account = {
+      brand: { domain: `frozen-source-input-${suffix}.example` },
+      operator: 'pinnacle-agency.example',
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: adcpVersion,
+      idempotency_key: `frozen-source-input-${suffix}-0001`,
+      audiences: [{
+        audience_id: `frozen_source_${suffix}`,
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: `share://provider.example/frozen/${suffix}`,
+        },
+      }],
+    });
+
+    expect(result.audiences).toEqual([expect.objectContaining({
+      audience_id: `frozen_source_${suffix}`,
+      action: 'failed',
+      errors: [expect.objectContaining({ code: 'UNSUPPORTED_FEATURE', field: 'source' })],
+    })]);
+  });
+
+  it.each(['3.0', '3.1'])('projects source out of discovery responses on the frozen %s line', async adcpVersion => {
+    const suffix = adcpVersion.replace('.', '_');
+    const account = {
+      brand: { domain: `frozen-source-output-${suffix}.example` },
+      operator: 'pinnacle-agency.example',
+    };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: `current-source-seed-${suffix}-0001`,
+      audiences: [{
+        audience_id: `current_source_${suffix}`,
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: `share://provider.example/current/${suffix}`,
+        },
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: adcpVersion,
+      idempotency_key: `frozen-source-discovery-${suffix}-0001`,
+    });
+
+    expect(result.adcp_version).toBe(adcpVersion);
+    expect(result.audiences).toEqual([expect.objectContaining({
+      audience_id: `current_source_${suffix}`,
+      action: 'unchanged',
+    })]);
+    expect((result.audiences as Array<Record<string, unknown>>)[0]).not.toHaveProperty('source');
+  });
+
+  it('rejects credential material in an audience source without echoing or persisting it', async () => {
+    const account = { brand: { domain: 'credential-source.example' }, operator: 'pinnacle-agency.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const credentialValue = 'fake-test-credential-value';
+
+    const { result } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'credential-source-rejection-0001',
+      audiences: [{
+        audience_id: 'credential_smuggling_attempt',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example', api_key: credentialValue },
+          locator: 'share://provider.example/credential/attempt',
+        },
+      }],
+    });
+
+    expect(result).toMatchObject({
+      code: 'CREDENTIAL_IN_ARGS',
+      field: 'audiences[0].source',
+    });
+    expect(JSON.stringify(result)).not.toContain(credentialValue);
+
+    const alternateAttempts = [
+      {
+        id: 'nested_credential_key',
+        marker: 'fake-nested-credential-value',
+        source: {
+          kind: 'dataset',
+          vendor: {
+            domain: 'data-cloud.example',
+            brand_kit_override: { x_api_key: 'fake-nested-credential-value' },
+          },
+          locator: 'share://provider.example/credential/nested-attempt',
+        },
+      },
+      {
+        id: 'url_userinfo_credential',
+        marker: 'fake-url-password',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'https://buyer:fake-url-password@data-cloud.example/share',
+        },
+      },
+      {
+        id: 'signed_query_credential',
+        marker: 'fake-query-signature',
+        source: {
+          kind: 'dataset',
+          vendor: { domain: 'data-cloud.example' },
+          locator: 'https://data-cloud.example/share?X-Amz-Signature=fake-query-signature',
+        },
+      },
+      {
+        id: 'pem_trust_material',
+        marker: 'FAKEPUBLICKEY',
+        source: {
+          kind: 'dataset',
+          vendor: {
+            domain: 'data-cloud.example',
+            brand_kit_override: { public_material: '-----BEGIN PUBLIC KEY-----\nFAKEPUBLICKEY\n-----END PUBLIC KEY-----' },
+          },
+          locator: 'share://provider.example/credential/pem-attempt',
+        },
+      },
+      {
+        id: 'jwk_trust_material',
+        marker: 'fake-modulus',
+        source: {
+          kind: 'dataset',
+          vendor: {
+            domain: 'data-cloud.example',
+            brand_kit_override: { keys: [{ kty: 'RSA', n: 'fake-modulus', e: 'AQAB' }] },
+          },
+          locator: 'share://provider.example/credential/jwk-attempt',
+        },
+      },
+    ];
+    for (const attempt of alternateAttempts) {
+      const { result: alternateResult } = await simulateCallTool(server, 'sync_audiences', {
+        account,
+        adcp_version: CURRENT_ADCP_VERSION,
+        idempotency_key: `${attempt.id}-rejection-0001`,
+        audiences: [{
+          audience_id: attempt.id,
+          source: attempt.source,
+        }],
+      });
+      expect(alternateResult).toMatchObject({
+        code: 'CREDENTIAL_IN_ARGS',
+        field: 'audiences[0].source',
+      });
+      expect(JSON.stringify(alternateResult)).not.toContain(attempt.marker);
+    }
+
+    const { result: discovered } = await simulateCallTool(server, 'sync_audiences', {
+      account,
+      adcp_version: CURRENT_ADCP_VERSION,
+      idempotency_key: 'credential-source-discovery-0001',
+    });
+    expect(discovered.audiences).toEqual([]);
   });
 
   it('propagates a forced audience suspension to media-buy health and clears it on recovery', async () => {

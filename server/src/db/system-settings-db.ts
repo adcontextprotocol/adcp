@@ -4,7 +4,13 @@
  */
 
 import { ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES } from '../auth/organization-authorization-boundaries.js';
+import { createLogger } from '../logger.js';
 import { query } from './client.js';
+
+const logger = createLogger('system-settings-db');
+let ignoredFutureAuthorizationBoundaryWarningEmitted = false;
+const ORGANIZATION_AUTHORIZATION_BOUNDARY_NAME_PATTERN = /^organization_[a-z0-9]+(?:_[a-z0-9]+)*$/;
+const MAX_ORGANIZATION_AUTHORIZATION_BOUNDARY_NAME_LENGTH = 96;
 
 // ============== Types ==============
 
@@ -160,8 +166,9 @@ const DEFAULT_ORGANIZATION_AUTHORIZATION_ENFORCEMENT: OrganizationAuthorizationE
 /**
  * Read the audited runtime gate for exact-credential organization
  * authorization. Absence is intentionally disabled. Malformed persisted
- * values throw so an environment-staged enforcement process can fail closed
- * instead of silently falling back to legacy authorization.
+ * values throw so an environment-staged enforcement process can fail closed.
+ * Well-formed boundary names introduced by a newer binary are ignored so this
+ * reader remains a safe rollback floor for boundaries it cannot implement.
  */
 export async function getOrganizationAuthorizationEnforcement(): Promise<OrganizationAuthorizationEnforcementSetting> {
   const setting = await getSetting<unknown>(SETTING_KEYS.ORGANIZATION_AUTHORIZATION_ENFORCEMENT);
@@ -181,17 +188,29 @@ export async function getOrganizationAuthorizationEnforcement(): Promise<Organiz
     throw new Error('Invalid organization authorization enforcement setting');
   }
   const enabled = (setting as { enabled: boolean }).enabled;
-  const boundaries = [...new Set(
+  const normalizedBoundaries = [...new Set(
     (setting as { boundaries: string[] }).boundaries.map((value) => value.trim()).filter(Boolean),
   )];
-  const supportedBoundaries = new Set<string>(ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES);
-  if (
-    boundaries.some((boundary) => !supportedBoundaries.has(boundary)) ||
-    (enabled && boundaries.length === 0)
-  ) {
+  if (enabled && normalizedBoundaries.length === 0) {
     throw new Error('Invalid organization authorization enforcement setting');
   }
-  return { enabled, boundaries };
+  if (normalizedBoundaries.some((boundary) => (
+    boundary.length > MAX_ORGANIZATION_AUTHORIZATION_BOUNDARY_NAME_LENGTH ||
+    !ORGANIZATION_AUTHORIZATION_BOUNDARY_NAME_PATTERN.test(boundary)
+  ))) {
+    throw new Error('Invalid organization authorization enforcement setting');
+  }
+  const supportedBoundaries = new Set<string>(ORGANIZATION_AUTHORIZATION_BOUNDARY_VALUES);
+  const boundaries = normalizedBoundaries.filter((boundary) => supportedBoundaries.has(boundary));
+  const ignoredBoundaryCount = normalizedBoundaries.length - boundaries.length;
+  if (ignoredBoundaryCount > 0 && !ignoredFutureAuthorizationBoundaryWarningEmitted) {
+    ignoredFutureAuthorizationBoundaryWarningEmitted = true;
+    logger.warn(
+      { ignoredBoundaryCount },
+      'Ignored organization authorization boundaries unsupported by this application version',
+    );
+  }
+  return { enabled: enabled && boundaries.length > 0, boundaries };
 }
 
 export async function setOrganizationAuthorizationEnforcement(

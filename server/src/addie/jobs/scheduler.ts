@@ -248,7 +248,11 @@ export class JobScheduler {
         job.lastError = err instanceof Error ? err.message : String(err);
 
         const threshold = config.failureThreshold ?? JobScheduler.FAILURE_THRESHOLD;
-        logger.error({ err, jobName: name, consecutiveFailures: failures, threshold }, `${config.description}: failed`);
+        // The error hook pages admin-errors for every logger.error call. Keep
+        // individual job failures at warn so failureThreshold remains the
+        // single notification policy; notifySystemError pages once the
+        // configured consecutive-failure threshold is reached.
+        logger.warn({ err, jobName: name, consecutiveFailures: failures, threshold }, `${config.description}: failed`);
 
         if (failures >= threshold) {
           const msg = err instanceof Error ? err.message : String(err);

@@ -307,11 +307,12 @@ function createSession(): SessionState {
  * Conformance storyboards reference these IDs by hardcoded value — e.g. the
  * `creative_ad_server` storyboard calls `list_creatives` with no filter and
  * asserts `creatives[0].pricing_options`, then calls `build_creative` /
- * `report_usage` against `campaign_hero_video`. The storyboard declares
- * `controller_seeding: true` to have the runner auto-fire `seed_creative`,
- * but the SDK side of that wiring (adcp-client#778) is still open.
+ * `report_usage` against `campaign_hero_video`. SDK 14 beta.15 auto-fires
+ * `seed_creative` for storyboards that declare `controller_seeding: true`.
  *
- * Session handlers consult this map as a read-through fallback:
+ * Session handlers retain this map as a read-through fallback for direct
+ * tool smoke tests and harnesses that intentionally opt out of controller
+ * seeding:
  *  - `list_creatives` merges compliance fixtures in when the session has
  *    none synced (so storyboards that never sync still see them); filtered
  *    queries skip the fallback — an explicit `creative_ids` filter means
@@ -548,6 +549,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
       forcedGetSignalsArm: hydratedComply.forcedGetSignalsArm,
+      forcedGetProductsArm: hydratedComply.forcedGetProductsArm,
       forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
       forcedUpstreamUnavailable: hydratedComply.forcedUpstreamUnavailable,
     },

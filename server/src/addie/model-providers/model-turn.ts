@@ -1,6 +1,7 @@
 import type {
   ModelMessage,
   ModelProvider,
+  ModelProviderId,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
   ModelRequest,
@@ -45,6 +46,41 @@ export function appendModelTurnContinuation(
 
 export type EmptyResponseRecoveryKind = 'initial' | 'post_tool';
 
+export interface EmptyResponseRecoveryInvocation {
+  /** Whether this invocation is the optional recovery sample. */
+  isRecovery: boolean;
+  /** Recovery after tool use is permanently text-only. */
+  toolsAllowed: boolean;
+  /** Recovery must never be transparently submitted more than once. */
+  requiresExactlyOnce: boolean;
+}
+
+export interface EmptyResponseRecoveryEligibility {
+  /** Evaluation/replay preserve the first empty terminal exactly. */
+  allowInitial: boolean;
+  /** Delivery-owned evidence that the first turn has not exposed work. */
+  initialEligible: boolean;
+  /** Delivery-owned evidence that a completed tool turn may be resampled. */
+  postToolEligible: boolean;
+}
+
+/**
+ * A successful canonical stop is safe to resample only when it has no visible
+ * answer and every normalized block is side-effect-free. Provider-specific
+ * finish diagnostics must not control orchestration.
+ */
+export function isSideEffectFreeEmptyModelResponse(
+  response: ModelResponse,
+  deliverableText: string,
+): boolean {
+  if (response.finishReason !== 'stop' || deliverableText.trim().length > 0) return false;
+  return response.content.every((content) => (
+    content.type === 'text'
+    || (content.type === 'provider_state'
+      && (content.kind === 'thinking' || content.kind === 'redacted_thinking'))
+  ));
+}
+
 /**
  * State shared by delivery modes while resampling a side-effect-free empty
  * terminal. The original response remains authoritative if the optional
@@ -72,6 +108,15 @@ export class EmptyResponseRecoveryState {
     return kind === 'initial' ? this.attemptedInitial : this.attemptedPostTool;
   }
 
+  /** Snapshot the recovery policy for one provider invocation. */
+  prepareInvocation(): Readonly<EmptyResponseRecoveryInvocation> {
+    return Object.freeze({
+      isRecovery: this.pending,
+      toolsAllowed: this.toolsAllowed,
+      requiresExactlyOnce: this.pending,
+    });
+  }
+
   schedule(kind: EmptyResponseRecoveryKind, response: ModelResponse): boolean {
     if (this.pending || this.hasAttempted(kind)) return false;
     if (kind === 'initial') {
@@ -83,11 +128,14 @@ export class EmptyResponseRecoveryState {
     return true;
   }
 
-  resolve(): void {
-    this.fallbackResponse = null;
+  completeInvocation(invocation: EmptyResponseRecoveryInvocation): void {
+    if (invocation.isRecovery) this.fallbackResponse = null;
   }
 
-  takeFallback(): ModelResponse | null {
+  fallbackAfterInvocationFailure(
+    invocation: EmptyResponseRecoveryInvocation,
+  ): ModelResponse | null {
+    if (!invocation.isRecovery) return null;
     const response = this.fallbackResponse;
     this.fallbackResponse = null;
     return response;
@@ -128,6 +176,7 @@ export class ModelTurnLoopState {
   private readonly budget: ModelLoopBudget;
   private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
   private awaitingResponse = false;
+  private continuationProvider: ModelProviderId | null = null;
 
   constructor(limit: number) {
     this.budget = new ModelLoopBudget(limit);
@@ -147,6 +196,23 @@ export class ModelTurnLoopState {
 
   get usage(): ModelUsage {
     return { ...this.accumulatedUsage };
+  }
+
+  /**
+   * Provider pinned by an accepted response that requires another model turn.
+   * Transport fallback remains possible before the first response is accepted,
+   * but canonical tool/provider continuation state must never cross providers.
+   */
+  get pinnedProvider(): ModelProviderId | null {
+    return this.continuationProvider;
+  }
+
+  assertProviderForInvocation(provider: ModelProviderId): void {
+    if (this.continuationProvider !== null && provider !== this.continuationProvider) {
+      throw new Error(
+        `Model loop continuation is pinned to ${this.continuationProvider}; cannot invoke ${provider}`,
+      );
+    }
   }
 
   startNext(): number {
@@ -183,6 +249,15 @@ export class ModelTurnLoopState {
         }
       : response;
     const turn = inspectModelTurn(acceptedResponse);
+    this.assertProviderForInvocation(acceptedResponse.provider);
+    if (
+      this.continuationProvider === null
+      && (turn.action === 'execute_tools'
+        || turn.action === 'continue'
+        || turn.action === 'continue_provider_tools')
+    ) {
+      this.continuationProvider = acceptedResponse.provider;
+    }
     if (options.countUsage !== false) {
       this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
     }
@@ -192,6 +267,29 @@ export class ModelTurnLoopState {
       response: acceptedResponse,
       discardedRecoveryToolCalls,
     });
+  }
+
+  /** Schedule one safe empty-terminal retry from canonical turn state. */
+  scheduleEmptyResponseRecovery(
+    response: ModelResponse,
+    deliverableText: string,
+    eligibility: EmptyResponseRecoveryEligibility,
+  ): EmptyResponseRecoveryKind | null {
+    if (
+      !this.hasRemaining
+      || !isSideEffectFreeEmptyModelResponse(response, deliverableText)
+    ) return null;
+    if (
+      eligibility.allowInitial
+      && eligibility.initialEligible
+      && this.iteration === 1
+      && this.emptyResponseRecovery.schedule('initial', response)
+    ) return 'initial';
+    if (
+      eligibility.postToolEligible
+      && this.emptyResponseRecovery.schedule('post_tool', response)
+    ) return 'post_tool';
+    return null;
   }
 }
 
@@ -216,6 +314,7 @@ export class ActiveModelTurn {
   ): Promise<ModelResponse> {
     if (this.accepted) throw new Error('Model turn already accepted a response');
     if (this.invocationInFlight) throw new Error('Model turn provider invocation already in flight');
+    this.loop.assertProviderForInvocation(provider.id);
     this.invocationInFlight = true;
     try {
       return await collectModelResponse(

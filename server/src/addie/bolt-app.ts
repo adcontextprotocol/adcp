@@ -173,11 +173,21 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
+import {
+  loadRouterCanaryMetadata,
+  routeWithRouterCanary,
+} from './router-canary-runtime.js';
+import { selectRouterCanaryCohort } from './router-canary.js';
 import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
 import {
+  OPENAI_ROUTER_MODEL,
+  OpenAIResponsesProvider,
+} from './model-providers/openai-responses-provider.js';
+import {
   getToolsForSets,
   buildUnavailableSetsHint,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from './tool-sets.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
@@ -763,6 +773,7 @@ async function buildCurrentChannelCostOptions(
 
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
+let addieLunaRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
 let initialized = false;
 
@@ -774,6 +785,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   const botToken = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
   const signingSecret = process.env.ADDIE_SIGNING_SECRET || process.env.SLACK_SIGNING_SECRET;
   const anthropicKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!botToken || !signingSecret) {
     logger.warn('Addie Bolt: Missing ADDIE_BOT_TOKEN or ADDIE_SIGNING_SECRET, Addie will be disabled');
@@ -796,6 +808,21 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
 
   // Initialize router (uses Haiku for fast classification)
   addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
+
+  // Construct the strict candidate independently. Selection remains default-off
+  // and fail-closed in router-canary.ts; merely having an API key changes no traffic.
+  addieLunaRouter = openAiKey
+    ? new AddieRouter(
+        openAiKey,
+        new OpenAIResponsesProvider(openAiKey),
+        providerHealth,
+        {
+          model: OPENAI_ROUTER_MODEL,
+          reasoning: { effort: 'none' },
+          strictOutput: true,
+        },
+      )
+    : null;
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -1509,6 +1536,7 @@ async function selectRoutedToolsForSlackResponse(
   isAAOAdmin: boolean;
   unavailableHint: string;
   selectedToolSets: string[];
+  allowedToolNames: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1543,6 +1571,11 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       selectedToolSets: fallbackSets,
+      allowedToolNames: getToolsForSets(
+        fallbackSets,
+        userIsAdmin,
+        threadContext?.viewing_channel_is_private === false,
+      ),
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1565,7 +1598,7 @@ async function selectRoutedToolsForSlackResponse(
   const isDirectInteraction = source === 'dm' || source === 'mention';
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
-    : isDirectInteraction ? ['knowledge'] : [];
+    : isDirectInteraction ? [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS] : [];
   const selectedSets = selectSlackToolSets({
     routerSelectedSets,
     routerAvailable: true,
@@ -1609,6 +1642,11 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     selectedToolSets: selectedSets,
+    allowedToolNames: getToolsForSets(
+      selectedSets,
+      userIsAdmin,
+      threadContext?.viewing_channel_is_private === false,
+    ),
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1889,7 +1927,13 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasActiveCertification }
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
@@ -1912,6 +1956,7 @@ async function handleUserMessage({
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2670,6 +2715,7 @@ async function handleAppMention({
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3559,13 +3605,20 @@ export async function buildChannelResponseInvocation(input: {
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
       selectedToolSetNames: selectedToolSets,
+      allowedToolNames: officialDocsProfile
+        ? OFFICIAL_DOCS_ALLOWED_TOOLS
+        : getToolsForSets(
+            selectedToolSets,
+            userIsAdmin,
+            channelContext?.viewing_channel_is_private === false,
+          ),
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
         ? {
             disableServerTools: true,
-            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+            initialToolChoice: { type: 'tool', name: 'search_docs' },
             maxIterations: 4,
           }
         : {}),
@@ -3946,7 +3999,13 @@ async function handleDirectMessage(
     userId,
     thread.thread_id,
     null,
-    { isThread: true, hasActiveCertification },
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -3970,6 +4029,7 @@ async function handleDirectMessage(
         : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4365,6 +4425,7 @@ async function handleActiveThreadReply({
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -4758,6 +4819,15 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
+      const canaryCandidate = addieLunaRouter && selectRouterCanaryCohort({
+        channelId,
+        opportunityId: event.ts,
+        // This only avoids a metadata fetch when the independent feature,
+        // evidence, config, allowlist, and sample gates are already closed.
+        // Paid-call admission rechecks live Slack metadata below.
+        channelIsPublic: true,
+        channelIsShared: false,
+      });
       const shadowCandidate = selectRouterShadowCohort({
         channelId,
         opportunityId: event.ts,
@@ -4767,25 +4837,46 @@ async function handleChannelMessage({
         channelIsPublic: true,
         channelIsShared: false,
       });
+      const routerPlanPromise = canaryCandidate?.selected && addieLunaRouter
+        ? (async () => {
+            const currentChannel = await loadRouterCanaryMetadata(
+              () => getChannelInfo(channelId, { forceRefresh: true }),
+            );
+            const result = await routeWithRouterCanary({
+              channelId,
+              opportunityId: event.ts,
+              channelIsPublic: currentChannel?.is_private === false,
+              channelIsShared: currentChannel === null
+                || currentChannel.is_shared
+                || currentChannel.is_org_shared
+                || currentChannel.is_pending_ext_shared === true,
+              routingContext: routingCtx,
+            }, {
+              candidateRoute: addieLunaRouter.route.bind(addieLunaRouter),
+              fallbackRoute: addieRouter.route.bind(addieRouter),
+            });
+            return result.plan;
+          })()
+        : addieRouter.route(routingCtx, {
+            ...(shadowCandidate.selected && {
+              observer: async (observation) => {
+                const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
+                  .catch(() => null);
+                await runRouterShadow({
+                  channelId,
+                  opportunityId: event.ts,
+                  channelIsPublic: currentChannel?.is_private === false,
+                  channelIsShared: currentChannel === null
+                    || currentChannel.is_shared
+                    || currentChannel.is_org_shared
+                    || currentChannel.is_pending_ext_shared === true,
+                  observation,
+                });
+              },
+            }),
+          });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx, {
-          ...(shadowCandidate.selected && {
-            observer: async (observation) => {
-              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
-                .catch(() => null);
-              await runRouterShadow({
-                channelId,
-                opportunityId: event.ts,
-                channelIsPublic: currentChannel?.is_private === false,
-                channelIsShared: currentChannel === null
-                  || currentChannel.is_shared
-                  || currentChannel.is_org_shared
-                  || currentChannel.is_pending_ext_shared === true,
-                observation,
-              });
-            },
-          }),
-        }),
+        routerPlanPromise,
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;

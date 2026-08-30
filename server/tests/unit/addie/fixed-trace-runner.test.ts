@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildFixedTraceGenerationRequest,
   fixedTraceToolSchemaSha256,
   runFixedTraceCase,
   type FixedTraceProviderStageConfig,
@@ -15,6 +16,7 @@ import {
   gradeFixedTrace,
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -188,7 +190,10 @@ describe('fixed trace artifact runner', () => {
         name: 'search_docs',
         input: { query: 'task model' },
       }], 'tool_calls', 'generation-tool'),
-      response([{ type: 'text', text: 'The protocol uses task-based requests.' }], 'stop', 'generation-final'),
+      response([{
+        type: 'text',
+        text: 'A buyer calls a defined task on the seller with structured input, and the seller returns the task response.',
+      }], 'stop', 'generation-final'),
     ]);
     const selectedTrace = trace('knowledge-task-model');
 
@@ -199,12 +204,15 @@ describe('fixed trace artifact runner', () => {
       terminalStage: 'generation',
       terminalStatus: 'complete',
       boundaryReason: null,
+      localReplacementReason: null,
       finishReason: 'stop',
-      output: 'The protocol uses task-based requests.',
+      output: 'A buyer calls a defined task on the seller with structured input, and the seller returns the task response.',
       route: { action: 'respond', toolSets: ['knowledge'] },
       flagged: false,
       tools: [{
         name: 'search_docs',
+        description: 'Canonical search_docs schema.',
+        input: { query: 'task model' },
         effect: 'read',
         policyDisposition: 'allowed',
         resultStatus: 'ok',
@@ -225,8 +233,79 @@ describe('fixed trace artifact runner', () => {
     });
     expect(observation.metadata.generation.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(generation.respondCalls).toHaveLength(2);
+    expect(generation.respondCalls[0].toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(generation.respondCalls[1].toolChoice).toBeUndefined();
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
       deterministicPass: true,
+      metadataPass: true,
+    });
+  });
+
+  it('forces official-doc retrieval only when the exact knowledge route exposes search_docs', () => {
+    const selectedTrace = trace('knowledge-task-model');
+    const exactKnowledge = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', requires_depth: false, reason: 'docs' },
+      [tool('search_docs'), tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+    const mixedRoute = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge', 'schema_reference'], confidence: 'high', requires_depth: false, reason: 'schema' },
+      [tool('search_docs'), tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+    const noBoundary = buildFixedTraceGenerationRequest(
+      selectedTrace,
+      { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', requires_depth: false, reason: 'docs' },
+      [tool('get_doc')],
+      stage(new ScriptedProvider([]), 3),
+    );
+
+    expect(exactKnowledge.toolChoice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(mixedRoute.toolChoice).toBeUndefined();
+    expect(noBoundary.toolChoice).toBeUndefined();
+    expect(exactKnowledge.system[0]?.text).not.toContain('# Knowledge');
+    expect(exactKnowledge.system[1]?.text).toContain('# Knowledge');
+    expect(exactKnowledge.system[1]?.text).toContain('## Knowledge Search First');
+    expect(exactKnowledge.system.at(-1)?.text).toContain('# Constraints');
+    expect(exactKnowledge.system.at(-1)?.text).toContain('# Response Style');
+  });
+
+  it('records a local replacement when every source lookup fails', async () => {
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call',
+        id: 'tool-1',
+        name: 'search_docs',
+        input: { query: 'package identifiers' },
+      }], 'tool_calls', 'generation-tool'),
+      response([{
+        type: 'text',
+        text: 'The documentation confirms it. See https://invented.example/docs.',
+      }], 'stop', 'generation-final'),
+    ]);
+    const selectedTrace = trace('knowledge-tool-error');
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'complete',
+      boundaryReason: null,
+      localReplacementReason: 'failed_lookup_evidence',
+      output: FAILED_LOOKUP_EVIDENCE_RESPONSE,
+      flagged: true,
+      tools: [{
+        name: 'search_docs',
+        resultStatus: 'recoverable_error',
+      }],
+    });
+    expect(observation.output).not.toContain('invented.example');
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
       metadataPass: true,
     });
   });

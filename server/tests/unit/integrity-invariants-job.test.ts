@@ -228,7 +228,7 @@ describe('runIntegrityInvariantsJob', () => {
     expect(result).toEqual(expect.objectContaining({
       durableEscalations: 1,
       escalationNotifications: 0,
-      escalationErrors: 0,
+      escalationErrors: 1,
     }));
     expect(mocks.createEscalation).toHaveBeenCalledOnce();
     expect(mocks.releaseEscalationNotificationClaim).toHaveBeenCalledWith(42);

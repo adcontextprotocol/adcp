@@ -52,7 +52,7 @@ fixtures:
       name: "Acceptance policy video"
       description: "Sandbox video inventory with a product-specific acceptance profile"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       acceptance_policy_profile_ids:
         - "google_political_advertising_acceptance"
       format_options:

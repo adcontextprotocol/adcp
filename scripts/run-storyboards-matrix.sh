@@ -12,7 +12,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-OVERLAY=1
+CURRENT_SOURCE=1
 COMPLIANCE_DIR=""
 SCHEMA_ROOT="${ADCP_SCHEMA_ROOT:-}"
 LABEL="current compliance source"
@@ -24,32 +24,11 @@ else
   RELEASE_GIT_REF="${RELEASE_BASE_REF}"
 fi
 export ADCP_RELEASE_GIT_REF="${RELEASE_GIT_REF}"
-SDK_GENERATED_SCHEMA_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js"
-SDK_GENERATED_SCHEMA_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/types/schemas.generated.mjs"
-SDK_PROPOSAL_VERIFICATION_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.js"
-SDK_PROPOSAL_VERIFICATION_MJS_FILE="${REPO_ROOT}/node_modules/@adcp/sdk/dist/lib/negotiation/verification.mjs"
-
-restore_sdk_overlays() {
-  local file backup
-  for file in \
-    "${SDK_GENERATED_SCHEMA_FILE}" \
-    "${SDK_GENERATED_SCHEMA_MJS_FILE}" \
-    "${SDK_PROPOSAL_VERIFICATION_FILE}" \
-    "${SDK_PROPOSAL_VERIFICATION_MJS_FILE}"; do
-    backup="${file}.adcp-overlay-backup"
-    if [ -f "${backup}" ]; then
-      cp "${backup}" "${file}"
-      rm -f "${backup}"
-    fi
-  done
-}
-
 usage() {
   cat <<'USAGE'
 Usage: scripts/run-storyboards-matrix.sh [options]
 
 Options:
-  --skip-overlay                 Do not copy static/compliance/source into the SDK cache.
   --compliance-dir <dir>         Run against an explicit compliance bundle directory.
   --latest-3.0                   Run against the latest released dist/compliance/3.0.x bundle.
   -h, --help                     Show this help.
@@ -58,10 +37,6 @@ USAGE
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --skip-overlay)
-      OVERLAY=0
-      shift
-      ;;
     --compliance-dir)
       if [ -z "${2:-}" ]; then
         echo "::error::--compliance-dir requires a directory argument"
@@ -70,7 +45,7 @@ while [ "$#" -gt 0 ]; do
       COMPLIANCE_DIR="$2"
       LABEL="released compliance bundle: ${COMPLIANCE_DIR}"
       FLOOR_SET="released"
-      OVERLAY=0
+      CURRENT_SOURCE=0
       shift 2
       ;;
     --latest-3.0)
@@ -145,7 +120,7 @@ NODE
       fi
       LABEL="released compliance bundle: ${latest_3_0}"
       FLOOR_SET="3.0-compat"
-      OVERLAY=0
+      CURRENT_SOURCE=0
       shift
       ;;
     -h|--help)
@@ -159,6 +134,16 @@ NODE
       ;;
   esac
 done
+
+if [ "${CURRENT_SOURCE}" -eq 1 ]; then
+  echo "Building current compliance and schema bundles."
+  node "${REPO_ROOT}/scripts/build-schemas.cjs"
+  node "${REPO_ROOT}/scripts/build-compliance.cjs"
+  COMPLIANCE_DIR="${REPO_ROOT}/dist/compliance/latest"
+  if [ -z "${SCHEMA_ROOT}" ]; then
+    SCHEMA_ROOT="${REPO_ROOT}/dist/schemas/latest"
+  fi
+fi
 
 if [ -n "${COMPLIANCE_DIR}" ]; then
   if [ "${COMPLIANCE_DIR#/}" = "${COMPLIANCE_DIR}" ]; then
@@ -230,18 +215,7 @@ if [ -n "${SCHEMA_ROOT}" ]; then
   export ADCP_SCHEMA_ROOT="${SCHEMA_ROOT}"
 fi
 
-restore_sdk_overlays
-trap restore_sdk_overlays EXIT
-if [ "${OVERLAY}" -eq 1 ]; then
-  # Mirror CI's overlay step before running tenants: copies in-repo
-  # compliance source onto the SDK's bundled cache so the runner grades
-  # against current-PR fixtures, not the SDK-published snapshot. Without
-  # this, edits under static/compliance/source/ would silently no-op
-  # locally and only surface in CI.
-  bash "${SCRIPT_DIR}/overlay-compliance-cache.sh"
-else
-  echo "Skipping compliance source overlay (${LABEL})."
-fi
+echo "Using explicit compliance and schema roots (${LABEL})."
 
 # tenant:min_clean:min_passed — kept in sync with the matrix.include block in
 # .github/workflows/training-agent-storyboards.yml.
@@ -281,6 +255,7 @@ REQUIRED_CLEAN_CURRENT_SALES=(
   "sales_guaranteed"
   "media_buy_seller/billing_finality_delivery"
   "media_buy_seller/canonical_formats"
+  "media_buy_seller/external_audience_source_binding"
   "media_buy_seller/vendor_metric_catalog_precondition"
   "canonical_format_validate_input"
   "notification_config_event_scope"
@@ -300,6 +275,8 @@ REQUIRED_EXACT_CURRENT_SALES=(
   "media_buy_seller/change_rights_state_projection:8:0"
   "media_buy_seller/acceptance_policy_discovery:3:0"
   "media_buy_seller/governance_agent_binding_acceptance:5:0"
+  "media_buy_seller/external_audience_source_binding:8:0"
+  "media_buy_seller/get_products_async:10:0"
 )
 REQUIRED_EXACT_CURRENT_GOVERNANCE=(
   "governance/failed_outcome_audit_persistence:4:0"

@@ -4,6 +4,7 @@ import type {
   ModelMessage,
   ModelMessageContent,
   ModelProvider,
+  ModelProviderId,
   ModelRequest,
   ModelResponse,
 } from '../../../src/addie/model-providers/model-provider.js';
@@ -12,6 +13,7 @@ import {
   appendModelTurnContinuation,
   EmptyResponseRecoveryState,
   inspectModelTurn,
+  isSideEffectFreeEmptyModelResponse,
   ModelLoopBudget,
   ModelTurnLoopState,
 } from '../../../src/addie/model-providers/model-turn.js';
@@ -41,9 +43,10 @@ const request: ModelRequest = {
 
 function providerFor(
   respond: ModelProvider['respond'],
+  id: ModelProviderId = 'anthropic',
 ): ModelProvider {
   return {
-    id: 'anthropic',
+    id,
     capabilities: {
       streaming: true,
       structuredOutput: true,
@@ -182,7 +185,14 @@ describe('EmptyResponseRecoveryState', () => {
     expect(state.toolsAllowed).toBe(true);
     expect(state.schedule('post_tool', original)).toBe(false);
 
-    state.resolve();
+    const invocation = state.prepareInvocation();
+    expect(invocation).toEqual({
+      isRecovery: true,
+      toolsAllowed: true,
+      requiresExactlyOnce: true,
+    });
+    expect(Object.isFrozen(invocation)).toBe(true);
+    state.completeInvocation(invocation);
     expect(state.pending).toBe(false);
     expect(state.hasAttempted('initial')).toBe(true);
     expect(state.schedule('initial', original)).toBe(false);
@@ -193,7 +203,7 @@ describe('EmptyResponseRecoveryState', () => {
     const original = response('stop', []);
 
     state.schedule('initial', original);
-    expect(state.takeFallback()).toBe(original);
+    expect(state.fallbackAfterInvocationFailure(state.prepareInvocation())).toBe(original);
     expect(state.pending).toBe(false);
   });
 
@@ -205,9 +215,49 @@ describe('EmptyResponseRecoveryState', () => {
     expect(state.toolsAllowed).toBe(false);
     expect(state.postToolAttempted).toBe(true);
 
-    state.resolve();
+    const invocation = state.prepareInvocation();
+    expect(invocation).toEqual({
+      isRecovery: true,
+      toolsAllowed: false,
+      requiresExactlyOnce: true,
+    });
+    state.completeInvocation(invocation);
     expect(state.toolsAllowed).toBe(false);
     expect(state.schedule('post_tool', original)).toBe(false);
+  });
+
+  it('leaves normal invocations retryable and without a fallback', () => {
+    const state = new EmptyResponseRecoveryState();
+    const invocation = state.prepareInvocation();
+
+    expect(invocation).toEqual({
+      isRecovery: false,
+      toolsAllowed: true,
+      requiresExactlyOnce: false,
+    });
+    expect(state.fallbackAfterInvocationFailure(invocation)).toBeNull();
+  });
+});
+
+describe('isSideEffectFreeEmptyModelResponse', () => {
+  it('uses the canonical stop reason instead of provider diagnostics', () => {
+    const empty = response('stop', [
+      { type: 'provider_state', provider: 'anthropic', kind: 'thinking', value: 'private' },
+      { type: 'text', text: '' },
+    ]);
+    empty.providerFinishReason = 'provider-specific-success-value';
+
+    expect(isSideEffectFreeEmptyModelResponse(empty, '')).toBe(true);
+  });
+
+  it.each([
+    ['visible text', response('stop', [{ type: 'text', text: 'answer' }]), 'answer'],
+    ['refusal', response('refusal'), ''],
+    ['tool call', response('tool_calls', [{
+      type: 'tool_call', id: 'call-1', name: 'lookup', input: {},
+    }]), ''],
+  ])('rejects %s as recovery-safe', (_label, candidate, text) => {
+    expect(isSideEffectFreeEmptyModelResponse(candidate, text)).toBe(false);
   });
 });
 
@@ -257,6 +307,54 @@ describe('ModelTurnLoopState', () => {
     loop.startNext();
     loop.acceptResponse(original, { countUsage: false });
     expect(loop.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
+  });
+
+  it('centrally schedules initial and post-tool empty recovery once', () => {
+    const loop = new ModelTurnLoopState(4);
+    const empty = response('stop', []);
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: false,
+    })).toBe('initial');
+    loop.emptyResponseRecovery.completeInvocation(
+      loop.emptyResponseRecovery.prepareInvocation(),
+    );
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: false,
+      postToolEligible: true,
+    })).toBe('post_tool');
+    loop.emptyResponseRecovery.completeInvocation(
+      loop.emptyResponseRecovery.prepareInvocation(),
+    );
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: true,
+    })).toBeNull();
+  });
+
+  it('does not schedule recovery without a remaining turn', () => {
+    const loop = new ModelTurnLoopState(1);
+    const empty = response('stop', []);
+
+    loop.startNext();
+    loop.acceptResponse(empty);
+    expect(loop.scheduleEmptyResponseRecovery(empty, '', {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: true,
+    })).toBeNull();
   });
 
   it('discards tool calls returned by a post-tool text-only recovery', () => {
@@ -333,5 +431,56 @@ describe('ModelTurnLoopState', () => {
     expect(attempts).toBe(2);
     await expect(activeTurn.invoke(provider, request)).rejects.toThrow('already accepted');
     expect(() => activeTurn.acceptResponse(terminal)).toThrow('already accepted');
+  });
+
+  it('allows cross-provider fallback before a response is accepted', async () => {
+    const loop = new ModelTurnLoopState(1);
+    const anthropic = providerFor(async function* () {
+      throw new Error('primary unavailable');
+    });
+    const googleResponse = {
+      ...response('stop', [{ type: 'text' as const, text: 'fallback answer' }]),
+      provider: 'google' as const,
+      model: 'fallback-model',
+    };
+    const google = providerFor(async function* () {
+      yield { type: 'response_start', provider: 'google', model: 'fallback-model' };
+      yield { type: 'text_delta', index: 0, text: 'fallback answer' };
+      yield { type: 'response_complete', response: googleResponse };
+    }, 'google');
+    const activeTurn = loop.beginNext();
+
+    await expect(activeTurn.invoke(anthropic, request)).rejects.toThrow('primary unavailable');
+    const invoked = await activeTurn.invoke(google, { ...request, model: 'fallback-model' });
+    activeTurn.acceptResponse(invoked);
+
+    expect(loop.pinnedProvider).toBeNull();
+  });
+
+  it('pins tool continuation before execution and rejects a provider switch', async () => {
+    const loop = new ModelTurnLoopState(2);
+    const toolResponse = response('tool_calls', [{
+      type: 'tool_call',
+      id: 'call-1',
+      name: 'mutate_record',
+      input: {},
+    }]);
+    loop.beginNext().acceptResponse(toolResponse);
+
+    expect(loop.pinnedProvider).toBe('anthropic');
+
+    let googleInvoked = false;
+    const google = providerFor(async function* () {
+      googleInvoked = true;
+    }, 'google');
+    const continuation = loop.beginNext();
+
+    await expect(continuation.invoke(google, { ...request, model: 'fallback-model' }))
+      .rejects.toThrow('continuation is pinned to anthropic; cannot invoke google');
+    expect(googleInvoked).toBe(false);
+
+    const wrongProviderResponse = { ...response('stop'), provider: 'google' as const };
+    expect(() => continuation.acceptResponse(wrongProviderResponse))
+      .toThrow('continuation is pinned to anthropic; cannot invoke google');
   });
 });

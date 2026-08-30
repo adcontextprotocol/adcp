@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdkState = vi.hoisted(() => ({
   nonStreamingResponses: [] as unknown[],
-  streamingResponses: [] as Array<Record<string, unknown>>,
+  streamingResponses: [] as Array<Record<string, unknown> | Error>,
   calls: [] as Array<Record<string, unknown>>,
   requestOptions: [] as unknown[],
 }));
@@ -50,17 +50,20 @@ vi.mock('@anthropic-ai/sdk', () => ({
             ...response as Record<string, unknown>,
           };
         }),
-        stream: vi.fn((payload: Record<string, unknown>) => {
+        stream: vi.fn((payload: Record<string, unknown>, options?: unknown) => {
           sdkState.calls.push(payload);
+          sdkState.requestOptions.push(options);
           const response = sdkState.streamingResponses.shift();
           if (!response) throw new Error('Missing streaming response fixture');
           return {
             async *[Symbol.asyncIterator]() {},
-            finalMessage: vi.fn().mockResolvedValue({
-              id: `msg_test_${sdkState.calls.length}`,
-              model: String(payload.model),
-              ...response,
-            }),
+            finalMessage: response instanceof Error
+              ? vi.fn().mockRejectedValue(response)
+              : vi.fn().mockResolvedValue({
+                id: `msg_test_${sdkState.calls.length}`,
+                model: String(payload.model),
+                ...response,
+              }),
           };
         }),
       },
@@ -75,6 +78,14 @@ import {
   type StreamEvent,
 } from '../../src/addie/claude-client.js';
 import type { AddieTool } from '../../src/addie/types.js';
+import type {
+  ModelProvider,
+  ModelProviderId,
+  ModelRequest,
+  ModelRespondOptions,
+  NormalizedModelEvent,
+  PreparedModelInvocation,
+} from '../../src/addie/model-providers/model-provider.js';
 
 const usage = { input_tokens: 3, output_tokens: 2 };
 
@@ -126,6 +137,59 @@ function invocationHmac(key: string, domain: string, value: string): string {
     .digest('hex');
 }
 
+function fakeProvider(
+  id: ModelProviderId,
+  responseText: string,
+): ModelProvider & {
+  prepare: ReturnType<typeof vi.fn<(request: ModelRequest) => PreparedModelInvocation>>;
+  respond: ReturnType<typeof vi.fn<(
+    request: ModelRequest,
+    options?: ModelRespondOptions,
+  ) => AsyncIterable<NormalizedModelEvent>>>;
+} {
+  const capabilities = {
+    streaming: false,
+    structuredOutput: true,
+    reasoning: true,
+    reasoningEfforts: ['provider_default', 'none', 'low', 'medium', 'high'] as const,
+    customTools: true,
+    providerWebSearch: false,
+    imageInput: false,
+    documentInput: false,
+  };
+  const prepare = vi.fn((request: ModelRequest): PreparedModelInvocation => ({
+    provider: id,
+    model: request.model,
+    capabilities,
+    providerRequest: structuredClone({
+      model: request.model,
+      system: request.system,
+      messages: request.messages,
+      tools: request.tools,
+      maxOutputTokens: request.maxOutputTokens,
+    }),
+  }));
+  const respond = vi.fn((request: ModelRequest, options?: ModelRespondOptions) => (async function* () {
+    const prepared = prepare(request);
+    await options?.beforeDispatch?.(prepared);
+    yield { type: 'response_start', provider: id, model: request.model, id: `${id}-response` };
+    yield { type: 'text_delta', index: 0, text: responseText };
+    yield {
+      type: 'response_complete',
+      response: {
+        provider: id,
+        model: request.model,
+        id: `${id}-response`,
+        content: [{ type: 'text', text: responseText }],
+        finishReason: 'stop',
+        providerFinishReason: 'stop',
+        usage: { inputTokens: 7, outputTokens: 3 },
+      },
+    };
+  })());
+  return { id, capabilities, prepare, respond };
+}
+
 beforeEach(() => {
   sdkState.nonStreamingResponses.length = 0;
   sdkState.streamingResponses.length = 0;
@@ -136,77 +200,80 @@ beforeEach(() => {
   notifySystemError.mockReset();
 });
 
-describe('AddieClaudeClient replay execution policy', () => {
-  it('blocks mutation and unclassified handlers while executing a pure local read once', async () => {
-    const mutation = vi.fn().mockResolvedValue('mutated');
-    const mixed = vi.fn().mockResolvedValue('mixed');
-    const safeRead = vi.fn().mockResolvedValue('private raw read result');
-    const tools = requestTools(
-      [tool('mutate_record', 'mutation'), tool('mixed_tool'), tool('read_docs', 'pure_local')],
-      [
-        ['mutate_record', mutation],
-        ['mixed_tool', mixed],
-        ['read_docs', safeRead],
-      ],
-    );
-    sdkState.nonStreamingResponses.push(
-      toolUseResponse([
-        { id: 'tool-1', name: 'mutate_record', input: { value: 'secret mutation' } },
-        { id: 'tool-2', name: 'mixed_tool', input: { value: 'secret mixed' } },
-        { id: 'tool-3', name: 'read_docs', input: { value: 'secret query' } },
-      ]),
-      textResponse(),
-    );
+describe('AddieClaudeClient isolated execution policy', () => {
+  it.each(['replay', 'shadow'] as const)(
+    'blocks mutation and unclassified handlers in %s while executing a pure local read once',
+    async (executionMode) => {
+      const mutation = vi.fn().mockResolvedValue('mutated');
+      const mixed = vi.fn().mockResolvedValue('mixed');
+      const safeRead = vi.fn().mockResolvedValue('private raw read result');
+      const tools = requestTools(
+        [tool('mutate_record', 'mutation'), tool('mixed_tool'), tool('read_docs', 'pure_local')],
+        [
+          ['mutate_record', mutation],
+          ['mixed_tool', mixed],
+          ['read_docs', safeRead],
+        ],
+      );
+      sdkState.nonStreamingResponses.push(
+        toolUseResponse([
+          { id: 'tool-1', name: 'mutate_record', input: { value: 'secret mutation' } },
+          { id: 'tool-2', name: 'mixed_tool', input: { value: 'secret mixed' } },
+          { id: 'tool-3', name: 'read_docs', input: { value: 'secret query' } },
+        ]),
+        textResponse(),
+      );
 
-    const client = new AddieClaudeClient('unused');
-    const response = await client.processMessage(
-      'evaluate this',
-      undefined,
-      tools,
-      { systemPrompt: 'evaluation system' },
-      {
-        executionMode: 'replay',
-        disableServerTools: true,
-        toolExecutionPolicy: ({ toolName, tool: definition }) => {
-          if (toolName === 'mixed_tool') throw new Error('policy lookup failed');
-          return { allowed: definition?.replaySafety === 'pure_local' };
+      const client = new AddieClaudeClient('unused');
+      const response = await client.processMessage(
+        'evaluate this',
+        undefined,
+        tools,
+        { systemPrompt: 'evaluation system' },
+        {
+          executionMode,
+          disableServerTools: true,
+          toolExecutionPolicy: ({ toolName, tool: definition }) => {
+            if (toolName === 'mixed_tool') throw new Error('policy lookup failed');
+            return { allowed: definition?.replaySafety === 'pure_local' };
+          },
         },
-      },
-    );
+      );
 
-    expect(mutation).not.toHaveBeenCalled();
-    expect(mixed).not.toHaveBeenCalled();
-    expect(safeRead).toHaveBeenCalledOnce();
-    expect(safeRead).toHaveBeenCalledWith({ value: 'secret query' });
-    expect(response.tool_executions).toHaveLength(3);
-    expect(response.tool_executions.slice(0, 2)).toEqual([
-      expect.objectContaining({
-        tool_name: 'mutate_record',
+      expect(mutation).not.toHaveBeenCalled();
+      expect(mixed).not.toHaveBeenCalled();
+      expect(safeRead).toHaveBeenCalledOnce();
+      expect(safeRead).toHaveBeenCalledWith({ value: 'secret query' });
+      expect(response.tool_executions).toHaveLength(3);
+      expect(response.tool_executions.slice(0, 2)).toEqual([
+        expect.objectContaining({
+          tool_name: 'mutate_record',
+          parameters: {},
+          result: 'Error: Tool execution blocked by policy',
+          duration_ms: 0,
+          blocked_by_policy: true,
+          is_error: true,
+        }),
+        expect.objectContaining({
+          tool_name: 'mixed_tool',
+          parameters: {},
+          result: 'Error: Tool execution blocked by policy',
+          duration_ms: 0,
+          blocked_by_policy: true,
+          is_error: true,
+        }),
+      ]);
+      expect(response.tool_executions[2]).toMatchObject({
+        tool_name: 'read_docs',
         parameters: {},
-        result: 'Error: Tool execution blocked by policy',
-        duration_ms: 0,
-        blocked_by_policy: true,
-        is_error: true,
-      }),
-      expect.objectContaining({
-        tool_name: 'mixed_tool',
-        parameters: {},
-        result: 'Error: Tool execution blocked by policy',
-        duration_ms: 0,
-        blocked_by_policy: true,
-        is_error: true,
-      }),
-    ]);
-    expect(response.tool_executions[2]).toMatchObject({
-      tool_name: 'read_docs',
-      parameters: {},
-      result: 'Tool execution completed',
-      result_summary: 'Tool execution completed',
-      is_error: false,
-    });
-    expect(JSON.stringify(response.tool_executions)).not.toContain('secret');
-    expect(JSON.stringify(response.tool_executions)).not.toContain('private raw read result');
-  });
+        result: 'Tool execution completed',
+        result_summary: 'Tool execution completed',
+        is_error: false,
+      });
+      expect(JSON.stringify(response.tool_executions)).not.toContain('secret');
+      expect(JSON.stringify(response.tool_executions)).not.toContain('private raw read result');
+    },
+  );
 
   it('applies the same fail-closed policy and redaction to streaming dispatch', async () => {
     const mixed = vi.fn().mockResolvedValue('must not run');
@@ -290,7 +357,7 @@ describe('AddieClaudeClient replay execution policy', () => {
     });
   });
 
-  it('suppresses evaluation notifications while preserving production behavior', async () => {
+  it('suppresses isolated-execution notifications while preserving production behavior', async () => {
     const handler = vi.fn().mockRejectedValue(new Error('sensitive failure'));
     const tools = requestTools([tool('failing_read', 'pure_local')], [['failing_read', handler]]);
     const client = new AddieClaudeClient('unused');
@@ -319,6 +386,23 @@ describe('AddieClaudeClient replay execution policy', () => {
       { executionMode: 'evaluation', disableServerTools: true },
     );
     expect(notifySystemError).not.toHaveBeenCalled();
+
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'shadow-fail', name: 'failing_read', input: { value: 'shadow secret' } }]),
+      textResponse(),
+    );
+    const shadow = await client.processMessage(
+      'shadow', undefined, tools, { systemPrompt: 'system' },
+      {
+        executionMode: 'shadow',
+        toolExecutionPolicy: () => ({ allowed: true }),
+      },
+    );
+    expect(notifyToolError).not.toHaveBeenCalled();
+    expect(shadow.tool_executions[0]).toMatchObject({
+      parameters: {},
+      result: 'Error: Tool execution failed',
+    });
 
     sdkState.nonStreamingResponses.push(
       toolUseResponse([{ id: 'prod-fail', name: 'failing_read', input: { value: 'production input' } }]),
@@ -425,30 +509,69 @@ describe('AddieClaudeClient replay execution policy', () => {
     expect(sdkState.calls).toHaveLength(1);
   });
 
-  it('submits replay exactly once and logs no provider-echoed private text', async () => {
-    const privateSentinel = 'private-provider-error-sentinel';
-    const error = Object.assign(new Error(`temporary 500 ${privateSentinel}`), { status: 500 });
-    sdkState.nonStreamingResponses.push(error);
-    const client = new AddieClaudeClient('unused', 'test-model');
+  it.each(['replay', 'shadow'] as const)(
+    'submits %s exactly once and logs no provider-echoed private text',
+    async (executionMode) => {
+      const privateSentinel = 'private-provider-error-sentinel';
+      const error = Object.assign(new Error(`temporary 500 ${privateSentinel}`), { status: 500 });
+      sdkState.nonStreamingResponses.push(error);
+      const client = new AddieClaudeClient('unused', 'test-model');
 
-    await expect(client.processMessage(
-      'private question',
-      undefined,
-      undefined,
-      { systemPrompt: 'private system' },
-      {
-        executionMode: 'replay',
-        disableServerTools: true,
-        uncapped: true,
-        invocationHashKey: 'no-retry-key',
-        invocationHashDomain: 'no-retry-domain',
-      },
-    )).rejects.toThrow(privateSentinel);
+      await expect(client.processMessage(
+        'private question',
+        undefined,
+        undefined,
+        { systemPrompt: 'private system' },
+        {
+          executionMode,
+          disableServerTools: true,
+          uncapped: true,
+          invocationHashKey: 'no-retry-key',
+          invocationHashDomain: 'no-retry-domain',
+        },
+      )).rejects.toThrow(privateSentinel);
 
-    expect(sdkState.calls).toHaveLength(1);
-    expect(sdkState.requestOptions).toEqual([{ maxRetries: 0 }]);
-    expect(JSON.stringify(loggerState.entries)).not.toContain(privateSentinel);
-  });
+      expect(sdkState.calls).toHaveLength(1);
+      expect(sdkState.requestOptions).toEqual([{ maxRetries: 0 }]);
+      expect(JSON.stringify(loggerState.entries)).not.toContain(privateSentinel);
+    },
+  );
+
+  it.each(['replay', 'shadow'] as const)(
+    'streams %s exactly once and logs no provider-echoed private text',
+    async (executionMode) => {
+      const privateSentinel = 'private-stream-provider-error-sentinel';
+      const error = Object.assign(new Error(`temporary 500 ${privateSentinel}`), { status: 500 });
+      sdkState.streamingResponses.push(error);
+      const client = new AddieClaudeClient('unused', 'test-model');
+      const events: StreamEvent[] = [];
+
+      for await (const event of client.processMessageStream(
+        'private streaming question',
+        undefined,
+        undefined,
+        {
+          executionMode,
+          disableServerTools: true,
+          uncapped: true,
+          invocationHashKey: 'no-stream-retry-key',
+          invocationHashDomain: 'no-stream-retry-domain',
+        },
+      )) {
+        events.push(event);
+      }
+
+      expect(sdkState.calls).toHaveLength(1);
+      expect(sdkState.requestOptions).toEqual([
+        expect.objectContaining({ maxRetries: 0, signal: expect.any(AbortSignal) }),
+      ]);
+      expect(events.some((event) => event.type === 'retry')).toBe(false);
+      expect(events).toEqual([
+        expect.objectContaining({ type: 'stream_error' }),
+      ]);
+      expect(JSON.stringify(loggerState.entries)).not.toContain(privateSentinel);
+    },
+  );
 
   it('enforces an exact request-local tool boundary in both preparation and provider calls', async () => {
     const client = new AddieClaudeClient('unused', 'test-model');
@@ -465,6 +588,7 @@ describe('AddieClaudeClient replay execution policy', () => {
       uncapped: true as const,
       disableServerTools: true,
       allowedToolNames: ['search_docs', 'get_doc'] as const,
+      initialToolChoice: { type: 'tool' as const, name: 'search_docs' },
       invocationHashKey: 'exact-provider-boundary-key',
       invocationHashDomain: 'official-docs-test:v1',
     };
@@ -475,15 +599,21 @@ describe('AddieClaudeClient replay execution policy', () => {
     expect(client.hasRegisteredTools(options.allowedToolNames)).toBe(true);
     expect(prepared.tool_schemas.map(({ name }) => name)).toEqual(['search_docs', 'get_doc']);
 
-    sdkState.nonStreamingResponses.push(textResponse());
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'tool-1', name: 'search_docs', input: { value: 'current question' } }]),
+      textResponse(),
+    );
     const actual: InvocationPreparedSnapshot[] = [];
     await client.processMessage(
       'current question', undefined, scopedTools, { systemPrompt: 'system' },
       { ...options, onInvocationPrepared: (snapshot) => actual.push(snapshot) },
     );
-    expect(actual).toEqual([prepared]);
+    expect(actual).toHaveLength(2);
+    expect(actual[0]).toEqual(prepared);
     expect((sdkState.calls[0].tools as Array<{ name: string }>).map(({ name }) => name))
       .toEqual(['search_docs', 'get_doc']);
+    expect(sdkState.calls[0].tool_choice).toEqual({ type: 'tool', name: 'search_docs' });
+    expect(sdkState.calls[1]).not.toHaveProperty('tool_choice');
     expect(prepared.message_payloads).toHaveLength(1);
     expect(prepared.provider_request_sha256).toBe(invocationHmac(
       options.invocationHashKey,
@@ -539,9 +669,10 @@ describe('AddieClaudeClient replay execution policy', () => {
       );
 
     const missing = prepare({ executionMode: 'replay' });
+    const shadowMissing = prepare({ executionMode: 'shadow' });
     const keyOnly = prepare({ executionMode: 'replay', invocationHashKey: 'key-a' });
     const domainOnly = prepare({ executionMode: 'replay', invocationHashDomain: 'domain-a' });
-    for (const snapshot of [missing, keyOnly, domainOnly]) {
+    for (const snapshot of [missing, shadowMissing, keyOnly, domainOnly]) {
       expect(snapshot.system_blocks.every(({ sha256 }) => sha256 === 'unavailable')).toBe(true);
       expect(snapshot.tool_schemas.every(({ sha256 }) => sha256 === 'unavailable')).toBe(true);
     }
@@ -570,7 +701,11 @@ describe('AddieClaudeClient replay execution policy', () => {
   });
 
   it('preserves production custom schemas while intrinsically omitting provider tools', async () => {
-    sdkState.nonStreamingResponses.push(textResponse('production'), textResponse('replay'));
+    sdkState.nonStreamingResponses.push(
+      textResponse('production'),
+      textResponse('replay'),
+      textResponse('shadow'),
+    );
     const client = new AddieClaudeClient('unused');
     client.registerTool(tool('read_docs', 'pure_local'), vi.fn().mockResolvedValue('docs'));
 
@@ -585,14 +720,138 @@ describe('AddieClaudeClient replay execution policy', () => {
         }),
       },
     );
+    await client.processMessage(
+      'shadow', undefined, undefined, { systemPrompt: 'system' }, {
+        executionMode: 'shadow',
+        toolExecutionPolicy: ({ tool: definition }) => ({
+          allowed: definition?.replaySafety === 'pure_local',
+        }),
+      },
+    );
 
     const productionTools = sdkState.calls[0].tools as Array<Record<string, unknown>>;
     const replayTools = sdkState.calls[1].tools as Array<Record<string, unknown>>;
+    const shadowTools = sdkState.calls[2].tools as Array<Record<string, unknown>>;
     expect(productionTools.find((entry) => entry.name === 'read_docs')).toEqual(
       replayTools.find((entry) => entry.name === 'read_docs'),
     );
     expect(productionTools.some((entry) => entry.name === 'web_search')).toBe(true);
     expect(replayTools.some((entry) => entry.name === 'web_search')).toBe(false);
+    expect(shadowTools).toEqual(replayTools);
+    expect(shadowTools.some((entry) => entry.name === 'web_search')).toBe(false);
+  });
+
+  it('runs an injected alternate provider exactly once for a full shadow response', async () => {
+    const normalProvider = fakeProvider('google', 'normal response must not run');
+    const exactlyOnceProvider = fakeProvider('google', 'shadow candidate');
+    const client = new AddieClaudeClient(
+      'unused',
+      'gemini-test',
+      undefined,
+      { provider: normalProvider, exactlyOnceProvider },
+    );
+    const prepared = client.prepareMessageInvocation(
+      'private question',
+      undefined,
+      undefined,
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'shadow',
+        disableServerTools: true,
+        invocationHashKey: 'alternate-provider-key',
+        invocationHashDomain: 'alternate-provider-shadow:v1',
+      },
+    );
+    const snapshots: InvocationPreparedSnapshot[] = [];
+
+    const response = await client.processMessage(
+      'private question',
+      undefined,
+      undefined,
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'shadow',
+        disableServerTools: true,
+        invocationHashKey: 'alternate-provider-key',
+        invocationHashDomain: 'alternate-provider-shadow:v1',
+        onInvocationPrepared: (snapshot) => snapshots.push(snapshot),
+      },
+    );
+
+    expect(normalProvider.respond).not.toHaveBeenCalled();
+    expect(exactlyOnceProvider.respond).toHaveBeenCalledOnce();
+    expect(sdkState.calls).toHaveLength(0);
+    expect(snapshots).toEqual([prepared]);
+    expect(response).toMatchObject({
+      text: 'Shadow candidate',
+      model_execution: {
+        source: 'provider',
+        requested_provider: 'google',
+        requested_model: 'gemini-test',
+        provider: 'google',
+        model: 'gemini-test',
+        model_resolution: 'exact',
+        fallback_reason: null,
+      },
+      usage: { input_tokens: 7, output_tokens: 3 },
+    });
+    const dispatchedRequest = exactlyOnceProvider.prepare.mock.calls[0][0];
+    expect(dispatchedRequest.system.every((block) => block.cacheHint === undefined)).toBe(true);
+    expect(dispatchedRequest.providerTools).toBeUndefined();
+  });
+
+  it('keeps alternate providers dormant for production delivery', async () => {
+    const provider = fakeProvider('openai', 'must not run');
+    const client = new AddieClaudeClient(
+      'unused',
+      'gpt-test',
+      undefined,
+      { provider },
+    );
+
+    await expect(client.processMessage(
+      'production question',
+      undefined,
+      undefined,
+      { systemPrompt: 'system' },
+      { uncapped: true },
+    )).rejects.toThrow('restricted to isolated execution');
+    const stream = client.processMessageStream(
+      'production stream',
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+    await expect(stream.next()).rejects.toThrow('restricted to isolated execution');
+
+    expect(provider.prepare).not.toHaveBeenCalled();
+    expect(provider.respond).not.toHaveBeenCalled();
+  });
+
+  it('rejects a binding whose exactly-once provider could cross provider state', () => {
+    expect(() => new AddieClaudeClient(
+      'unused',
+      'test-model',
+      undefined,
+      {
+        provider: fakeProvider('openai', 'unused'),
+        exactlyOnceProvider: fakeProvider('google', 'unused'),
+      },
+    )).toThrow('must use the same provider');
+  });
+
+  it('forks the registered tool surface into a server-tool-free isolated client', () => {
+    const source = new AddieClaudeClient('unused', 'source-model');
+    source.registerTool(tool('search_docs', 'pure_local'), vi.fn());
+    source.setWebSearchEnabled(true);
+    const provider = fakeProvider('google', 'candidate');
+
+    const fork = source.forkForIsolatedProvider('gemini-test', { provider });
+
+    expect(fork).not.toBe(source);
+    expect(fork.hasRegisteredTools(['search_docs'])).toBe(true);
+    expect(fork.isWebSearchEnabled()).toBe(false);
+    expect(source.isWebSearchEnabled()).toBe(true);
   });
 
   it('keeps the large cacheable prompt block stable across routed domains', () => {

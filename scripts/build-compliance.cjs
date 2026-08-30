@@ -41,6 +41,20 @@ const SPECIALISM_ENUM = path.join(__dirname, '../static/schemas/source/enums/spe
 const PROTOCOL_ENUM = path.join(__dirname, '../static/schemas/source/enums/adcp-protocol.json');
 const SCHEMAS_DIR = path.join(__dirname, '../static/schemas/source');
 
+function resolveBuildTimestamp(env = process.env, now = new Date()) {
+  if (env.SOURCE_DATE_EPOCH === undefined) return now.toISOString();
+  if (!/^\d+$/.test(env.SOURCE_DATE_EPOCH)) {
+    throw new Error('SOURCE_DATE_EPOCH must be an integer number of seconds since the Unix epoch');
+  }
+  const date = new Date(Number(env.SOURCE_DATE_EPOCH) * 1000);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('SOURCE_DATE_EPOCH is outside the supported date range');
+  }
+  return date.toISOString();
+}
+
+const BUILD_TIMESTAMP = resolveBuildTimestamp();
+
 const args = process.argv.slice(2);
 const isRelease = args.includes('--release');
 const isCheck = args.includes('--check');
@@ -538,7 +552,7 @@ function generateIndex(version, sourceDir) {
   return {
     published_version: version,
     adcp_version: version,
-    generated_at: new Date().toISOString(),
+    generated_at: BUILD_TIMESTAMP,
     universal,
     protocols: protocolEntries,
     domains: domainAliasEntries,

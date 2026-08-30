@@ -78,8 +78,9 @@ describe('shared Addie provider circuit', () => {
     const firstRoute = await router.route({ message: 'important question', source: 'dm' });
     const secondRoute = await router.route({ message: 'another question', source: 'dm' });
 
-    expect(firstRoute).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
-    expect(secondRoute).toMatchObject({ action: 'respond', tool_sets: ['knowledge'] });
+    const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
+    expect(firstRoute).toMatchObject({ action: 'respond', tool_sets: safeKnowledgeFallback });
+    expect(secondRoute).toMatchObject({ action: 'respond', tool_sets: safeKnowledgeFallback });
     expect(provider.calls).toBe(1);
 
     const client = new AddieClaudeClient('unused', 'claude-sonnet-4-6', health);
