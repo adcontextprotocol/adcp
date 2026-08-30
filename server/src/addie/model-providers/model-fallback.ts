@@ -51,8 +51,6 @@ function configuredModels(): SiblingModelFallbackModels {
     primary: AddieModelConfig.chat,
     siblings: [
       ModelConfig.fast,
-      ModelConfig.precision,
-      ModelConfig.depth,
       AddieModelConfig.certification,
       AddieModelConfig.anonymousChat,
       AddieModelConfig.voice,
@@ -63,7 +61,10 @@ function configuredModels(): SiblingModelFallbackModels {
 /**
  * Select one same-provider fallback model before a logical turn has exposed or
  * executed any work. The production policy intentionally falls back only from
- * a configured specialist model to Addie's primary chat model. It never moves
+ * an eligible specialist model to Addie's primary chat model. Precision and
+ * depth currently share one configured model ID, so that ID is deliberately
+ * excluded: billing, financial, and legal turns must fail closed instead of
+ * silently losing their accuracy-oriented model. The policy never moves
  * primary chat onto a more expensive or lower-quality sibling, never runs in
  * replay/shadow evaluation, and never retries billing/auth/request failures.
  *

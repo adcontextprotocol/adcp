@@ -4,6 +4,7 @@ import {
   selectSiblingModelFallback,
   type SiblingModelFallbackContext,
 } from '../../../src/addie/model-providers/model-fallback.js';
+import { ModelConfig } from '../../../src/config/models.js';
 
 const retryableError = Object.assign(new Error('overloaded_error'), { status: 529 });
 
@@ -69,5 +70,12 @@ describe('sibling model fallback policy', () => {
     ['unconfigured model', { model: 'claude-other' }],
   ])('fails closed for %s', (_label, overrides) => {
     expect(selectSiblingModelFallback(context(overrides))).toBeNull();
+  });
+
+  it('fails closed for the accuracy-critical precision role', () => {
+    expect(selectSiblingModelFallback(context({
+      model: ModelConfig.precision,
+      configuredModels: undefined,
+    }))).toBeNull();
   });
 });
