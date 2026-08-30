@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/principal-changed-webhook.json",
-  "title": "Connection Changed Webhook",
+  "title": "Principal Changed Webhook",
   "x-status": "experimental",
   "description": "Caller-anchored webhook payload fired when the seller changes the authenticated caller's principal state through a seller-driven transition: a reporting destination moving between validating, ready, action_required, and rejected, a setup action nearing or passing its expiry, a proof invalidation, or a change to the accepted declarations intersection. It is not fired for the caller's own sync_principal mutations — the sync response already reports those. Registered through sync_principal or the specialized sync_agent_notification_configs task using event_types containing principal.changed. The payload is an invalidation signal, not principal state: receivers repair by re-reading get_principal. Sellers MUST make the post-transition state observable on that read before firing, and SHOULD coalesce bursts of transitions into one fire per settled state.",
   "type": "object",
