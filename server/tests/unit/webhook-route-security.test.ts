@@ -6,30 +6,36 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 const {
   zoomSecret,
   workosSecret,
+  lumaSecret,
   originalZoomSecret,
   originalResendSecret,
   originalWorkosSecret,
   originalWorkosApiKey,
   originalWorkosClientId,
+  originalLumaSecret,
 } = vi.hoisted(() => {
   const originalZoomSecret = process.env.ZOOM_WEBHOOK_SECRET;
   const originalResendSecret = process.env.RESEND_WEBHOOK_SECRET;
   const originalWorkosSecret = process.env.WORKOS_WEBHOOK_SECRET;
   const originalWorkosApiKey = process.env.WORKOS_API_KEY;
   const originalWorkosClientId = process.env.WORKOS_CLIENT_ID;
+  const originalLumaSecret = process.env.LUMA_WEBHOOK_SECRET;
   process.env.ZOOM_WEBHOOK_SECRET = 'zoom-webhook-security-test-secret';
   process.env.WORKOS_WEBHOOK_SECRET = 'workos-webhook-security-test-secret';
   process.env.WORKOS_API_KEY = 'sk_test_security';
   process.env.WORKOS_CLIENT_ID = 'client_security';
+  process.env.LUMA_WEBHOOK_SECRET = 'luma-webhook-security-test-secret';
   delete process.env.RESEND_WEBHOOK_SECRET;
   return {
     zoomSecret: process.env.ZOOM_WEBHOOK_SECRET,
     workosSecret: process.env.WORKOS_WEBHOOK_SECRET,
+    lumaSecret: process.env.LUMA_WEBHOOK_SECRET,
     originalZoomSecret,
     originalResendSecret,
     originalWorkosSecret,
     originalWorkosApiKey,
     originalWorkosClientId,
+    originalLumaSecret,
   };
 });
 
@@ -37,7 +43,19 @@ vi.mock('../../src/addie/error-notifier.js', () => ({
   notifySystemError: vi.fn(),
 }));
 
+// Wrap (not replace) the real implementation so every other test in this file
+// still gets correct accept/reject behavior — this only lets one test below
+// assert that the Luma route *delegates* its secret comparison to the shared
+// constant-time helper, rather than comparing with a plain `!==` (which would
+// produce identical accept/reject outcomes and so wouldn't be caught by a
+// behavior-only test).
+vi.mock('../../src/utils/constant-time-equal.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/constant-time-equal.js')>();
+  return { ...actual, constantTimeEqual: vi.fn(actual.constantTimeEqual) };
+});
+
 import { WEBHOOK_RAW_BODY_LIMIT_BYTES } from '../../src/middleware/bounded-raw-json.js';
+import { constantTimeEqual } from '../../src/utils/constant-time-equal.js';
 import {
   createWebhooksRouter,
   parseCertificationReviewEmailMetadata,
@@ -56,8 +74,26 @@ function workosSignature(rawBody: string, timestamp: string): string {
     .digest('hex');
 }
 
+// Routes that capture their own raw body for signature verification
+// (via `boundedRawJson`) must not have their body stream consumed first —
+// mirror the production skip-list in server/src/http.ts so this app wiring
+// matches what each route actually receives in production.
+const RAW_BODY_ROUTES = new Set([
+  '/api/webhooks/resend-inbound',
+  '/api/webhooks/resend-tracking',
+  '/api/webhooks/workos',
+  '/api/webhooks/zoom',
+]);
+
 function createApp() {
   const app = express();
+  app.use((req, res, next) => {
+    if (RAW_BODY_ROUTES.has(req.path)) {
+      next();
+    } else {
+      express.json()(req, res, next);
+    }
+  });
   app.use('/api/webhooks', createWebhooksRouter());
   app.use('/api/webhooks', createWorkOSWebhooksRouter());
   app.use((err: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => {
@@ -84,6 +120,8 @@ describe('webhook route security boundaries', () => {
     else process.env.WORKOS_API_KEY = originalWorkosApiKey;
     if (originalWorkosClientId === undefined) delete process.env.WORKOS_CLIENT_ID;
     else process.env.WORKOS_CLIENT_ID = originalWorkosClientId;
+    if (originalLumaSecret === undefined) delete process.env.LUMA_WEBHOOK_SECRET;
+    else process.env.LUMA_WEBHOOK_SECRET = originalLumaSecret;
   });
 
   it('rejects an unsigned Zoom URL-validation challenge instead of exposing an HMAC oracle', async () => {
@@ -191,6 +229,55 @@ describe('webhook route security boundaries', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
+  });
+
+  it('accepts a Luma webhook whose signing secret matches exactly', async () => {
+    const response = await request(app)
+      .post('/api/webhooks/luma')
+      .set('Content-Type', 'application/json')
+      .set('x-luma-signing-secret', lumaSecret)
+      .send(JSON.stringify({ action: 'event.deleted', data: {} }));
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+  });
+
+  it('rejects a Luma webhook with an incorrect signing secret', async () => {
+    const response = await request(app)
+      .post('/api/webhooks/luma')
+      .set('Content-Type', 'application/json')
+      .set('x-luma-signing-secret', `${lumaSecret}-wrong`)
+      .send(JSON.stringify({ action: 'event.deleted', data: {} }));
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Unauthorized' });
+  });
+
+  it('rejects a Luma webhook missing the signing secret header', async () => {
+    const response = await request(app)
+      .post('/api/webhooks/luma')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ action: 'event.deleted', data: {} }));
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual({ error: 'Unauthorized' });
+  });
+
+  it('compares the Luma signing secret via the constant-time helper, not a variable-time ===/!== on the raw strings', async () => {
+    vi.mocked(constantTimeEqual).mockClear();
+
+    const response = await request(app)
+      .post('/api/webhooks/luma')
+      .set('Content-Type', 'application/json')
+      .set('x-luma-signing-secret', lumaSecret)
+      .send(JSON.stringify({ action: 'event.deleted', data: {} }));
+
+    expect(response.status).toBe(200);
+    // The helper must be the thing that actually decided the request was
+    // authorized — a `providedSecret !== LUMA_WEBHOOK_SECRET` implementation
+    // would produce the same 200 above without ever calling this helper,
+    // which is exactly the timing side-channel this guards against.
+    expect(constantTimeEqual).toHaveBeenCalledWith(lumaSecret, lumaSecret);
   });
 
   it.each([
