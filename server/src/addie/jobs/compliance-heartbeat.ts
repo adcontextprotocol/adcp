@@ -479,10 +479,19 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           }
         }
       } catch (recordError) {
-        // Fence-loss must not be swallowed here: re-throw so the outer handler
-        // can skip the agent cleanly without treating this as a record error.
+        // Fence loss during failure recording must be handled here directly:
+        // we are already inside catch (error), so re-throwing would escape the
+        // entire try/catch/finally and reject runComplianceHeartbeatJob() instead
+        // of continuing to the next agent. Defer and skip, matching the outer
+        // fence-loss handler's behavior.
         if (recordError && typeof recordError === 'object' && 'code' in recordError && recordError.code === 'execution_fence_lost') {
-          throw recordError;
+          logger.warn(
+            { agentUrl: agent.agent_url },
+            'Compliance heartbeat stopped after losing the shared execution fence (during failure recording)',
+          );
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+          result.skipped++;
+          continue;
         }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
