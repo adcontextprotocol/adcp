@@ -1180,7 +1180,15 @@ export class TrainingSalesPlatform
     }
   }
 
-  capabilities = TRAINING_SALES_CAPABILITIES;
+  get capabilities() {
+    if (this.storyboardCompat?.version === '3.0') {
+      return {
+        ...TRAINING_SALES_CAPABILITIES,
+        specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+      };
+    }
+    return TRAINING_SALES_CAPABILITIES;
+  }
 
   async acknowledgeSellerManagedWebhook(taskId: string): Promise<void> {
     await this.sellerManagedControlJobs?.acknowledgeFrameworkWebhook(taskId);

@@ -3487,12 +3487,16 @@ describe('tenant routing smoke', () => {
         }),
       });
       const capabilitiesBody = await capabilities.json() as {
-        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+        result?: { structuredContent?: {
+          compliance_testing?: { scenarios?: string[] };
+          specialisms?: string[];
+        } };
       };
       const scenarios = capabilitiesBody.result?.structuredContent?.compliance_testing?.scenarios ?? [];
       expect(scenarios).toEqual(expect.arrayContaining(SALES_THREE_ZERO_COMPAT_SCENARIOS));
       expect(scenarios).not.toContain('seed_product');
       expect(scenarios).not.toContain('seed_measurement_catalog');
+      expect(capabilitiesBody.result?.structuredContent?.specialisms).not.toContain('sales-dooh');
       expect(scenarios).not.toContain('query_provenance_audit_observations');
 
       const list = await fetch(url, {
