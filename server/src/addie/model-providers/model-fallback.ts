@@ -9,6 +9,7 @@ import type {
 import type {
   ModelFallbackReason,
   ModelProviderId,
+  ModelResponse,
 } from './model-provider.js';
 
 export const MODEL_FALLBACK_DISCLOSURE_POLICY = 'server_metadata_only' as const;
@@ -38,6 +39,19 @@ export interface SiblingModelFallbackDecision {
   reason: ModelFallbackReason;
   disclosure: typeof MODEL_FALLBACK_DISCLOSURE_POLICY;
 }
+
+export type SiblingModelFallbackAttempt =
+  | { status: 'not_selected' }
+  | {
+      status: 'succeeded';
+      decision: SiblingModelFallbackDecision;
+      response: ModelResponse;
+    }
+  | {
+      status: 'failed';
+      decision: SiblingModelFallbackDecision;
+      error: unknown;
+    };
 
 const SAFE_FAILURE_REASONS: Partial<Record<ProviderFailureCategory, ModelFallbackReason>> = {
   rate_limited: 'primary_rate_limited',
@@ -103,4 +117,27 @@ export function selectSiblingModelFallback(
     reason,
     disclosure: MODEL_FALLBACK_DISCLOSURE_POLICY,
   };
+}
+
+/**
+ * Apply the shared fallback policy and invoke the selected model at most once.
+ * The caller supplies its delivery-specific exactly-once transport boundary;
+ * this function owns the common selected/succeeded/failed outcome contract.
+ */
+export async function attemptSiblingModelFallback(
+  context: SiblingModelFallbackContext,
+  invokeExactlyOnce: (model: string) => Promise<ModelResponse>,
+): Promise<SiblingModelFallbackAttempt> {
+  const decision = selectSiblingModelFallback(context);
+  if (!decision) return { status: 'not_selected' };
+
+  try {
+    return {
+      status: 'succeeded',
+      decision,
+      response: await invokeExactlyOnce(decision.model),
+    };
+  } catch (error) {
+    return { status: 'failed', decision, error };
+  }
 }

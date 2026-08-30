@@ -1,12 +1,26 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  attemptSiblingModelFallback,
   MODEL_FALLBACK_DISCLOSURE_POLICY,
   selectSiblingModelFallback,
   type SiblingModelFallbackContext,
 } from '../../../src/addie/model-providers/model-fallback.js';
+import type { ModelResponse } from '../../../src/addie/model-providers/model-provider.js';
 import { ModelConfig } from '../../../src/config/models.js';
 
 const retryableError = Object.assign(new Error('overloaded_error'), { status: 529 });
+
+function response(model = 'claude-primary'): ModelResponse {
+  return {
+    provider: 'anthropic',
+    model,
+    id: 'msg_fallback',
+    content: [{ type: 'text', text: 'Fallback answer.' }],
+    finishReason: 'stop',
+    providerFinishReason: 'end_turn',
+    usage: { inputTokens: 12, outputTokens: 4 },
+  };
+}
 
 function context(
   overrides: Partial<SiblingModelFallbackContext> = {},
@@ -77,5 +91,42 @@ describe('sibling model fallback policy', () => {
       model: ModelConfig.precision,
       configuredModels: undefined,
     }))).toBeNull();
+  });
+
+  it('does not invoke transport when policy selects no fallback', async () => {
+    const invoke = vi.fn().mockResolvedValue(response());
+    await expect(attemptSiblingModelFallback(
+      context({ retriesExhausted: false }),
+      invoke,
+    )).resolves.toEqual({ status: 'not_selected' });
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('invokes the selected sibling exactly once and returns its response', async () => {
+    const fallbackResponse = response();
+    const invoke = vi.fn().mockResolvedValue(fallbackResponse);
+    await expect(attemptSiblingModelFallback(context(), invoke)).resolves.toEqual({
+      status: 'succeeded',
+      decision: {
+        model: 'claude-primary',
+        reason: 'primary_unavailable',
+        disclosure: MODEL_FALLBACK_DISCLOSURE_POLICY,
+      },
+      response: fallbackResponse,
+    });
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith('claude-primary');
+  });
+
+  it('returns the exact one-shot transport failure', async () => {
+    const fallbackError = new Error('fallback failed');
+    const invoke = vi.fn().mockRejectedValue(fallbackError);
+    const attempt = await attemptSiblingModelFallback(context(), invoke);
+    expect(attempt).toMatchObject({
+      status: 'failed',
+      decision: { model: 'claude-primary', reason: 'primary_unavailable' },
+    });
+    expect(attempt.status === 'failed' && attempt.error).toBe(fallbackError);
+    expect(invoke).toHaveBeenCalledOnce();
   });
 });

@@ -62,7 +62,7 @@ import type {
   ModelUsage,
   PreparedModelInvocation,
 } from './model-providers/model-provider.js';
-import { selectSiblingModelFallback } from './model-providers/model-fallback.js';
+import { attemptSiblingModelFallback } from './model-providers/model-fallback.js';
 import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
@@ -1640,51 +1640,54 @@ export class AddieClaudeClient {
       } catch (error) {
         let invocationError = error;
         let fallbackSucceeded = false;
-        const fallback = selectSiblingModelFallback({
-          provider: this.modelProvider.id,
-          model: activeModel,
-          executionMode: options?.executionMode ?? 'production',
-          iteration,
-          retriesExhausted: error instanceof RetriesExhaustedError,
-          isRecoveryInvocation: recoveryInvocation.isRecovery,
-          hasExecutedCustomTool,
-          hasProviderContinuation: modelLoop.pinnedProvider !== null,
-          receivedDeltaCount: 0,
-          error,
-        });
-        if (fallback) {
-          try {
-            response = await invokeProvider(true, fallback.model);
-            activeModel = fallback.model;
-            costModel = fallback.model;
-            modelFallbackReason = fallback.reason;
-            modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
-            if (operationalExecution) {
-              this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
-            }
-            logger.warn(
-              {
-                event: 'addie_model_fallback',
-                requestedModel,
-                fallbackModel: fallback.model,
-                reason: fallback.reason,
-                disclosure: fallback.disclosure,
-              },
-              'Addie: Preferred model unavailable; sibling fallback succeeded',
-            );
-            fallbackSucceeded = true;
-          } catch (fallbackError) {
-            invocationError = fallbackError;
-            logger.warn(
-              {
-                event: 'addie_model_fallback_failed',
-                requestedModel,
-                fallbackModel: fallback.model,
-                reason: fallback.reason,
-              },
-              'Addie: Sibling model fallback failed',
-            );
+        const fallbackAttempt = await attemptSiblingModelFallback(
+          {
+            provider: this.modelProvider.id,
+            model: activeModel,
+            executionMode: options?.executionMode ?? 'production',
+            iteration,
+            retriesExhausted: error instanceof RetriesExhaustedError,
+            isRecoveryInvocation: recoveryInvocation.isRecovery,
+            hasExecutedCustomTool,
+            hasProviderContinuation: modelLoop.pinnedProvider !== null,
+            receivedDeltaCount: 0,
+            error,
+          },
+          model => invokeProvider(true, model),
+        );
+        if (fallbackAttempt.status === 'succeeded') {
+          const { decision: fallback } = fallbackAttempt;
+          response = fallbackAttempt.response;
+          activeModel = fallback.model;
+          costModel = fallback.model;
+          modelFallbackReason = fallback.reason;
+          modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
+          if (operationalExecution) {
+            this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
           }
+          logger.warn(
+            {
+              event: 'addie_model_fallback',
+              requestedModel,
+              fallbackModel: fallback.model,
+              reason: fallback.reason,
+              disclosure: fallback.disclosure,
+            },
+            'Addie: Preferred model unavailable; sibling fallback succeeded',
+          );
+          fallbackSucceeded = true;
+        } else if (fallbackAttempt.status === 'failed') {
+          const { decision: fallback } = fallbackAttempt;
+          invocationError = fallbackAttempt.error;
+          logger.warn(
+            {
+              event: 'addie_model_fallback_failed',
+              requestedModel,
+              fallbackModel: fallback.model,
+              reason: fallback.reason,
+            },
+            'Addie: Sibling model fallback failed',
+          );
         }
         if (!fallbackSucceeded) {
           const fallbackResponse = modelLoop.emptyResponseRecovery
@@ -2333,23 +2336,23 @@ export class AddieClaudeClient {
                 streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
               );
               let terminalError = streamError;
-              const fallback = selectSiblingModelFallback({
-                provider: this.modelProvider.id,
-                model: activeModel,
-                executionMode: options?.executionMode ?? 'production',
-                iteration,
-                retriesExhausted: isExhausted,
-                isRecoveryInvocation: recoveryInvocation.isRecovery,
-                hasExecutedCustomTool: toolExecutions.length > 0,
-                hasProviderContinuation: modelLoop.pinnedProvider !== null,
-                receivedDeltaCount: totalReceivedDeltas,
-                error: streamError,
-              });
-              if (fallback) {
-                try {
+              const fallbackAttempt = await attemptSiblingModelFallback(
+                {
+                  provider: this.modelProvider.id,
+                  model: activeModel,
+                  executionMode: options?.executionMode ?? 'production',
+                  iteration,
+                  retriesExhausted: isExhausted,
+                  isRecoveryInvocation: recoveryInvocation.isRecovery,
+                  hasExecutedCustomTool: toolExecutions.length > 0,
+                  hasProviderContinuation: modelLoop.pinnedProvider !== null,
+                  receivedDeltaCount: totalReceivedDeltas,
+                  error: streamError,
+                },
+                async (model) => {
                   const fallbackTools = recoveryInvocation.toolsAllowed ? modelTools : [];
                   const fallbackRequest = this.buildModelRequest(
-                    fallback.model,
+                    model,
                     systemBlocks,
                     fallbackTools,
                     modelMessages,
@@ -2360,7 +2363,7 @@ export class AddieClaudeClient {
                       ? options?.initialToolChoice
                       : undefined,
                   );
-                  currentResponse = await activeTurn.invoke(
+                  return activeTurn.invoke(
                     this.exactlyOnceModelProvider,
                     fallbackRequest,
                     {
@@ -2380,37 +2383,43 @@ export class AddieClaudeClient {
                       },
                     },
                   );
-                  activeModel = fallback.model;
-                  costModel = fallback.model;
-                  modelFallbackReason = fallback.reason;
-                  lastProviderModel = currentResponse.model;
-                  modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
-                  if (operationalExecution) {
-                    this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
-                  }
-                  logger.warn(
-                    {
-                      event: 'addie_model_fallback',
-                      requestedModel,
-                      fallbackModel: fallback.model,
-                      reason: fallback.reason,
-                      disclosure: fallback.disclosure,
-                    },
-                    'Addie Stream: Preferred model unavailable; sibling fallback succeeded',
-                  );
-                  break;
-                } catch (fallbackError) {
-                  terminalError = fallbackError;
-                  logger.warn(
-                    {
-                      event: 'addie_model_fallback_failed',
-                      requestedModel,
-                      fallbackModel: fallback.model,
-                      reason: fallback.reason,
-                    },
-                    'Addie Stream: Sibling model fallback failed',
-                  );
+                },
+              );
+              if (fallbackAttempt.status === 'succeeded') {
+                const { decision: fallback } = fallbackAttempt;
+                currentResponse = fallbackAttempt.response;
+                activeModel = fallback.model;
+                costModel = fallback.model;
+                modelFallbackReason = fallback.reason;
+                lastProviderModel = currentResponse.model;
+                modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
+                if (operationalExecution) {
+                  this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
                 }
+                logger.warn(
+                  {
+                    event: 'addie_model_fallback',
+                    requestedModel,
+                    fallbackModel: fallback.model,
+                    reason: fallback.reason,
+                    disclosure: fallback.disclosure,
+                  },
+                  'Addie Stream: Preferred model unavailable; sibling fallback succeeded',
+                );
+                break;
+              }
+              if (fallbackAttempt.status === 'failed') {
+                const { decision: fallback } = fallbackAttempt;
+                terminalError = fallbackAttempt.error;
+                logger.warn(
+                  {
+                    event: 'addie_model_fallback_failed',
+                    requestedModel,
+                    fallbackModel: fallback.model,
+                    reason: fallback.reason,
+                  },
+                  'Addie Stream: Sibling model fallback failed',
+                );
               }
               if (operationalExecution) {
                 const availability = this.providerHealth.recordFailure(
