@@ -159,10 +159,10 @@ describe('createAddieToolExecutor', () => {
     expect(result.execution.parameters).toEqual({ id: 'original' });
   });
 
-  it('fails closed in replay and redacts blocked inputs', async () => {
+  it.each(['replay', 'shadow'] as const)('fails closed in %s and redacts blocked inputs', async (executionMode) => {
     const handler = vi.fn();
     const execute = createAddieToolExecutor([tool], new Map([['lookup', handler]]), {
-      executionMode: 'replay',
+      executionMode,
     });
 
     const result = await execute(call({ id: 'secret' }), 1);
@@ -312,7 +312,7 @@ describe('recordProviderToolResults', () => {
     });
   });
 
-  it('redacts evaluation receipts and safely records unmatched results', () => {
+  it.each(['replay', 'shadow'] as const)('redacts %s receipts and safely records unmatched results', (executionMode) => {
     const deriveProviderToolReceipt = vi.fn(() => ({
       toolCallId: 'server_1',
       toolName: 'web_search',
@@ -326,7 +326,7 @@ describe('recordProviderToolResults', () => {
       { id: 'anthropic', deriveProviderToolReceipt },
       [providerCall],
       [providerResult],
-      { executionMode: 'replay', startingSequence: 0 },
+      { executionMode, startingSequence: 0 },
     );
     const unmatched = recordProviderToolResults(
       { id: 'anthropic' },
