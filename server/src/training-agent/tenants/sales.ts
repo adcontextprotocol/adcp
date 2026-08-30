@@ -102,7 +102,7 @@ export function buildSalesTenantConfig(
         // persistence boundary without leaking legacy identity into current paths.
         legacyHandlers: {
           mediaBuy: {
-            getProducts: legacyGetProductsHandler(options.storyboardCompat),
+            getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
           },

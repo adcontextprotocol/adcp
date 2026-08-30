@@ -451,6 +451,12 @@ export interface ComplyExtensions {
     taskId: string;
     message?: string;
   };
+  /** Single-shot submitted response for the next brief-mode get_products call. */
+  forcedGetProductsArm?: {
+    arm: 'submitted';
+    taskId: string;
+    message?: string;
+  };
   /** Single-shot rejected response for the principal's next brief/refine request. */
   forcedGetProductsRejections: Map<string, {
     reason: string;

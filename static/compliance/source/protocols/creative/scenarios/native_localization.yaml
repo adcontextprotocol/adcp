@@ -1,5 +1,5 @@
 id: creative/native_localization
-version: "1.0.0"
+version: "1.0.1"
 title: "Creative materialized localization"
 category: creative
 summary: "Verifies capability discovery, materialized localized sync, explicit default/unmatched behavior, and exact list readback."
@@ -8,6 +8,10 @@ introduced_in: "3.2"
 required_tools:
   - sync_creatives
   - list_creatives
+
+requires_capability:
+  path: creative.localization.locale_matching
+  equals: rfc4647_lookup
 
 narrative: |
   Native localization is a trafficking contract for already-materialized

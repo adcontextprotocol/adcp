@@ -1892,6 +1892,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
   if (scenario === 'force_get_signals_arm') {
     return handleForceGetSignalsArm(session, rawArgs);
   }
+  if (scenario === 'force_get_products_arm' && params.arm === 'submitted') {
+    return handleForceGetProductsArm(session, rawArgs);
+  }
   if (
     scenario === 'compact_product_lifecycle_probe'
     || scenario === 'compact_direct_buy_lifecycle_probe'
@@ -2834,6 +2837,43 @@ function handleForceGetSignalsArm(session: SessionState, rawArgs: Record<string,
     success: true,
     forced: { arm: 'submitted', task_id: taskId },
     message: `Next brief-mode get_signals call will return the submitted arm with task_id ${taskId}`,
+  };
+}
+
+function handleForceGetProductsArm(session: SessionState, rawArgs: Record<string, unknown>): object {
+  const params = rawArgs.params as Record<string, unknown> | undefined;
+  if (!params || params.arm !== 'submitted') {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: "force_get_products_arm requires params.arm = 'submitted'",
+    };
+  }
+  const taskId = params.task_id;
+  if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 128) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'task_id is required and must contain at most 128 characters',
+    };
+  }
+  const message = params.message;
+  if (message !== undefined && (typeof message !== 'string' || message.length > 2000)) {
+    return {
+      success: false,
+      error: 'INVALID_PARAMS',
+      error_detail: 'message must be a string up to 2000 characters',
+    };
+  }
+  session.complyExtensions.forcedGetProductsArm = {
+    arm: 'submitted',
+    taskId,
+    ...(typeof message === 'string' && { message }),
+  };
+  return {
+    success: true,
+    forced: { arm: 'submitted', task_id: taskId },
+    message: `Next brief-mode get_products call will return the submitted arm with task_id ${taskId}`,
   };
 }
 

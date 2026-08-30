@@ -165,7 +165,13 @@ type GetProductsRejectedResponse = {
   suggestions?: string[];
   context?: Record<string, unknown>;
 };
+type GetProductsSubmittedResponse = {
+  status: 'submitted';
+  task_id: string;
+  message?: string;
+};
 type GetProductsReadDirectives = {
+  submitted?: { arm: 'submitted'; taskId: string; message?: string };
   rejection?: { reason: string; suggestions?: string[] };
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
@@ -9155,7 +9161,7 @@ function productMatchesAudienceActivation(
   ));
 }
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const paginationOffset = req.pagination
     ? decodeOffsetCursor('products', req.pagination.cursor)
@@ -9211,6 +9217,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
       const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
+      let submittedSession = session;
+      let submitted = buyingMode === 'brief'
+        ? submittedSession.complyExtensions.forcedGetProductsArm
+        : undefined;
       let rejectionSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
         ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
@@ -9221,16 +9231,24 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         : undefined;
       if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
         const fixtureDirectiveSession = await getSession(fixtureSessionKey);
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = fixtureDirectiveSession;
+          submitted = fixtureDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         const fixtureDirective = fixtureDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         if (fixtureDirective?.tool === 'get_products') {
           staleDirectiveSession = fixtureDirectiveSession;
           staleDirective = fixtureDirective;
         }
       }
-      if (ctx.principal?.startsWith('static:') && (!rejection || !staleDirective)) {
+      if (ctx.principal?.startsWith('static:') && (!submitted || !rejection || !staleDirective)) {
         const globalDirectiveSession = await getSession(
           sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
         );
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = globalDirectiveSession;
+          submitted = globalDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         if (!rejection) {
           rejectionSession = globalDirectiveSession;
           rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
@@ -9242,14 +9260,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           staleDirective = globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         }
       }
+      if (submitted) {
+        submittedSession.complyExtensions.forcedGetProductsArm = undefined;
+      }
       if (rejection) {
         rejectionSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
-      directives = { rejection, staleDirective };
-      if (rejection || staleDirective) await flushDirtySessions();
+      directives = { submitted, rejection, staleDirective };
+      if (submitted || rejection || staleDirective) await flushDirtySessions();
     } finally {
       await store.release({ principal, key, claimToken: claim.claimToken });
     }
@@ -9273,7 +9294,7 @@ async function handleGetProductsUnlocked(
   ctx: TrainingContext,
   paginationOffset?: number,
   readDirectives?: GetProductsReadDirectives,
-): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as unknown as Record<string, unknown>).brief;
@@ -9343,6 +9364,15 @@ async function handleGetProductsUnlocked(
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
+
+  const submitted = readDirectives?.submitted;
+  if (submitted?.arm === 'submitted') {
+    return {
+      status: 'submitted',
+      task_id: submitted.taskId,
+      ...(submitted.message && { message: submitted.message }),
+    };
+  }
 
   const directivePrincipal = ctx.principal ?? 'anonymous';
   const rejection = readDirectives
