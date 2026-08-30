@@ -16,6 +16,7 @@ import {
   gradeFixedTrace,
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
+import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -200,6 +201,7 @@ describe('fixed trace artifact runner', () => {
       terminalStage: 'generation',
       terminalStatus: 'complete',
       boundaryReason: null,
+      localReplacementReason: null,
       finishReason: 'stop',
       output: 'The protocol uses task-based requests.',
       route: { action: 'respond', toolSets: ['knowledge'] },
@@ -265,6 +267,44 @@ describe('fixed trace artifact runner', () => {
     expect(exactKnowledge.system[1]?.text).toContain('## Knowledge Search First');
     expect(exactKnowledge.system.at(-1)?.text).toContain('# Constraints');
     expect(exactKnowledge.system.at(-1)?.text).toContain('# Response Style');
+  });
+
+  it('records a local replacement when every source lookup fails', async () => {
+    const router = new ScriptedProvider([routeResponse('respond', ['knowledge'])]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call',
+        id: 'tool-1',
+        name: 'search_docs',
+        input: { query: 'package identifiers' },
+      }], 'tool_calls', 'generation-tool'),
+      response([{
+        type: 'text',
+        text: 'The documentation confirms it. See https://invented.example/docs.',
+      }], 'stop', 'generation-final'),
+    ]);
+    const selectedTrace = trace('knowledge-tool-error');
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation));
+
+    expect(observation).toMatchObject({
+      terminalStage: 'generation',
+      terminalStatus: 'complete',
+      boundaryReason: null,
+      localReplacementReason: 'failed_lookup_evidence',
+      output: FAILED_LOOKUP_EVIDENCE_RESPONSE,
+      flagged: true,
+      tools: [{
+        name: 'search_docs',
+        resultStatus: 'recoverable_error',
+      }],
+    });
+    expect(observation.output).not.toContain('invented.example');
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
+      metadataPass: true,
+    });
   });
 
   it('stops at the surface decision without dispatching generation', async () => {
