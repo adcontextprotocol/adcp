@@ -2188,13 +2188,18 @@ export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext)
   }
 
   const sessionKey = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
-  const accounts = getAccountMap(sessionKey, ctx.principal);
   const results: Record<string, unknown>[] = [];
 
   for (const input of req.accounts) {
     const acctRef = input.account;
-    const acct = findAccountByRef(accounts, acctRef)
-      ?? (acctRef.account_id ? findAccountByIdAcrossSessions(acctRef.account_id, ctx.principal) : undefined);
+    let acct: AccountState | undefined;
+    for (const accounts of accountMapsForPrincipal(sessionKey, ctx.principal)) {
+      acct = findAccountByRef(accounts, acctRef);
+      if (acct) break;
+    }
+    acct ??= acctRef.account_id
+      ? findAccountByIdAcrossSessions(acctRef.account_id, ctx.principal)
+      : undefined;
 
     if (!acct) {
       // Account not found — return a useful error
