@@ -50,6 +50,8 @@ import type {
   ModelExecution,
   ModelMessage,
   ModelMessageContent,
+  ModelProvider,
+  ModelProviderId,
   ModelRequest,
   ModelResponse,
   ModelToolChoice,
@@ -57,6 +59,7 @@ import type {
   ModelToolDefinition,
   ModelToolResultContent,
   ModelUsage,
+  PreparedModelInvocation,
 } from './model-providers/model-provider.js';
 import {
   AnthropicModelProvider,
@@ -802,25 +805,30 @@ function toAddieUsage(usage: ModelUsage): NonNullable<AddieResponse['usage']> {
   };
 }
 
-function anthropicModelExecution(model: string, requestedModel: string): ModelExecution {
+function providerModelExecution(
+  response: Pick<ModelResponse, 'provider' | 'model'>,
+  requestedProvider: ModelProviderId,
+  requestedModel: string,
+): ModelExecution {
   return {
     source: 'provider',
-    requested_provider: 'anthropic',
+    requested_provider: requestedProvider,
     requested_model: requestedModel,
-    provider: 'anthropic',
-    model,
-    model_resolution: model === requestedModel ? 'exact' : 'provider_canonicalized',
+    provider: response.provider,
+    model: response.model,
+    model_resolution: response.model === requestedModel ? 'exact' : 'provider_canonicalized',
     fallback_reason: null,
   };
 }
 
 function localModelExecution(
   reason: Extract<ModelExecution, { source: 'local' }>['reason'],
+  requestedProvider: ModelProviderId,
   requestedModel: string,
 ): ModelExecution {
   return {
     source: 'local',
-    requested_provider: 'anthropic',
+    requested_provider: requestedProvider,
     requested_model: requestedModel,
     reason,
   };
@@ -828,6 +836,7 @@ function localModelExecution(
 
 function providerUnavailableResponse(
   availability: ProviderAvailability,
+  requestedProvider: ModelProviderId,
   requestedModel: string,
   toolsUsed: readonly string[] = [],
   toolExecutions: readonly ToolExecution[] = [],
@@ -843,7 +852,7 @@ function providerUnavailableResponse(
     tool_executions: [...toolExecutions],
     flagged: true,
     flag_reason: `provider_unavailable:${availability.category ?? 'unknown'}`,
-    model_execution: localModelExecution('provider_error', requestedModel),
+    model_execution: localModelExecution('provider_error', requestedProvider, requestedModel),
     capacity: { certification_reserve_used: certificationReserveUsed },
   };
 }
@@ -890,10 +899,20 @@ interface PayloadDebugStats {
   largest_message?: { index: number; role: string; chars: number };
 }
 
+/**
+ * Injectable provider seam for isolated full-response evaluation. Alternate
+ * providers remain barred from production delivery until provider-specific
+ * accounting and rollout gates are in place.
+ */
+export interface AddieModelProviderBinding {
+  provider: ModelProvider;
+  /** Provider instance whose transport performs exactly one SDK submission. */
+  exactlyOnceProvider?: ModelProvider;
+}
+
 export class AddieClaudeClient {
-  private client: Anthropic;
-  private readonly anthropicProvider: AnthropicModelProvider;
-  private readonly exactlyOnceAnthropicProvider: AnthropicModelProvider;
+  private readonly modelProvider: ModelProvider;
+  private readonly exactlyOnceModelProvider: ModelProvider;
   private model: string;
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
@@ -905,19 +924,29 @@ export class AddieClaudeClient {
     apiKey: string,
     model: string = AddieModelConfig.chat,
     providerHealth: ProviderHealthController = new ProviderHealthController(),
+    providerBinding?: AddieModelProviderBinding,
   ) {
-    this.client = new Anthropic({ apiKey });
-    const transport = this.client as unknown as AnthropicMessagesTransport;
-    this.anthropicProvider = new AnthropicModelProvider(
-      apiKey,
-      transport,
-      { transportMaxRetries: 2 },
-    );
-    this.exactlyOnceAnthropicProvider = new AnthropicModelProvider(
-      apiKey,
-      transport,
-      { transportMaxRetries: 0 },
-    );
+    if (providerBinding) {
+      this.modelProvider = providerBinding.provider;
+      this.exactlyOnceModelProvider = providerBinding.exactlyOnceProvider
+        ?? providerBinding.provider;
+    } else {
+      const client = new Anthropic({ apiKey });
+      const transport = client as unknown as AnthropicMessagesTransport;
+      this.modelProvider = new AnthropicModelProvider(
+        apiKey,
+        transport,
+        { transportMaxRetries: 2 },
+      );
+      this.exactlyOnceModelProvider = new AnthropicModelProvider(
+        apiKey,
+        transport,
+        { transportMaxRetries: 0 },
+      );
+    }
+    if (this.exactlyOnceModelProvider.id !== this.modelProvider.id) {
+      throw new Error('Normal and exactly-once Addie providers must use the same provider');
+    }
     this.model = model;
     this.addieDb = new AddieDatabase();
     this.providerHealth = providerHealth;
@@ -1097,7 +1126,8 @@ export class AddieClaudeClient {
 
   private buildInvocationPreparedSnapshot(
     options: ProcessMessageOptions | undefined,
-    providerRequest: PreparedProviderRequest,
+    modelRequest: ModelRequest,
+    preparedInvocation: PreparedModelInvocation,
     iteration: number,
     attempt: number,
   ): InvocationPreparedSnapshot {
@@ -1108,39 +1138,63 @@ export class AddieClaudeClient {
       options?.invocationHashKey,
       options?.invocationHashDomain,
     );
+    const providerRequest = preparedInvocation.providerRequest;
+    // Preserve the existing Anthropic envelope hashes byte-for-byte. Other
+    // adapters expose different SDK shapes, so their component hashes use the
+    // canonical ordered request while the full request hash always covers the
+    // exact provider SDK payload.
+    const anthropicRequest = preparedInvocation.provider === 'anthropic'
+      ? providerRequest as unknown as PreparedProviderRequest
+      : null;
+    const systemBlocks: readonly unknown[] = anthropicRequest?.system ?? modelRequest.system;
+    const toolPayloads: Array<{ name: string; payload: unknown }> = anthropicRequest
+      ? anthropicRequest.tools.map((tool, index) => ({
+          name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
+          payload: tool,
+        }))
+      : [
+          ...modelRequest.tools.map((tool) => ({ name: tool.name, payload: tool })),
+          ...(modelRequest.providerTools ?? []).map((tool) => ({
+            name: `provider:${tool.type}`,
+            payload: tool,
+          })),
+        ];
+    const messagePayloads: readonly unknown[] = anthropicRequest?.messages ?? modelRequest.messages;
     return {
       execution_mode: executionMode,
-      model: providerRequest.model,
+      model: preparedInvocation.model,
       iteration,
       attempt,
-      system_blocks: providerRequest.system.map((block, index) => ({
+      system_blocks: systemBlocks.map((block, index) => ({
         index,
         sha256: hash(block),
       })),
-      tool_schemas: providerRequest.tools.map((tool, index) => ({
+      tool_schemas: toolPayloads.map(({ name, payload }, index) => ({
         index,
-        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
-        sha256: hash(tool),
+        name,
+        sha256: hash(payload),
       })),
-      message_payloads: providerRequest.messages.map((message, index) => ({
+      message_payloads: messagePayloads.map((message, index) => ({
         index,
         sha256: hash(message),
       })),
-      message_count: providerRequest.messages.length,
+      message_count: messagePayloads.length,
       provider_request_sha256: hash(providerRequest),
     };
   }
 
   private async notifyInvocationPrepared(
     options: ProcessMessageOptions | undefined,
-    providerRequest: PreparedProviderRequest,
+    modelRequest: ModelRequest,
+    preparedInvocation: PreparedModelInvocation,
     iteration: number,
     attempt: number,
   ): Promise<void> {
     if (!options?.onInvocationPrepared) return;
     await options.onInvocationPrepared(this.buildInvocationPreparedSnapshot(
       options,
-      providerRequest,
+      modelRequest,
+      preparedInvocation,
       iteration,
       attempt,
     ));
@@ -1274,7 +1328,9 @@ export class AddieClaudeClient {
       model: effectiveModel,
       system: systemBlocks.map((block) => ({
         text: block.text,
-        ...('cache_control' in block && block.cache_control?.type === 'ephemeral'
+        ...(this.modelProvider.id === 'anthropic'
+          && 'cache_control' in block
+          && block.cache_control?.type === 'ephemeral'
           ? { cacheHint: 'ephemeral' as const }
           : {}),
       })),
@@ -1318,11 +1374,11 @@ export class AddieClaudeClient {
       false,
       options?.initialToolChoice,
     );
-    const providerRequest = this.anthropicProvider.prepare(modelRequest)
-      .providerRequest as unknown as PreparedProviderRequest;
+    const preparedInvocation = this.modelProvider.prepare(modelRequest);
     return this.buildInvocationPreparedSnapshot(
       options,
-      providerRequest,
+      modelRequest,
+      preparedInvocation,
       1,
       1,
     );
@@ -1347,6 +1403,9 @@ export class AddieClaudeClient {
   ): Promise<AddieResponse> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
+      throw new Error('Alternate Addie model providers are restricted to isolated execution');
+    }
 
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
@@ -1390,12 +1449,11 @@ export class AddieClaudeClient {
           tool_executions: [],
           flagged: true,
           flag_reason: 'cost_cap_exceeded',
-          model_execution: {
-            source: 'local',
-            requested_provider: 'anthropic',
-            requested_model: requestedModel,
-            reason: 'cost_cap_exceeded',
-          },
+          model_execution: localModelExecution(
+            'cost_cap_exceeded',
+            this.modelProvider.id,
+            requestedModel,
+          ),
         };
       }
     }
@@ -1403,9 +1461,13 @@ export class AddieClaudeClient {
     // Reserve a half-open probe only after local gates have passed so a
     // request that never reaches the provider cannot hold the probe lease.
     if (operationalExecution) {
-      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      const availability = this.providerHealth.acquire(this.modelProvider.id, 'chat');
       if (!availability.allowed) {
-        return providerUnavailableResponse(availability, requestedModel);
+        return providerUnavailableResponse(
+          availability,
+          this.modelProvider.id,
+          requestedModel,
+        );
       }
     }
 
@@ -1511,8 +1573,8 @@ export class AddieClaudeClient {
               : undefined,
           );
           const provider = exactlyOnce
-            ? this.exactlyOnceAnthropicProvider
-            : this.anthropicProvider;
+            ? this.exactlyOnceModelProvider
+            : this.modelProvider;
           return activeTurn.invoke(
             provider,
             modelRequest,
@@ -1520,7 +1582,8 @@ export class AddieClaudeClient {
               beforeDispatch: async (preparedInvocation) => {
                 await this.notifyInvocationPrepared(
                   options,
-                  preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                  modelRequest,
+                  preparedInvocation,
                   iteration,
                   invocationAttempt,
                 );
@@ -1538,7 +1601,7 @@ export class AddieClaudeClient {
             { maxRetries: 3, initialDelayMs: 1000 },
             'processMessage',
           );
-        if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
+        if (operationalExecution) this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
         modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
       } catch (error) {
         const fallbackResponse = modelLoop.emptyResponseRecovery
@@ -1572,10 +1635,15 @@ export class AddieClaudeClient {
             this.logPromptOverflow(error, stats, 'processMessage');
           }
           if (operationalExecution) {
-            const availability = this.providerHealth.recordFailure('anthropic', 'chat', error);
+            const availability = this.providerHealth.recordFailure(
+              this.modelProvider.id,
+              'chat',
+              error,
+            );
             if (!availability.allowed) {
               return providerUnavailableResponse(
                 availability,
+                this.modelProvider.id,
                 requestedModel,
                 toolsUsed,
                 toolExecutions,
@@ -1596,7 +1664,7 @@ export class AddieClaudeClient {
         llmDurationMs: llmDuration,
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
-      }, 'Addie: Claude response received');
+      }, 'Addie: Model response received');
 
       const turn = activeTurn.acceptResponse(response, { countUsage: !reusedEmptyResponse });
       response = turn.response;
@@ -1607,7 +1675,7 @@ export class AddieClaudeClient {
       // Provider results may accompany a terminal, provider-continuation, or
       // mixed custom-tool turn. Record them once at the normalized boundary.
       const providerToolExecutions = executionLedger.recordProviderResults(
-        this.anthropicProvider,
+        this.modelProvider,
         turn.providerToolCalls,
         turn.providerToolResults,
         options?.executionMode ?? 'production',
@@ -1660,7 +1728,7 @@ export class AddieClaudeClient {
             contentTypes: boundedModelContentTypes(response.content),
             outputTokens: response.usage.outputTokens,
           },
-          'Addie: Anthropic stopped before response completion',
+          'Addie: Model provider stopped before response completion',
         );
         if (operationalExecution && options?.costScope) {
           await recordCost(
@@ -1678,10 +1746,10 @@ export class AddieClaudeClient {
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', effectiveModel)
+            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
             : finalized.localReplacementReason
-              ? localModelExecution('canned_response', effectiveModel)
-            : anthropicModelExecution(response.model, effectiveModel),
+              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+            : providerModelExecution(response, this.modelProvider.id, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1777,10 +1845,10 @@ export class AddieClaudeClient {
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', effectiveModel)
+            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
             : finalized.localReplacementReason
-              ? localModelExecution('canned_response', effectiveModel)
-            : anthropicModelExecution(response.model, effectiveModel),
+              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+            : providerModelExecution(response, this.modelProvider.id, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1819,9 +1887,8 @@ export class AddieClaudeClient {
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
     const maxIterationsUsage = toAddieUsage(modelLoop.usage);
-    // Still charge the user for tokens actually consumed on the way
-    // to hitting max-iterations — those bytes DID go to Anthropic
-    // and DID cost money, regardless of whether the session converged.
+    // Still charge the user for tokens actually consumed on the way to
+    // hitting max-iterations. Production delivery is Anthropic-only here.
     if (operationalExecution && options?.costScope) {
       await recordCost(
         options.costScope.userId,
@@ -1837,7 +1904,7 @@ export class AddieClaudeClient {
       flag_reason: 'Max tool iterations reached',
       active_rule_ids: undefined,
       config_version_id: configVersionId ?? undefined,
-      model_execution: localModelExecution('canned_response', effectiveModel),
+      model_execution: localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
       timing: {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
@@ -1867,6 +1934,9 @@ export class AddieClaudeClient {
   ): AsyncGenerator<StreamEvent> {
     const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
+      throw new Error('Alternate Addie model providers are restricted to isolated execution');
+    }
 
     // #2950: matching fail-closed warn on the stream path.
     if (operationalExecution && !options?.costScope && !options?.uncapped) {
@@ -1911,12 +1981,11 @@ export class AddieClaudeClient {
             tool_executions: [],
             flagged: true,
             flag_reason: 'cost_cap_exceeded',
-            model_execution: {
-              source: 'local',
-              requested_provider: 'anthropic',
-              requested_model: requestedModel,
-              reason: 'cost_cap_exceeded',
-            },
+            model_execution: localModelExecution(
+              'cost_cap_exceeded',
+              this.modelProvider.id,
+              requestedModel,
+            ),
           },
         };
         return;
@@ -1925,13 +1994,17 @@ export class AddieClaudeClient {
 
     // As above, cost-capped requests must not consume the one half-open probe.
     if (operationalExecution) {
-      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      const availability = this.providerHealth.acquire(this.modelProvider.id, 'chat');
       if (!availability.allowed) {
         await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
         certificationLeaseId = undefined;
         yield {
           type: 'done',
-          response: providerUnavailableResponse(availability, requestedModel),
+          response: providerUnavailableResponse(
+            availability,
+            this.modelProvider.id,
+            requestedModel,
+          ),
         };
         return;
       }
@@ -2090,8 +2163,8 @@ export class AddieClaudeClient {
                 : undefined,
             );
             const provider = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
-              ? this.exactlyOnceAnthropicProvider
-              : this.anthropicProvider;
+              ? this.exactlyOnceModelProvider
+              : this.modelProvider;
             currentResponse = await activeTurn.invoke(
               provider,
               modelRequest,
@@ -2104,7 +2177,8 @@ export class AddieClaudeClient {
                 beforeDispatch: async (preparedInvocation) => {
                   await this.notifyInvocationPrepared(
                     options,
-                    preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                    modelRequest,
+                    preparedInvocation,
                     iteration,
                     streamRetryCount + 1,
                   );
@@ -2112,7 +2186,7 @@ export class AddieClaudeClient {
               },
             );
 
-            if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
+            if (operationalExecution) this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
             modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
@@ -2162,10 +2236,15 @@ export class AddieClaudeClient {
                 streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
               );
               if (operationalExecution) {
-                const availability = this.providerHealth.recordFailure('anthropic', 'chat', streamError);
+                const availability = this.providerHealth.recordFailure(
+                  this.modelProvider.id,
+                  'chat',
+                  streamError,
+                );
                 if (!availability.allowed) {
                   const terminalResponse = providerUnavailableResponse(
                     availability,
+                    this.modelProvider.id,
                     requestedModel,
                     toolsUsed,
                     toolExecutions,
@@ -2260,7 +2339,7 @@ export class AddieClaudeClient {
           llmDurationMs: llmDuration,
           inputTokens: currentResponse.usage.inputTokens,
           outputTokens: currentResponse.usage.outputTokens,
-        }, 'Addie Stream: Claude response received');
+        }, 'Addie Stream: Model response received');
 
         const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         currentResponse = turn.response;
@@ -2269,7 +2348,7 @@ export class AddieClaudeClient {
         }
 
         const providerToolExecutions = executionLedger.recordProviderResults(
-          this.anthropicProvider,
+          this.modelProvider,
           turn.providerToolCalls,
           turn.providerToolResults,
           options?.executionMode ?? 'production',
@@ -2360,10 +2439,10 @@ export class AddieClaudeClient {
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', effectiveModel)
+                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
                 : finalized.localReplacementReason
-                  ? localModelExecution('canned_response', effectiveModel)
-                : anthropicModelExecution(currentResponse.model, effectiveModel),
+                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+                : providerModelExecution(currentResponse, this.modelProvider.id, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2444,10 +2523,10 @@ export class AddieClaudeClient {
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', effectiveModel)
+                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
                 : finalized.localReplacementReason
-                  ? localModelExecution('canned_response', effectiveModel)
-                : anthropicModelExecution(currentResponse.model, effectiveModel),
+                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+                : providerModelExecution(currentResponse, this.modelProvider.id, effectiveModel),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2541,10 +2620,14 @@ export class AddieClaudeClient {
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalizedMaxIter.localReplacementReason
-            ? localModelExecution('canned_response', effectiveModel)
+            ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
             : logicalText && lastProviderModel
-            ? anthropicModelExecution(lastProviderModel, effectiveModel)
-            : localModelExecution('canned_response', effectiveModel),
+            ? providerModelExecution(
+                { provider: this.modelProvider.id, model: lastProviderModel },
+                this.modelProvider.id,
+                effectiveModel,
+              )
+            : localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
