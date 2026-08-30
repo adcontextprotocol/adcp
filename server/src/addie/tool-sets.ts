@@ -258,6 +258,61 @@ export const PUBLISHING_PROMOTION_TOOLS = [
   "draft_social_posts",
 ] as const;
 
+/** Low-risk certification discovery, progress, and credential recovery. */
+export const CERTIFICATION_OVERVIEW_TOOLS = [
+  "list_certification_tracks",
+  "get_certification_module",
+  "get_learner_progress",
+  "check_credentials",
+  "set_my_name",
+] as const;
+
+/** Standard module teaching, checkpoint, build, and completion workflow. */
+export const CERTIFICATION_LEARNING_TOOLS = [
+  "start_certification_module",
+  "complete_certification_module",
+  "get_learner_progress",
+  "checkpoint_teaching_progress",
+  "get_build_phase_instructions",
+  "save_learner_feedback",
+  "set_my_name",
+  "check_credentials",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
+/** Placement assessment and specialist capstone workflow. */
+export const CERTIFICATION_ASSESSMENT_TOOLS = [
+  "get_learner_progress",
+  "test_out_modules",
+  "start_certification_exam",
+  "complete_certification_exam",
+  "checkpoint_teaching_progress",
+  "set_my_name",
+  "check_credentials",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
+/** Exact pre-split certification surface retained for already-routed plans. */
+export const LEGACY_CERTIFICATION_TOOLS = [
+  "list_certification_tracks",
+  "get_certification_module",
+  "start_certification_module",
+  "complete_certification_module",
+  "get_learner_progress",
+  "test_out_modules",
+  "start_certification_exam",
+  "complete_certification_exam",
+  "check_credentials",
+  "checkpoint_teaching_progress",
+  "get_build_phase_instructions",
+  "save_learner_feedback",
+  "set_my_name",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
 /** Exact pre-split publishing surface retained for already-routed plans. */
 export const LEGACY_PUBLISHING_TOOLS = [
   "propose_content",
@@ -742,31 +797,35 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: ["send_member_dm"],
   },
 
+  certification_overview: {
+    name: "certification_overview",
+    description:
+      "AdCP Academy catalog, module previews, learner progress, and earned credential checks",
+    tools: [...CERTIFICATION_OVERVIEW_TOOLS],
+  },
+
+  certification_learning: {
+    name: "certification_learning",
+    description:
+      "AdCP Academy standard modules — start or continue teaching, checkpoint progress, run build exercises, and complete modules",
+    tools: [...CERTIFICATION_LEARNING_TOOLS],
+  },
+
+  certification_assessment: {
+    name: "certification_assessment",
+    description:
+      "AdCP Academy placement assessments and specialist capstones — test out modules, run exams, checkpoint, and complete credentials",
+    tools: [...CERTIFICATION_ASSESSMENT_TOOLS],
+  },
+
+  // Compatibility only: plans already carrying the mixed certification set
+  // can finish, while new routing and active-session selection use a bounded
+  // overview, learning, or assessment domain.
   certification: {
     name: "certification",
-    description:
-      "AdCP Academy — list tracks, teach modules, run exercises, placement assessment, and track learner progress",
-    tools: [
-      "list_certification_tracks",
-      "get_certification_module",
-      "start_certification_module",
-      "complete_certification_module",
-      "get_learner_progress",
-      "test_out_modules",
-      "start_certification_exam",
-      "complete_certification_exam",
-      "check_credentials",
-      "checkpoint_teaching_progress",
-      "get_build_phase_instructions",
-      "save_learner_feedback",
-      // Credential issuance can require the learner to supply a display name.
-      // Keep the recovery pair on the same routed surface.
-      "set_my_name",
-      // Certification paywalls direct learners to the read-only product lookup.
-      "find_membership_products",
-      // AdCP tasks (route to training agent during certification via call_adcp_task)
-      "call_adcp_task",
-    ],
+    description: "Legacy mixed certification compatibility surface",
+    tools: [...LEGACY_CERTIFICATION_TOOLS],
+    routerVisible: false,
   },
 };
 

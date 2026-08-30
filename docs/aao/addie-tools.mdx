@@ -1567,9 +1567,9 @@ DO NOT USE unless the user explicitly requests you to message someone.
 
 *Source: `server/src/addie/mcp/collaboration-tools.ts`*
 
-## certification
+## certification_overview
 
-AdCP Academy — list tracks, teach modules, run exercises, placement assessment, and track learner progress
+AdCP Academy catalog, module previews, learner progress, and earned credential checks
 
 ### `list_certification_tracks`
 
@@ -1582,6 +1582,28 @@ List all AdCP certification tracks and the learner's progress in each. Returns t
 Preview a module's content without starting it. Returns lesson plan, exercises, and assessment criteria for read-only browsing. Does NOT record progress or check prerequisites. Use start_certification_module instead when the learner wants to actually take a module.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `get_learner_progress`
+
+Get the current learner's progress across all certification modules and tracks. Shows which modules are completed, in progress, or not started, plus any earned certificates.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `set_my_name`
+
+Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## certification_learning
+
+AdCP Academy standard modules — start or continue teaching, checkpoint progress, run build exercises, and complete modules
 
 ### `start_certification_module`
 
@@ -1598,30 +1620,6 @@ Mark a certification module as completed. Call ONLY when the learner has demonst
 ### `get_learner_progress`
 
 Get the current learner's progress across all certification modules and tracks. Shows which modules are completed, in progress, or not started, plus any earned certificates.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `test_out_modules`
-
-Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (any S-track module, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `start_certification_exam`
-
-Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `complete_certification_exam`
-
-Finalize a specialist capstone. If the learner has demonstrated mastery (internal scores 70%+ in each dimension), awards the specialist credential and triggers Certifier badge issuance. If not yet ready, returns areas needing more work — keep teaching. Do not call until both the lab phase and exam phase are complete. Do not call if the learner asked to stop early. Never share scores with the learner.
-
-*Source: `server/src/addie/mcp/certification-tools.ts`*
-
-### `check_credentials`
-
-Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
@@ -1648,6 +1646,79 @@ Save learner feedback after completing a certification module. Call this when th
 Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `find_membership_products`
+
+Find available membership products for a potential member.
+Use this when someone asks about joining, membership pricing, or wants to become a member.
+You should ask about their company type and approximate revenue to find the right product.
+
+*Source: `server/src/addie/mcp/billing-tools.ts`*
+
+### `call_adcp_task`
+
+Execute any registered AdCP protocol task against an agent. For uncommon tasks or when unsure about parameters, call ask_about_adcp_task first.
+Does NOT include capability discovery — use the `get_adcp_capabilities` tool directly for that (it is not a task).
+
+Two rules a search round-trip cannot rescue you from after a mutating call:
+• idempotency_key: REQUIRED on every mutating task (UUID). Same key on retry replays the same response. Generating a fresh UUID after a failed attempt is how you double-book.
+• On adcp_error: read issues[].variants[] before retrying. It lists the exact valid shape — do not re-guess.
+
+Full buyer rules: ask_about_adcp_task with area="buyer".
+
+*Source: `server/src/addie/mcp/adcp-tools.ts`*
+
+## certification_assessment
+
+AdCP Academy placement assessments and specialist capstones — test out modules, run exams, checkpoint, and complete credentials
+
+### `get_learner_progress`
+
+Get the current learner's progress across all certification modules and tracks. Shows which modules are completed, in progress, or not started, plus any earned certificates.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `test_out_modules`
+
+Mark modules as tested out after a placement assessment confirms the learner already has the knowledge. Only call this after conducting a thorough assessment — ask probing questions per module topic, not just surface-level familiarity. Never test out specialist or build project modules (any S-track module, B4, C4, D4). Does not award scores since no formal coursework was completed, but satisfies prerequisites for advancement.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `start_certification_exam`
+
+Begin an available specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence, S6: Security). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `complete_certification_exam`
+
+Finalize a specialist capstone. If the learner has demonstrated mastery (internal scores 70%+ in each dimension), awards the specialist credential and triggers Certifier badge issuance. If not yet ready, returns areas needing more work — keep teaching. Do not call until both the lab phase and exam phase are complete. Do not call if the learner asked to stop early. Never share scores with the learner.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `checkpoint_teaching_progress`
+
+Save a snapshot of teaching progress for the current module. Required before calling complete_certification_module or complete_certification_exam. Call at these points: (a) after finishing each key concept group from the lesson plan, (b) before transitioning from teaching to assessment, (c) after the capstone lab phase before the exam phase, (d) if the learner needs to leave. IMPORTANT: On the first checkpoint, always include learner_background. Before completion, include demonstrations_verified with the criterion IDs the learner has met.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
+
+### `set_my_name`
+
+Set the current user's first name and (optionally) last name. Writes through to the local DB, organization memberships, and back to WorkOS. Use this when a credential check tells you the user has no name on file, or whenever the user explicitly asks to set or correct their name.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `check_credentials`
+
+Award any newly-eligible credentials and finalize any previously-deferred Certifier issuances for the current learner. Returns share links for newly-issued credentials, or a NAME_REQUIRED marker when the learner has no name on file. Use this after `set_my_name` to finalize a credential that was gated on the missing name.
+
+*Source: `server/src/addie/mcp/certification-tools.ts`*
 
 ### `find_membership_products`
 

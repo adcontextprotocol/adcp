@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADMIN_CHANNEL_WG_SLUG,
+  classifyActiveCertificationProgress,
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
@@ -16,6 +17,16 @@ describe('Slack tool-set selection policy', () => {
     expect(hasActiveCertificationProgress([])).toBe(false);
     expect(hasActiveCertificationProgress([{ status: 'completed' }])).toBe(false);
     expect(hasActiveCertificationProgress([{ status: 'in_progress' }])).toBe(true);
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 'B2' },
+    ])).toBe('learning');
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 's3' },
+    ])).toBe('assessment');
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 'A1' },
+      { status: 'in_progress', module_id: 'S2' },
+    ])).toBe('mixed');
   });
 
   it.each([
@@ -36,23 +47,27 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual(expected);
   });
 
-  it('overrides router and admin sets for an active certification DM', () => {
+  it.each([
+    ['learning', ['certification_learning', ...safeKnowledgeFallback, 'illustrations']],
+    ['assessment', ['certification_assessment', ...safeKnowledgeFallback, 'illustrations']],
+    ['mixed', ['certification_learning', 'certification_assessment', ...safeKnowledgeFallback, 'illustrations']],
+  ] as const)('overrides router and admin sets for an active %s certification DM', (activeCertificationKind, expected) => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['billing', 'admin'],
       routerAvailable: true,
       source: 'dm',
       isAdmin: true,
-      hasActiveCertification: true,
-    })).toEqual(['certification', ...safeKnowledgeFallback, 'illustrations']);
+      activeCertificationKind,
+    })).toEqual(expected);
   });
 
-  it('applies the certification override when the router is unavailable', () => {
+  it('keeps legacy boolean callers on the mixed certification workflow when the router is unavailable', () => {
     expect(selectSlackToolSets({
       routerAvailable: false,
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', ...safeKnowledgeFallback, 'illustrations']);
+    })).toEqual(['certification_learning', 'certification_assessment', ...safeKnowledgeFallback, 'illustrations']);
   });
 
   it('preserves safe read-only knowledge domains when the router is unavailable', () => {
@@ -70,7 +85,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'channel',
       isAdmin: true,
       workingGroupSlug: ADMIN_CHANNEL_WG_SLUG,
-      hasActiveCertification: true,
+      activeCertificationKind: 'learning',
     })).toEqual(['knowledge']);
   });
 

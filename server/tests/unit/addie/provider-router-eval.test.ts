@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(66);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(66);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(68);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(68);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
@@ -153,10 +153,11 @@ describe('strict router eval', () => {
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
       'admin_organizations', 'admin_workflows', 'admin_brands',
-      'outreach', 'collaboration', 'certification',
+      'outreach', 'collaboration',
+      'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(65);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(67);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
