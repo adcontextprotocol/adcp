@@ -9,8 +9,7 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 
 <Warning>
 **3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed beta.6, so use the
-signed beta.9 artifact directly unless your SDK explicitly names beta.9.
+`@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed beta.9 exactly.
 Python higher-level helpers remain partial, and Go exact support remains
 pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
 staging.
@@ -24,6 +23,25 @@ only after the peer advertises the exact release in `supported_versions`.
 For the feature narrative, start with [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2).
 For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/reference/3-2-beta).
 
+## The migration cost is intentional—and bounded
+
+The compact lifecycle adds a second surface during the 3.x compatibility
+window because the old facades combine discovery, proposal mutation,
+commitment, creation, and operational changes behind overloaded modes. Those
+states cannot all be made safe merely by renaming one request.
+
+Use a maintained [AdCP SDK](/docs/building/by-layer/L4/choose-your-sdk) for
+production wherever possible. The SDK can select an advertised compact tool,
+perform a proven direct translation, or run a purpose-built stateful adapter.
+It must fail with a typed unsupported-capability error when a legacy peer
+cannot preserve immutable proposal history, atomic holds, accepted-term
+readback, amendments, or idempotent resume. A generic adapter must never
+pretend those semantics exist.
+
+Existing 3.1 implementations remain valid. Adopting 3.2 is an incremental
+enterprise migration, not a flag day and not a requirement to reimplement both
+surfaces by hand.
+
 ## Upgrade checklist
 
 | Step | Who | Action |
@@ -35,7 +53,7 @@ For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/refere
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test beta.9 from its signed assets, or pair `@adcp/sdk@14.0.0-beta.13` or Python `adcp==8.0.0b9` with exact beta.6; require an explicit beta.9 support statement before using any SDK with the new checkpoint. |
+| 8 | Compliance operators | Test beta.9 from its signed assets, or pair `@adcp/sdk@14.0.0-beta.22` or Python `adcp==8.0.0b10` with exact beta.9; retain the exact package and wire versions. |
 
 ## Required to claim 3.2 behavior
 
@@ -174,8 +192,8 @@ See [Cross-role governance enforcement](/docs/reference/migration/cross-role-gov
 | Creative agent | Canonical supported-format capabilities, operation selection, and explicit compatibility handling for legacy named formats. |
 | Signals or measurement agent | Exact beta pin and only the attestation, targeting, or feedback capabilities actually implemented. |
 | Governance provider/service | Exact beta pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
-| SDK maintainer | Signed beta.6 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for a later beta. |
-| Compliance operator | Matching beta.6 assets end to end, or an exact beta.5 SDK pairing; no 3.2 badge from a beta checkpoint. |
+| SDK maintainer | Signed beta.9 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the release candidate. |
+| Compliance operator | Matching beta.9 assets and SDK support end to end; no 3.2 badge from a beta checkpoint. |
 
 ## Rollback
 

@@ -72,6 +72,16 @@ test('released storyboard runs forward schemaRoot with adcpVersion', () => {
   }
 });
 
+test('candidate-bundle capability discovery registers the external schema root', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  assert.match(source, /import \{[\s\S]*withExternalSchemaRoot,[\s\S]*\} from '@adcp\/sdk\/testing'/);
+  assert.match(
+    source,
+    /const discovery = complianceOptions\.schemaRoot && releasedComplianceVersion[\s\S]*await withExternalSchemaRoot\([\s\S]*releasedComplianceVersion,[\s\S]*complianceOptions\.schemaRoot,[\s\S]*discover/,
+    'Version Packages candidates must be discoverable through their generated external schema root',
+  );
+});
+
 test('storyboard runs use public roots and pin the intended wire surface', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(source, /import \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} from/);

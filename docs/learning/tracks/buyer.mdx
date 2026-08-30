@@ -257,7 +257,7 @@ New to running tool calls and reading JSON in a terminal? Do [A2b: Testing your 
 
 <Note>
 The public training seller implements targeting-aware discovery on the exact
-AdCP `3.2-beta.6` wire bundle. Pin `@adcp/sdk@14.0.0-beta.12`, verify the
+AdCP `3.2-beta.9` wire bundle. Pin `@adcp/sdk@14.0.0-beta.22`, verify the
 seller's advertised version and lifecycle tools, and retain the request,
 response, and package readback as assessment evidence. Do not treat an
 uncapable seller silently ignoring unknown fields as validation.
@@ -281,7 +281,7 @@ To see the seller responses your agent must handle, you can inspect the test sel
 
 ```bash
 # Inspects the test SELLER's get_products response — the shape your buyer agent must parse.
-npx @adcp/sdk@14.0.0-beta.12 test-mcp get_products '{"adcp_version":"3.2-beta.6","idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
+npx @adcp/sdk@14.0.0-beta.22 test-mcp get_products '{"adcp_version":"3.2-beta.9","idempotency_key":"550e8400-e29b-41d4-a716-446655442065","buying_mode":"brief","brief":"your campaign brief"}'
 ```
 
 See [Build a caller](/docs/building/by-layer/L4/build-a-caller) for client setup and [Validate Your Agent](/docs/building/verification/validate-your-agent) for the storyboard workflow.

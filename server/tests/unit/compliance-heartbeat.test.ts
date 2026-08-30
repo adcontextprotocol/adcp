@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   deferComplianceCheckAfterInconclusiveTarget: vi.fn(),
   resolveOwnerAuth: vi.fn(),
   recordComplianceRun: vi.fn(),
+  getBadgesForAgent: vi.fn(),
+  revokeBadge: vi.fn(),
+  getRegistryMetadata: vi.fn(),
   query: vi.fn(),
   withDatabaseDeadline: vi.fn(),
   comply: vi.fn(),
@@ -24,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   recordVerificationProfileShadowAssessment: vi.fn(),
   pruneVerificationProfileShadowAssessments: vi.fn(),
   deriveVerificationProfileShadowAssessment: vi.fn(),
+  acquireAgentExecutionFence: vi.fn(),
+  releaseExecutionFence: vi.fn(),
 }));
 
 vi.mock('../../src/db/compliance-db.js', () => ({
@@ -34,14 +39,21 @@ vi.mock('../../src/db/compliance-db.js', () => ({
     deferComplianceCheckAfterInconclusiveTarget = mocks.deferComplianceCheckAfterInconclusiveTarget;
     resolveOwnerAuth = mocks.resolveOwnerAuth;
     recordComplianceRun = mocks.recordComplianceRun;
-    getBadgesForAgent = vi.fn().mockResolvedValue([]);
-    revokeBadge = vi.fn();
+    getBadgesForAgent = mocks.getBadgesForAgent;
+    revokeBadge = mocks.revokeBadge;
+    getRegistryMetadata = mocks.getRegistryMetadata;
   },
 }));
 
 vi.mock('../../src/db/client.js', () => ({
   query: mocks.query,
   withDatabaseDeadline: mocks.withDatabaseDeadline,
+}));
+
+vi.mock('../../src/db/compliance-refresh-requests-db.js', () => ({
+  ComplianceRefreshRequestsDatabase: class {
+    acquireAgentExecutionFence = mocks.acquireAgentExecutionFence;
+  },
 }));
 
 vi.mock('../../src/addie/services/compliance-testing.js', () => ({
@@ -128,6 +140,8 @@ describe('runComplianceHeartbeatJob', () => {
       dry_run: true,
     });
     mocks.recordComplianceRun.mockResolvedValue({});
+    mocks.getBadgesForAgent.mockResolvedValue([]);
+    mocks.getRegistryMetadata.mockResolvedValue(null);
     mocks.getVerificationProfileShadowRollout.mockResolvedValue({ enabled: false });
     mocks.recordVerificationProfileShadowAssessment.mockResolvedValue(true);
     mocks.pruneVerificationProfileShadowAssessments.mockResolvedValue(0);
@@ -138,6 +152,11 @@ describe('runComplianceHeartbeatJob', () => {
       proposed_spec_status: 'passing',
       proposed_sandbox_status: null,
       controller_gap_phase_count: 0,
+    });
+    mocks.releaseExecutionFence.mockResolvedValue(undefined);
+    mocks.acquireAgentExecutionFence.mockResolvedValue({
+      isValid: () => true,
+      release: mocks.releaseExecutionFence,
     });
   });
 
@@ -203,6 +222,72 @@ describe('runComplianceHeartbeatJob', () => {
       adcpVersions: ['3.1'],
       supportedVersions: ['3.0', '3.1'],
     }));
+    expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
+  });
+
+  it('defers without executing when an owner refresh holds the agent fence', async () => {
+    mocks.acquireAgentExecutionFence.mockResolvedValueOnce(null);
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.comply).not.toHaveBeenCalled();
+  });
+
+  it('does not persist when the shared execution fence is lost during comply', async () => {
+    let fenceValid = true;
+    mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
+      isValid: () => fenceValid,
+      release: mocks.releaseExecutionFence,
+    });
+    mocks.comply.mockImplementationOnce(async () => {
+      fenceValid = false;
+      return {
+        overall_status: 'passing',
+        summary: { headline: 'Stale result' },
+        agent_profile: { adcp_supported_versions: ['3.1'] },
+      };
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+    expect(mocks.runBadgeFanOut).not.toHaveBeenCalled();
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
+  });
+
+  it('does not write compliance or badge records when comply() rejects after fence becomes invalid', async () => {
+    let fenceValid = true;
+    mocks.acquireAgentExecutionFence.mockResolvedValueOnce({
+      isValid: () => fenceValid,
+      release: mocks.releaseExecutionFence,
+    });
+    // comply() rejects with a timeout while the fence has been invalidated by a
+    // concurrent owner refresh. The stale failure must not be persisted.
+    mocks.comply.mockImplementationOnce(async () => {
+      fenceValid = false;
+      throw new Error('Timed out');
+    });
+    mocks.badgeEligibleVersionsForTargetSelection.mockReturnValue(['3.1']);
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    const result = await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(result).toEqual({ checked: 0, passed: 0, failed: 0, skipped: 1 });
+    expect(mocks.recordComplianceRun).not.toHaveBeenCalled();
+    expect(mocks.getBadgesForAgent).not.toHaveBeenCalled();
+    expect(mocks.revokeBadge).not.toHaveBeenCalled();
+    expect(mocks.revokeUnsupportedPublicBadges).not.toHaveBeenCalled();
+    expect(mocks.deferComplianceCheckAfterInconclusiveTarget)
+      .toHaveBeenCalledWith('https://agent.example.com/mcp');
+    expect(mocks.releaseExecutionFence).toHaveBeenCalledOnce();
   });
 
   it('records shadow evidence only when the audited collection switch is enabled', async () => {
