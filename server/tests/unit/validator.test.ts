@@ -550,6 +550,18 @@ describe("AgentValidator", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("rejects a domain whose adagents.json host resolves to a CGNAT address (100.64.0.0/10)", async () => {
+    vi.spyOn(dns, "lookup").mockResolvedValue([
+      { address: "100.64.1.1", family: 4 },
+    ] as unknown as Awaited<ReturnType<typeof dns.lookup>>);
+
+    const result = await validator.validate("example.com", "https://sales.example.com");
+
+    expect(result.authorized).toBe(false);
+    expect(result.error).toBe("URL must resolve to a public internet host");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("expires the default cache after five minutes", async () => {
     vi.useFakeTimers();
     try {
