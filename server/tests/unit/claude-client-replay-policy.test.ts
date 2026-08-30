@@ -840,6 +840,20 @@ describe('AddieClaudeClient isolated execution policy', () => {
     )).toThrow('must use the same provider');
   });
 
+  it('forks the registered tool surface into a server-tool-free isolated client', () => {
+    const source = new AddieClaudeClient('unused', 'source-model');
+    source.registerTool(tool('search_docs', 'pure_local'), vi.fn());
+    source.setWebSearchEnabled(true);
+    const provider = fakeProvider('google', 'candidate');
+
+    const fork = source.forkForIsolatedProvider('gemini-test', { provider });
+
+    expect(fork).not.toBe(source);
+    expect(fork.hasRegisteredTools(['search_docs'])).toBe(true);
+    expect(fork.isWebSearchEnabled()).toBe(false);
+    expect(source.isWebSearchEnabled()).toBe(true);
+  });
+
   it('keeps the large cacheable prompt block stable across routed domains', () => {
     const client = new AddieClaudeClient('unused', 'test-model');
     client.registerTool(tool('query_prospects', 'pure_local'), vi.fn().mockResolvedValue('prospects'));

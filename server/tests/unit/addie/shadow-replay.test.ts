@@ -531,6 +531,114 @@ describe('verified official docs replay generation', () => {
     expect(JSON.stringify(result)).not.toContain(PRIVATE_SENTINEL);
   });
 
+  it('binds an alternate target to its exact prepared request without changing source parity', async () => {
+    const targetSnapshot = officialDocsSnapshot({
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        expect(options.modelOverride).toBe('gemini-3.7-flash');
+        await options.onInvocationPrepared?.(targetSnapshot);
+        return generatedResponse({
+          model_execution: {
+            source: 'provider',
+            requested_provider: 'google',
+            requested_model: 'gemini-3.7-flash',
+            provider: 'google',
+            model: 'gemini-3.7-flash-20260801',
+            model_resolution: 'provider_canonicalized',
+            fallback_reason: null,
+          },
+        });
+      }),
+    };
+
+    const result = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+      target: {
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+        firstInvocation: targetSnapshot,
+      },
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    });
+
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      returnedProvider: 'google',
+      returnedModel: 'gemini-3.7-flash-20260801',
+      invocations: [{ provider_request_hmac: 'f'.repeat(64) }],
+    });
+    expect(result.invocations[0].provider_request_hmac).not.toBe(PROVIDER_HMAC);
+  });
+
+  it('blocks alternate dispatch when its prepared request drifts from preflight', async () => {
+    const expected = officialDocsSnapshot({
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.({
+          ...expected,
+          provider_request_sha256: '9'.repeat(64),
+        });
+        return generatedResponse();
+      }),
+    };
+
+    await expect(executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+      target: {
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+        firstInvocation: expected,
+      },
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    })).rejects.toMatchObject({
+      name: 'OfficialDocsReplayExecutionError',
+      completion: {
+        status: 'blocked',
+        reason: 'target_invocation_drift',
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+      },
+    });
+  });
+
   it('blocks output rejected by the production security validator', async () => {
     const secret = `sk-${'a'.repeat(32)}`;
     const fakeClient = {
