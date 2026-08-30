@@ -580,29 +580,50 @@ describe('Addie tool reference', () => {
     expect(schemas).not.toContain('### Knowledge search operations');
   });
 
-  it('loads certification safety guidance only with the complete routed workflow', () => {
-    const certificationTools = getToolsForSets(['certification'], false, false);
-    const certification = buildAddieToolReference({
-      availableToolNames: certificationTools,
+  it('loads certification guidance only for the selected complete workflow', () => {
+    const learningTools = getToolsForSets(['certification_learning'], false, false);
+    const learning = buildAddieToolReference({
+      availableToolNames: learningTools,
+      selectedToolSetNames: ['certification_learning'],
+    });
+    const assessment = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['certification_assessment'], false, false),
+      selectedToolSetNames: ['certification_assessment'],
+    });
+    const overview = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['certification_overview'], false, false),
+      selectedToolSetNames: ['certification_overview'],
+    });
+    const legacy = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['certification'], false, false),
       selectedToolSetNames: ['certification'],
     });
     const activeSession = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['certification', 'knowledge'], false, false),
-      selectedToolSetNames: ['certification', 'knowledge'],
+      availableToolNames: getToolsForSets(['certification_learning', 'knowledge'], false, false),
+      selectedToolSetNames: ['certification_learning', 'knowledge'],
     });
     const missingCheckpoint = buildAddieToolReference({
-      availableToolNames: certificationTools.filter(name => name !== 'checkpoint_teaching_progress'),
-      selectedToolSetNames: ['certification'],
+      availableToolNames: learningTools.filter(name => name !== 'checkpoint_teaching_progress'),
+      selectedToolSetNames: ['certification_learning'],
     });
     const knowledge = buildAddieToolReference({
       availableToolNames: getToolsForSets(['knowledge'], false, false),
       selectedToolSetNames: ['knowledge'],
     });
 
-    expect(certification).toContain('## AdCP Academy');
-    expect(certification).toContain('MUST call start_certification_module IMMEDIATELY');
-    expect(certification).toContain('ALWAYS call checkpoint_teaching_progress');
-    expect(certification).toContain('BUILD PROJECT ERROR COACHING');
+    expect(learning).toContain('## AdCP Academy — module learning');
+    expect(learning).toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(learning).toContain('ALWAYS call checkpoint_teaching_progress');
+    expect(learning).toContain('BUILD PROJECT ERROR COACHING');
+    expect(learning).not.toContain('## AdCP Academy — placement and specialist assessment');
+    expect(assessment).toContain('## AdCP Academy — placement and specialist assessment');
+    expect(assessment).toContain('never test out S-track or B4/C4/D4 modules');
+    expect(assessment).not.toContain('BUILD PROJECT ERROR COACHING');
+    expect(overview).toContain('## AdCP Academy — overview and progress');
+    expect(overview).not.toContain('MUST call start_certification_module IMMEDIATELY');
+    expect(legacy).toContain('## AdCP Academy — overview and progress');
+    expect(legacy).toContain('## AdCP Academy — module learning');
+    expect(legacy).toContain('## AdCP Academy — placement and specialist assessment');
     expect(activeSession).toContain('## AdCP Academy');
     expect(activeSession).toContain('### Knowledge search operations');
     expect(missingCheckpoint).not.toContain('## AdCP Academy');
