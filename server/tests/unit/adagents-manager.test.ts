@@ -558,7 +558,7 @@ describe('AdAgentsManager', () => {
 
 
 
-    it('accepts managerdomain fallback when manager adagents.json scopes via collections', async () => {
+    it('rejects managerdomain fallback when the manager only names the publisher in a collection selector (carriage, not management)', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -584,10 +584,11 @@ describe('AdAgentsManager', () => {
         throw new Error(`Unexpected URL: ${url}`);
       });
 
+      // A collection selector naming the publisher is a carriage narrowing
+      // ("I carry their channel"), not a management claim; it must not make
+      // the host's manifest the publisher's manifest-of-record.
       const result = await manager.validateDomain('publisher.example');
-      expect(result.valid).toBe(true);
-      expect(result.discovery_method).toBe('ads_txt_managerdomain');
-      expect(result.manager_domain).toBe('manager.example');
+      expect(result.valid).toBe(false);
     });
 
     it('rejects managerdomain fallback when manager adagents.json scopes a different publisher', async () => {
@@ -775,7 +776,7 @@ describe('AdAgentsManager', () => {
     it('accepts managerdomain fallback when manager publisher_domain has non-canonical form (trailing dot, scheme prefix, mixed case)', async () => {
       // Code-reviewer SF2 / #4541: hasExplicitPublisherScope must produce
       // identical canonicalization across publisher_domain (singular),
-      // publisher_domains[] (compact), collections[].publisher_domain, and
+      // publisher_domains[] (compact), and
       // the property-level publisher_domain filter. A manifest with any of
       // these in DNS-canonical form (trailing dot) or with a stray scheme
       // prefix should still satisfy the gate.

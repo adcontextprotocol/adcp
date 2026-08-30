@@ -2879,6 +2879,7 @@ export class HTTPServer {
         agent_url,
         property_id,
         property_tags,
+        collections,
         collection_ids,
         placement_ids,
         placement_tags,
@@ -2896,6 +2897,7 @@ export class HTTPServer {
         const result = await this.validator.validate(domain, agent_url, {
           property_id,
           property_tags,
+          collections,
           collection_ids,
           placement_ids,
           placement_tags,

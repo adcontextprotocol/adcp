@@ -103,7 +103,10 @@ Append-only within a 90-day retention window.
   "authorization_type": "property_ids",
   "property_ids": ["primetime_ctv", "news_live"],
   "placement_ids": ["pre_roll_30s", "mid_roll_15s"],
-  "collections": [{ "publisher_domain": "streamer.example.com", "collection_ids": ["primetime_drama"] }],
+  "collections": [
+    { "publisher_domain": "streamer.example.com", "collection_ids": ["primetime_drama"] },
+    { "publisher_domain": "channel-owner.example" }
+  ],
   "countries": ["US", "CA"],
   "delegation_type": "direct",
   "exclusive": false,

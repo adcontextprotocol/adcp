@@ -729,6 +729,79 @@ The four property-side `authorization_type` patterns above answer **which invent
 
 Use `collections` when authorization should only apply to inventory associated with specific content programs. This is especially useful for CTV, streaming, podcasting, and creator inventory where the same property can carry many collections with different commercial arrangements.
 
+#### Owner-sold channel carriage
+
+Model a continuously programmed audio or video stream as a `kind: "channel"`
+collection declared by the channel owner. FAST is one carriage and monetization
+model for that stream, not a separate inventory kind. The host app remains a
+property. When the owner sells its allocated avails, the host attests that
+supply path by authorizing the owner's sales agent for the host property and
+narrowing the authorization to the owner's canonical collection:
+
+```json
+{
+  "url": "https://sales.channel-owner.example",
+  "authorized_for": "Owner-sold avails for Acme Retro News",
+  "authorization_type": "property_ids",
+  "property_ids": ["hoststream_ctv"],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "delegation_type": "direct"
+}
+```
+
+The collection selector may point to an external publisher domain; the host does
+not need to duplicate the owner's collection definition. It also does not need
+to publish the owner's placements. The seller may expose its avails as
+`seller_inline` product placements. A selector without `collection_ids` is a
+bulk grant covering every collection declared in that publisher's
+`adagents.json` — use it when the carriage deal covers all of an owner's
+channels, so the host never has to sync owner-assigned collection IDs:
+
+```json
+"collections": [{ "publisher_domain": "channel-owner.example" }]
+```
+
+A host adds `placement_ids` or `placement_tags` only when its authorization
+must be position-specific — and those constraints resolve against placements
+published in the host's own `adagents.json`, never against a seller's
+`seller_inline` placements. Position-specific narrowing therefore requires the
+host to publish the placement definitions and owner products to reference them
+via `kind: "publisher_ref"`; on a path using `seller_inline` placements, host
+placement narrowing cannot apply.
+
+The owner's `collection.distribution[]` entry and the host's authorization have
+different trust roles. Distribution asserts that the channel is carried on the
+host property and supports discovery. It MUST NOT be treated as sales
+authorization. A verified owner-sold supply path requires the host property
+scope and external collection selector above to match the seller's product;
+buyers MUST NOT treat a seller as authorized for owner-sold carriage without
+that host entry — missing host authorization fails closed.
+
+An ads.txt `inventorypartnerdomain=` line naming the owner is related but
+weaker evidence: it is host-authored, so it corroborates that the owner sells
+some of the property's inventory, but it binds neither the sales agent URL nor
+the collection and MUST NOT be treated as equivalent to the collection-scoped
+entry above. Buyers MAY use it as an interim, policy-gated signal; the
+collection-scoped `authorized_agents` entry is its machine-readable upgrade.
+See [verification states](/docs/media-buy/product-discovery/collections-and-installments#verification-states)
+for the full ladder. Note the inverse does not hold either: a host naming an
+owner in a collection selector is a carriage attestation, not a claim to manage
+that owner's inventory — it does not make the host's file the owner's
+manifest-of-record under the ads.txt `managerdomain` fallback.
+
+When several parties hold sales rights on the same host property, the host uses
+one collection-narrowed `authorized_agents[]` entry per sales path. A technology
+provider does not become a rights-holder merely by operating the path. Software
+behind the owner's endpoint can remain `direct`; when the provider operates the
+sales endpoint on the owner's behalf, the host names that endpoint and marks
+the path `delegated`.
+Internal revenue shares, buyback rights, and backfill priority are not discovery
+or authorization fields. Sellers apply those terms when constructing and
+pricing their products.
+
 ### `placement_ids`
 
 Use `placement_ids` to narrow authorization to canonical placements published in this same `adagents.json`. This is the field that lets a publisher say "this agent is authorized for MSN homepage native feed, but not for the entire property" or "this network can sell pre-roll but not host-read sponsorships." In product responses and creative assignment, the corresponding placement identity is `{ publisher_domain, placement_id }`.

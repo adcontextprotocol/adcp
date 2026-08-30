@@ -256,6 +256,92 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows[0].signing_keys).toBeNull();
     });
 
+    it('projects collections selectors into the row (external domain, explicit IDs)', async () => {
+      const selectors = [
+        { publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] },
+      ];
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, authorized_for: 'owner-sold avails', collections: selectors },
+        ]),
+      });
+
+      const { rows } = await pool.query<{ collections: unknown[] | null }>(
+        `SELECT collections FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].collections).toEqual(selectors);
+    });
+
+    it('projects a bulk-grant selector (no collection_ids) unchanged', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, collections: [{ publisher_domain: 'channel-owner.example' }] },
+        ]),
+      });
+
+      const { rows } = await pool.query<{ collections: unknown[] | null }>(
+        `SELECT collections FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].collections).toEqual([{ publisher_domain: 'channel-owner.example' }]);
+    });
+
+    it('leaves collections NULL when the manifest entry has none', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW }]),
+      });
+
+      const { rows } = await pool.query<{ collections: unknown[] | null }>(
+        `SELECT collections FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows[0].collections).toBeNull();
+    });
+
+    it('skips the whole entry when a declared collections constraint is unparseable (fail closed)', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, collections: [{ publisher_domain: 42, collection_ids: 'retro_news' }] as never },
+        ]),
+      });
+
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('re-crawl that drops collections clears the column to NULL', async () => {
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, collections: [{ publisher_domain: 'channel-owner.example' }] },
+        ]),
+      });
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW }]),
+      });
+
+      const { rows } = await pool.query<{ collections: unknown[] | null }>(
+        `SELECT collections FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB]
+      );
+      expect(rows[0].collections).toBeNull();
+    });
+
     it('rejects URLs containing internal whitespace or control chars', async () => {
       // Embedded \t, \n, etc. land as canonical and become unmatchable by
       // exact-match readers. canonicalizeAgentUrl must reject them.

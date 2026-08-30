@@ -698,6 +698,7 @@
         },
         "collections": {
           "type": "array",
+          "description": "Collection constraints from authorized_agents[*].collections. When set, the event does NOT authorize the property unqualified — consumers building a local authorization index MUST scope the grant to these selectors and fail closed when a query carries no collection scope. A selector without collection_ids is a bulk grant for all collections declared at that publisher_domain.",
           "items": { "$ref": "/schemas/core/collection-selector.json" },
           "minItems": 1
         },

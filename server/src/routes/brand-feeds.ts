@@ -21,7 +21,7 @@ import {
   type Relationship,
 } from '../services/brand-property-parse.js';
 const MAX_COLLECTIONS = 200;
-const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
+const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation', 'channel'];
 
 const logger = createLogger('brand-feeds');
 

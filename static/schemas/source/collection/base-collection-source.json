@@ -19,7 +19,7 @@
         },
         "identifiers": {
           "type": "array",
-          "description": "Platform-independent identifiers (imdb_id, gracenote_id, eidr_id, etc.). Each identifier uniquely identifies a collection across all publishers.",
+          "description": "Platform-independent identifiers (imdb_id, gracenote_id, eidr_id, etc.). Each identifier uniquely identifies a collection across all publishers. platform_channel_id is not allowed here: its identity is the tuple (publisher_domain, value), which this bare {type, value} shape cannot carry.",
           "items": {
             "type": "object",
             "properties": {
@@ -33,7 +33,11 @@
               }
             },
             "required": ["type", "value"],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "not": {
+              "required": ["type"],
+              "properties": { "type": { "const": "platform_channel_id" } }
+            }
           },
           "minItems": 1
         }
