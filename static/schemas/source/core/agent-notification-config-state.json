@@ -39,6 +39,10 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "all_authorized_accounts": {
+      "type": "boolean",
+      "description": "Echoed scope acknowledgment for account-anchored event types."
+    },
     "include_future_event_types": {
       "type": "boolean",
       "description": "Echoed from the desired configuration when set."
@@ -56,7 +60,9 @@
           "maxItems": 1
         }
       },
-      "required": ["schemes"],
+      "required": [
+        "schemes"
+      ],
       "additionalProperties": false
     },
     "active": {
@@ -67,6 +73,10 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["subscriber_id", "url", "event_types"],
+  "required": [
+    "subscriber_id",
+    "url",
+    "event_types"
+  ],
   "additionalProperties": false
 }
