@@ -89,7 +89,7 @@ export interface VerifiedOfficialDocsReplayInput {
   docsCorpusFingerprint: string;
   /**
    * Optional alternate-provider target prepared from this same verified
-   * invocation. No production call site supplies one yet.
+   * invocation. Only the default-off shadow target admission may supply it.
    */
   target?: VerifiedOfficialDocsReplayTarget;
 }
@@ -148,6 +148,37 @@ export class OfficialDocsReplayOutputConsumerError extends Error {
     super('replay_output_consumer_failed');
     this.name = 'OfficialDocsReplayOutputConsumerError';
   }
+}
+
+/** Prepare the exact alternate-provider request that will later be dispatched. */
+export function prepareVerifiedOfficialDocsReplayTarget(
+  input: Omit<VerifiedOfficialDocsReplayInput, 'target'>,
+  target: Pick<VerifiedOfficialDocsReplayTarget, 'provider' | 'model'>,
+  client: NonNullable<ReturnType<typeof getChannelClaudeClient>>,
+): VerifiedOfficialDocsReplayTarget {
+  assertOfficialDocsReplayPreflight(input);
+  const prepared = {
+    ...target,
+    firstInvocation: client.prepareMessageInvocation(
+      input.trace.question,
+      undefined,
+      input.invocation.requestTools,
+      undefined,
+      {
+        ...input.invocation.processOptions,
+        executionMode: 'replay',
+        disableServerTools: true,
+        allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+        maxIterations: 4,
+        invocationHashKey: input.trace.identity.hashKey,
+        invocationHashDomain: input.trace.identity.hashDomain,
+        uncapped: true,
+        modelOverride: target.model,
+      },
+    ),
+  };
+  assertTargetFirstInvocation(prepared);
+  return prepared;
 }
 
 function canonicalJson(value: unknown): string {

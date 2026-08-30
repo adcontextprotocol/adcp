@@ -13,6 +13,7 @@ import {
   executeShadowReplay,
   executeVerifiedOfficialDocsReplay,
   hashReplayValue,
+  prepareVerifiedOfficialDocsReplayTarget,
 } from '../../../src/addie/jobs/shadow-replay.js';
 import { OFFICIAL_DOCS_ALLOWED_TOOLS } from '../../../src/addie/jobs/shadow-replay-cohort.js';
 import type { ResolvedShadowReplayTrace } from '../../../src/addie/jobs/shadow-replay-trace.js';
@@ -588,6 +589,45 @@ describe('verified official docs replay generation', () => {
       invocations: [{ provider_request_hmac: 'f'.repeat(64) }],
     });
     expect(result.invocations[0].provider_request_hmac).not.toBe(PROVIDER_HMAC);
+  });
+
+  it('prepares the exact replay-mode alternate request without dispatching', () => {
+    const firstInvocation = officialDocsSnapshot({
+      execution_mode: 'replay',
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const prepareMessageInvocation = vi.fn().mockReturnValue(firstInvocation);
+    const input = {
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    };
+
+    expect(prepareVerifiedOfficialDocsReplayTarget(input, {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+    }, { prepareMessageInvocation } as never)).toEqual({
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      firstInvocation,
+    });
+    expect(prepareMessageInvocation).toHaveBeenCalledWith(
+      input.trace.question,
+      undefined,
+      input.invocation.requestTools,
+      undefined,
+      expect.objectContaining({
+        executionMode: 'replay',
+        disableServerTools: true,
+        allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+        maxIterations: 4,
+        invocationHashKey: input.trace.identity.hashKey,
+        invocationHashDomain: input.trace.identity.hashDomain,
+        uncapped: true,
+        modelOverride: 'gemini-3.7-flash',
+      }),
+    );
   });
 
   it('blocks alternate dispatch when its prepared request drifts from preflight', async () => {
