@@ -72,8 +72,11 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
 };
 
 const KNOWLEDGE_RULE_TOOL_SETS = new Set(['knowledge', 'schema_reference']);
+// Ordinary protocol questions use the authoritative docs boundary and do not
+// need the volatile roadmap snapshot or expert-persona catalog. Explicit
+// roadmap/RFC requests route with `github`; community research has its own
+// domain, so those requests still receive the ecosystem context.
 const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
-  'knowledge',
   'community_research',
   'github',
   'content',
@@ -113,8 +116,10 @@ export interface LoadRulesOptions {
  * Assembly order:
  * 1. identity.md and applicable behaviors.md sections
  * 2. knowledge.md for knowledge/schema routes
- * 3. `.agents/current-context.md` — active AdCP roadmap snapshot (weekly refresh, treated as data-only)
- * 4. Expert-panel reference built from `.claude/agents/*.md` frontmatter
+ * 3. For ecosystem/research routes, `.agents/current-context.md` — active
+ *    AdCP roadmap snapshot (weekly refresh, treated as data-only)
+ * 4. For those same routes, the expert-panel reference built from
+ *    `.claude/agents/*.md` frontmatter
  * 5. urls.md for action routes, then constraints.md for every route
  *
  * response-style.md is loaded separately. Files are read once and cached.
