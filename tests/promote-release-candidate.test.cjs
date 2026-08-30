@@ -61,6 +61,14 @@ const path = require('node:path');
     }),
     /Expected the final beta version/,
   );
+  assert.throws(
+    () => planRcPromotion({
+      packageVersion: '3.3.0-beta.1',
+      preState: { mode: 'pre', tag: 'beta' },
+      pendingChangesets: [],
+    }),
+    /restricted to the 3\.2\.0 release line/,
+  );
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-rc-promotion-'));
   try {

@@ -359,7 +359,7 @@ export function createCapabilityProbeRateLimiter(options: {
       res.status(429).json({
         error: 'Too many requests',
         message: `Capability probe limit exceeded (${max} per hour). Please try again later.`,
-        ...(retryAfter !== undefined ? { retryAfter } : {}),
+        ...(retryAfter !== undefined ? { retryAfter, retry_after: retryAfter } : {}),
       });
     },
   });
@@ -444,7 +444,7 @@ export function createAgentReadRateLimiter(options: {
       res.status(429).json({
         error: 'Too many requests',
         message: 'Agent dashboard read rate limit exceeded. Please try again in a moment.',
-        ...(retryAfter !== undefined ? { retryAfter } : {}),
+        ...(retryAfter !== undefined ? { retryAfter, retry_after: retryAfter } : {}),
       });
     },
   });

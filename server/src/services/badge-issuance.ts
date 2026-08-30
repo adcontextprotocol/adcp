@@ -268,6 +268,8 @@ export async function runBadgeFanOut(params: {
   adcpVersions?: readonly string[];
   /** Current get_adcp_capabilities.adcp.supported_versions snapshot for revoking unsupported public badges. */
   supportedVersions?: readonly string[];
+  /** Durable refresh jobs retry when any version cannot update public trust state. */
+  throwOnFailure?: boolean;
 }): Promise<BadgeIssuanceResult> {
   const { complianceDb, agentUrl, declaredSpecialisms, runId, supportedVersions } = params;
   const adcpVersions = (params.adcpVersions === undefined ? [DEFAULT_BADGE_ADCP_VERSION] : params.adcpVersions)
@@ -448,6 +450,12 @@ export async function runBadgeFanOut(params: {
 
   if (requalificationGeneration && runId && !processingFailed && aggregate.issued.length > 0) {
     await complianceDb.completeBadgeRequalification(agentUrl, requalificationGeneration);
+  }
+
+  if (processingFailed && params.throwOnFailure) {
+    throw Object.assign(new Error('Badge state could not be updated'), {
+      code: 'badge_update_failed',
+    });
   }
 
   return aggregate;

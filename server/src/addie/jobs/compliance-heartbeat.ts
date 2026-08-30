@@ -20,6 +20,7 @@ import {
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
 import { query, withDatabaseDeadline } from '../../db/client.js';
+import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
@@ -40,6 +41,7 @@ import {
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const complianceRefreshDb = new ComplianceRefreshRequestsDatabase();
 const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
@@ -107,7 +109,24 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
 
   for (const agent of agentsDue) {
+    const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
+    if (!executionFence) {
+      await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+      result.skipped++;
+      logger.debug(
+        { agentUrl: agent.agent_url },
+        'Compliance heartbeat skipped because another full suite is running',
+      );
+      continue;
+    }
     const startTime = Date.now();
+    const assertExecutionFence = () => {
+      if (!executionFence.isValid()) {
+        throw Object.assign(new Error('Compliance heartbeat execution fence was lost'), {
+          code: 'execution_fence_lost',
+        });
+      }
+    };
     let runTarget = fallbackComplianceTarget;
     let runTargetSelection: ComplianceTargetSelection = {
       target: fallbackComplianceTarget,
@@ -152,7 +171,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         continue;
       }
       runTarget = runTargetSelection.target;
+      assertExecutionFence();
       const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
+      assertExecutionFence();
       if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complianceResult.agent_profile)) {
         logger.warn(
           {
@@ -182,7 +203,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      assertExecutionFence();
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -222,6 +245,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       if (declaredSpecialisms.length > 0 && badgeEligibleAdcpVersions.length > 0) {
         try {
+          assertExecutionFence();
           const badgeResult = await runBadgeFanOut({
             complianceDb,
             agentUrl: agent.agent_url,
@@ -230,6 +254,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             adcpVersions: badgeEligibleAdcpVersions,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
           });
+          assertExecutionFence();
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
             try {
@@ -251,11 +276,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
       } else {
         try {
+          assertExecutionFence();
           const badgeResult = await revokeUnsupportedPublicBadges({
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
           });
+          assertExecutionFence();
           if (badgeResult.revoked.length > 0) {
             await notifyVerificationChange({
               agentUrl: agent.agent_url,
@@ -291,6 +318,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
+        logger.warn(
+          { agentUrl: agent.agent_url },
+          'Compliance heartbeat stopped after losing the shared execution fence',
+        );
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        continue;
+      }
 
       // Errors before a compatible target is selected are infrastructure or
       // discovery failures, not evidence that the agent failed compliance.
@@ -448,6 +485,8 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       } else {
         result.skipped++;
       }
+    } finally {
+      await executionFence.release();
     }
   }
 

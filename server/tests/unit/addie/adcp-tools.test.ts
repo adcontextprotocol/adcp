@@ -384,6 +384,29 @@ describe('call_adcp_task training module isolation', () => {
     );
   });
 
+  it('passes the request-scoped anonymous principal into training execution', async () => {
+    executeTrainingAgentTool.mockReset();
+    executeTrainingAgentTool.mockResolvedValue({ success: true, data: { tasks: [] } });
+    const handlers = createAdcpToolHandlers(
+      null,
+      undefined,
+      {
+        trainingAgentOnly: true,
+        trainingPrincipal: 'anonymous-chat:thread-one',
+      },
+    );
+
+    await handlers.get('get_adcp_capabilities')?.({
+      agent_url: 'https://test-agent.adcontextprotocol.org/sales/profiles/typed-negotiation/mcp',
+    });
+
+    expect(executeTrainingAgentTool).toHaveBeenCalledWith(
+      'get_adcp_capabilities',
+      expect.any(Object),
+      expect.objectContaining({ principal: 'anonymous-chat:thread-one' }),
+    );
+  });
+
   it('preserves the proposal profile selected by the training-agent URL', async () => {
     executeTrainingAgentTool.mockReset();
     executeTrainingAgentTool.mockResolvedValue({ success: true, data: { results: [] } });

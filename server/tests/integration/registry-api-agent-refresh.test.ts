@@ -19,6 +19,13 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { AAO_UA_COMPLIANCE } from '../../src/config/user-agents.js';
 import { HOSTED_FULL_COMPLIANCE_TIMEOUT_MS } from '../../src/services/hosted-compliance-version.js';
+import { ComplianceRefreshRequestsDatabase } from '../../src/db/compliance-refresh-requests-db.js';
+import { ComplianceDatabase } from '../../src/db/compliance-db.js';
+
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY ??= 'sk_test_registry_refresh';
+  process.env.WORKOS_CLIENT_ID ??= 'client_test_registry_refresh';
+});
 
 const RUN_SUFFIX = Math.random().toString(36).slice(2, 8);
 const OWNER_USER_ID = `user_test_refresh_owner_${RUN_SUFFIX}`;
@@ -48,6 +55,11 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('selected-org-challenge'),
   ownedAgentUrl('public-notices'),
   ownedAgentUrl('admin-auth-fallback'),
+  ownedAgentUrl('async-refresh'),
+  ownedAgentUrl('refresh-recovery'),
+  ownedAgentUrl('badge-retry'),
+  ownedAgentUrl('badge-retry-exhausted'),
+  ownedAgentUrl('legacy-timeout'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -254,10 +266,15 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       ],
     );
 
-    server = new HTTPServer();
+    server = new HTTPServer({
+      backgroundServices: 'refresh-only',
+      refreshQueueIntervalMs: 25,
+      refreshLegacyWaitMs: 10_000,
+      refreshPollIntervalMs: 25,
+    });
     await server.start(0);
     app = server.app;
-  });
+  }, 120_000);
 
   afterAll(async () => {
     const allUrls = [...ALL_OWNED_URLS, OTHER_AGENT_URL];
@@ -266,6 +283,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await pool.query('DELETE FROM agent_storyboard_status WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_status WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_compliance_runs WHERE agent_url = ANY($1)', [allUrls]);
+    await pool.query('DELETE FROM agent_compliance_refresh_requests WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_health_snapshot WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_capabilities_snapshot WHERE agent_url = ANY($1)', [allUrls]);
     await pool.query('DELETE FROM agent_contexts WHERE organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
@@ -274,7 +292,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = ANY($1)', [[TEST_ORG_ID, SECOND_ORG_ID]]);
     await server?.stop();
     await closeDatabase();
-  });
+  }, 120_000);
 
   beforeEach(() => {
     currentUserId = OWNER_USER_ID;
@@ -318,7 +336,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       compliance: {
         ran: true,
         run_id: expect.any(String),
-        test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
+        test_session_id: expect.stringMatching(/^owner-refresh-[0-9a-f-]{36}$/),
         overall_status: 'passing',
         storyboards_passing: 1,
         storyboards_total: 1,
@@ -332,7 +350,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       expect.objectContaining({
         timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         userAgent: AAO_UA_COMPLIANCE,
-        test_session_id: expect.stringMatching(/^owner-refresh-\d+-[0-9a-f-]{36}$/),
+        test_session_id: expect.stringMatching(/^owner-refresh-[0-9a-f-]{36}$/),
       }),
     );
 
@@ -518,24 +536,289 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     refreshSingleAgentMock.mockRejectedValue(new Error('Probe timeout'));
     const res = await request(app).post(url(ownedAgentUrl('probe-fail'))).send();
     expect(res.status).toBe(502);
-    expect(res.body.error).toMatch(/Probe timeout/);
+    expect(res.body).toMatchObject({
+      code: 'probe_failed',
+      error: 'The agent capability probe failed',
+    });
   });
 
   it('returns 409 when monitoring is paused', async () => {
     refreshSingleAgentMock.mockRejectedValue(new Error('Monitoring paused for this agent'));
     const res = await request(app).post(url(ownedAgentUrl('paused'))).send();
     expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/Monitoring paused/);
+    expect(res.body.error).toMatch(/Monitoring is paused/);
   });
 
-  it('rate-limits a second refresh of the same agent within the window', async () => {
+  it('returns an immediate durable handle and polls a long-running refresh to completion', async () => {
+    const agentUrl = ownedAgentUrl('async-refresh');
+    let resolveCompliance!: (value: ReturnType<typeof makeComplianceResult>) => void;
+    const deferredCompliance = new Promise<ReturnType<typeof makeComplianceResult>>((resolve) => {
+      resolveCompliance = resolve;
+    });
+    complyMock.mockReturnValueOnce(deferredCompliance);
+
+    const startedAt = Date.now();
+    const accepted = await request(app)
+      .post(url(agentUrl))
+      .set('Prefer', 'respond-async')
+      .send();
+
+    expect(accepted.status).toBe(202);
+    expect(Date.now() - startedAt).toBeLessThan(2_000);
+    expect(accepted.headers).toMatchObject({
+      'cache-control': 'private, no-store',
+      'preference-applied': 'respond-async',
+      'retry-after': '5',
+    });
+    expect(accepted.body).toMatchObject({
+      refresh_operation_id: expect.any(String),
+      test_session_id: expect.stringMatching(/^owner-refresh-[0-9a-f-]{36}$/),
+      status_url: expect.any(String),
+    });
+
+    currentUserId = OTHER_USER_ID;
+    const forbidden = await request(app).get(accepted.body.status_url).send();
+    expect(forbidden.status).toBe(404);
+
+    currentUserId = OWNER_USER_ID;
+    const waitForStatus = async (target: 'running' | 'succeeded') => {
+      const deadline = Date.now() + 12_000;
+      while (Date.now() < deadline) {
+        const status = await request(app).get(accepted.body.status_url).send();
+        if (status.body.status === target) return status;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      throw new Error(`Refresh did not reach ${target}`);
+    };
+
+    const running = await waitForStatus('running');
+    expect(running.headers['cache-control']).toBe('private, no-store');
+    expect(running.body.test_session_id).toBe(accepted.body.test_session_id);
+    resolveCompliance(makeComplianceResult());
+
+    const completed = await waitForStatus('succeeded');
+    expect(completed.body.result).toMatchObject({
+      compliance: {
+        ran: true,
+        run_id: expect.any(String),
+        test_session_id: accepted.body.test_session_id,
+      },
+    });
+  }, 20_000);
+
+  it('falls back to 202 at the legacy deadline without Prefer, then completes by polling', async () => {
+    const agentUrl = ownedAgentUrl('legacy-timeout');
+    let resolveCompliance!: (value: ReturnType<typeof makeComplianceResult>) => void;
+    const deferredCompliance = new Promise<ReturnType<typeof makeComplianceResult>>((resolve) => {
+      resolveCompliance = resolve;
+    });
+    complyMock.mockReturnValueOnce(deferredCompliance);
+
+    const startedAt = Date.now();
+    const accepted = await request(app).post(url(agentUrl)).send();
+    expect(accepted.status).toBe(202);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(9_900);
+    expect(Date.now() - startedAt).toBeLessThan(13_000);
+    expect(accepted.headers).not.toHaveProperty('preference-applied');
+    expect(accepted.body).toMatchObject({
+      refresh_operation_id: expect.any(String),
+      status: expect.stringMatching(/^(queued|running)$/),
+      status_url: expect.any(String),
+    });
+
+    resolveCompliance(makeComplianceResult());
+    const deadline = Date.now() + 5_000;
+    let completed: Awaited<ReturnType<typeof request>> | undefined;
+    while (Date.now() < deadline) {
+      const status = await request(app).get(accepted.body.status_url).send();
+      if (status.body.status === 'succeeded') {
+        completed = status;
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    expect(completed?.body).toMatchObject({
+      status: 'succeeded',
+      result: { compliance: { run_id: expect.any(String) } },
+    });
+  }, 20_000);
+
+  it('recovers a persisted run after worker interruption without executing a second suite', async () => {
+    currentUserId = STATIC_ADMIN_USER_ID;
+    const agentUrl = ownedAgentUrl('refresh-recovery');
+    refreshSingleAgentMock
+      .mockResolvedValueOnce({
+        online: true,
+        tools_count: 4,
+        response_time_ms: 120,
+        inferred_type: 'governance',
+        type_promoted: true,
+        oauth_required: false,
+        checked_at: new Date().toISOString(),
+      })
+      .mockRejectedValueOnce(new Error('second probe must not run'));
+    const resolveOwnerAuth = vi.spyOn(ComplianceDatabase.prototype, 'resolveOwnerAuth')
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('credential store unavailable during recovery'));
+    const markSucceeded = vi.spyOn(ComplianceRefreshRequestsDatabase.prototype, 'markSucceeded')
+      .mockResolvedValueOnce(false);
+    try {
+      const accepted = await request(app)
+        .post(url(agentUrl))
+        .set('Prefer', 'respond-async')
+        .send();
+      expect(accepted.status).toBe(202);
+
+      const operationId = accepted.body.refresh_operation_id as string;
+      const firstAttemptDeadline = Date.now() + 12_000;
+      while (Date.now() < firstAttemptDeadline) {
+        const storedRun = await pool.query(
+          'SELECT id FROM agent_compliance_runs WHERE refresh_operation_id = $1',
+          [operationId],
+        );
+        if (storedRun.rowCount === 1 && markSucceeded.mock.calls.length === 1) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      expect(markSucceeded).toHaveBeenCalledOnce();
+      expect(complyMock).toHaveBeenCalledOnce();
+
+      await pool.query(
+        `UPDATE agent_compliance_refresh_requests
+            SET lease_expires_at = NOW() - INTERVAL '1 second'
+          WHERE id = $1`,
+        [operationId],
+      );
+
+      const recoveryDeadline = Date.now() + 12_000;
+      let operationStatus = '';
+      while (Date.now() < recoveryDeadline) {
+        const operation = await pool.query<{ status: string }>(
+          'SELECT status FROM agent_compliance_refresh_requests WHERE id = $1',
+          [operationId],
+        );
+        operationStatus = operation.rows[0]?.status ?? '';
+        if (operationStatus === 'succeeded') break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      expect(operationStatus).toBe('succeeded');
+      expect(complyMock).toHaveBeenCalledOnce();
+      expect(refreshSingleAgentMock).toHaveBeenCalledOnce();
+      expect(resolveOwnerAuth).toHaveBeenCalledOnce();
+
+      const completed = await request(app).get(accepted.body.status_url).send();
+      expect(completed.body).toMatchObject({
+        status: 'succeeded',
+        result: {
+          compliance: {
+            ran: true,
+            run_id: expect.any(String),
+            test_session_id: accepted.body.test_session_id,
+            badge_eligible: true,
+            badge_eligible_adcp_versions: ['3.0'],
+          },
+        },
+      });
+    } finally {
+      markSucceeded.mockRestore();
+      resolveOwnerAuth.mockRestore();
+    }
+  }, 30_000);
+
+  it('retries failed badge persistence from the saved run without executing a second suite', async () => {
+    const agentUrl = ownedAgentUrl('badge-retry');
+    complyMock.mockResolvedValueOnce(makeComplianceResult({
+      specialisms: ['sales-broadcast-tv'],
+      storyboardId: 'sales_broadcast_tv',
+    }));
+    const upsertBadge = vi.spyOn(ComplianceDatabase.prototype, 'upsertBadge')
+      .mockRejectedValueOnce(new Error('simulated badge persistence failure'));
+    try {
+      const accepted = await request(app)
+        .post(url(agentUrl))
+        .set('Prefer', 'respond-async')
+        .send();
+      expect(accepted.status).toBe(202);
+
+      const deadline = Date.now() + 30_000;
+      let completed: Awaited<ReturnType<typeof request>> | undefined;
+      while (Date.now() < deadline) {
+        const status = await request(app).get(accepted.body.status_url).send();
+        if (status.body.status === 'succeeded') {
+          completed = status;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      expect(completed?.body).toMatchObject({
+        status: 'succeeded',
+        attempts: 2,
+        result: { compliance: { run_id: expect.any(String) } },
+      });
+      expect(complyMock).toHaveBeenCalledOnce();
+      expect(refreshSingleAgentMock).toHaveBeenCalledOnce();
+      expect(upsertBadge).toHaveBeenCalledTimes(2);
+    } finally {
+      upsertBadge.mockRestore();
+    }
+  }, 40_000);
+
+  it('surfaces an allowlisted badge failure after retry exhaustion', async () => {
+    const agentUrl = ownedAgentUrl('badge-retry-exhausted');
+    complyMock.mockResolvedValueOnce(makeComplianceResult({
+      specialisms: ['sales-broadcast-tv'],
+      storyboardId: 'sales_broadcast_tv',
+    }));
+    const upsertBadge = vi.spyOn(ComplianceDatabase.prototype, 'upsertBadge')
+      .mockRejectedValue(new Error('simulated persistent badge persistence failure'));
+    try {
+      const accepted = await request(app)
+        .post(url(agentUrl))
+        .set('Prefer', 'respond-async')
+        .send();
+      expect(accepted.status).toBe(202);
+
+      const deadline = Date.now() + 30_000;
+      let failed: Awaited<ReturnType<typeof request>> | undefined;
+      while (Date.now() < deadline) {
+        const status = await request(app).get(accepted.body.status_url).send();
+        if (status.body.status === 'failed') {
+          failed = status;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      expect(failed?.body).toMatchObject({
+        status: 'failed',
+        attempts: 2,
+        error: {
+          code: 'badge_update_failed',
+          message: 'The compliance evidence was saved but badge state could not be updated',
+        },
+      });
+      expect(complyMock).toHaveBeenCalledOnce();
+      expect(refreshSingleAgentMock).toHaveBeenCalledOnce();
+      expect(upsertBadge).toHaveBeenCalledTimes(2);
+    } finally {
+      upsertBadge.mockRestore();
+    }
+  }, 40_000);
+
+  it('recovers the same operation handle when a completed response is retried', async () => {
     const agentUrl = ownedAgentUrl('rate-limit');
     const first = await request(app).post(url(agentUrl)).send();
     expect(first.status).toBe(200);
 
     const second = await request(app).post(url(agentUrl)).send();
-    expect(second.status).toBe(429);
-    expect(second.body.retry_after).toBeGreaterThan(0);
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({
+      refresh_operation_id: expect.any(String),
+      test_session_id: first.body.compliance.test_session_id,
+      coalesced: true,
+      status_url: expect.any(String),
+      compliance: { run_id: first.body.compliance.run_id },
+    });
   });
 
   // Regression: dashboard probe was constructing AdCPClient with no auth,

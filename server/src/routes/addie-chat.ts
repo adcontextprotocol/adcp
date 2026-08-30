@@ -763,11 +763,23 @@ export async function prepareRequestWithMemberTools(
 
   // Anonymous-safe tools are registered globally; no user-scoped tools are added here.
   if (!isAuthenticated) {
+    // Definitions remain in the global tool catalog, but handlers are scoped
+    // to the capability-protected web thread. Training-agent proposal,
+    // idempotency, and media-buy state must never collapse all visitors into
+    // the fallback `anonymous` principal.
+    const anonymousAdcpHandlers = createAdcpToolHandlers(
+      null,
+      trainingModuleContext,
+      {
+        trainingAgentOnly: true,
+        trainingPrincipal: `anonymous-chat:${threadExternalId}`,
+      },
+    );
     return {
       messageToProcess,
       requestContext,
       memberContext: null,
-      requestTools: { tools: [], handlers: new Map() },
+      requestTools: { tools: [], handlers: anonymousAdcpHandlers },
       siRetrievalTimeMs,
       siAgents: siRetrievalResult.agents,
       hasCertificationContext: false,

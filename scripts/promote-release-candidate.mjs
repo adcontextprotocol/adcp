@@ -26,6 +26,9 @@ export function planRcPromotion({ packageVersion, preState, pendingChangesets })
   if (!parsed || parsed.prerelease[0] !== 'beta' || typeof parsed.prerelease[1] !== 'number') {
     throw new Error(`Expected the final beta version, received ${JSON.stringify(packageVersion)}.`);
   }
+  if (parsed.major !== 3 || parsed.minor !== 2 || parsed.patch !== 0) {
+    throw new Error(`RC promotion is restricted to the 3.2.0 release line, received ${JSON.stringify(packageVersion)}.`);
+  }
   if (preState?.mode !== 'pre' || preState?.tag !== 'beta') {
     throw new Error('Expected .changeset/pre.json to remain in beta pre mode.');
   }

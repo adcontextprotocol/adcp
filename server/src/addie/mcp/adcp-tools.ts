@@ -757,11 +757,11 @@ const callAdcpTaskTool: AddieTool = {
         type: 'object',
         description: [
           'Task-specific parameters. Quick reference for common tasks:',
-          '• list_products: { adcp_version, adcp_major_version: 3, account?, brand?, criteria?, pagination? }',
+          '• list_products: { adcp_version, adcp_major_version: 3, account?, brand?, criteria?, cursor?, max_results? }',
           '• request_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, brand: { domain }, brief, criteria? }',
           '• refine_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, refinements: [{ proposal_id, action: "revise" | "finalize", ... }] }',
           '• decline_proposals: { adcp_version, adcp_major_version: 3, idempotency_key, declines: [{ proposal_id, reason, detail? }] }',
-          '• buy_products: { adcp_version, adcp_major_version: 3, idempotency_key, account, brand, feed_version, pricing_version?, purchases: [...] }',
+          '• buy_products: { adcp_version, adcp_major_version: 3, idempotency_key, account, brand?, feed_version, pricing_version?, purchases: [...], start_time: "asap" | ISO-8601, end_time: ISO-8601 }',
           '• accept_proposal: { adcp_version, adcp_major_version: 3, idempotency_key, account, proposal_id, proposal_terms_digest }',
           '• control_media_buy: { adcp_version, adcp_major_version: 3, idempotency_key, account, media_buy_id, revision, ...control }',
           '• get_products: { idempotency_key, brief, brand: { domain }, buying_mode?: "brief"|"wholesale"|"refine", filters?: { channels, budget_range } }',
@@ -823,6 +823,8 @@ export const ADCP_TOOLS: AddieTool[] = [
 export interface AdcpToolAccess {
   /** Restrict protocol execution to the embedded public training agent. */
   trainingAgentOnly?: boolean;
+  /** Trusted server-generated partition for anonymous training-agent state. */
+  trainingPrincipal?: string;
 }
 
 // ============================================
@@ -982,6 +984,9 @@ export function createAdcpToolHandlers(
     if (validationError) {
       return `**Error:** ${validationError}`;
     }
+    if (access.trainingAgentOnly && !access.trainingPrincipal && task !== 'get_adcp_capabilities') {
+      return '**Error:** The anonymous sandbox session is unavailable. Start a new chat and try again.';
+    }
 
     // Keep the caller-supplied key visible and stable through the training
     // shortcut, network execution, and any OAuth continuation. Hidden key
@@ -1001,6 +1006,7 @@ export function createAdcpToolHandlers(
         const ctx = {
           mode: 'training' as const,
           userId,
+          ...(access.trainingPrincipal && { principal: access.trainingPrincipal }),
           moduleId: trainingModuleContext?.moduleId ?? memberModuleId,
           ...(proposalNegotiationProfile && { proposalNegotiationProfile }),
         };
