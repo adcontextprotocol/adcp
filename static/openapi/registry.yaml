@@ -2417,6 +2417,18 @@ components:
             - string
             - "null"
           example: EUR-Lex
+        issuer:
+          type:
+            - object
+            - "null"
+          properties:
+            domain:
+              type: string
+            name:
+              type: string
+          required:
+            - domain
+          description: Machine-readable identity of the authoritative policy issuer
         source_type:
           type: string
           enum:
@@ -2449,6 +2461,7 @@ components:
         - sunset_date
         - source_url
         - source_name
+        - issuer
         - source_type
         - review_status
         - created_at
@@ -2541,6 +2554,493 @@ components:
             - string
             - "null"
           example: EUR-Lex
+        issuer:
+          type:
+            - object
+            - "null"
+          properties:
+            domain:
+              type: string
+            name:
+              type: string
+          required:
+            - domain
+          description: Machine-readable identity of the authoritative policy issuer
+        acceptance_profile:
+          type:
+            - object
+            - "null"
+          properties:
+            profile_id:
+              type: string
+              pattern: ^[A-Za-z0-9_.:-]+$
+            version:
+              type: string
+              minLength: 1
+            content_digest:
+              type: string
+              pattern: ^sha256:[a-f0-9]{64}$
+            policy_refs:
+              type: array
+              items:
+                type: object
+                properties:
+                  policy_id:
+                    type: string
+                    minLength: 1
+                  version:
+                    type: string
+                    minLength: 1
+                  content_digest:
+                    type: string
+                    pattern: ^sha256:[a-f0-9]{64}$
+                required:
+                  - policy_id
+                  - version
+                  - content_digest
+                additionalProperties: false
+              minItems: 1
+            coverage:
+              type: string
+              enum:
+                - partial
+                - complete
+            scope:
+              type: object
+              properties:
+                subject_categories:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[a-z][a-z0-9_]*$
+                  minItems: 1
+                applies_to:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - account
+                      - media_buy
+                      - creative
+                      - landing_page
+                      - targeting
+                      - delivery
+                      - format
+                  minItems: 1
+                jurisdictions:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                  minItems: 1
+                jurisdiction_groups:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Z][A-Z0-9_-]*$
+                  minItems: 1
+                all_jurisdictions:
+                  type: boolean
+                  enum:
+                    - true
+              required:
+                - subject_categories
+                - applies_to
+              additionalProperties: false
+            region_aliases:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+                  pattern: ^[A-Z]{2}$
+                minItems: 1
+            description:
+              type: string
+              minLength: 1
+            rules:
+              type: array
+              items:
+                type: object
+                properties:
+                  rule_id:
+                    type: string
+                    pattern: ^[A-Za-z0-9_.:-]+$
+                  subject_category:
+                    type: string
+                    pattern: ^[a-z][a-z0-9_]*$
+                  subject_facets:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^[a-z][a-z0-9_]*$
+                    minItems: 1
+                  advertiser_roles:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^[a-z][a-z0-9_]*$
+                    minItems: 1
+                  jurisdictions:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^[A-Z]{2}$
+                    minItems: 1
+                  jurisdiction_groups:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^[A-Z][A-Z0-9_-]*$
+                    minItems: 1
+                  applies_to:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - account
+                        - media_buy
+                        - creative
+                        - landing_page
+                        - targeting
+                        - delivery
+                        - format
+                    minItems: 1
+                  disposition:
+                    type: string
+                    enum:
+                      - allowed
+                      - conditional
+                      - prohibited
+                  requirements:
+                    type: array
+                    items:
+                      oneOf:
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - category_declaration
+                            declaration:
+                              type: string
+                              minLength: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - advertiser_verification
+                            verification_scheme:
+                              type: string
+                              minLength: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - advertiser_eligibility
+                            criteria:
+                              type: array
+                              items:
+                                type: string
+                                pattern: ^[a-z][a-z0-9_.:-]*$
+                              minItems: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                            - criteria
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - funding_restriction
+                            criteria:
+                              type: array
+                              items:
+                                type: string
+                                pattern: ^[a-z][a-z0-9_.:-]*$
+                              minItems: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                            - criteria
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - certification
+                            credential:
+                              type: string
+                              minLength: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - license
+                            credential:
+                              type: string
+                              minLength: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - prior_authorization
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - account_setup
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - sales_assisted
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - transparency_reporting
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - disclosure
+                            format:
+                              type: string
+                              minLength: 1
+                            placement:
+                              type: string
+                              minLength: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - targeting_restriction
+                            restricted_attributes:
+                              type: array
+                              items:
+                                type: string
+                                enum:
+                                  - racial_ethnic_origin
+                                  - political_opinions
+                                  - religious_beliefs
+                                  - trade_union_membership
+                                  - health_data
+                                  - sex_life_sexual_orientation
+                                  - genetic_data
+                                  - biometric_data
+                                  - age
+                                  - familial_status
+                              minItems: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - creative_restriction
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                            - description
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - destination_restriction
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                            - description
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - format_restriction
+                            format_ids:
+                              type: array
+                              items:
+                                type: string
+                                minLength: 1
+                              minItems: 1
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - time_restriction
+                            starts_at:
+                              type: string
+                              format: date-time
+                            ends_at:
+                              type: string
+                              format: date-time
+                            description:
+                              type: string
+                              minLength: 1
+                          required:
+                            - kind
+                          additionalProperties: false
+                        - type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum:
+                                - custom
+                            id:
+                              type: string
+                              pattern: ^[a-z][a-z0-9_.:-]*$
+                            description:
+                              type: string
+                              minLength: 1
+                            ext:
+                              type: object
+                              additionalProperties: {}
+                          required:
+                            - kind
+                            - id
+                            - description
+                          additionalProperties: false
+                    minItems: 1
+                  policy_ids:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                    minItems: 1
+                  description:
+                    type: string
+                    minLength: 1
+                    maxLength: 1000
+                  effective_at:
+                    type: string
+                    format: date-time
+                  expires_at:
+                    type: string
+                    format: date-time
+                  ext:
+                    type: object
+                    additionalProperties: {}
+                required:
+                  - rule_id
+                  - subject_category
+                  - applies_to
+                  - disposition
+                additionalProperties: false
+              minItems: 1
+            ext:
+              type: object
+              additionalProperties: {}
+          required:
+            - profile_id
+            - version
+            - content_digest
+            - policy_refs
+            - coverage
+            - rules
+          additionalProperties: false
+          description: Version-pinned structured acceptance profile published with an authoritative registry policy
+        content_digest:
+          type:
+            - string
+            - "null"
+          pattern: ^sha256:[a-f0-9]{64}$
+          description: SHA-256 of the RFC 8785 (JCS) serialization of canonical_content. Present for immutable registry publications; null for legacy or community policies.
+        canonical_content:
+          type:
+            - object
+            - "null"
+          additionalProperties: {}
+          description: Exact immutable registry policy document covered by content_digest. This excludes acceptance_profile, which has its own digest. Consumers MUST canonicalize this object with RFC 8785 before verifying content_digest.
         policy:
           type: string
           example: Data subjects must provide freely given, specific, informed and unambiguous consent...
@@ -2618,6 +3118,10 @@ components:
         - sunset_date
         - source_url
         - source_name
+        - issuer
+        - acceptance_profile
+        - content_digest
+        - canonical_content
         - policy
         - guidance
         - exemplars
@@ -4005,6 +4509,7 @@ components:
               - property-lists
               - sales-broadcast-tv
               - sales-catalog-driven
+              - sales-dooh
               - sales-guaranteed
               - sales-non-guaranteed
               - sales-proposal-mode
@@ -9111,7 +9616,7 @@ paths:
     get:
       operationId: resolvePolicy
       summary: Resolve policy
-      description: Resolve a single policy by ID. Optionally pin to a specific version — returns null if the version does not match.
+      description: Resolve a single policy by ID. Optionally pin to an immutable published version. Registry publications include canonical_content and its RFC 8785 SHA-256 content_digest; a version that was never published returns not found.
       tags:
         - Policy Registry
       parameters:

@@ -7,6 +7,8 @@ track: campaign_governance
 required_tools:
   - sync_plans
   - check_governance
+requires_scenarios:
+  - governance/failed_outcome_audit_persistence
 
 narrative: |
   The buyer's governance agent denies a media buy because it exceeds the agent's spending
@@ -58,7 +60,7 @@ fixtures:
             duration_ms_exact: 30000
     - product_id: "outdoor_video_q2"
       delivery_type: "guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_options:
         - format_option_id: "video_15s"
           format_kind: "video_hosted"

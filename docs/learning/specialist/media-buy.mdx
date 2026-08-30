@@ -27,6 +27,7 @@ Agents in the `media_buy` domain declare specific flows they support via the `sp
 | `sales-proposal-mode`  | deprecated | **Deprecated in 3.1.** Replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. |
 | `sales-catalog-driven` | stable     | Catalog-driven commerce with conversion tracking                                               |
 | `sales-broadcast-tv`   | stable     | Broadcast linear TV with guaranteed inventory and FCC cancellation rules                       |
+| `sales-dooh`           | stable     | Non-guaranteed digital out-of-home venue and screen inventory                                  |
 | `sales-social`         | stable     | Social media advertising platform with self-service flows                                      |
 
 See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and the [`specialism` enum](https://adcontextprotocol.org/schemas/v3/enums/specialism.json) for the authoritative list.
@@ -226,6 +227,7 @@ During the module, Addie will guide you through hands-on exercises:
 8. **Broadcast billing and delivery** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation. Call `get_media_buy_delivery` and interpret the measurement window fields: explain why `c3` data may be incomplete immediately after broadcast and when the `c7` window closes.
 9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated. Then design, conceptually and outside the public sales-agent sandbox, an orchestrator-hosted measurement gateway that exposes `get_media_buy_delivery` and `provide_performance_feedback`, grants only those orchestrator tasks, and maps one cross-seller result into seller-local submissions.
 10. **Warnings, indicators, and invalidations** — Analyze a success warning and the later resource snapshot; distinguish buy/package/assignment indicator placement, exact type coverage, assignment approval, and webhook invalidation handling.
+11. **Shared-account convergence (3.2 draft)** — Connect to an existing sandbox account that is also managed by a connected platform. Acquire a latest account-change cursor before snapshotting, observe an externally initiated creative or media-buy transition, drain `list_account_changes`, and repair through the named authoritative read. Complete the [shared-account change feed lab](/docs/learning/shared-account-change-feed).
 
 For the indicator exercise, Addie supplies this compact creative-library fixture:
 

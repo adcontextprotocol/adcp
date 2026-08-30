@@ -38,6 +38,8 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
 
 When a product can honor the overlay exactly, it does not echo the request. A product that proposes a different executable overlay returns sparse `targeting_resolution.modifications`; selecting that configured product accepts those disclosed changes.
 
+Property and collection lists are the exception to the no-echo rule because the buyer cannot otherwise observe their seller-specific inventory effect. Every returned product carries one `list_applications` receipt per effective targeting reference. Exclusion applications carry zero-match receipts; zero matches for any inclusion application make the product ineligible, so it is not returned. The receipt contains no fetch credential; its counts are scoped to that product and its timestamps, and the product's price and forecast reflect the post-application inventory.
+
 ## Response
 
 Every response has an explicit `outcome`:

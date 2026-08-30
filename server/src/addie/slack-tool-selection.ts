@@ -1,3 +1,5 @@
+import { SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
+
 export type SlackToolSource = 'dm' | 'mention' | 'channel';
 export type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
 
@@ -23,6 +25,8 @@ export interface SlackToolSetSelectionInput {
   systemRole?: SystemChannelRole | null;
   /** Active certification modules override normal routing only in DMs. */
   hasActiveCertification?: boolean;
+  /** Relevant SI retrievals or an active session make brand-agent tools actionable. */
+  hasSponsoredIntelligenceContext?: boolean;
 }
 
 export function hasActiveCertificationProgress(
@@ -40,15 +44,19 @@ function appendUnique(target: string[], values: readonly string[]): void {
 /** Apply server-owned Slack routing rules after the router proposes sets. */
 export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[] {
   if (input.source === 'dm' && input.hasActiveCertification) {
-    return ['certification', 'knowledge'];
+    return ['certification', ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS, 'illustrations'];
   }
 
   const selected = input.routerAvailable
     ? [...(input.routerSelectedSets ?? [])]
-    : ['knowledge'];
+    : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
 
   if (input.isAdmin && input.systemRole) {
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);
+  }
+
+  if (input.hasSponsoredIntelligenceContext) {
+    appendUnique(selected, ['sponsored_intelligence']);
   }
 
   return selected;

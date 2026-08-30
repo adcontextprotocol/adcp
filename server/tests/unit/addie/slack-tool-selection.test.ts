@@ -9,6 +9,8 @@ import {
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
 
+const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
+
 describe('Slack tool-set selection policy', () => {
   it('distinguishes an active module from the no-module certification warning', () => {
     expect(hasActiveCertificationProgress([])).toBe(false);
@@ -41,7 +43,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+    })).toEqual(['certification', ...safeKnowledgeFallback, 'illustrations']);
   });
 
   it('applies the certification override when the router is unavailable', () => {
@@ -50,7 +52,15 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+    })).toEqual(['certification', ...safeKnowledgeFallback, 'illustrations']);
+  });
+
+  it('preserves safe read-only knowledge domains when the router is unavailable', () => {
+    expect(selectSlackToolSets({
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin: false,
+    })).toEqual(safeKnowledgeFallback);
   });
 
   it('does not treat a non-DM certification context as a routing override', () => {
@@ -96,6 +106,31 @@ describe('Slack tool-set selection policy', () => {
       isAdmin: true,
       systemRole: 'billing',
     })).toEqual(['billing']);
+  });
+
+  it('adds Sponsored Intelligence tools for a relevant retrieval or active session', () => {
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['directory'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual(['directory', 'sponsored_intelligence']);
+
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['sponsored_intelligence'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual(['sponsored_intelligence']);
+
+    expect(selectSlackToolSets({
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin: false,
+      hasSponsoredIntelligenceContext: true,
+    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence']);
   });
 
   it('preserves an already-created legacy admin plan for continuity', () => {

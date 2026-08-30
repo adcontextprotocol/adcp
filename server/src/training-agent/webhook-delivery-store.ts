@@ -189,11 +189,22 @@ export class PostgresWebhookDeliveryPersistence implements WebhookDeliveryStore,
     key: Readonly<WebhookDeliveryKey>,
     snapshot: Readonly<WebhookDeliverySnapshot>,
   ): Promise<void> {
+    const identity = [key.publisherScope, key.tenantScope, key.deliveryId];
+    // A replay handoff may deliberately retire its framework delivery identity
+    // before the SDK checkpoints the callback. Do not leave an undeliverable
+    // recovery row behind for the retired identity to retry indefinitely.
+    const retired = await this.runQuery<{ status: string }>(`
+      SELECT status
+      FROM adcp_webhook_delivery_bindings
+      WHERE publisher_scope = $1 AND tenant_scope = $2 AND delivery_id = $3
+        AND status = 'retired'
+    `, identity);
+    if (retired.rows[0]) return;
+
     const salt = snapshotSalt(key);
     const serialized = serializeSnapshot(snapshot);
     const digest = snapshotDigest(serialized, salt);
     const sealed = encrypt(serialized, salt);
-    const identity = [key.publisherScope, key.tenantScope, key.deliveryId];
     const inserted = await this.runQuery<{ snapshot_digest: string }>(`
       INSERT INTO adcp_webhook_delivery_outbox (
         publisher_scope, tenant_scope, delivery_id,

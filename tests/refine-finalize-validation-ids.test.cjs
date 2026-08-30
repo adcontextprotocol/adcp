@@ -77,3 +77,39 @@ test('refine finalize exclusivity exposes stable validation ids for multi-finali
     );
   }
 });
+
+test('refine finalize exclusivity gates multi-finalize on two distinct observed proposals', () => {
+  const doc = loadStoryboard();
+  const setupPhase = doc.phases.find((phase) => phase.id === 'setup_second_proposal');
+  const setupStep = setupPhase?.steps.find((step) => step.id === 'get_products_brief_second');
+
+  assert.equal(setupStep?.context_outputs?.[0]?.path, 'proposals[0].proposal_id');
+  assert.equal(setupStep?.context_outputs?.[0]?.key, 'proposal_id_2');
+
+  const fixtures = [
+    {
+      name: 'one-proposal discovery result',
+      first: { proposals: [{ proposal_id: 'proposal-a' }] },
+      second: { proposals: [{ proposal_id: 'proposal-a' }] },
+      skipped: true,
+    },
+    {
+      name: 'two-proposal discovery result',
+      first: { proposals: [{ proposal_id: 'proposal-a' }] },
+      second: { proposals: [{ proposal_id: 'proposal-b' }, { proposal_id: 'proposal-c' }] },
+      skipped: false,
+    },
+  ];
+  for (const fixture of fixtures) {
+    const proposalId1 = fixture.first.proposals[0]?.proposal_id;
+    const proposalId2 = fixture.second.proposals[0]?.proposal_id;
+    const skipped = !proposalId2 || proposalId2 === proposalId1;
+    assert.equal(skipped, fixture.skipped, fixture.name);
+  }
+});
+
+test('mixed-finalize field validation follows the expect_error envelope', () => {
+  const validation = allValidations(loadStoryboard())
+    .find((candidate) => candidate.id === 'mixed_finalize.error_field_present');
+  assert.equal(validation?.path, 'adcp_error.field');
+});

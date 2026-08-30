@@ -14,6 +14,7 @@
 import { createHash, createPublicKey, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   createWebhookEmitter,
+  isWebhookDeliveryTerminalError,
   memoryWebhookDeliveryStore,
   type WebhookEmitter,
   type WebhookAuthentication,
@@ -262,6 +263,67 @@ export function maybeEmitCompletionWebhook(opts: {
     ...(authentication !== undefined && { authentication }),
   })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
+}
+
+/** Persist and attempt the terminal webhook for a recovered seller-managed
+ * task. Awaiting the emitter is load-bearing: in production its encrypted
+ * recovery checkpoint is committed before this promise settles, so the
+ * seller-control outbox may safely mark the task synchronized afterwards. */
+export async function emitDurableSellerManagedTaskWebhook(opts: {
+  pushConfig?: Record<string, unknown>;
+  taskId: string;
+  accountId: string;
+  webhookTenantScope?: string;
+  terminalAt: string;
+  result?: Record<string, unknown>;
+  error?: { code: string; recovery?: string; message: string; field?: string; details?: Record<string, unknown> };
+}): Promise<void> {
+  if (!opts.pushConfig) return;
+  if (!opts.webhookTenantScope) {
+    throw new Error('Durable seller-control webhook is missing its trusted tenant scope');
+  }
+  const args = { push_notification_config: opts.pushConfig };
+  const webhookUrl = extractWebhookUrl(args);
+  if (!webhookUrl) return;
+  const operationId = extractBuyerOperationId(args) ?? opts.taskId;
+  const token = extractWebhookToken(args);
+  const status = opts.error ? 'failed' : 'completed';
+  const failureResult = opts.error ? { errors: [opts.error] } : undefined;
+  const payload: Record<string, unknown> = {
+    operation_id: operationId,
+    task_id: opts.taskId,
+    task_type: 'control_media_buy',
+    protocol: 'media-buy',
+    status,
+    timestamp: opts.terminalAt,
+    ...(token !== undefined && { token }),
+    ...(status === 'completed' && opts.result !== undefined && { result: opts.result }),
+    ...(status === 'failed' && {
+      result: opts.result ?? failureResult,
+      message: opts.error?.message,
+    }),
+  };
+  const authentication = extractWebhookAuthentication(args);
+  try {
+    await getWebhookEmitter()
+      .forTenantScope(opts.webhookTenantScope)
+      .emit({
+        url: webhookUrl,
+        payload,
+        delivery_id: `task-webhook:${opts.accountId}:control_media_buy:${opts.taskId}`,
+        ...(authentication !== undefined && { authentication }),
+      });
+  } catch (error) {
+    // A process can die after the framework durably binds its freshly built
+    // terminal payload but before its observability acknowledgement reaches
+    // the seller-control outbox. The recovery payload has a different
+    // timestamp, so the emitter correctly reports a canonical-payload
+    // collision. Under the exact trusted tenant/delivery identity this proves
+    // the framework callback is already durably owned; treat it as synced.
+    if (isWebhookDeliveryTerminalError(error)
+      && error.message.includes('already bound to a different canonical payload')) return;
+    throw error;
+  }
 }
 
 export async function emitAccountNotificationWebhook(opts: {

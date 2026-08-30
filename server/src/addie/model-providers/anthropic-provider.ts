@@ -63,7 +63,7 @@ export interface AnthropicModelProviderOptions {
 
 export const ANTHROPIC_PROVIDER_CAPABILITIES: ModelProviderCapabilities = Object.freeze({
   streaming: true,
-  structuredOutput: false,
+  structuredOutput: true,
   reasoning: true,
   reasoningEfforts: Object.freeze(['provider_default', 'medium'] as const),
   customTools: true,
@@ -564,9 +564,6 @@ export class AnthropicModelProvider implements ModelProvider {
 
   prepare(request: ModelRequest): PreparedModelInvocation {
     validateModelCapabilities('anthropic', this.capabilities, request);
-    if (request.outputSchema) {
-      throw new UnsupportedModelCapabilityError('anthropic', 'structuredOutput');
-    }
     const tools: Record<string, unknown>[] = request.tools.map(toAnthropicTool);
     for (const providerTool of request.providerTools ?? []) {
       if (providerTool.type !== 'web_search') {
@@ -578,13 +575,28 @@ export class AnthropicModelProvider implements ModelProvider {
     const providerRequest = deepFreeze(structuredClone({
       model: request.model,
       max_tokens: request.maxOutputTokens,
-      ...(request.reasoning?.effort === 'medium' && { output_config: { effort: 'medium' } }),
+      ...((request.reasoning?.effort === 'medium' || request.outputSchema) && {
+        output_config: {
+          ...(request.reasoning?.effort === 'medium' && { effort: 'medium' }),
+          ...(request.outputSchema && {
+            format: {
+              type: 'json_schema',
+              schema: request.outputSchema.schema,
+            },
+          }),
+        },
+      }),
       system: request.system.map((block) => ({
         type: 'text',
         text: block.text,
         ...(block.cacheHint === 'ephemeral' && { cache_control: { type: 'ephemeral' } }),
       })),
       tools,
+      ...(request.toolChoice && {
+        tool_choice: request.toolChoice.type === 'tool'
+          ? { type: 'tool', name: request.toolChoice.name }
+          : { type: request.toolChoice.type === 'required' ? 'any' : 'auto' },
+      }),
       messages: toAnthropicMessages(request.messages),
       betas: ['web-search-2025-03-05'],
     } satisfies AnthropicRequest));

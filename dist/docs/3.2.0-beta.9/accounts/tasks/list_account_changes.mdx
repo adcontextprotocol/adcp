@@ -1,0 +1,171 @@
+---
+title: list_account_changes
+description: "Read the durable ordered feed of material changes to authoritative state on one shared advertiser account."
+"og:title": "AdCP — list_account_changes"
+testable: false
+---
+
+`list_account_changes` returns material changes to AdCP-visible state on one
+account, including changes made outside the observing buyer's calls. Use it
+after a snapshot bootstrap, after receiving `account.change_recorded`, or for
+an account-level audit of state transitions.
+
+<Warning>
+This is a 3.2 implementation draft for [RFC #6810](https://github.com/adcontextprotocol/adcp/issues/6810). It is not normative until the RFC is ratified.
+</Warning>
+
+The feed is optional and appears only when
+`get_adcp_capabilities.account.change_feed.supported` is `true`.
+
+## What the feed covers
+
+For every resource type the seller advertises, a material committed change
+must both appear here and be reflected on its authoritative read, regardless
+of whether it originated through AdCP, a seller operator or system, another
+authorized principal, or a connected platform.
+
+The feed describes control-plane changes: creation, configuration, lifecycle,
+relationships, reporting corrections, and deletion markers. It excludes
+reads, failed operations, dry runs, exact idempotency replays, delivery counter
+increments, raw audience members, raw events, catalog item bodies, and webhook
+delivery attempts.
+
+For the complete coverage matrix and rationale, see the
+[account change feed draft](https://github.com/adcontextprotocol/adcp/blob/main/specs/account-change-feed.md).
+
+## Request
+
+**Request schema:** [`account/list-account-changes-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.9/account/list-account-changes-request.json)
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `account` | Yes | Exactly one account reference. |
+| `cursor` | No | Opaque checkpoint from an earlier call under the same principal, authorization epoch, account, and filters. Mutually exclusive with `starting_position`. |
+| `starting_position` | No | `earliest` (intentional completeness-first default) or `latest`. Use `latest` before a snapshot bootstrap. |
+| `resource_types` | No | Exact resource-type filter. The cursor is bound to the normalized filter. |
+| `max_results` | No | 1–100 changes; default 50. |
+
+Acquire a high-water checkpoint before reading several snapshots:
+
+```json
+{
+  "adcp_version": "3.2",
+  "account": { "account_id": "acc_luma_shared" },
+  "starting_position": "latest",
+  "max_results": 100
+}
+```
+
+## Response
+
+**Response schema:** [`account/list-account-changes-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.9/account/list-account-changes-response.json)
+
+| Field | Description |
+| --- | --- |
+| `changes` | Oldest-first material change records. |
+| `cursor` | Checkpoint after the scanned high-water. Always present, even on an empty tail page. |
+| `has_more` | Whether more retained matching records were available when the page was generated. |
+| `available_since` | Current retention boundary for this caller and account. |
+| `generated_at` | Seller time for the page and coverage watermarks. |
+| `source_coverage` | Optional per-account connected-source status and mechanically evaluable freshness. A connected source reporting `current` supplies `last_successful_sync_at` and `stale_after_seconds`. |
+
+Each change record names the changed resource, action, server-derived origin,
+optional changed paths and revision, and an allowlisted read-only
+`repair.task` hint. It deliberately does not include full before/after values.
+
+```json
+{
+  "changes": [
+    {
+      "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+      "recorded_at": "2026-08-24T11:58:04Z",
+      "resource": {
+        "type": "creative",
+        "account_id": "acc_luma_shared",
+        "resource_id": "cr_8421"
+      },
+      "action": "updated",
+      "origin": {
+        "kind": "connected_platform",
+        "connection_id": "conn_social_primary"
+      },
+      "changed_paths": ["/name", "/assets/0"],
+      "repair": { "task": "list_creatives" }
+    }
+  ],
+  "cursor": "opaque-checkpoint",
+  "has_more": false,
+  "available_since": "2026-05-26T00:00:00Z",
+  "generated_at": "2026-08-24T12:00:00Z"
+}
+```
+
+## Cursor contract
+
+Cursor order, not timestamps, defines the total order. Appends never reorder
+prior pages. A filtered empty page still advances across scanned nonmatching
+records, so persist every returned cursor.
+
+A cursor is scoped to the authenticated principal, resolved account, and
+normalized filters. Do not move it between credentials or filter sets. Sellers
+MUST reject a principal, account, or filter mismatch with [`INVALID_REQUEST`](/dist/docs/3.2.0-beta.9/building/verification/compliance-catalog#error-code-invalid-request) at
+`cursor`; applying new filters at an old position could permanently skip
+history.
+
+The cursor also binds an authorization-scope epoch. If visible resources for
+the principal expand or contract, the seller returns [`CURSOR_EXPIRED`](/dist/docs/3.2.0-beta.9/building/verification/compliance-catalog#error-code-cursor-expired) with
+`details.reason: "authorization_scope_changed"`. Rebootstrap snapshots so
+changes skipped under the old visibility cannot become an invisible gap.
+
+Sellers retain changes for at least 90 days. An expired cursor returns
+[`CURSOR_EXPIRED`](/dist/docs/3.2.0-beta.9/building/verification/compliance-catalog#error-code-cursor-expired); it never silently restarts. Recovery is to obtain a new
+`latest` checkpoint, rebuild all authoritative snapshots, then drain changes
+after the checkpoint.
+
+## Race-free bootstrap
+
+1. Register `account.change_recorded` through [`sync_accounts`](/dist/docs/3.2.0-beta.9/accounts/tasks/sync_accounts#account-change-feed-notifications).
+2. Obtain C0 with `starting_position: "latest"`.
+3. Enumerate [`list_accounts`](/dist/docs/3.2.0-beta.9/accounts/tasks/list_accounts), [`get_media_buys`](/dist/docs/3.2.0-beta.9/media-buy/task-reference/get_media_buys), [`list_creatives`](/dist/docs/3.2.0-beta.9/creative/task-reference/list_creatives), financials,
+   delivery, and other advertised reads for the account. Include all lifecycle
+   statuses and exhaust every page.
+4. Drain changes after C0. Locally allowlist `repair.task`, construct and
+   validate the read request from the authenticated account and `resource`
+   identity, then invoke it. Never dispatch feed-supplied task arguments.
+5. Persist the returned cursor and repeat after each signed notification.
+6. Poll periodically so a missed webhook does not create a gap.
+
+The webhook's optional `through_cursor` is only a target watermark. Do not
+install it without reading all intervening pages.
+
+## Change granularity
+
+The feed contains at least one record per independently repairable identity.
+Several package or assignment changes may coalesce under their media buy when
+[`get_media_buys`](/dist/docs/3.2.0-beta.9/media-buy/task-reference/get_media_buys) repairs the complete changed closure; changes to independent
+creatives require separate records. Records from one operation may share
+`batch_id`, but retain independent `change_id` values and notifications.
+
+For seller-mediated mutations, snapshot and records commit atomically. For an
+external platform, records commit with the seller's ingestion of the observed
+change. A pass-through authoritative read may lead the feed only within the
+source's declared `stale_after_seconds` freshness bound.
+
+## Shared-account example
+
+Suppose a connected platform changes `cr_8421` while the buyer is idle. The
+seller records the creative revision, makes it visible on [`list_creatives`](/dist/docs/3.2.0-beta.9/creative/task-reference/list_creatives),
+appends the account change, and then fires `account.change_recorded`. The buyer
+drains from its cursor and rereads `list_creatives`; it does not treat the
+webhook payload as the creative document.
+
+This is the same flow for a seller operator changing a campaign budget or
+another authorized buyer pausing a package. Account visibility is based on
+current authorization, not on which principal created the resource.
+
+## Relationship to `webhook_activity`
+
+`webhook_activity[]` answers whether a webhook delivery was attempted. This
+feed answers which material business-state changes were recorded. A change can
+exist even when a webhook is missed; one change can also have several delivery
+attempts. Never use the transport log as account history.

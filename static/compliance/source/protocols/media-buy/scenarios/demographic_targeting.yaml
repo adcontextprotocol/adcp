@@ -72,7 +72,7 @@ fixtures:
           unknown_handling: "selectable"
     - product_id: "demographic_bucket_video"
       delivery_type: "non_guaranteed"
-      channels: ["video"]
+      channels: ["olv"]
       format_ids:
         - id: "video_30s"
       demographic_targeting:

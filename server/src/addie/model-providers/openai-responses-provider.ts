@@ -1,7 +1,14 @@
 import OpenAI from 'openai';
-import type { Response, ResponseCreateParamsNonStreaming } from 'openai/resources/responses/responses';
 import type {
+  FunctionTool,
+  Response,
+  ResponseCreateParamsNonStreaming,
+  ResponseInputItem,
+} from 'openai/resources/responses/responses';
+import type {
+  JsonObject,
   ModelFinishReason,
+  ModelMessage,
   ModelMessageContent,
   ModelProvider,
   ModelProviderCapabilities,
@@ -12,7 +19,7 @@ import type {
   PreparedModelInvocation,
 } from './model-provider.js';
 import { UnexpectedModelIdentityError } from './model-provider.js';
-import { validateModelCapabilities } from './capabilities.js';
+import { assertPlainJson, validateModelCapabilities } from './capabilities.js';
 import { validateNormalizedModelResponse } from './events.js';
 
 export const OPENAI_ROUTER_MODEL = 'gpt-5.6-luna';
@@ -31,7 +38,7 @@ export const OPENAI_RESPONSES_CAPABILITIES: ModelProviderCapabilities = Object.f
   structuredOutput: true,
   reasoning: true,
   reasoningEfforts: Object.freeze(['provider_default', 'none', 'low', 'medium', 'high'] as const),
-  customTools: false,
+  customTools: true,
   providerWebSearch: false,
   imageInput: false,
   documentInput: false,
@@ -56,6 +63,80 @@ function textOnly(content: ModelMessageContent[], label: string): string {
   return content.map((block) => block.type === 'text' ? block.text : '').join('');
 }
 
+function toOpenAITool(tool: ModelRequest['tools'][number]): FunctionTool {
+  return {
+    type: 'function',
+    name: tool.name,
+    description: tool.description,
+    parameters: structuredClone(tool.inputSchema) as Record<string, unknown>,
+    // Addie's canonical schemas intentionally allow optional properties that
+    // do not satisfy OpenAI's strict-schema subset. Runtime validation and the
+    // common tool executor remain authoritative.
+    strict: false,
+  };
+}
+
+function parseToolInput(value: string, name: string): JsonObject {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error(`Malformed OpenAI function arguments for ${name}`);
+  }
+  assertPlainJson(parsed, `OpenAI function arguments for ${name}`);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Malformed OpenAI function arguments for ${name}`);
+  }
+  return parsed as JsonObject;
+}
+
+function toolResultOutput(content: Extract<ModelMessageContent, { type: 'tool_result' }>): string {
+  const output = typeof content.content === 'string'
+    ? content.content
+    : textOnly(content.content, `tool result ${content.toolCallId}`);
+  return content.isError
+    ? `[Tool execution error]\n${output || 'No error details provided.'}`
+    : output;
+}
+
+function toOpenAIInput(messages: readonly ModelMessage[]): ResponseInputItem[] {
+  const input: ResponseInputItem[] = [];
+  for (const message of messages) {
+    if (message.content.length === 0) throw new Error('OpenAI adapter requires non-empty messages');
+    let pendingText: string[] = [];
+    const flushText = () => {
+      if (pendingText.length === 0) return;
+      input.push({ type: 'message', role: message.role, content: pendingText.join('') });
+      pendingText = [];
+    };
+    for (const content of message.content) {
+      if (content.type === 'text') {
+        pendingText.push(content.text);
+        continue;
+      }
+      flushText();
+      if (content.type === 'tool_call' && message.role === 'assistant') {
+        input.push({
+          type: 'function_call',
+          call_id: content.id,
+          name: content.name,
+          arguments: JSON.stringify(content.input),
+        });
+      } else if (content.type === 'tool_result' && message.role === 'user') {
+        input.push({
+          type: 'function_call_output',
+          call_id: content.toolCallId,
+          output: toolResultOutput(content),
+        });
+      } else {
+        throw new Error(`OpenAI adapter does not support ${content.type} in a ${message.role} message`);
+      }
+    }
+    flushText();
+  }
+  return input;
+}
+
 function toOpenAIRequest(request: ModelRequest): ResponseCreateParamsNonStreaming {
   validateModelCapabilities('openai', OPENAI_RESPONSES_CAPABILITIES, request);
   if (request.model !== OPENAI_ROUTER_MODEL) {
@@ -64,26 +145,27 @@ function toOpenAIRequest(request: ModelRequest): ResponseCreateParamsNonStreamin
   if (request.system.some((block) => block.cacheHint !== undefined)) {
     throw new Error('OpenAI router adapter does not support cache hints');
   }
-  if (request.tools.length > 0 || (request.providerTools?.length ?? 0) > 0) {
-    throw new Error('OpenAI router adapter is tool-free');
+  if ((request.providerTools?.length ?? 0) > 0) {
+    throw new Error('OpenAI adapter does not support provider tools');
   }
 
   const effort = request.reasoning?.effort;
   return {
     model: request.model,
     instructions: request.system.map((block) => block.text).join('\n\n'),
-    input: request.messages.map((message) => ({
-      type: 'message' as const,
-      role: message.role,
-      content: textOnly(message.content, 'messages'),
-    })),
+    input: toOpenAIInput(request.messages),
     max_output_tokens: request.maxOutputTokens,
     store: false,
     background: false,
     stream: false,
     truncation: 'disabled',
     parallel_tool_calls: false,
-    tools: [],
+    tools: request.tools.map(toOpenAITool),
+    ...(request.toolChoice && {
+      tool_choice: request.toolChoice.type === 'tool'
+        ? { type: 'function' as const, name: request.toolChoice.name }
+        : request.toolChoice.type,
+    }),
     text: request.outputSchema
       ? {
           format: {
@@ -123,25 +205,49 @@ export function normalizeOpenAIResponse(response: Response): ModelResponse {
   let refused = finishReason === 'refusal';
   for (const item of response.output) {
     if (item.type === 'reasoning') continue;
-    if (item.type !== 'message' || item.role !== 'assistant') {
-      throw new Error(`Unexpected OpenAI output item: ${item.type}`);
-    }
-    if (item.status !== 'completed' && response.status === 'completed') {
-      throw new Error('Incomplete OpenAI message output');
-    }
-    for (const part of item.content) {
-      if (part.type === 'output_text') {
-        content.push({ type: 'text', text: part.text });
-      } else if (part.type === 'refusal') {
-        refused = true;
-      } else {
-        const exhaustive: never = part;
-        throw new Error(`Unexpected OpenAI message part: ${String(exhaustive)}`);
+    if (item.type === 'function_call') {
+      if (
+        typeof item.call_id !== 'string'
+        || !item.call_id.trim()
+        || item.call_id.length > 256
+        || typeof item.name !== 'string'
+        || !item.name.trim()
+        || item.name.length > 128
+        || typeof item.arguments !== 'string'
+        || Buffer.byteLength(item.arguments, 'utf8') > 1024 * 1024
+        || (item.status !== undefined && item.status !== 'completed')
+        || item.namespace !== undefined
+        || (item.caller !== undefined && item.caller !== null && item.caller.type !== 'direct')
+      ) throw new Error('Malformed OpenAI function call');
+      content.push({
+        type: 'tool_call',
+        id: item.call_id,
+        name: item.name,
+        input: parseToolInput(item.arguments, item.name),
+      });
+    } else if (item.type === 'message' && item.role === 'assistant') {
+      if (item.status !== 'completed' && response.status === 'completed') {
+        throw new Error('Incomplete OpenAI message output');
       }
-    }
+      for (const part of item.content) {
+        if (part.type === 'output_text') {
+          content.push({ type: 'text', text: part.text });
+        } else if (part.type === 'refusal') {
+          refused = true;
+        } else {
+          const exhaustive: never = part;
+          throw new Error(`Unexpected OpenAI message part: ${String(exhaustive)}`);
+        }
+      }
+    } else throw new Error(`Unexpected OpenAI output item: ${item.type}`);
   }
 
+  const hasFunctionCall = content.some((item) => item.type === 'tool_call');
+  if (hasFunctionCall && finishReason !== 'stop') {
+    throw new Error('OpenAI response ended before function calls were terminal');
+  }
   if (refused) finishReason = 'refusal';
+  else if (hasFunctionCall) finishReason = 'tool_calls';
 
   if (finishReason === 'stop' && content.length < 1) throw new Error('Empty OpenAI response output');
   const normalized = deepFreeze({
@@ -205,8 +311,9 @@ export class OpenAIResponsesProvider implements ModelProvider {
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };
     for (const [index, item] of normalized.content.entries()) {
-      if (item.type !== 'text') throw new Error('OpenAI router adapter emitted non-text content');
-      yield { type: 'text_delta', index, text: item.text };
+      if (item.type === 'text') yield { type: 'text_delta', index, text: item.text };
+      else if (item.type === 'tool_call') yield { type: 'tool_call', index, call: item };
+      else throw new Error('OpenAI adapter emitted unsupported content');
     }
     yield { type: 'response_complete', response: normalized };
   }

@@ -99,7 +99,7 @@
     },
     "reporting_dimensions": {
       "type": "object",
-      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response. Note: keyword, catalog_item, and creative breakdowns are returned automatically when the seller supports them; including their keys here is optional and upgrades them to a negotiated contract (limit, sort, and truncation disclosure) without changing the automatic default.",
+      "description": "Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimension within by_package — include as an empty object (e.g., \"device_type\": {}) to activate with defaults. Omit entirely for no breakdowns (backward compatible). Unsupported dimensions are silently omitted from the response. For every requested dimension that the product declares supported, the seller MUST return the corresponding array (possibly empty) and its truncated flag. Metric-sorted dimensions also return their applied-sort echoes; demographic and property-grain arrays also return their suppressed flag. Spot uses aired_at ordering and has no sort echoes. Note: keyword, catalog_item, and creative breakdowns are returned automatically when the seller supports them; including their keys here is optional and upgrades them to this negotiated contract without changing the automatic default.",
       "properties": {
         "catalog_item": {
           "type": "object",
@@ -435,6 +435,30 @@
             }
           },
           "additionalProperties": true
+        },
+        "property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical publisher property. Check reporting_capabilities.supports_property_breakdown."
+        },
+        "collection": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical content collection. Check reporting_capabilities.supports_collection_breakdown."
+        },
+        "installment": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery by canonical installment within a collection. Check reporting_capabilities.supports_installment_breakdown."
+        },
+        "collection_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the collection × property intersection. This is the reporting grain that can prove a collection delivered on a particular host service; independent collection and property marginals cannot. Check reporting_capabilities.supports_collection_property_breakdown."
+        },
+        "installment_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the installment × property intersection. This is the reporting grain that can prove a specific airing, episode, issue, or programming block delivered on a particular host service; independent installment and property marginals cannot. Check reporting_capabilities.supports_installment_property_breakdown."
+        },
+        "placement_property": {
+          "$ref": "/schemas/core/delivery-breakdown-controls.json",
+          "description": "Request delivery at the placement × property intersection. Use when a placement may span multiple web, app, social, or assistant properties. Check reporting_capabilities.supports_placement_property_breakdown."
         }
       },
       "additionalProperties": true

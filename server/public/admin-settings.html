@@ -392,12 +392,20 @@
 
           <div class="setting-row">
             <div class="field">
-              <label for="organizationAuthorizationEnabled">Roles-read boundary</label>
+              <label for="organizationAuthorizationEnabled">Runtime enforcement</label>
               <select id="organizationAuthorizationEnabled">
                 <option value="false">Legacy authorization (off)</option>
                 <option value="true">Exact-credential authorization (on)</option>
               </select>
-              <small>Currently limited to <code>organization_roles_read</code>. Disable here for rollback within five seconds.</small>
+              <label>
+                <input type="checkbox" id="organizationAuthorizationRolesRead">
+                Roles read (<code>organization_roles_read</code>)
+              </label>
+              <label>
+                <input type="checkbox" id="organizationAuthorizationDomainsRead">
+                Domains read (<code>organization_domains_read</code>)
+              </label>
+              <small>Only deployment-staged boundaries can be selected. Disable here for rollback within five seconds.</small>
             </div>
             <button class="btn btn-primary" id="saveOrganizationAuthorizationBtn" onclick="saveOrganizationAuthorizationEnforcement()" disabled>
               Save
@@ -1122,23 +1130,51 @@ loadAuditHistory();
         enabled: false,
         boundaries: [],
       };
-      const boundaryEnabled = setting.enabled === true &&
-        Array.isArray(setting.boundaries) &&
-        setting.boundaries.includes('organization_roles_read');
-      const environmentStaged = currentSettings?.organization_authorization_environment_ceiling?.boundaries
-        ?.includes('organization_roles_read') === true;
+      const boundaryDefinitions = [
+        {
+          value: 'organization_roles_read',
+          label: 'roles read',
+          checkboxId: 'organizationAuthorizationRolesRead',
+        },
+        {
+          value: 'organization_domains_read',
+          label: 'domains read',
+          checkboxId: 'organizationAuthorizationDomainsRead',
+        },
+      ];
+      const configuredBoundaries = new Set(Array.isArray(setting.boundaries) ? setting.boundaries : []);
+      const stagedBoundaries = new Set(
+        currentSettings?.organization_authorization_environment_ceiling?.boundaries ?? [],
+      );
+      const enabledBoundaries = boundaryDefinitions.filter(({ value }) =>
+        setting.enabled === true && configuredBoundaries.has(value)
+      );
+      const activeBoundaries = enabledBoundaries.filter(({ value }) => stagedBoundaries.has(value));
+      const blockedBoundaries = enabledBoundaries.filter(({ value }) => !stagedBoundaries.has(value));
       const el = document.getElementById('currentOrganizationAuthorizationStatus');
       const select = document.getElementById('organizationAuthorizationEnabled');
 
-      el.className = boundaryEnabled && environmentStaged ? 'current-value' : 'current-value not-set';
-      if (boundaryEnabled && environmentStaged) {
-        el.innerHTML = '<strong>Status:</strong> Exact-credential roles read active';
-      } else if (boundaryEnabled) {
-        el.innerHTML = '<strong>Status:</strong> Runtime gate armed, but environment ceiling is off';
+      el.className = activeBoundaries.length > 0
+        ? 'current-value'
+        : 'current-value not-set';
+      if (activeBoundaries.length > 0) {
+        const blockedStatus = blockedBoundaries.length > 0
+          ? `; blocked by environment ceiling: ${blockedBoundaries.map(({ label }) => label).join(', ')}`
+          : '';
+        el.innerHTML = `<strong>Status:</strong> Exact-credential authorization active: ${activeBoundaries.map(({ label }) => label).join(', ')}${blockedStatus}`;
+      } else if (blockedBoundaries.length > 0) {
+        el.innerHTML = `<strong>Status:</strong> Runtime gate armed, but environment ceiling is off for: ${blockedBoundaries.map(({ label }) => label).join(', ')}`;
       } else {
-        el.innerHTML = `<strong>Status:</strong> Legacy roles read (runtime gate off; environment ceiling ${environmentStaged ? 'staged' : 'off'})`;
+        el.innerHTML = `<strong>Status:</strong> Legacy authorization (runtime gate off; ${stagedBoundaries.size} ${stagedBoundaries.size === 1 ? 'boundary' : 'boundaries'} staged)`;
       }
-      select.value = String(boundaryEnabled);
+      select.value = String(setting.enabled === true);
+      for (const { value, checkboxId } of boundaryDefinitions) {
+        const checkbox = document.getElementById(checkboxId);
+        checkbox.checked = configuredBoundaries.has(value);
+        // A configured boundary remains editable after an environment rollback
+        // so an operator can remove it and retain the other active boundaries.
+        checkbox.disabled = !stagedBoundaries.has(value) && !configuredBoundaries.has(value);
+      }
       document.getElementById('saveOrganizationAuthorizationBtn').disabled = false;
     }
 
@@ -1146,6 +1182,17 @@ loadAuditHistory();
       const select = document.getElementById('organizationAuthorizationEnabled');
       const saveBtn = document.getElementById('saveOrganizationAuthorizationBtn');
       const enabled = select.value === 'true';
+      const boundaries = [
+        ['organization_roles_read', 'organizationAuthorizationRolesRead'],
+        ['organization_domains_read', 'organizationAuthorizationDomainsRead'],
+      ]
+        .filter(([, checkboxId]) => document.getElementById(checkboxId).checked)
+        .map(([boundary]) => boundary);
+
+      if (enabled && boundaries.length === 0) {
+        showStatusMessage('Select at least one staged authorization boundary', 'error');
+        return;
+      }
 
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving...';
@@ -1155,7 +1202,7 @@ loadAuditHistory();
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             enabled,
-            boundaries: ['organization_roles_read'],
+            boundaries,
           }),
         });
         if (!response.ok) {

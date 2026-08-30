@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-policy-catalog.json",
+  "title": "Acceptance Policy Catalog",
+  "description": "Seller-hosted catalog referenced from capabilities. Profiles compose restrictively: every referenced profile applies and the most restrictive matching disposition wins (prohibited over conditional over allowed).",
+  "type": "object",
+  "properties": {
+    "catalog_version": { "type": "string", "minLength": 1 },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "profiles": {
+      "type": "array",
+      "items": { "$ref": "/schemas/media-buy/acceptance-policy-profile.json" },
+      "minItems": 1
+    },
+    "registry_profiles": {
+      "type": "array",
+      "items": { "$ref": "/schemas/media-buy/acceptance-policy-profile-ref.json" },
+      "minItems": 1,
+      "description": "Exact reusable profiles adopted from the shared policy registry. Resolution failure is unknown, never allowed. A seller adds a distinct local profile to narrow a registry profile."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["catalog_version"],
+  "anyOf": [
+    { "required": ["profiles"] },
+    { "required": ["registry_profiles"] }
+  ],
+  "x-adcp-validation": {
+    "unique_by": [
+      { "path": "profiles", "field": "profile_id" },
+      { "path": "registry_profiles", "field": "profile_id" }
+    ],
+    "unique_across": [
+      {
+        "paths": ["profiles", "registry_profiles"],
+        "field": "profile_id",
+        "description": "A profile_id MUST occur at most once across both local and registry profile lists."
+      }
+    ]
+  },
+  "additionalProperties": false
+}

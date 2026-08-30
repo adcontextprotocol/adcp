@@ -57,7 +57,7 @@
     },
     "policy_categories": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": { "type": "string", "x-entity": "governance_policy_category" },
       "description": "Regulatory categories this policy belongs to (e.g., [\"children_directed\", \"age_restricted\"]). Used for automatic matching against a campaign plan's declared policy_categories. A single policy can belong to multiple categories."
     },
     "channels": {
@@ -88,6 +88,24 @@
     "source_name": {
       "type": "string",
       "description": "Name of the issuing body (e.g., \"UK Food Standards Agency\", \"US Federal Trade Commission\")."
+    },
+    "issuer": {
+      "type": "object",
+      "description": "Machine-readable identity of the regulator, standards body, or platform operator that issued the policy. Registry publishers SHOULD provide this when independently versioned issuer policies must be distinguished.",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
+          "description": "Lowercase registrable or organizational domain used as the stable issuer identifier."
+        },
+        "name": { "type": "string", "minLength": 1 }
+      },
+      "required": ["domain"],
+      "additionalProperties": false
+    },
+    "acceptance_profile": {
+      "$ref": "/schemas/media-buy/acceptance-policy-profile.json",
+      "description": "Optional reusable, machine-readable acceptance profile derived from this registry policy. Registry publishers MUST bind policy_refs to exact versions. Sellers adopt a profile explicitly; registry publication alone does not make it authoritative for a seller."
     },
     "policy": {
       "type": "string",

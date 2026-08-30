@@ -23,7 +23,8 @@ import { handleGetSignals, handleActivateSignal } from './task-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
-import { sessionKeyFromArgs } from './state.js';
+import { taskRegistryScopeFromContext } from './task-registry-scope.js';
+import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 export interface TrainingConfig {
@@ -64,21 +65,34 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
         authInfo: principal ? authInfo : { kind: 'public' as const },
       };
     }
-    const brandDomain =
-      'brand' in ref && ref.brand && typeof ref.brand === 'object' && 'domain' in ref.brand
-        ? (ref.brand.domain as string | undefined)
-        : undefined;
-    const accountId =
-      'account_id' in ref && typeof ref.account_id === 'string' ? ref.account_id : undefined;
-    const id = accountId ?? `synthetic_${brandDomain ?? 'anon'}`;
+    const canonical = canonicalizeAccountRef(ref);
+    const accountRef: ToolArgs['account'] = canonical.kind === 'account_id'
+      ? { account_id: canonical.account_id }
+      : {
+          brand: canonical.brand,
+          operator: canonical.operator,
+          ...(canonical.operator_unit && { operator_unit: canonical.operator_unit }),
+          ...(canonical.currency && { currency: canonical.currency }),
+          ...(canonical.timezone && { timezone: canonical.timezone }),
+          ...(canonical.sandbox && { sandbox: true }),
+        };
+    const brandDomain = canonical.kind === 'natural' ? canonical.brand.domain : undefined;
+    const operator = canonical.kind === 'natural' ? canonical.operator : undefined;
+    const id = canonical.kind === 'account_id'
+      ? canonical.account_id
+      : syntheticAccountIdFromRef(accountRef);
     return {
       id,
       name: brandDomain ?? id,
       status: 'active',
       mode: 'sandbox',
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
-      ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
-      ctx_metadata: { brand_domain: brandDomain },
+      ...(operator && { operator }),
+      ctx_metadata: {
+        account_ref: accountRef,
+        brand_domain: brandDomain,
+        ...(operator && { operator }),
+      },
       sandbox: true,
       authInfo,
     };
@@ -203,19 +217,7 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
         : undefined;
       const args = {
         ...(req as ToolArgs),
-        ...((rawAccount ?? resolvedAccount) && {
-          account: (() => {
-            const account = (rawAccount ?? resolvedAccount)!;
-            if (
-              trainingCtx.principal?.startsWith('static:')
-              && account.sandbox === true
-              && account.brand?.domain
-            ) {
-              return { ...account, operator: account.brand.domain };
-            }
-            return account;
-          })(),
-        }),
+        ...((rawAccount ?? resolvedAccount) && { account: rawAccount ?? resolvedAccount }),
       };
       const result = await handleGetSignals(args, trainingCtx);
       if (
@@ -224,9 +226,9 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
         && typeof (result as { task_id?: unknown }).task_id === 'string'
       ) {
         const submitted = result as { task_id: string };
-        const completionOwnerKey = sessionKeyFromArgs(args, 'open');
+        const completionScope = taskRegistryScopeFromContext(ctx, 'signals');
         return ctx.handoffToTask(
-          async () => await waitForForcedTaskCompletion(submitted.task_id, completionOwnerKey),
+          async () => await waitForForcedTaskCompletion(submitted.task_id, completionScope),
           { task_id: submitted.task_id },
         );
       }

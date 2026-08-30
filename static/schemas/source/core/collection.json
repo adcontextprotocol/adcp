@@ -7,7 +7,8 @@
   "properties": {
     "collection_id": {
       "type": "string",
-      "description": "Publisher-assigned identifier for this collection. Declared in the publisher's adagents.json collections array. Products reference collections via collection selectors with publisher_domain and collection_ids. Use distribution identifiers for cross-seller matching across publishers."
+      "description": "Publisher-assigned identifier for this collection. Declared in the publisher's adagents.json collections array. Products reference collections via collection selectors with publisher_domain and collection_ids. Use distribution identifiers for cross-seller matching across publishers.",
+      "x-entity": "collection"
     },
     "name": {
       "type": "string",
@@ -90,7 +91,8 @@
         "properties": {
           "collection_id": {
             "type": "string",
-            "description": "The related collection's collection_id within this seller's response"
+            "description": "The related collection's collection_id within this seller's response",
+            "x-entity": "collection"
           },
           "relationship": {
             "$ref": "/schemas/enums/collection-relationship.json",

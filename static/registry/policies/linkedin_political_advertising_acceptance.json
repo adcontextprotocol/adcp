@@ -1,0 +1,57 @@
+{
+  "policy_id": "linkedin_political_advertising_acceptance",
+  "source": "registry",
+  "version": "1.1.0",
+  "name": "LinkedIn Political Advertising Acceptance",
+  "description": "LinkedIn prohibition on political advertising.",
+  "category": "standard",
+  "enforcement": "must",
+  "jurisdictions": [],
+  "policy_categories": ["political_advertising"],
+  "governance_domains": ["campaign", "creative"],
+  "effective_date": "2025-11-18",
+  "source_url": "https://www.linkedin.com/legal/ads-policy",
+  "source_name": "LinkedIn",
+  "issuer": { "domain": "linkedin.com", "name": "LinkedIn" },
+  "acceptance_profile": {
+    "profile_id": "linkedin_political_advertising_acceptance",
+    "version": "1.0.0",
+    "content_digest": "sha256:e2683041e6abb6b8d8d2b8210bfd35d7334e24781edf6cef29f6b10816561c63",
+    "policy_refs": [{ "policy_id": "linkedin_political_advertising_acceptance", "version": "1.1.0", "content_digest": "sha256:04a5cf5c6262a60f378e83043b46677372c4ed2378f9930565278105113defd1" }],
+    "coverage": "partial",
+    "scope": {
+      "subject_categories": ["political_advertising"],
+      "applies_to": ["account", "media_buy", "creative", "delivery"],
+      "all_jurisdictions": true
+    },
+    "description": "Reusable coarse profile of LinkedIn's public political-advertising acceptance policy.",
+    "rules": [
+      {
+        "rule_id": "linkedin_political_prohibited",
+        "effective_at": "2025-11-18T00:00:00Z",
+        "subject_category": "political_advertising",
+        "subject_facets": ["candidate_or_party", "election_or_ballot_measure", "issue_advocacy", "legislation_or_regulation"],
+        "applies_to": ["account", "media_buy", "creative", "delivery"],
+        "disposition": "prohibited",
+        "policy_ids": ["linkedin_political_advertising_acceptance"],
+        "description": "Candidate, party, ballot, legislative, election-influence, fundraising, and sensitive political-issue advertising is not accepted."
+      }
+    ]
+  },
+  "policy": "Political advertising is prohibited. This includes advertising for or against candidates, parties, ballot propositions, laws or regulations; election-influence advertising; political fundraising; and advertising that exploits a sensitive political issue even without an explicit political agenda. Sellers should apply the current issuer definition and should not infer an exception from advertiser industry alone.",
+  "guidance": "Represent candidate_or_party, election_or_ballot_measure, issue_advocacy, and legislation_or_regulation as prohibited. Editorial or incidental content should be evaluated against the issuer's current definition rather than automatically classified as paid political advertising.",
+  "exemplars": {
+    "pass": [
+      {
+        "scenario": "A commercial campaign without political advocacy promotes an ordinary business service.",
+        "explanation": "The request is outside the political-advertising category."
+      }
+    ],
+    "fail": [
+      {
+        "scenario": "An organization purchases an advertisement urging voters to oppose a ballot proposition.",
+        "explanation": "Paid ballot-measure advocacy is prohibited political advertising."
+      }
+    ]
+  }
+}

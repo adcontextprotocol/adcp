@@ -114,6 +114,30 @@
       "type": "boolean",
       "description": "Whether this product supports placement breakdowns in delivery reporting (by_placement within by_package)"
     },
+    "supports_property_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports property breakdowns in delivery reporting (by_property within by_package)."
+    },
+    "supports_collection_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports collection breakdowns in delivery reporting (by_collection within by_package)."
+    },
+    "supports_installment_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports installment breakdowns in delivery reporting (by_installment within by_package)."
+    },
+    "supports_collection_property_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports collection × property intersection reporting (by_collection_property within by_package)."
+    },
+    "supports_installment_property_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports installment × property intersection reporting (by_installment_property within by_package)."
+    },
+    "supports_placement_property_breakdown": {
+      "type": "boolean",
+      "description": "Whether this product supports placement × property intersection reporting (by_placement_property within by_package)."
+    },
     "supports_spot_breakdown": {
       "$ref": "/schemas/core/spot-reporting-capability.json",
       "description": "Spot-level as-run airing-log support and metrics available at spot grain for broadcast TV, radio, and other scheduled inventory."

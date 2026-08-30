@@ -117,9 +117,12 @@ function profile(input: {
   providerToolCount?: number;
   route?: string;
   selectedToolSets?: string[];
+  allowedToolNames?: readonly string[];
   conditionalMaximums?: string[];
 }): Profile {
-  const combined = [...input.globalTools, ...(input.requestTools ?? [])];
+  const allowed = input.allowedToolNames ? new Set(input.allowedToolNames) : null;
+  const combined = [...input.globalTools, ...(input.requestTools ?? [])]
+    .filter((tool) => !allowed || allowed.has(tool.name));
   const seen = new Map<string, string>();
   const overriddenNames = new Set<string>();
   const conflictingNames = new Set<string>();
@@ -136,7 +139,11 @@ function profile(input: {
     }
     seen.set(tool.name, rendered);
   }
-  const merged = mergeAddieToolDefinitions(input.globalTools, input.requestTools);
+  const merged = mergeAddieToolDefinitions(
+    input.globalTools,
+    input.requestTools,
+    input.allowedToolNames,
+  );
   const wire = buildAddieWireTools(merged);
   const orderedNames = merged.map((tool) => tool.name);
   const renderedWire = JSON.stringify(wire);
@@ -237,23 +244,21 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   } = defs;
   const globalTools = [
     ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...billing.BILLING_TOOLS,
     ...schema.SCHEMA_TOOLS,
     ...directory.DIRECTORY_TOOLS,
-    ...brand.BRAND_TOOLS,
-    ...brandCanonical.BRAND_CANONICAL_TOOLS,
-    ...property.PROPERTY_TOOLS,
     ...url.URL_TOOLS,
     ...googleDocs.GOOGLE_DOCS_TOOLS,
-    ...siHost.SI_HOST_TOOLS,
   ];
   const slackKnowledge = knowledge.KNOWLEDGE_TOOLS.filter(knowledge.isSlackKnowledgeTool);
   const buildRequest = (isAdmin: boolean, isPublic: boolean): AddieTool[] => [
     ...member.MEMBER_TOOLS,
+    ...siHost.SI_HOST_TOOLS,
     ...directory.DIRECTORY_TOOLS,
     ...slackKnowledge,
     ...illustration.ILLUSTRATION_TOOLS,
-    ...(isPublic ? [] : billing.BILLING_TOOLS),
+    ...(isPublic
+      ? billing.BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')
+      : billing.BILLING_TOOLS),
     ...escalation.ESCALATION_TOOLS,
     ...newsletter.NEWSLETTER_TOOLS,
     ...adcp.ADCP_TOOLS,
@@ -319,6 +324,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         audience: surface.audience,
         route: setName,
         selectedToolSets: selectedSets,
+        allowedToolNames: [...allowed],
         globalTools,
         requestTools: routedRequest,
         // Non-streaming calls additionally expose Anthropic web search. The
@@ -355,6 +361,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'all_valid_sets_maximum',
       selectedToolSets: selectedAllValidSets,
+      allowedToolNames: [...allAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => allAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -383,6 +390,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'router_unavailable',
       selectedToolSets: fallbackSets,
+      allowedToolNames: [...fallbackAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => fallbackAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -408,6 +416,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         audience: surface.audience,
         route: 'certification_session',
         selectedToolSets: certificationSets,
+        allowedToolNames: [...certificationAllowed],
         globalTools,
         requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
         providerToolCount: 1,
@@ -427,12 +436,52 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     audience: 'admin_dm',
     route: 'legacy_admin_compatibility',
     selectedToolSets: ['admin'],
+    allowedToolNames: [...legacyAdminAllowed],
     globalTools,
     requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
     providerToolCount: 1,
     conditionalMaximums: [
       'plan_created_before_admin_domain_split',
       'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
+  const legacyMemberAllowed = new Set(toolSets.getToolsForSets(['member'], false, false));
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_member_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_member_compatibility',
+    selectedToolSets: ['member'],
+    allowedToolNames: [...legacyMemberAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyMemberAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_member_domain_split',
+      'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
+  const legacyAgentTestingAllowed = new Set(
+    toolSets.getToolsForSets(['agent_testing'], false, false),
+  );
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_agent_testing_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_agent_testing_compatibility',
+    selectedToolSets: ['agent_testing'],
+    allowedToolNames: [...legacyAgentTestingAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyAgentTestingAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_agent_property_split',
+      'google_docs_configured',
+      'conformance_socket_enabled',
       'nonstreaming_web_search',
     ],
   }));
@@ -455,6 +504,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: 'system_channel_admin',
       route: `system_role_${systemRole}_all_valid_sets_maximum`,
       selectedToolSets: selectedSets,
+      allowedToolNames: [...allowed],
       globalTools,
       requestTools: adminRequest.filter((tool) => allowed.has(tool.name)),
       providerToolCount: 1,

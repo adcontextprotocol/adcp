@@ -25,6 +25,7 @@ server/node_modules
 /dist/compliance/v*
 /dist/protocol/latest.tgz
 /dist/protocol/latest.tgz.sha256
+/dist/protocol/latest.tgz.provenance.json
 /dist/protocol/latest.tgz.sig
 /dist/protocol/latest.tgz.crt
 

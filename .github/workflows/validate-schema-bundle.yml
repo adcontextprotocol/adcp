@@ -1,0 +1,223 @@
+name: Validate schema PR bundle
+
+on:
+  pull_request:
+    branches: [main]
+    # Preview artifacts are only for changes to canonical schema sources.
+    # Compliance, OpenAPI, and build-tool changes remain covered by normal CI.
+    paths:
+      - 'static/schemas/source/**'
+
+concurrency:
+  group: schema-pr-bundle-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+jobs:
+  build-bundle:
+    name: Build deterministic PR bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build schemas, compliance, and protocol bundle
+        env:
+          ADCP_PROTOCOL_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/build-schema-pr-bundle.sh
+
+      - name: Verify provenance and reproducibility
+        run: |
+          set -euo pipefail
+          source_date_epoch="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH="${source_date_epoch}"
+          export ADCP_PROTOCOL_COMMIT_SHA="${PR_HEAD_SHA}"
+
+          (
+            cd dist/protocol
+            shasum -a 256 -c latest.tgz.sha256
+          )
+
+          bundle_version="$(node -p "require('./dist/protocol/latest.tgz.provenance.json').published_version")"
+          tar -xOf dist/protocol/latest.tgz "adcp-${bundle_version}/manifest.json" > "${RUNNER_TEMP}/bundle-manifest.json"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const manifest = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/bundle-manifest.json', 'utf8'));
+          const provenance = JSON.parse(fs.readFileSync('dist/protocol/latest.tgz.provenance.json', 'utf8'));
+          if (manifest.source?.repository !== 'adcontextprotocol/adcp') {
+            throw new Error(`Unexpected bundle source repository ${manifest.source?.repository}`);
+          }
+          if (manifest.source?.commit_sha !== process.env.PR_HEAD_SHA) {
+            throw new Error(`Bundle manifest commit ${manifest.source?.commit_sha} does not match PR head ${process.env.PR_HEAD_SHA}`);
+          }
+          if (provenance.source_repository !== 'adcontextprotocol/adcp') {
+            throw new Error(`Unexpected provenance source repository ${provenance.source_repository}`);
+          }
+          if (provenance.source_commit !== process.env.PR_HEAD_SHA) {
+            throw new Error(`Provenance commit ${provenance.source_commit} does not match PR head ${process.env.PR_HEAD_SHA}`);
+          }
+          const checksum = fs.readFileSync('dist/protocol/latest.tgz.sha256', 'utf8').trim().split(/\s+/)[0];
+          if (provenance.bundle_sha256 !== checksum) {
+            throw new Error(`Provenance digest ${provenance.bundle_sha256} does not match checksum ${checksum}`);
+          }
+          NODE
+
+          cp dist/protocol/latest.tgz "${RUNNER_TEMP}/first.tgz"
+          cp dist/protocol/latest.tgz.sha256 "${RUNNER_TEMP}/first.tgz.sha256"
+          cp dist/protocol/latest.tgz.provenance.json "${RUNNER_TEMP}/first.tgz.provenance.json"
+          scripts/build-schema-pr-bundle.sh
+          cmp "${RUNNER_TEMP}/first.tgz" dist/protocol/latest.tgz
+          cmp "${RUNNER_TEMP}/first.tgz.sha256" dist/protocol/latest.tgz.sha256
+          cmp "${RUNNER_TEMP}/first.tgz.provenance.json" dist/protocol/latest.tgz.provenance.json
+
+      - name: Upload protocol PR bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
+          path: |
+            dist/protocol/latest.tgz
+            dist/protocol/latest.tgz.sha256
+            dist/protocol/latest.tgz.provenance.json
+          if-no-files-found: error
+          retention-days: 14
+
+  typescript-sdk:
+    name: Generate TypeScript SDK
+    needs: build-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
+          path: bundle
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: adcontextprotocol/adcp-client
+          path: sdk
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+
+      - run: npm ci
+        working-directory: sdk
+
+      - name: Generate and build from the PR bundle
+        run: |
+          set -euo pipefail
+          (cd bundle && shasum -a 256 -c latest.tgz.sha256)
+          node -e "const fs=require('node:fs'); const p=require('./bundle/latest.tgz.provenance.json'); const digest=fs.readFileSync('./bundle/latest.tgz.sha256','utf8').trim().split(/\s+/)[0]; if (p.source_repository !== 'adcontextprotocol/adcp') throw new Error('Unexpected protocol provenance repository'); if (p.source_commit !== process.env.PR_HEAD_SHA) throw new Error('Protocol provenance does not match PR head'); if (p.bundle_sha256 !== digest) throw new Error('Protocol provenance digest does not match checksum')"
+          bundle_version="$(node -p "require('./bundle/latest.tgz.provenance.json').published_version")"
+          mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
+          cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
+          cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
+          printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
+
+          python3 -m http.server 8765 --directory "${RUNNER_TEMP}/protocol-host" > "${RUNNER_TEMP}/protocol-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+            "http://127.0.0.1:8765/protocol/${bundle_version}.tgz" >/dev/null
+
+          export ADCP_BASE_URL=http://127.0.0.1:8765
+          export ADCP_GITHUB_FALLBACK=0
+          npm --prefix sdk run sync-schemas
+          npm --prefix sdk run generate-types
+          npm --prefix sdk run validate-schemas
+
+          # build:lib also ensures historical compatibility caches. The primary
+          # cache above remains the PR bundle; older pinned bundles come from
+          # the normal public host.
+          unset ADCP_BASE_URL ADCP_GITHUB_FALLBACK
+          npm --prefix sdk run build:lib
+
+          bundle_digest="$(node -p "require('./bundle/latest.tgz.provenance.json').bundle_sha256")"
+          {
+            echo '### TypeScript SDK validation'
+            echo
+            echo "- SDK commit: \`$(git -C sdk rev-parse HEAD)\`"
+            echo "- Protocol commit: \`${PR_HEAD_SHA}\`"
+            echo "- Bundle SHA-256: \`${bundle_digest}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  python-sdk:
+    name: Generate Python SDK
+    needs: build-bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: schema-pr-bundle-${{ github.event.pull_request.head.sha }}
+          path: bundle
+
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: adcontextprotocol/adcp-client-python
+          path: sdk
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: sdk/pyproject.toml
+
+      - name: Install SDK development dependencies
+        run: python -m pip install -e '.[dev]'
+        working-directory: sdk
+
+      - name: Generate and test from the PR bundle
+        run: |
+          set -euo pipefail
+          (cd bundle && shasum -a 256 -c latest.tgz.sha256)
+          node -e "const fs=require('node:fs'); const p=require('./bundle/latest.tgz.provenance.json'); const digest=fs.readFileSync('./bundle/latest.tgz.sha256','utf8').trim().split(/\s+/)[0]; if (p.source_repository !== 'adcontextprotocol/adcp') throw new Error('Unexpected protocol provenance repository'); if (p.source_commit !== process.env.PR_HEAD_SHA) throw new Error('Protocol provenance does not match PR head'); if (p.bundle_sha256 !== digest) throw new Error('Protocol provenance digest does not match checksum')"
+          bundle_version="$(node -p "require('./bundle/latest.tgz.provenance.json').published_version")"
+          printf '%s\n' "${bundle_version}" > sdk/src/adcp/ADCP_VERSION
+          mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
+          cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
+          cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
+
+          python3 -m http.server 8765 --directory "${RUNNER_TEMP}/protocol-host" > "${RUNNER_TEMP}/protocol-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
+            "http://127.0.0.1:8765/protocol/${bundle_version}.tgz" >/dev/null
+
+          ADCP_BASE_URL=http://127.0.0.1:8765 \
+            ADCP_SKIP_SIGNATURE=1 \
+            make -C sdk regenerate-schemas PYTHON=python
+          make -C sdk validate-generated PYTHON=python
+          (
+            cd sdk
+            python -m pytest tests/test_code_generation.py tests/test_schemas_version_pin.py -q
+          )
+
+          bundle_digest="$(node -p "require('./bundle/latest.tgz.provenance.json').bundle_sha256")"
+          {
+            echo '### Python SDK validation'
+            echo
+            echo "- SDK commit: \`$(git -C sdk rev-parse HEAD)\`"
+            echo "- Protocol commit: \`${PR_HEAD_SHA}\`"
+            echo "- Bundle SHA-256: \`${bundle_digest}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"

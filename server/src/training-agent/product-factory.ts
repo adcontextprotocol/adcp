@@ -39,7 +39,7 @@ type CanonicalFormatProjection = {
   params: ProductFormatDeclaration['params'];
 };
 type TrainingProduct = Omit<Product,
-  'product_card' | 'product_card_detailed' | 'collections' | 'installments'
+  'product_card' | 'product_card_detailed' | 'collections' | 'installments' | 'audience_activation'
 > & {
   product_card?: Product['product_card'] | ProductCardManifest;
   product_card_detailed?: Product['product_card_detailed'] | ProductCardManifest;
@@ -767,8 +767,9 @@ function buildProduct(
       const builtInstallments: Installment[] = [];
       for (const show of matchingShows) {
         for (const ep of show.episodes || []) {
-          const installment: Installment = {
+          const installment: Installment & { collection_ref: { publisher_domain: string; collection_id: string } } = {
             installment_id: ep.episodeId,
+            collection_ref: { publisher_domain: pub.domain, collection_id: show.showId },
             collection_id: show.showId,
             name: ep.title,
             status: normalizeInstallmentStatus(ep.status),

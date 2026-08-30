@@ -65,7 +65,7 @@
     },
     "placements": {
       "type": "array",
-      "description": "Optional array of specific public placements within this product. Placement IDs are scoped by publisher domain. Product placements declare `kind` to distinguish publisher-referenced placements (`publisher_ref`) from seller-defined inline placements (`seller_inline`). Publisher-referenced placements carry `publisher_domain` plus `placement_id` and may omit `name` because buyers resolve the name from the publisher's adagents.json placement declarations. Seller-inline placements carry buyer-facing `name` directly; when `publisher_domain` is omitted, buyers MAY interpret the placement ID relative to the seller agent's own publisher domain only during the legacy single-publisher transition. Community-maintained fallback files are resolver/source metadata, not a distinct placement kind. Each placement MUST declare `mode: 'targetable'` (buyer may purchase it through targeting_overlay.placement_selection) or `mode: 'included'` (part of fixed/default product composition and not independently selectable). Creative assignments route creatives only after placement inventory is purchased. Placement-level format declarations narrow the product-level creative contract and MUST NOT broaden it. Seller-private delivery objects, source/origin details, and ad-server mappings MUST NOT be exposed here.",
+      "description": "Optional array of specific public placements within this product. Product placements declare `kind` to distinguish publisher-catalog placements (`publisher_ref`) from sales-agent-defined placements (`seller_inline`). Publisher references use canonical `{publisher_domain, placement_id}` identity and may omit name because adagents.json resolves it. New seller-inline placements SHOULD carry `seller_agent`; legacy rows without it remain scoped to the enclosing seller and product. A seller-inline publisher_domain is inventory attribution, not authority to mint an ID in that publisher's catalog namespace. Each placement MUST declare mode: targetable or included. Creative assignments route creatives only after placement inventory is purchased.",
       "items": {
         "$ref": "/schemas/core/placement.json"
       },
@@ -498,9 +498,17 @@
       "default": false,
       "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list. When false, the product is a fixed bundle; when true, collection selection is a product-scoped overlay capability."
     },
+    "list_applications": {
+      "type": "array",
+      "description": "Product-scoped receipts for every effective property- or collection-list targeting reference. Sellers MUST return one receipt per application regardless of response field projection; exclusion applications receive a receipt even when summary.matched is zero, while zero matches for any inclusion application make the product ineligible and it is not returned. Each receipt uses the same pre-list product inventory baseline; pricing and forecast reflect inventory remaining after all effective lists are composed.",
+      "items": {
+        "$ref": "/schemas/core/inventory-list-application.json"
+      },
+      "minItems": 1
+    },
     "installments": {
       "type": "array",
-      "description": "Specific installments included in this product. Each installment references its parent collection via collection_id when the product spans multiple collections. When absent with collections present, the product covers the collections broadly (run-of-collection).",
+      "description": "Specific installments included in this product. Each installment references its parent through canonical collection_ref when the product spans multiple collections or publisher namespaces; collection_id remains a deprecated single-namespace shorthand. When absent with collections present, the product covers the collections broadly (run-of-collection).",
       "items": {
         "$ref": "/schemas/core/installment.json"
       }
@@ -511,6 +519,9 @@
       "items": {
         "type": "string"
       }
+    },
+    "acceptance_policy_profile_ids": {
+      "$ref": "/schemas/core/acceptance-policy-profile-ids.json"
     },
     "trusted_match": {
       "type": "object",

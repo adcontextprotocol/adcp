@@ -44,6 +44,21 @@ const PACKAGE_JSON = path.join(__dirname, '../package.json');
 const SKILLS_DIR = path.join(__dirname, '../skills');
 const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 
+function resolveBuildTimestamp(env = process.env, now = new Date()) {
+  if (env.SOURCE_DATE_EPOCH === undefined) return now.toISOString();
+  if (!/^\d+$/.test(env.SOURCE_DATE_EPOCH)) {
+    throw new Error('SOURCE_DATE_EPOCH must be an integer number of seconds since the Unix epoch');
+  }
+  const date = new Date(Number(env.SOURCE_DATE_EPOCH) * 1000);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('SOURCE_DATE_EPOCH is outside the supported date range');
+  }
+  return date.toISOString();
+}
+
+const BUILD_TIMESTAMP = resolveBuildTimestamp();
+const BUILD_DATE = BUILD_TIMESTAMP.slice(0, 10);
+
 // Active MCP role catalogs intentionally use explicit tool sets. Protocol
 // tags alone are not sufficient: creative construction is historically tagged
 // media-buy, while a seller-hosted media-buy role also needs account, task,
@@ -798,7 +813,7 @@ function generateExtensionRegistry(extensions, targetVersion) {
     title: 'AdCP Extension Registry',
     description: 'Auto-generated registry of formal AdCP extensions. Extensions provide typed schemas for vendor-specific or domain-specific data within the ext field. Agents declare which extensions they support in their agent card.',
     _generated: true,
-    _generatedAt: new Date().toISOString(),
+    _generatedAt: BUILD_TIMESTAMP,
     extensions: {}
   };
 
@@ -1335,7 +1350,7 @@ function buildManifest(sourceDir, urlVersion, semverVersion, repoRoot) {
   return {
     $schema: `/schemas/${urlVersion}/manifest.schema.json`,
     adcp_version: semverVersion,
-    generated_at: new Date().toISOString(),
+    generated_at: BUILD_TIMESTAMP,
     tools: toolsObj,
     task_result_resolution: buildTaskResultResolution(sourceDir, toolsObj),
     error_code_policy: {
@@ -1401,7 +1416,7 @@ function copyAndTransformSchemas(sourceDir, targetDir, version) {
         // in core/version-envelope.json, which uses release-precision.
         schema.published_version = version;
         schema.adcp_version = version;
-        schema.lastUpdated = new Date().toISOString().split('T')[0];
+        schema.lastUpdated = BUILD_DATE;
         schema.baseUrl = `/schemas/${version}`;
         schema.protocol_layers = [
           {
@@ -1476,6 +1491,14 @@ function updateSourceRegistry(version) {
   registry.adcp_version = version; // legacy alias through 3.x; sunset at 4.0
   fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2) + '\n', 'utf8');
   console.log(`✏️  Updated source registry: ${registryPath}`);
+}
+
+function pinSchemaRootDeclaredVersion(root, version) {
+  const registryPath = path.join(root, 'index.json');
+  const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+  registry.published_version = version;
+  registry.adcp_version = version;
+  fs.writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
 }
 
 /**
@@ -2203,7 +2226,7 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
 
       // Add metadata indicating this is bundled
       dereferenced._bundled = {
-        generatedAt: new Date().toISOString(),
+        generatedAt: BUILD_TIMESTAMP,
         note: 'This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory.'
       };
 
@@ -2519,6 +2542,7 @@ async function main() {
     console.log(`📋 Updating latest/ to match release`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    pinSchemaRootDeclaredVersion(latestDir, version);
     copyAsyncResponseRefsToCore(latestDir);
 
     // Build extensions for latest (using full version for filtering)
@@ -2576,6 +2600,10 @@ async function main() {
     console.log(`📋 Building schemas to dist/schemas/latest/`);
     ensureDir(latestDir);
     copyAndTransformSchemas(SOURCE_DIR, latestDir, 'latest');
+    // Public SDK schemaRoot consumers bind a root to an exact protocol
+    // release. Keep latest/ URLs for development while declaring which
+    // package/schema release those aliases represent.
+    pinSchemaRootDeclaredVersion(latestDir, version);
     const asyncRefCount = copyAsyncResponseRefsToCore(latestDir);
     console.log(`   ✓ Copied ${asyncRefCount} async response schemas to core/async-response-refs/`);
 

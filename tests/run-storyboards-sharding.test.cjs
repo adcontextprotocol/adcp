@@ -88,6 +88,17 @@ test('resolved proposal lifecycle storyboards are not quarantined', () => {
     source,
     /CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS\.get\(storyboardId\)/,
   );
+  assert.match(
+    source,
+    /const isCurrentSourceRun =[\s\S]*resolve\('dist\/compliance\/latest'\)/,
+    'an explicit dist/compliance/latest root must still use current-source quarantines',
+  );
+  assert.match(
+    source,
+    /const wireAdcpVersion = isThreeZeroCompatRun[\s\S]*isCurrentSourceRun[\s\S]*TRAINING_AGENT_CURRENT_ADCP_VERSION/,
+    'an explicit dist/compliance/latest root must negotiate the current wire version',
+  );
+  assert.match(source, /\?\? \(isCurrentSourceRun/);
 });
 
 test('runner flushes complete shard totals before bypassing stalled platform disposal', () => {
@@ -292,7 +303,7 @@ test('current training-agent floors are ratcheted and mirrored by local and CI r
   const baselines = [
     ['signals', 45, 80],
     ['sales', 133, 632],
-    ['governance', 47, 157],
+    ['governance', 47, 161],
     ['creative', 49, 209],
     ['creative-builder', 50, 184],
     ['brand', 45, 116],

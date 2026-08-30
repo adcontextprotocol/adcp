@@ -17,21 +17,35 @@ Full descriptions live in \`docs/aao/addie-tools.mdx\` — use \`search_docs\` w
 
 Treat every tool listed here as available. The router handles selection invisibly — never tell a user a tool "isn't loaded" or "isn't in this turn." If a tool name is in this catalog, you can act on it.
 
-- **knowledge** — search_docs, get_doc, search_repos, search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file, list_github_issues, validate_json, get_schema, list_schemas, compare_schema_versions
-- **member** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge, list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, list_perspectives, create_working_group_post, attach_content_asset, bookmark_resource, draft_social_posts, list_committee_documents
-- **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain, research_brand, resolve_brand, save_brand, list_brands, list_missing_brands
-- **agent_testing** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, test_adcp_agent, evaluate_agent_quality, grade_agent_signing, diagnose_agent_auth, compare_media_kit, test_rfp_response, test_io_execution, validate_agent, resolve_property, save_property, list_properties, list_missing_properties
+- **knowledge** — search_docs, get_doc, search_repos
+- **community_research** — search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file
+- **schema_reference** — validate_json, get_schema, list_schemas, compare_schema_versions
+- **member_profile** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
+- **community_groups** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, create_working_group_post, bookmark_resource, list_committee_documents
+- **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain
+- **brand_registry** — research_brand, resolve_brand, save_brand, list_brands, list_missing_brands, upload_brand_logo, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification
+- **agent_validation** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, test_adcp_agent, evaluate_agent_quality, grade_agent_signing, diagnose_agent_auth, compare_media_kit, test_rfp_response, test_io_execution, validate_agent
+- **property_catalog** — resolve_property, save_property, list_properties, list_missing_properties, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
+- **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
 - **content** — propose_news_source, add_committee_document, update_committee_document, delete_committee_document
-- **billing** *(admin only)* — find_membership_products, create_payment_link, send_invoice, send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
+- **publishing_author** — propose_content, get_my_content, read_google_doc, check_illustration_status, generate_perspective_illustration, attach_content_asset
+- **publishing_review** — list_pending_content, approve_content, reject_content, request_revisions
+- **publishing_promotion** — list_perspectives, draft_social_posts
+- **github** — draft_github_issue, create_github_issue, get_github_issue, list_github_issues
+- **illustrations** — search_image_library
+- **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
+- **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
 - **meetings** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
 - **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_prospects** *(admin only)* — add_prospect, update_prospect, enrich_company, query_prospects, prospect_search_lusha, claim_prospect, triage_prospect_domain, suggest_prospects
 - **admin_feeds** *(admin only)* — search_industry_feeds, add_industry_feed, get_feed_stats, list_feed_proposals, approve_feed_proposal, reject_feed_proposal, add_media_contact
-- **admin_groups** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders, add_working_group_member, remove_working_group_member, rename_working_group
+- **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
+- **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
+- **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
 - **admin_organizations** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains, update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
 - **admin_workflows** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation, set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
@@ -41,7 +55,7 @@ Treat every tool listed here as available. The router handles selection invisibl
 
 ### Always available
 
-escalate_to_admin, get_escalation_status, get_account_link, capture_learning, set_outreach_preference, search_image_library, draft_github_issue, create_github_issue, get_github_issue, propose_content, get_my_content, list_pending_content, approve_content, reject_content, request_revisions, read_google_doc, check_illustration_status, generate_perspective_illustration
+escalate_to_admin, get_escalation_status, get_account_link, capture_learning, set_outreach_preference
 
 ### Always available (admin)
 
@@ -51,7 +65,7 @@ resolve_escalation, list_escalations
 
 Conditionally registered (channel- or env-gated). Available when their preconditions are met.
 
-research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, confirm_send_invoice, get_billing_portal, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification, parse_brand_properties, import_brand_properties, upload_brand_logo, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry, get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status
+research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
 `;
 
 /** Explicit catalog names for runtime/inventory parity checks. */

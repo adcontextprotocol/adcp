@@ -64,11 +64,16 @@ import {
   getShadowReplayGenerationSummary,
   getShadowReplayJudgmentSummary,
 } from "../addie/jobs/shadow-replay-trace.js";
+import { evaluateShadowReplayPromotion } from '../addie/jobs/shadow-replay-rollout.js';
 import { getModelExecutionReadiness } from '../addie/model-execution-readiness.js';
 import {
   ROUTER_SHADOW_RETENTION_DAYS,
   getRouterShadowSummary,
 } from '../addie/router-shadow.js';
+import {
+  ROUTER_CANARY_SUMMARY_MAX_DAYS,
+  getRouterCanarySummary,
+} from '../addie/router-canary.js';
 
 const logger = createLogger("addie-admin-routes");
 const addieDb = new AddieDatabase();
@@ -568,7 +573,8 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
   });
 
   // GET /api/admin/addie/threads/shadow-replay-captures
-  // Per-opportunity rollout accounting contains only categorical outcomes.
+  // Per-opportunity accounting and the advisory promotion gate contain only
+  // aggregate/categorical evidence. This endpoint cannot enable a canary.
   apiRouter.get("/threads/shadow-replay-captures", async (req, res) => {
     try {
       const parsedDays = typeof req.query.days === 'string'
@@ -583,6 +589,7 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         getShadowReplayJudgmentSummary(parsedDays),
         getShadowReplayFunnelSummary(parsedDays),
       ]);
+      const rollout = evaluateShadowReplayPromotion(generationOutcomes, judgmentOutcomes);
       res.json({
         days: parsedDays,
         total: outcomes.reduce((sum, outcome) => sum + outcome.count, 0),
@@ -597,6 +604,26 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
             (sum, outcome) => sum + outcome.output_tokens,
             0,
           ),
+          cache_read_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_read_tokens,
+            0,
+          ),
+          cache_write_tokens: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_write_tokens,
+            0,
+          ),
+          usage_complete: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.usage_complete_count,
+            0,
+          ),
+          latency_complete: generationOutcomes.reduce(
+            (sum, outcome) => sum + outcome.latency_count,
+            0,
+          ),
+          estimated_cost_micros: generationOutcomes.reduce(
+            (sum, outcome) => sum + BigInt(outcome.estimated_cost_micros),
+            0n,
+          ).toString(),
           outcomes: generationOutcomes,
         },
         judgments: {
@@ -609,8 +636,29 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
             (sum, outcome) => sum + outcome.output_tokens,
             0,
           ),
+          cache_read_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_read_tokens,
+            0,
+          ),
+          cache_write_tokens: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.cache_write_tokens,
+            0,
+          ),
+          usage_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.usage_complete_count,
+            0,
+          ),
+          latency_complete: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + outcome.latency_count,
+            0,
+          ),
+          estimated_cost_micros: judgmentOutcomes.reduce(
+            (sum, outcome) => sum + BigInt(outcome.estimated_cost_micros),
+            0n,
+          ).toString(),
           outcomes: judgmentOutcomes,
         },
+        rollout,
         funnel,
       });
     } catch (error) {
@@ -642,6 +690,28 @@ export function createAddieAdminRouter(): { pageRouter: Router; apiRouter: Route
         'Error fetching router shadow summary',
       );
       res.status(500).json({ error: 'Unable to fetch router shadow summary' });
+    }
+  });
+
+  // GET /api/admin/addie/threads/router-canary-summary
+  // Aggregate-only admission, fallback, latency, cost, and rollback evidence.
+  apiRouter.get('/threads/router-canary-summary', async (req, res) => {
+    const days = typeof req.query.days === 'string' && req.query.days.trim() !== ''
+      ? Number(req.query.days)
+      : 7;
+    if (!Number.isInteger(days) || days < 1 || days > ROUTER_CANARY_SUMMARY_MAX_DAYS) {
+      return res.status(400).json({
+        error: `days must be an integer from 1 to ${ROUTER_CANARY_SUMMARY_MAX_DAYS}`,
+      });
+    }
+    try {
+      res.json(await getRouterCanarySummary(days));
+    } catch (error) {
+      logger.error(
+        { errorType: error instanceof Error ? error.name : typeof error },
+        'Error fetching router canary summary',
+      );
+      res.status(500).json({ error: 'Unable to fetch router canary summary' });
     }
   });
 

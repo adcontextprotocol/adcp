@@ -35,6 +35,10 @@ import {
   type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
+import {
+  withSellerManagedIdempotencyReplay,
+  withSellerManagedTaskReplay,
+} from '../seller-managed-control-jobs.js';
 import { getPool } from '../../db/client.js';
 import { getSdkIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { getWebhookSigningMaterial } from '../webhooks.js';
@@ -47,10 +51,12 @@ import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
 import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
-import type { TrainingContext } from '../types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
 import { getCanonicalBase } from '../canonical-base.js';
 import { creativeProjectionAdapters } from '../task-handlers.js';
 import { sharedTrainingTaskStore } from '../mcp-task-store.js';
+import { taskRegistryNamespaceForTenant } from '../task-registry-scope.js';
+import { ensureTrainingAgentSchemaBundle } from '../schema-compat.js';
 
 export { getCanonicalBase } from '../canonical-base.js';
 
@@ -137,10 +143,10 @@ export function resolveTenantHost(_req: Request): string {
  * lookup to first query keeps construction safe and lets the Postgres
  * registry actually be used after the DB is up.
  *
- * Migration for `adcp_decisioning_tasks` lives at
- * `server/src/db/migrations/463_adcp_decisioning_tasks.sql`.
+ * The scoped v2 table is created by
+ * `server/src/db/migrations/560_scope_adcp_decisioning_tasks.sql`.
  */
-function pickTaskRegistry(): TaskRegistry {
+function pickTaskRegistry(tenantId: string): TaskRegistry {
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     return createInMemoryTaskRegistry();
@@ -148,7 +154,11 @@ function pickTaskRegistry(): TaskRegistry {
   const lazyPool = {
     query: (text: string, values?: unknown[]) => getPool().query(text, values),
   };
-  return createPostgresTaskRegistry({ pool: lazyPool });
+  return createPostgresTaskRegistry({
+    pool: lazyPool,
+    namespace: taskRegistryNamespaceForTenant(tenantId),
+    tableName: 'adcp_decisioning_tasks_v2',
+  });
 }
 
 /**
@@ -182,20 +192,19 @@ function pickStateStore(): AdcpStateStore {
 }
 
 function buildDefaultServerOptions(
-  storyboardCompat?: TrainingContext['storyboardCompat'],
-  taskRegistry: TaskRegistry = pickTaskRegistry(),
+  storyboardCompat: TrainingContext['storyboardCompat'] | undefined,
+  taskRegistry: TaskRegistry,
 ): CreateAdcpServerFromPlatformOptions {
   const projectionAdapters = creativeProjectionAdapters();
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
-    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : '3.2-beta.6',
-    idempotency: getSdkIdempotencyStore(),
+    adcpVersion: storyboardCompat?.version === '3.0' ? '3.0' : TRAINING_AGENT_CURRENT_ADCP_VERSION,
+    idempotency: withSellerManagedIdempotencyReplay(getSdkIdempotencyStore(), taskRegistry),
     webhooks: getWebhookSigningMaterial(),
     // Preserve terminal inline callbacks when supported by the SDK; actual
     // task handoffs always use the durable framework emitter configured above.
     autoEmitCompletionWebhooks: true,
-    taskRegistry,
     taskStore: sharedTrainingTaskStore,
     stateStore: pickStateStore(),
     mergeSeam: 'log-once',
@@ -270,24 +279,26 @@ export function createRegistryHolder(options: {
       if (registry) return registry;
       if (pendingInit) return pendingInit;
       const promise = (async () => {
+        await ensureTrainingAgentSchemaBundle();
         const t0 = Date.now();
         logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
-        const taskRegistry = pickTaskRegistry();
+        const signalsTaskRegistry = pickTaskRegistry('signals');
+        const salesTaskRegistry = withSellerManagedTaskReplay(pickTaskRegistry('sales'));
         const reg = createTenantRegistry({
-          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, taskRegistry),
+          defaultServerOptions: buildDefaultServerOptions(options.storyboardCompat, salesTaskRegistry),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
         const tCreate = Date.now();
         const configs = [
-          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase, options, taskRegistry) },
-          { id: 'sales', cfg: buildSalesTenantConfig(hostBase, options, taskRegistry) },
-          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase, options) },
-          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase, options) },
-          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
-          { id: 'brand', cfg: buildBrandTenantConfig(hostBase, options) },
-          { id: 'si', cfg: buildSiTenantConfig(hostBase, options) },
+          { id: 'signals', taskRegistry: signalsTaskRegistry, cfg: buildSignalsTenantConfig(hostBase, options, signalsTaskRegistry) },
+          { id: 'sales', taskRegistry: salesTaskRegistry, cfg: buildSalesTenantConfig(hostBase, options, salesTaskRegistry) },
+          { id: 'governance', taskRegistry: pickTaskRegistry('governance'), cfg: buildGovernanceTenantConfig(hostBase, options) },
+          { id: 'creative', taskRegistry: pickTaskRegistry('creative'), cfg: buildCreativeTenantConfig(hostBase, options) },
+          { id: 'creative-builder', taskRegistry: pickTaskRegistry('creative-builder'), cfg: buildCreativeBuilderTenantConfig(hostBase, options) },
+          { id: 'brand', taskRegistry: pickTaskRegistry('brand'), cfg: buildBrandTenantConfig(hostBase, options) },
+          { id: 'si', taskRegistry: pickTaskRegistry('si'), cfg: buildSiTenantConfig(hostBase, options) },
         ] as const;
         const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
@@ -295,10 +306,16 @@ export function createRegistryHolder(options: {
         // would race the background validation and see 'pending' (refused
         // traffic) for the first ~10ms.
         await Promise.all(
-          configs.map(async ({ id, cfg }) => {
+          configs.map(async ({ id, taskRegistry, cfg }) => {
             const start = Date.now();
             try {
-              await reg.register(cfg.tenantId, cfg.config, { awaitFirstValidation: true });
+              await reg.register(cfg.tenantId, {
+                ...cfg.config,
+                serverOptions: {
+                  ...cfg.config.serverOptions,
+                  taskRegistry,
+                },
+              }, { awaitFirstValidation: true });
               logger.info({ tenantId: id, elapsedMs: Date.now() - start }, 'Tenant registered');
             } catch (err) {
               logger.error(

@@ -1,5 +1,5 @@
 /**
- * /sales tenant — sales-non-guaranteed + sales-guaranteed specialisms.
+ * /sales tenant — non-guaranteed, guaranteed, and DOOH sales specialisms.
  *
  * Distinct platform from /signals (single-specialism per tenant). Buyers
  * call sales-track tools at this URL; signals tools live on /signals.
@@ -16,13 +16,13 @@ import {
 } from '../v6-sales-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { buildSalesComplyConfig } from './comply.js';
-import { listAccountsTool, syncGovernanceTool } from './account-tools.js';
+import { listAccountChangesTool, listAccountsTool, syncGovernanceTool } from './account-tools.js';
 import { reportUsageTool } from './report-usage-tool.js';
 import { validateInputTool } from './validate-input-tool.js';
 import { buildCreativeTool, previewCreativeTool } from './creative-tools.js';
 import { customToolFor } from './custom-tool-helper.js';
 import { handleSyncCatalogs } from '../catalog-event-handlers.js';
-import type { TrainingContext } from '../types.js';
+import { supportsAccountChangeFeed, type TrainingContext } from '../types.js';
 import { syncAgentNotificationConfigsLegacy } from '../agent-notification-configs.js';
 
 const TENANT_ID = 'sales';
@@ -70,17 +70,29 @@ export function buildSalesTenantConfig(
   config: TenantConfig;
 } {
   const material = getTenantSigningMaterial(TENANT_ID);
+  const platform = new TrainingSalesPlatform(
+    options.storyboardCompat,
+    options.proposalNegotiationProfile ?? 'ask-only',
+    taskRegistry,
+  );
   return {
     tenantId: TENANT_ID,
     config: {
       agentUrl: `${host}/${TENANT_ID}`,
       signingKey: material.signingKey,
       label: 'Training agent — sales',
-      platform: new TrainingSalesPlatform(
-        options.storyboardCompat,
-        options.proposalNegotiationProfile ?? 'ask-only',
-      ),
+      platform,
       serverOptions: {
+        observability: {
+          onWebhookEmit(info) {
+            // The SDK also fires this hook when delivery throws before its
+            // durable checkpoint. Only a confirmed delivery may retire the
+            // seller outbox; every failure remains eligible for recovery.
+            if (info.tool === 'control_media_buy' && info.success) {
+              return platform.acknowledgeSellerManagedWebhook(info.taskId);
+            }
+          },
+        },
         // The public training sandbox intentionally exposes both current
         // compact tools and registered compatibility aliases.
         mcpToolProfile: 'all',
@@ -90,7 +102,7 @@ export function buildSalesTenantConfig(
         // persistence boundary without leaking legacy identity into current paths.
         legacyHandlers: {
           mediaBuy: {
-            getProducts: legacyGetProductsHandler(options.storyboardCompat),
+            getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
           },
@@ -110,7 +122,8 @@ export function buildSalesTenantConfig(
           // absent; advertising it under 3.0-compat makes those steps execute
           // and fail the older response schema. Gate it off 3.0 like the
           // creative tools below. (/signals keeps it across versions.)
-          ...(options.storyboardCompat?.version === '3.0' ? {} : {
+          ...(supportsAccountChangeFeed(options.storyboardCompat?.version ?? '3.2-beta.5') ? {
+            list_account_changes: listAccountChangesTool(options.storyboardCompat),
             sync_agent_notification_configs: customToolFor(
               'sync_agent_notification_configs',
               'Register, replace, pause, or clear caller-scoped agent-level capability-change webhook subscribers.',
@@ -138,7 +151,7 @@ export function buildSalesTenantConfig(
               creativeBillsThroughAdcp: false,
               ...(options.storyboardCompat && { storyboardCompat: options.storyboardCompat }),
             }),
-          }),
+          } : {}),
         },
         complyTest: buildSalesComplyConfig(options.storyboardCompat, taskRegistry),
       },

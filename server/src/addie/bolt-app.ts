@@ -173,11 +173,21 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
+import {
+  loadRouterCanaryMetadata,
+  routeWithRouterCanary,
+} from './router-canary-runtime.js';
+import { selectRouterCanaryCohort } from './router-canary.js';
 import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
 import {
+  OPENAI_ROUTER_MODEL,
+  OpenAIResponsesProvider,
+} from './model-providers/openai-responses-provider.js';
+import {
   getToolsForSets,
   buildUnavailableSetsHint,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from './tool-sets.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
@@ -185,7 +195,11 @@ import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-do
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
 import { DIRECTORY_TOOLS, createDirectoryToolHandlers } from './mcp/directory-tools.js';
 import { resolveSlackDirectoryContext, type SlackDirectoryAudience } from './directory-access.js';
-import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
+import {
+  SI_HOST_TOOLS,
+  createSiHostToolHandlers,
+  hasCachedSiSession,
+} from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
 import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
 import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
@@ -759,8 +773,8 @@ async function buildCurrentChannelCostOptions(
 
 let addieDb: AddieDatabase | null = null;
 let addieRouter: AddieRouter | null = null;
+let addieLunaRouter: AddieRouter | null = null;
 let threadContextStore: DatabaseThreadContextStore | null = null;
-let setSiContext: (memberContext: MemberContext | null, threadExternalId: string) => void = () => {};
 let initialized = false;
 
 /**
@@ -771,6 +785,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   const botToken = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
   const signingSecret = process.env.ADDIE_SIGNING_SECRET || process.env.SLACK_SIGNING_SECRET;
   const anthropicKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!botToken || !signingSecret) {
     logger.warn('Addie Bolt: Missing ADDIE_BOT_TOKEN or ADDIE_SIGNING_SECRET, Addie will be disabled');
@@ -794,13 +809,28 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize router (uses Haiku for fast classification)
   addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
 
+  // Construct the strict candidate independently. Selection remains default-off
+  // and fail-closed in router-canary.ts; merely having an API key changes no traffic.
+  addieLunaRouter = openAiKey
+    ? new AddieRouter(
+        openAiKey,
+        new OpenAIResponsesProvider(openAiKey),
+        providerHealth,
+        {
+          model: OPENAI_ROUTER_MODEL,
+          reasoning: { effort: 'none' },
+          strictOutput: true,
+        },
+      )
+    : null;
+
   // Initialize database access
   addieDb = new AddieDatabase();
 
   // Initialize thread context store
   threadContextStore = new DatabaseThreadContextStore(addieDb);
 
-  // Register shared baseline tools (knowledge, billing, schema, directory, brand, property)
+  // Register shared baseline tools (knowledge, billing, schema, directory)
   // Shared with web chat handler via register-baseline-tools.ts
   await registerBaselineTools(claudeClient);
 
@@ -826,31 +856,6 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
     }
     logger.info('Addie: Google Docs tools registered');
   }
-
-  // Register SI host tools (Sponsored Intelligence protocol)
-  // These enable Addy to connect users with AAO member brand agents
-  // Note: We need to pass context providers that will be called per-request
-  // For now, we register with placeholder getters - actual context comes from handleUserMessage
-  let currentMemberContext: MemberContext | null = null;
-  let currentThreadExternalId: string = '';
-
-  const siHostHandlers = createSiHostToolHandlers(
-    () => currentMemberContext,
-    () => currentThreadExternalId
-  );
-  for (const tool of SI_HOST_TOOLS) {
-    const handler = siHostHandlers.get(tool.name);
-    if (handler) {
-      claudeClient.registerTool(tool, handler);
-    }
-  }
-  logger.info('Addie: SI host tools registered');
-
-  // Export setters for SI context (called from handleUserMessage)
-  setSiContext = (memberContext: MemberContext | null, threadExternalId: string) => {
-    currentMemberContext = memberContext;
-    currentThreadExternalId = threadExternalId;
-  };
 
   // Create the Assistant
   const assistant = new Assistant({
@@ -1170,7 +1175,7 @@ async function buildRequestContext(
 async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId: string,
-  threadId?: string,
+  threadId: string,
   threadContext?: ThreadContext | null,
   directoryAudience?: SlackDirectoryAudience,
 ): Promise<UserScopedToolsResult> {
@@ -1189,6 +1194,18 @@ async function createUserScopedTools(
   };
   let allTools = [...MEMBER_TOOLS];
   const allHandlers = new Map(memberHandlers);
+
+  // Bind SI identity and session state to this request. The former global
+  // getters could be overwritten by another concurrent Slack request before
+  // a tool call executed, and also kept the SI surface on every provider wire.
+  const siHostHandlers = createSiHostToolHandlers(
+    () => memberContext,
+    () => threadId,
+  );
+  allTools.push(...SI_HOST_TOOLS);
+  for (const [name, handler] of siHostHandlers) {
+    allHandlers.set(name, handler);
+  }
 
   // Shadow the globally registered anonymous directory handlers with a
   // caller-scoped view. API-access members may discover members_only agents;
@@ -1236,18 +1253,23 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
 
-  // Add billing tools for all users (membership signup assistance)
-  // Skip in public channels — billing tools enable enrollment pitching
+  // Add billing tools for private conversations. Public channels retain only
+  // the read-only membership lookup used by certification paywall guidance;
+  // routing still filters it out unless certification selected that tool.
   const isPublicChannel = threadContext?.viewing_channel_is_private === false;
+  const requestBillingTools = isPublicChannel
+    ? BILLING_TOOLS.filter((tool) => tool.name === 'find_membership_products')
+    : BILLING_TOOLS;
+  const billingHandlers = createBillingToolHandlers(memberContext);
+  allTools.push(...requestBillingTools);
+  for (const tool of requestBillingTools) {
+    const handler = billingHandlers.get(tool.name);
+    if (handler) allHandlers.set(tool.name, handler);
+  }
   if (!isPublicChannel) {
-    const billingHandlers = createBillingToolHandlers(memberContext);
-    allTools.push(...BILLING_TOOLS);
-    for (const [name, handler] of billingHandlers) {
-      allHandlers.set(name, handler);
-    }
     logger.debug('Addie Bolt: Billing tools enabled');
   } else {
-    logger.debug('Addie Bolt: Billing tools skipped (public channel)');
+    logger.debug('Addie Bolt: Only read-only membership lookup enabled (public channel)');
   }
 
   // Add escalation tools for all users
@@ -1514,6 +1536,7 @@ async function selectRoutedToolsForSlackResponse(
   isAAOAdmin: boolean;
   unavailableHint: string;
   selectedToolSets: string[];
+  allowedToolNames: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1535,6 +1558,7 @@ async function selectRoutedToolsForSlackResponse(
       workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
       systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
       hasActiveCertification: options?.hasActiveCertification,
+      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
     });
     const { filteredTools, unavailableHint } = filterToolsBySet(
       userTools,
@@ -1547,6 +1571,11 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       selectedToolSets: fallbackSets,
+      allowedToolNames: getToolsForSets(
+        fallbackSets,
+        userIsAdmin,
+        threadContext?.viewing_channel_is_private === false,
+      ),
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1569,7 +1598,7 @@ async function selectRoutedToolsForSlackResponse(
   const isDirectInteraction = source === 'dm' || source === 'mention';
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
-    : isDirectInteraction ? ['knowledge'] : [];
+    : isDirectInteraction ? [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS] : [];
   const selectedSets = selectSlackToolSets({
     routerSelectedSets,
     routerAvailable: true,
@@ -1578,6 +1607,7 @@ async function selectRoutedToolsForSlackResponse(
     workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
     systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
     hasActiveCertification: options?.hasActiveCertification,
+    hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -1612,6 +1642,11 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     selectedToolSets: selectedSets,
+    allowedToolNames: getToolsForSets(
+      selectedSets,
+      userIsAdmin,
+      threadContext?.viewing_channel_is_private === false,
+    ),
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1867,9 +1902,6 @@ async function handleUserMessage({
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
   }
 
-  // Set SI context for SI host tools (allows them to access member context and thread ID)
-  setSiContext(memberContext, externalId);
-
   // Log user message to unified thread
   const userMessageFlagged = inputValidation.flagged;
   try {
@@ -1895,7 +1927,13 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasActiveCertification }
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
@@ -1918,6 +1956,7 @@ async function handleUserMessage({
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2676,6 +2715,7 @@ async function handleAppMention({
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3498,6 +3538,8 @@ export async function buildChannelResponseInvocation(input: {
     isAdmin: userIsAdmin,
     workingGroupSlug: channelContext?.viewing_channel_working_group_slug,
     systemRole: channelContext?.viewing_channel_system_role as SystemChannelRole | undefined,
+    hasSponsoredIntelligenceContext:
+      hasCachedSiSession(threadId) || (siRetrievalResult?.agents.length ?? 0) > 0,
   });
 
   const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -3563,13 +3605,20 @@ export async function buildChannelResponseInvocation(input: {
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
       selectedToolSetNames: selectedToolSets,
+      allowedToolNames: officialDocsProfile
+        ? OFFICIAL_DOCS_ALLOWED_TOOLS
+        : getToolsForSets(
+            selectedToolSets,
+            userIsAdmin,
+            channelContext?.viewing_channel_is_private === false,
+          ),
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
         ? {
             disableServerTools: true,
-            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+            initialToolChoice: { type: 'tool', name: 'search_docs' },
             maxIterations: 4,
           }
         : {}),
@@ -3950,7 +3999,13 @@ async function handleDirectMessage(
     userId,
     thread.thread_id,
     null,
-    { isThread: true, hasActiveCertification },
+    {
+      isThread: true,
+      hasActiveCertification,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -3974,6 +4029,7 @@ async function handleDirectMessage(
         : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4369,6 +4425,7 @@ async function handleActiveThreadReply({
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -4762,6 +4819,15 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
+      const canaryCandidate = addieLunaRouter && selectRouterCanaryCohort({
+        channelId,
+        opportunityId: event.ts,
+        // This only avoids a metadata fetch when the independent feature,
+        // evidence, config, allowlist, and sample gates are already closed.
+        // Paid-call admission rechecks live Slack metadata below.
+        channelIsPublic: true,
+        channelIsShared: false,
+      });
       const shadowCandidate = selectRouterShadowCohort({
         channelId,
         opportunityId: event.ts,
@@ -4771,25 +4837,46 @@ async function handleChannelMessage({
         channelIsPublic: true,
         channelIsShared: false,
       });
+      const routerPlanPromise = canaryCandidate?.selected && addieLunaRouter
+        ? (async () => {
+            const currentChannel = await loadRouterCanaryMetadata(
+              () => getChannelInfo(channelId, { forceRefresh: true }),
+            );
+            const result = await routeWithRouterCanary({
+              channelId,
+              opportunityId: event.ts,
+              channelIsPublic: currentChannel?.is_private === false,
+              channelIsShared: currentChannel === null
+                || currentChannel.is_shared
+                || currentChannel.is_org_shared
+                || currentChannel.is_pending_ext_shared === true,
+              routingContext: routingCtx,
+            }, {
+              candidateRoute: addieLunaRouter.route.bind(addieLunaRouter),
+              fallbackRoute: addieRouter.route.bind(addieRouter),
+            });
+            return result.plan;
+          })()
+        : addieRouter.route(routingCtx, {
+            ...(shadowCandidate.selected && {
+              observer: async (observation) => {
+                const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
+                  .catch(() => null);
+                await runRouterShadow({
+                  channelId,
+                  opportunityId: event.ts,
+                  channelIsPublic: currentChannel?.is_private === false,
+                  channelIsShared: currentChannel === null
+                    || currentChannel.is_shared
+                    || currentChannel.is_org_shared
+                    || currentChannel.is_pending_ext_shared === true,
+                  observation,
+                });
+              },
+            }),
+          });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx, {
-          ...(shadowCandidate.selected && {
-            observer: async (observation) => {
-              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
-                .catch(() => null);
-              await runRouterShadow({
-                channelId,
-                opportunityId: event.ts,
-                channelIsPublic: currentChannel?.is_private === false,
-                channelIsShared: currentChannel === null
-                  || currentChannel.is_shared
-                  || currentChannel.is_org_shared
-                  || currentChannel.is_pending_ext_shared === true,
-                observation,
-              });
-            },
-          }),
-        }),
+        routerPlanPromise,
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;

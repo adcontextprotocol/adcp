@@ -18,7 +18,7 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import type { Socket } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import YAML from 'yaml';
 import {
   listAllComplianceStoryboards,
@@ -41,6 +41,7 @@ import {
   type LoadedTestKit,
 } from '../../src/compliance/storyboard-runner-options.js';
 import { formatFailureDetailSnippet, formatStepFailureDetail } from './storyboard-report-format.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
 // Set auth env BEFORE loading the training-agent router. The router captures
 // PUBLIC_TEST_AGENT_TOKEN / TRAINING_AGENT_TOKEN into its authenticator at
@@ -102,15 +103,18 @@ if (shardIndex !== undefined && shardCount !== undefined && (shardIndex < 0 || s
 const shard = shardIndex === undefined || shardCount === undefined
   ? undefined
   : { index: shardIndex, count: shardCount };
-const complianceOptions = process.env.ADCP_COMPLIANCE_DIR
-  ? {
-      complianceDir: process.env.ADCP_COMPLIANCE_DIR,
-      ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
-    }
-  : undefined;
-const releasedComplianceVersion = process.env.ADCP_COMPLIANCE_DIR
+const complianceOptions = {
+  ...(process.env.ADCP_COMPLIANCE_DIR && { complianceDir: process.env.ADCP_COMPLIANCE_DIR }),
+  ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
+};
+const releasedComplianceVersion = complianceOptions.complianceDir
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
+const isCurrentSourceRun = releasedComplianceVersion === undefined
+  || (
+    complianceOptions.complianceDir !== undefined
+    && resolve(complianceOptions.complianceDir) === resolve('dist/compliance/latest')
+  );
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
@@ -120,8 +124,8 @@ const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.
 // unpinned default.
 const wireAdcpVersion = isThreeZeroCompatRun
   ? '3.0'
-  : releasedComplianceVersion === undefined
-    ? '3.2-beta.6'
+  : isCurrentSourceRun
+    ? TRAINING_AGENT_CURRENT_ADCP_VERSION
     : undefined;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -137,6 +141,7 @@ interface Summary {
   not_applicable: number;
   error?: string;
   failures: Array<{ step: string; error: string; validationId?: string }>;
+  skips: Array<{ step: string; reason: string }>;
 }
 
 async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close: () => Promise<void> }> {
@@ -215,90 +220,18 @@ async function startLocalAgent(): Promise<{ url: string; baseUrl: string; close:
 const CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
     'webhook_emission',
-    'The beta.12 packaged webhook receiver bounds shutdown memory and retry capture, but the current webhook_emission run still exceeds the isolated runner\'s 120-second result deadline. Remove when the storyboard returns a result inside the runner budget.',
-  ],
-  [
-    'wholesale_feed_signals_scope_isolation',
-    'The beta.12 account-scope fix covers wholesale product context, but the packaged signals path still replaces the reserved account-overlay identity with the test-kit brand and resolves cache_scope public. Remove when signal-feed context preserves the step account scope.',
-  ],
-  [
-    'media_buy_seller/refine_finalize_exclusivity',
-    'The vector assumes brief discovery returns at least two proposals, although supports_proposals does not commit a seller to that cardinality and the storyboard seeds no proposal fixtures. Remove when the vector deterministically seeds two proposals or gates the multi-finalize branch on an observed pair.',
+    'The current webhook_emission run still exceeds the reference runner\'s executable webhook contract: tenant identity discovery and loopback delivery do not complete consistently. Remove when the storyboard produces a clean bounded result against every tenant.',
   ],
 ]);
 
 const CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   [
-    'sales/media_buy_seller/create_media_buy_async_lifecycle',
-    'The packaged framework writes the submitted handoff to a task registry partition that get_task_status cannot read back under the storyboard account. The create_media_buy submitted arm remains graded separately. Remove when framework task reads preserve the handoff account partition.',
-  ],
-  [
     'sales/creative/creative_lifecycle_webhooks',
-    'The packaged storyboard runner does not expose its expect_webhook pseudo-task to runStoryboard and starts account notification setup before proving the sales tenant supports creative lifecycle notifications. Remove when runner-owned webhook steps and prerequisite gating execute inside the harness.',
-  ],
-  [
-    'sales/creative/evaluator_auth',
-    'The optional evaluator storyboard reads creative.supports_evaluator before applying its capability prerequisite, so the sales tenant correctly omits evaluator support but fails during context setup instead of being marked not applicable. Remove when prerequisite gating precedes context_outputs evaluation.',
-  ],
-  [
-    'sales/creative/native_localization',
-    'The localization storyboard begins capability assertions without first gating on creative.has_creative_library and localization support. The sales tenant accepts inline creatives but does not advertise a localized creative library. Remove when capability gating precedes execution.',
-  ],
-  [
-    'signals/agent_notification_configs',
-    'The storyboard evaluates its capability assertion before enforcing the missing sync_agent_notification_configs tool prerequisite on a compliance-enabled signals tenant. Remove when required_tools gating precedes capability-step execution.',
-  ],
-  [
-    'governance/agent_notification_configs',
-    'The storyboard evaluates its capability assertion before enforcing the missing sync_agent_notification_configs tool prerequisite on a compliance-enabled governance tenant. Remove when required_tools gating precedes capability-step execution.',
+    'The sales tenant advertises a creative library but does not yet complete the controller-driven suspended transition required by the lifecycle webhook scenario. Remove when the transition and receiver-owned webhook steps pass.',
   ],
   [
     'creative/creative/creative_lifecycle_webhooks',
-    'The packaged storyboard runner does not expose its expect_webhook pseudo-task to runStoryboard and its loopback receiver does not complete the account notification-config proof-of-control handshake. Remove when runner-owned webhook steps and registration challenges execute inside the harness.',
-  ],
-  [
-    'creative/creative/evaluator_auth',
-    'The optional evaluator storyboard reads creative.supports_evaluator before applying its capability prerequisite, so agents that correctly omit evaluator support fail during context setup instead of being marked not applicable. Remove when prerequisite gating precedes context_outputs evaluation.',
-  ],
-  [
-    'creative-builder/security_baseline',
-    'The packaged SDK auth-probe allowlist has no read-only empty-input task served by a stateless creative builder. Remove when the SDK accepts list_accounts (or another protocol-neutral protected read) as a security_baseline probe.',
-  ],
-  [
-    'creative-builder/creative/creative_lifecycle_webhooks',
-    'The packaged capability resolver schedules the stateful creative-library webhook storyboard for the stateless creative builder even though it does not advertise account lifecycle notifications. Remove when capability gating excludes agents without creative.has_creative_library and emits_account_lifecycle_webhooks before the first sync_accounts step.',
-  ],
-  [
-    'creative-builder/creative/evaluator_auth',
-    'The optional evaluator storyboard reads creative.supports_evaluator before applying its capability prerequisite, so agents that correctly omit evaluator support fail during context setup instead of being marked not applicable. Remove when prerequisite gating precedes context_outputs evaluation.',
-  ],
-  [
-    'creative-builder/creative/native_localization',
-    'The localization storyboard begins capability steps before enforcing its required list_creatives tool. The stateless creative-builder tenant intentionally does not serve a creative library, so this scenario must be not applicable. Remove when required_tools gating happens before execution.',
-  ],
-  [
-    'creative-builder/creative_transformers',
-    'The packaged response validator treats JSON-valued transformer parameter defaults and option values as object-only, rejecting valid string and number values permitted by transformer-param.json. Remove when list-transformers-response validation preserves the JSON value union.',
-  ],
-  [
-    'creative-builder/creative_transformers/governance_denied',
-    'The packaged response validator treats JSON-valued transformer parameter defaults as object-only, so discovery fails before the governance-denial assertion can use the selected transformer. Remove when list-transformers-response validation preserves the JSON value union.',
-  ],
-  [
-    'brand/security_baseline',
-    'The packaged SDK auth-probe allowlist has no read-only empty-input brand task. Remove when the SDK accepts list_accounts (or a brand read) as a security_baseline probe.',
-  ],
-  [
-    'brand/brand/signed_response_envelope_vectors',
-    'This opt-in storyboard is advertised only by agents that declare the signed-response-envelope runner contract. The training agent does not declare it, but capability resolution currently schedules the storyboard anyway. Remove when scenario-contract gating marks it not applicable.',
-  ],
-  [
-    'brand/brand/single_side_trust_extension',
-    'This opt-in storyboard is advertised only by agents that declare the single-side trust-extension runner contract. The training agent does not declare it, but capability resolution currently schedules the storyboard anyway. Remove when scenario-contract gating marks it not applicable.',
-  ],
-  [
-    'si/security_baseline',
-    'The packaged SDK auth-probe allowlist has no read-only empty-input sponsored-intelligence task. Remove when the SDK accepts list_accounts (or an SI read) as a security_baseline probe.',
+    'The creative tenant does not yet complete the controller-driven suspended transition required by the lifecycle webhook scenario. Remove when the transition and receiver-owned webhook steps pass.',
   ],
 ]);
 
@@ -320,32 +253,16 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'The optional legacy-format branch has no capability gate and therefore executes against the current training seller even though it publishes canonical format_options only. The canonical inline-creative branch remains graded. Remove when the runner gates this branch on an observed format_ids representation.',
   ],
   [
-    'media_buy_seller/dependency_impairment_audience/get_buy_impaired',
-    'The authored impairment.coherence invariant attempts to resolve an audience status from public media-buy state, but the audience lifecycle is controller-internal and has no read task. The step-level health and impairment assertions pass; remove when the invariant consumes controller state or the protocol exposes an audience read.',
-  ],
-  [
-    'signals_baseline/get_signals_async/list_signals_task_wrong_account',
-    'The packaged framework task registry does not apply the request account when list_tasks filters by task_id, exposing the same authenticated caller task across sandbox accounts. The submitted, same-account listing, and completion phases remain active. Remove when task registry reads enforce account scope.',
-  ],
-  [
     'governance_delivery_monitor/check_governance_drift',
-    'The packaged runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
-  ],
-  [
-    'creative_transformers/build_variants',
-    'The beta.12 packaged storyboard response validator still rejects the BuildCreativeVariantSuccess creatives[]/variants[] arm emitted by the training agent, so the runner cannot promote the produced build_variant_id into later storyboard context. The previously cited adcp-client#2105 tracked a different schema-bundle API and is closed; remove this skip when the build_variants response schema-grades under the packaged SDK.',
-  ],
-  [
-    'creative_transformers/refine_variant',
-    'Same beta.12 blocker as creative_transformers/build_variants: refinement depends on the skipped parent build_variant_id and returns the same BuildCreativeVariantSuccess creatives[]/variants[] response shape. Remove when the packaged storyboard runner accepts that variant arm.',
+    'The runner injects an intent tool/payload/plan_id tuple into this authored delivery check, producing a mixed intent+execution request that the governance agent correctly rejects. Initial approval coverage remains active. Remove when the governance invariant preserves execution-shaped check_governance requests.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_conflicting_dual_emission',
-    'The beta.12 packaged SDK still canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading, despite closure of adcp-client#2392. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
+    'The SDK canonicalizes away a co-present deprecated format_ids route before both platform execution and canonical_format_satisfaction grading. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK preserves and equivalence-checks every selector route.',
   ],
   [
     'media_buy_seller/canonical_formats/reject_unprojectable_legacy_dual_emission',
-    'The beta.12 packaged SDK still drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE, despite closure of adcp-client#2392. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
+    'The SDK drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
   ],
 ]);
 
@@ -544,6 +461,7 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
     sb.id === 'governance_spend_authority'
     || sb.id === 'governance_spend_authority/denied'
     || sb.id === 'governance_delivery_monitor'
+    || sb.id === 'governance/failed_outcome_audit_persistence'
   ) {
     patched = structuredClone(patched) as Storyboard;
     const authenticatedCaller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
@@ -684,7 +602,7 @@ function matchesExplicitSelection(sb: Storyboard): boolean {
 
 function knownFailingReason(storyboardId: string): string | undefined {
   return KNOWN_FAILING_STORYBOARDS.get(storyboardId)
-    ?? (releasedComplianceVersion === undefined
+    ?? (isCurrentSourceRun
       ? CURRENT_SOURCE_TENANT_KNOWN_FAILING_STORYBOARDS.get(`${process.env.TENANT_PATH}/${storyboardId}`)
         ?? CURRENT_SOURCE_KNOWN_FAILING_STORYBOARDS.get(storyboardId)
       : undefined);
@@ -762,7 +680,19 @@ function loadTestKit(sb: Storyboard): LoadedTestKit | undefined {
   return YAML.parse(readFileSync(path, 'utf-8')) as LoadedTestKit;
 }
 
-function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['brand'] | undefined {
+function brandFromKit(
+  kit: LoadedTestKit | undefined,
+  storyboardId: string,
+): StoryboardRunOptions['brand'] | undefined {
+  // These conformance vectors deliberately switch between two explicitly
+  // authored account identities. Supplying the test-kit brand makes the SDK
+  // runner's brand invariant overwrite both identities, which turns the
+  // cross-scope probe into a second public-scope request and invalidates the
+  // test itself.
+  if (
+    storyboardId === 'wholesale_feed_products_scope_isolation'
+    || storyboardId === 'wholesale_feed_signals_scope_isolation'
+  ) return undefined;
   const domain = kit?.brand?.house?.domain;
   return domain ? { domain } : undefined;
 }
@@ -832,7 +762,7 @@ function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: b
 }
 
 function summarize(sb: Storyboard, result: StoryboardResult | { error: string }): Summary {
-  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [] };
+  const base: Summary = { id: sb.id, title: sb.title, passed: 0, failed: 0, skipped: 0, not_applicable: 0, failures: [], skips: [] };
   if ('error' in result) {
     base.error = result.error;
     return base;
@@ -864,6 +794,12 @@ function summarize(sb: Storyboard, result: StoryboardResult | { error: string })
           step: s.id ?? s.step_id ?? '(unknown step)',
           error: formatStepFailureDetail(s.error, s.validations, { includeActual: true }),
           ...(validationId ? { validationId } : {}),
+        });
+      } else if (status === 'skipped') {
+        const s = step as { id?: string; step_id?: string; error?: string; skip_reason?: string };
+        base.skips.push({
+          step: s.id ?? s.step_id ?? '(unknown step)',
+          reason: s.skip_reason ?? s.error ?? 'runner did not provide a skip reason',
         });
       }
     }
@@ -980,7 +916,7 @@ async function main() {
     clearForcedTaskCompletions();
     clearCatalogEventStores();
     const kit = loadTestKit(storyboard);
-    const brand = brandFromKit(kit);
+    const brand = brandFromKit(kit, storyboard.id);
     const testKit = testKitOptionsFromKit(kit);
     const auth = authForStoryboard(storyboard.id, kit, AUTH_TOKEN);
     const previousTrainingAgentUrl = process.env.TRAINING_AGENT_URL;
@@ -1158,6 +1094,16 @@ async function main() {
       if (!verbose && r.failures.length > 5) {
         // eslint-disable-next-line no-console
         console.log(`    … +${r.failures.length - 5} more (run with --verbose)`);
+      }
+    }
+  }
+
+  if (verbose) {
+    const skippedResults = results.filter(result => result.skips.length > 0);
+    if (skippedResults.length > 0) {
+      console.log('\n--- Skips ---');
+      for (const result of skippedResults) {
+        for (const skip of result.skips) console.log(`  ${result.id} · ${skip.step}: ${skip.reason}`);
       }
     }
   }

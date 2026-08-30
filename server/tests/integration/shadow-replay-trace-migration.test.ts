@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { closeDatabase, initializeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { claimShadowReplayGeneration } from '../../src/addie/jobs/shadow-replay-trace.js';
+import { CODE_VERSION } from '../../src/addie/config-version.js';
 
 const EXTERNAL_ID = 'shadow-replay-migration-test:1000.0001';
 const CORRECTED_EXTERNAL_ID = 'shadow-replay-migration-test:1000.0002';
@@ -24,7 +25,7 @@ const MIGRATION_556_SQL = readFileSync(
   'utf8',
 );
 
-describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
+describe('migrations 552 through 569: shadow replay traces', () => {
   let pool: Pool;
 
   beforeAll(async () => {
@@ -218,7 +219,11 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
         'execution_policy_version',
         'status',
         'reason',
+        'requested_provider',
         'model',
+        'addie_code_version',
+        'returned_provider',
+        'returned_model',
         'quota_date',
         'quota_slot',
         'first_provider_request_hmac',
@@ -229,14 +234,20 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
         'blocked_capabilities',
         'input_tokens',
         'output_tokens',
+        'pricing_version',
+        'usage_complete',
+        'cache_read_tokens',
+        'cache_write_tokens',
+        'latency_ms',
+        'estimated_cost_micros',
         'started_at',
         'heartbeat_at',
         'completed_at',
         'retained_until',
       ]),
     );
-    const generationConstraints = await pool.query<{ definition: string }>(
-      `SELECT pg_get_constraintdef(oid) AS definition
+    const generationConstraints = await pool.query<{ constraint_name: string; definition: string }>(
+      `SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS definition
        FROM pg_constraint
        WHERE conrelid = 'addie_shadow_replay_generations'::regclass`,
     );
@@ -246,6 +257,22 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       definition.includes('jsonb_array_length(tool_executions) <= 8'))).toBe(true);
     expect(generationConstraints.rows.some(({ definition }) =>
       definition.includes('UNIQUE (quota_date, quota_slot)'))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes("requested_provider")
+      && definition.includes("'unknown'"))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes('(returned_provider IS NULL)')
+      && definition.includes('(returned_model IS NULL)'))).toBe(true);
+    expect(generationConstraints.rows.some(({ definition }) =>
+      definition.includes('usage_complete')
+      && definition.includes('estimated_cost_micros IS NOT NULL'))).toBe(true);
+    expect(generationConstraints.rows.some(({ constraint_name, definition }) =>
+      constraint_name === 'shadow_replay_generation_new_success_evidence'
+      && definition.includes('pricing_version')
+      && definition.includes('legacy-unrecorded')
+      && definition.includes('status')
+      && definition.includes('succeeded')
+      && definition.includes('usage_complete'))).toBe(true);
 
     const judgmentColumns = await pool.query<{ column_name: string }>(
       `SELECT column_name
@@ -280,6 +307,12 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
         'human_evidence_content_hmac',
         'input_tokens',
         'output_tokens',
+        'pricing_version',
+        'usage_complete',
+        'cache_read_tokens',
+        'cache_write_tokens',
+        'latency_ms',
+        'estimated_cost_micros',
         'started_at',
         'completed_at',
         'retained_until',
@@ -288,8 +321,8 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
     expect(judgmentColumns.rows.map(({ column_name }) => column_name)).not.toEqual(
       expect.arrayContaining(['question', 'human_response', 'generated_output']),
     );
-    const judgmentConstraints = await pool.query<{ definition: string }>(
-      `SELECT pg_get_constraintdef(oid) AS definition
+    const judgmentConstraints = await pool.query<{ constraint_name: string; definition: string }>(
+      `SELECT conname AS constraint_name, pg_get_constraintdef(oid) AS definition
        FROM pg_constraint
        WHERE conrelid = 'addie_shadow_replay_judgments'::regclass`,
     );
@@ -297,6 +330,14 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       definition.includes('self_judged = false'))).toBe(true);
     expect(judgmentConstraints.rows.some(({ definition }) =>
       definition.includes('array_to_string(deterministic_failure_labels'))).toBe(true);
+    expect(judgmentConstraints.rows.some(({ constraint_name, definition }) =>
+      constraint_name === 'shadow_replay_judgment_new_success_evidence'
+      && definition.includes('pricing_version')
+      && definition.includes('legacy-unrecorded')
+      && definition.includes('status')
+      && definition.includes('judged')
+      && definition.includes('usage_complete')
+      && definition.includes('latency_ms'))).toBe(true);
   });
 
   it('categorically closes existing pending v2 traces instead of upgrading them', async () => {
@@ -428,7 +469,7 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
            message_payload_hmacs, provider_request_hmac
          ) VALUES (
            gen_random_uuid(), 3, $1, $2, $3, $4, 'test-v1', 'read-only-v1',
-           $5, 'claude-example-chat', FALSE, FALSE, 1, $6, $6, $6, $6, $6,
+           $5, 'claude-sonnet-5', FALSE, FALSE, 1, $6, $6, $6, $6, $6,
            $6, $6, $6, '[]'::jsonb, '[]'::jsonb, $6,
            NOW() + INTERVAL '1 hour', NOW() + INTERVAL '7 days',
            'official_docs_v1', 'official-docs-policy:v1',
@@ -463,7 +504,7 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       claimShadowReplayGeneration({
         ...trace,
         expected: {
-          effective_model: 'claude-example-chat',
+          effective_model: 'claude-sonnet-5',
           provider_request_hmac: String(index + 3).repeat(64),
         },
       } as never, 1, { query: concurrentQuery as never, now })));
@@ -493,18 +534,25 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
     const sameTraceAuthorization = {
       ...sameTrace,
       expected: {
-        effective_model: 'claude-example-chat',
+        effective_model: 'claude-sonnet-5',
         provider_request_hmac: '3'.repeat(64),
       },
     } as never;
+    const target = {
+      provider: 'google' as const,
+      model: 'gemini-3.7-flash',
+      firstProviderRequestHmac: '9'.repeat(64),
+    };
     const sameTraceDecisions = await Promise.all([
       claimShadowReplayGeneration(sameTraceAuthorization, 1, {
         query: sameTraceQuery as never,
         now,
+        target,
       }),
       claimShadowReplayGeneration(sameTraceAuthorization, 1, {
         query: sameTraceQuery as never,
         now,
+        target,
       }),
     ]);
     expect(sameTraceDecisions.sort()).toEqual(['already_claimed', 'claimed']);
@@ -513,5 +561,25 @@ describe('migrations 552, 554, 555, and 556: shadow replay traces', () => {
       [sameTrace.traceId],
     );
     expect(traceStatus.rows[0].capture_status).toBe('pending');
+    const generation = await pool.query<{
+      requested_provider: string;
+      model: string;
+      addie_code_version: string;
+      pricing_version: string;
+      first_provider_request_hmac: string;
+    }>(
+      `SELECT requested_provider, model, addie_code_version, pricing_version,
+              first_provider_request_hmac
+       FROM addie_shadow_replay_generations
+       WHERE trace_id = $1`,
+      [sameTrace.traceId],
+    );
+    expect(generation.rows[0]).toEqual({
+      requested_provider: target.provider,
+      model: target.model,
+      addie_code_version: CODE_VERSION,
+      pricing_version: 'google-gemini-3.7-flash-through-2026-12-31',
+      first_provider_request_hmac: target.firstProviderRequestHmac,
+    });
   });
 });

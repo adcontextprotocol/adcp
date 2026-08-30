@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { pathToFileURL } = require('node:url');
 
 async function loadInstalledSingleAgentClients() {
   return [
@@ -10,6 +10,77 @@ async function loadInstalledSingleAgentClients() {
   ];
 }
 
+function trainingAgentAdcpVersion(constantName) {
+  const source = fs.readFileSync(path.resolve(
+    __dirname,
+    '..',
+    'server/src/training-agent/types.ts',
+  ), 'utf8');
+  const match = source.match(new RegExp(`${constantName}\\s*=\\s*'([^']+)'`));
+  assert.ok(match, `${constantName} must remain an explicit release pin`);
+  return match[1];
+}
+
+function installedSdkAdcpVersion() {
+  return require('@adcp/sdk').ADCP_VERSION;
+}
+
+function canonicalAdcpVersion(version) {
+  const match = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?((?:-(?:beta|rc)\.\d+)?)$/);
+  assert.ok(match, `invalid AdCP release version: ${version}`);
+  return `${match[1]}.${match[2]}.${match[3] ?? '0'}${match[4]}`;
+}
+
+test('training-agent current AdCP version exactly matches the installed SDK schema release', async () => {
+  const currentVersion = trainingAgentAdcpVersion('TRAINING_AGENT_CURRENT_ADCP_VERSION');
+  const sdkVersion = installedSdkAdcpVersion();
+  for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
+    const resolvedVersion = sdk.resolveAdcpVersion(currentVersion);
+    assert.equal(
+      canonicalAdcpVersion(resolvedVersion),
+      canonicalAdcpVersion(sdkVersion),
+      `training-agent current ${currentVersion} must track the installed SDK schema ${sdkVersion}`,
+    );
+    assert.ok(
+      sdk.listBundledAdcpVersions().includes(resolvedVersion),
+      `${currentVersion} must resolve to an installed SDK schema bundle`,
+    );
+  }
+});
+
+test('installed SDK exposes legacy 3.0 schemas without cache staging', async () => {
+  for (const sdk of [require('@adcp/sdk'), await import('@adcp/sdk')]) {
+    assert.equal(sdk.resolveAdcpVersion('3.0'), '3.0');
+    assert.ok(sdk.listBundledAdcpVersions().includes('3.0'));
+  }
+});
+
+test('installed SDK accepts protocol macro-bearing URL strings', async () => {
+  const macroUrl = 'https://daast.acme.example/tag.xml?cb=${CACHEBUSTER}&gdpr=[GDPR]';
+  for (const schemas of [require('@adcp/sdk/schemas'), await import('@adcp/sdk/schemas')]) {
+    const macroSchemas = Object.entries(schemas)
+      .filter(([name]) => /^MacroBearingURL\d*Schema$/.test(name));
+    assert.ok(macroSchemas.length > 0, 'expected public macro-bearing URL schemas');
+    for (const [name, schema] of macroSchemas) {
+      const parsed = schema.safeParse(macroUrl);
+      assert.equal(parsed.success, true, `${name} rejected ${macroUrl}`);
+    }
+  }
+});
+
+test('training agent registers its retained beta.6 release bundle', async () => {
+  const retainedVersion = trainingAgentAdcpVersion('SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION');
+  const schemaRoot = path.resolve(__dirname, '..', 'dist/schemas/3.2.0-beta.6');
+  const cjsTesting = require('@adcp/sdk/testing');
+  const esmTesting = await import('@adcp/sdk/testing');
+  cjsTesting.registerExternalSchemaRoot(retainedVersion, schemaRoot);
+  esmTesting.registerExternalSchemaRoot(retainedVersion, schemaRoot);
+
+  assert.doesNotThrow(() => require('@adcp/sdk').resolveAdcpVersion(retainedVersion));
+  const esmSdk = await import('@adcp/sdk');
+  assert.doesNotThrow(() => esmSdk.resolveAdcpVersion(retainedVersion));
+});
+
 async function runScopedCapabilityCase(SingleAgentClient, supportedVersion, methodName) {
   const client = new SingleAgentClient({
     id: `scoped-${supportedVersion}`,
@@ -17,7 +88,7 @@ async function runScopedCapabilityCase(SingleAgentClient, supportedVersion, meth
     agent_uri: 'https://agent.example/mcp',
     protocol: 'mcp',
   }, {
-    transport: { fetchFn: async () => { throw new Error('unexpected network call'); } },
+    transport: { trustedFetchFn: async () => { throw new Error('unexpected network call'); } },
     validation: { requests: 'off', responses: 'off' },
     validateFeatures: false,
   });
@@ -93,12 +164,7 @@ test('installed SDK uses request-local scoped capabilities for get_products adap
 });
 
 test('installed 3.1 SDK accepts the additive flat advertiser natural-key response', async () => {
-  const schemasPath = path.resolve(
-    __dirname,
-    '..',
-    'node_modules/@adcp/sdk/dist/lib/types/schemas.generated.js',
-  );
-  const { SyncAccountsResponseSchema } = await import(pathToFileURL(schemasPath).href);
+  const { SyncAccountsResponseSchema } = await import('@adcp/sdk/schemas');
   const parsed = SyncAccountsResponseSchema.safeParse({
     status: 'completed',
     accounts: [{

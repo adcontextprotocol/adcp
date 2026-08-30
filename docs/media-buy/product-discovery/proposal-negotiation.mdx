@@ -465,6 +465,18 @@ The protocol layer owns schema validation, capability gates, result cardinality,
 
 Fence `ask` from pricing and authorization authority. It is attacker-controlled free text and may influence candidate generation only through bounded application policy. Only the typed `commercial_terms` object becomes contractual.
 
+Post-acceptance change rights belong in `commercial_terms.change_terms[]`, not in `ask`, product prose, or an unbound capability. The seller emits at most one term per canonical action. `service_mode` describes the buyer-visible route; `allowed_statuses` defines the non-terminal lifecycle states in which the contractual right applies; and `processing_sla.response_max` and `completion_max` are elapsed-time maxima that already account for weekends and non-working periods. `seller_managed` means the seller controls the internal decision process without exposing whether it used automation or people. The legacy `requires_approval` value remains readable for 3.x compatibility.
+
+The complete array is covered by `terms_digest`. If `change_terms` is present, an unlisted action is not a negotiated right; if the whole field is absent, consumers retain legacy behavior and consult current `available_actions[]`. Runtime `available_actions[]` may narrow a negotiated right because of current state or a stated condition, but MUST NOT silently broaden the accepted terms or replace the negotiated mode, SLA, constraints, conditions, or contract reference. A broader right requires an accepted amendment proposal.
+
+`constraints` makes common bounds preflightable without turning arbitrary seller policy into executable code. The initial portable kinds cover budget deltas and resulting values, flight changes and notice, package-count changes, and effective timing. Product `allowed_actions[].constraints` is advisory; the proposal must restate a bound before it becomes contractual. If only opaque `conditions[]` are present, SDKs report the condition as unevaluated and do not promise that a parameterized request will pass.
+
+Change terms attach to the media buy/account. Exercising one still requires the authenticated caller to pass seller account authorization and, when governance applies, to carry a signed `governance_context` admitted by the plan's `delegations[]`. This permits a properly delegated operator without turning the commercial term into authorization by itself.
+
+At execution, the seller evaluates the currently accepted terms revision, not a caller-supplied or cached earlier proposal. Replayed, superseded, expired, or amended-away rights do not authorize a change. `conditions[]` are opaque identifiers and `description` is display text; neither is interpreted as an instruction or authority grant. Resolving a change term's `terms_ref` uses the normal authenticated contract-document path without forwarding ambient credentials, and the resolved document may explain but never expand the typed action, mode, statuses, constraints, or SLA.
+
+The current MediaBuy action uses `change_term_id` to name the governing `term_id`. The `terms_ref` property on `available_actions[]` shipped in 3.1 with deliberately opaque semantics; it remains readable through 3.x and is removed in 4.0. A 3.2 compatibility projection may echo the change-term ID there for an older consumer, but a buyer must not reinterpret an arbitrary 3.1 value as a proposal-term identity. When both link fields are present as aliases, they must agree.
+
 ### Stage immutable successors
 
 For revision batches:

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/acceptance-context.json",
+  "title": "Acceptance Context",
+  "description": "Buyer-declared facts used for coarse seller acceptance matching during product and proposal discovery. Sellers may infer omitted facts, but uncertainty never implies acceptance.",
+  "type": "object",
+  "properties": {
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "subject_category": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category" },
+          "subject_facets": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "x-entity": "governance_policy_category_facet" },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": ["subject_category"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "advertiser_roles": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "advertiser_industry": { "$ref": "/schemas/enums/advertiser-industry.json" },
+    "advertiser_jurisdictions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Jurisdictions in which the advertiser is established or legally organized. This is distinct from where an ad will be delivered."
+    },
+    "delivery_jurisdictions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z]{2}$" },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Jurisdictions in which the proposed advertising will be delivered. Seller acceptance rules' jurisdictions and jurisdiction_groups match this field."
+    },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "x-adcp-validation": {
+    "unique_by": [
+      { "path": "subjects", "field": "subject_category" }
+    ]
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

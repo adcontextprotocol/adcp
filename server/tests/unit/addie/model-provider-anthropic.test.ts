@@ -63,6 +63,20 @@ function sha256(value: unknown): string {
 }
 
 describe('AnthropicModelProvider request translation', () => {
+  it.each([
+    [{ type: 'auto' as const }, { type: 'auto' }],
+    [{ type: 'required' as const }, { type: 'any' }],
+    [{ type: 'tool' as const, name: 'search_docs' }, { type: 'tool', name: 'search_docs' }],
+  ])('translates canonical %o tool choice', (toolChoice, expected) => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    const prepared = provider.prepare(request({
+      tools: [{ name: 'search_docs', description: 'Search.', inputSchema: { type: 'object' } }],
+      toolChoice,
+    }));
+
+    expect(prepared.providerRequest).toMatchObject({ tool_choice: expected });
+  });
+
   it('builds the exact Anthropic envelope from canonical messages and tools', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
     const serverContinuation = normalizeAnthropicResponse(response({
@@ -324,11 +338,34 @@ describe('AnthropicModelProvider request translation', () => {
     }]);
   });
 
-  it('fails closed on structured output instead of silently dropping it', () => {
+  it('maps structured output to the Anthropic JSON schema envelope', () => {
     const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
-    expect(() => provider.prepare(request({
-      outputSchema: { name: 'answer', schema: { type: 'object' }, strict: true },
-    }))).toThrow(UnsupportedModelCapabilityError);
+    expect(provider.prepare(request({
+      outputSchema: {
+        name: 'answer',
+        schema: {
+          type: 'object',
+          properties: { answer: { type: 'string' } },
+          required: ['answer'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+      reasoning: { effort: 'medium' },
+    })).providerRequest).toMatchObject({
+      output_config: {
+        effort: 'medium',
+        format: {
+          type: 'json_schema',
+          schema: {
+            type: 'object',
+            properties: { answer: { type: 'string' } },
+            required: ['answer'],
+            additionalProperties: false,
+          },
+        },
+      },
+    });
   });
 });
 
@@ -878,6 +915,16 @@ describe('provider-neutral capability and event guards', () => {
       tools: [{ name: 'web_search', description: 'collision', inputSchema: {} }],
       providerTools: [{ type: 'web_search' }],
     }))).toThrow('collides with provider tool');
+  });
+
+  it('rejects unavailable or tool-free canonical tool choices', () => {
+    const provider = new AnthropicModelProvider('unused', {} as AnthropicMessagesTransport);
+    expect(() => provider.prepare(request({ toolChoice: { type: 'required' } })))
+      .toThrow('requires at least one tool');
+    expect(() => provider.prepare(request({
+      tools: [{ name: 'search_docs', description: 'Search.', inputSchema: {} }],
+      toolChoice: { type: 'tool', name: 'get_doc' },
+    }))).toThrow('unavailable: get_doc');
   });
 
   it('rejects non-JSON schemas and tool inputs before translation', () => {
