@@ -1228,6 +1228,22 @@ export class AddieClaudeClient {
     return toolNames.every((name) => definitions.has(name) && this.toolHandlers.has(name));
   }
 
+  /**
+   * Copy the registered tool surface into a provider-isolated client. This is
+   * deliberately not a production selector: alternate providers remain
+   * blocked by the operational guards in both message entry points.
+   */
+  forkForIsolatedProvider(
+    model: string,
+    providerBinding: AddieModelProviderBinding,
+  ): AddieClaudeClient {
+    const fork = new AddieClaudeClient('', model, undefined, providerBinding);
+    fork.tools = [...this.tools];
+    fork.toolHandlers = new Map(this.toolHandlers);
+    fork.webSearchEnabled = false;
+    return fork;
+  }
+
   private prepareFirstNonStreamingInvocation(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,

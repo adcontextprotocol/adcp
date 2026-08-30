@@ -4,6 +4,7 @@ import type { MemberContext } from '../member-context.js';
 import type { SIRetrievalResult } from '../services/si-retriever.js';
 import type { ThreadContext } from '../thread-service.js';
 import type { AddieTool } from '../types.js';
+import type { ModelProviderId } from '../model-providers/model-provider.js';
 import { getCurrentConfigVersionId } from '../config-version.js';
 import {
   buildChannelResponseInvocation,
@@ -86,11 +87,25 @@ export interface VerifiedOfficialDocsReplayInput {
   invocation: ChannelResponseInvocation;
   /** Fingerprint already checked by the signed hydrated-context parity gate. */
   docsCorpusFingerprint: string;
+  /**
+   * Optional alternate-provider target prepared from this same verified
+   * invocation. No production call site supplies one yet.
+   */
+  target?: VerifiedOfficialDocsReplayTarget;
+}
+
+export interface VerifiedOfficialDocsReplayTarget {
+  provider: ModelProviderId;
+  model: string;
+  firstInvocation: InvocationPreparedSnapshot;
 }
 
 export interface VerifiedOfficialDocsReplayResult extends ShadowReplayGenerationCompletion {
   traceId: string;
+  provider: ModelProviderId;
   model: string;
+  returnedProvider: ModelProviderId | null;
+  returnedModel: string | null;
   executionPolicyVersion: typeof OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION;
   completeFidelity: boolean;
   judgment?: ShadowReplayJudgeEvidence;
@@ -417,6 +432,53 @@ function sameOrderedSnapshotItems(
   });
 }
 
+function sourceReplayTarget(trace: ResolvedShadowReplayTrace): VerifiedOfficialDocsReplayTarget {
+  return {
+    provider: 'anthropic',
+    model: trace.expected.effective_model,
+    firstInvocation: {
+      execution_mode: 'replay',
+      model: trace.expected.effective_model,
+      iteration: 1,
+      attempt: 1,
+      system_blocks: trace.expected.system_block_hmacs,
+      tool_schemas: trace.expected.tool_schema_hmacs,
+      message_payloads: trace.expected.message_payload_hmacs,
+      message_count: trace.expected.message_count,
+      provider_request_sha256: trace.expected.provider_request_hmac ?? '',
+    },
+  };
+}
+
+function assertTargetFirstInvocation(target: VerifiedOfficialDocsReplayTarget): void {
+  const snapshot = target.firstInvocation;
+  if (!target.model.trim() || target.model.length > 160) {
+    throw new OfficialDocsReplayBoundaryError('target_model_invalid');
+  }
+  if (snapshot.execution_mode !== 'replay'
+    || snapshot.model !== target.model
+    || snapshot.iteration !== 1
+    || snapshot.attempt !== 1
+    || !/^[0-9a-f]{64}$/.test(snapshot.provider_request_sha256)) {
+    throw new OfficialDocsReplayBoundaryError('target_invocation_invalid');
+  }
+}
+
+function sameFirstInvocation(
+  expected: InvocationPreparedSnapshot,
+  actual: InvocationPreparedSnapshot,
+): boolean {
+  return expected.execution_mode === actual.execution_mode
+    && expected.model === actual.model
+    && expected.iteration === actual.iteration
+    && expected.attempt === actual.attempt
+    && expected.message_count === actual.message_count
+    && expected.provider_request_sha256 === actual.provider_request_sha256
+    && sameOrderedSnapshotItems(expected.system_blocks, actual.system_blocks)
+    && sameOrderedSnapshotItems(expected.tool_schemas, actual.tool_schemas)
+    && sameOrderedSnapshotItems(expected.message_payloads, actual.message_payloads);
+}
+
 function evidenceHmac(
   trace: ResolvedShadowReplayTrace,
   purpose: string,
@@ -460,19 +522,19 @@ function assertOfficialDocsReplayPreflight(input: VerifiedOfficialDocsReplayInpu
 }
 
 function assertLaterInvocationBoundary(
-  trace: ResolvedShadowReplayTrace,
+  target: VerifiedOfficialDocsReplayTarget,
   snapshot: InvocationPreparedSnapshot,
 ): void {
   if (snapshot.execution_mode !== 'replay') {
     throw new OfficialDocsReplayBoundaryError('execution_mode_drift');
   }
-  if (snapshot.model !== trace.expected.effective_model) {
+  if (snapshot.model !== target.model) {
     throw new OfficialDocsReplayBoundaryError('model_drift');
   }
-  if (!sameOrderedSnapshotItems(trace.expected.system_block_hmacs, snapshot.system_blocks)) {
+  if (!sameOrderedSnapshotItems(target.firstInvocation.system_blocks, snapshot.system_blocks)) {
     throw new OfficialDocsReplayBoundaryError('system_blocks_drift');
   }
-  if (!sameOrderedSnapshotItems(trace.expected.tool_schema_hmacs, snapshot.tool_schemas)
+  if (!sameOrderedSnapshotItems(target.firstInvocation.tool_schemas, snapshot.tool_schemas)
     || !exactAllowedNames(snapshot.tool_schemas.map(({ name }) => name))) {
     throw new OfficialDocsReplayBoundaryError('tool_schemas_drift');
   }
@@ -525,6 +587,8 @@ export async function executeVerifiedOfficialDocsReplay(
   dependencies: VerifiedOfficialDocsReplayDependencies = {},
 ): Promise<VerifiedOfficialDocsReplayResult> {
   assertOfficialDocsReplayPreflight(input);
+  const target = input.target ?? sourceReplayTarget(input.trace);
+  assertTargetFirstInvocation(target);
   const client = dependencies.client ?? getChannelClaudeClient();
   if (!client) throw new OfficialDocsReplayBoundaryError('channel_client_not_initialized');
   if (!dependencies.renewLease) {
@@ -614,6 +678,7 @@ export async function executeVerifiedOfficialDocsReplay(
         invocationHashKey: input.trace.identity.hashKey,
         invocationHashDomain: input.trace.identity.hashDomain,
         uncapped: true,
+        modelOverride: target.model,
         onInvocationPrepared: async (snapshot) => {
           if (invocations.length >= MAX_OFFICIAL_DOCS_REPLAY_INVOCATIONS) {
             throw new OfficialDocsReplayBoundaryError('invocation_limit_exceeded');
@@ -623,14 +688,20 @@ export async function executeVerifiedOfficialDocsReplay(
             throw new OfficialDocsReplayBoundaryError('provider_retry_not_allowed');
           }
           if (snapshot.iteration === 1) {
-            const first = verifyShadowReplayFirstInvocation(input.trace, snapshot);
-            if (!first.verified) {
-              throw new OfficialDocsReplayBoundaryError(
-                first.reasons[0] ?? 'first_invocation_drift',
-              );
+            if (input.target) {
+              if (!sameFirstInvocation(target.firstInvocation, snapshot)) {
+                throw new OfficialDocsReplayBoundaryError('target_invocation_drift');
+              }
+            } else {
+              const first = verifyShadowReplayFirstInvocation(input.trace, snapshot);
+              if (!first.verified) {
+                throw new OfficialDocsReplayBoundaryError(
+                  first.reasons[0] ?? 'first_invocation_drift',
+                );
+              }
             }
           } else {
-            assertLaterInvocationBoundary(input.trace, snapshot);
+            assertLaterInvocationBoundary(target, snapshot);
           }
           const previousRequestHmac = providerRequestHmacByIteration.get(snapshot.iteration);
           if (previousRequestHmac && previousRequestHmac !== snapshot.provider_request_sha256) {
@@ -712,7 +783,10 @@ export async function executeVerifiedOfficialDocsReplay(
     }
     throw new OfficialDocsReplayExecutionError({
       traceId: input.trace.traceId,
-      model: input.invocation.effectiveModel,
+      provider: target.provider,
+      model: target.model,
+      returnedProvider: null,
+      returnedModel: null,
       executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
       completeFidelity: false,
       status: error instanceof OfficialDocsReplayBoundaryError ? 'blocked' : 'error',
@@ -773,6 +847,12 @@ export async function executeVerifiedOfficialDocsReplay(
   }
   if (invocations.length === 0) blockedCapabilities.add('missing_invocation_snapshot');
   if (response.flagged) blockedCapabilities.add('flagged_response');
+  const execution = response.model_execution;
+  if (execution.source !== 'provider'
+    || execution.requested_provider !== target.provider
+    || execution.requested_model !== target.model) {
+    blockedCapabilities.add('provider_identity_drift');
+  }
 
   const guarded = guardBareJsonEnvelope(response.text, { pathTag: 'verified-docs-replay' });
   const validated = validateOutput(guarded.text);
@@ -793,7 +873,10 @@ export async function executeVerifiedOfficialDocsReplay(
 
   const completion: VerifiedOfficialDocsReplayResult = {
     traceId: input.trace.traceId,
-    model: input.invocation.effectiveModel,
+    provider: target.provider,
+    model: target.model,
+    returnedProvider: execution.source === 'provider' ? execution.provider : null,
+    returnedModel: execution.source === 'provider' ? execution.model : null,
     executionPolicyVersion: OFFICIAL_DOCS_REPLAY_EXECUTION_POLICY_VERSION,
     completeFidelity,
     status: completeFidelity ? 'succeeded' : 'blocked',
@@ -813,7 +896,7 @@ export async function executeVerifiedOfficialDocsReplay(
       text: validated.sanitized,
       outputHmac,
       outputBytes,
-      generatorModel: input.invocation.effectiveModel,
+      generatorModel: target.model,
     }));
     return { ...completion, judgment };
   } catch {
