@@ -19,7 +19,10 @@ const path = require('node:path');
     'utf8',
   );
   assert.match(packageJson.scripts.version, /^node scripts\/version-packages\.mjs/);
-  assert.match(packageJson.scripts['promote:rc'], /--prepare$/);
+  assert.equal(
+    packageJson.scripts['promote:rc'],
+    'node scripts/promote-release-candidate.mjs',
+  );
   assert.match(versionWrapper, /\.changeset\/rc-promotion\.json/);
   assert.match(versionWrapper, /changeset', 'version'/);
 

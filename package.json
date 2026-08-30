@@ -114,7 +114,7 @@
     "test:build-schemas-hoist-marked": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-marked.test.cjs",
     "test:build-schemas-async-response-refs": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-async-response-refs.test.cjs",
     "test:release-workflow": "node tests/release-workflow-immutability.test.cjs && node tests/promote-release-candidate.test.cjs",
-    "promote:rc": "node scripts/promote-release-candidate.mjs --prepare",
+    "promote:rc": "node scripts/promote-release-candidate.mjs",
     "test:immutable-release-artifacts": "node tests/immutable-release-artifacts.test.cjs",
     "test:patch-3-0-compat-bundle": "node --test --test-force-exit --test-timeout=30000 tests/patch-3-0-compat-bundle.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs && npm run test:seller-governance-policy-surfaces && npm run test:test-script-registration",

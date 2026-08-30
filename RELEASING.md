@@ -129,7 +129,7 @@ Then, from a clean branch based on the resulting `main`:
 git switch main
 git pull --ff-only origin main
 npm run promote:rc -- --check
-npm run promote:rc
+npm run promote:rc -- --prepare
 git diff --check
 git add .changeset/pre.json .changeset/rc-promotion.json
 git commit -m "chore(release): prepare 3.2.0-rc.0"

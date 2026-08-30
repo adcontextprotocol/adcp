@@ -519,7 +519,7 @@ the beta-to-RC phase transition with the guarded release command documented in
 
 ```bash
 npm run promote:rc -- --check
-npm run promote:rc
+npm run promote:rc -- --prepare
 ```
 
 This creates reviewed release state for the Version Packages workflow to cut
