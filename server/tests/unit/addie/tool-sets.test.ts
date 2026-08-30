@@ -6,6 +6,7 @@ import {
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
   COMMUNITY_GROUP_TOOLS,
+  LEGACY_ADMIN_GROUP_TOOLS,
   LEGACY_ADMIN_TOOLS,
   LEGACY_AGENT_TESTING_TOOLS,
   LEGACY_MEMBER_TOOLS,
@@ -55,6 +56,23 @@ describe('getToolsForSets', () => {
       expect(getValidToolSetNames(true).has('admin')).toBe(false);
     });
 
+    it('keeps the mixed group surface only as an in-flight compatibility shim', () => {
+      expect(LEGACY_ADMIN_GROUP_TOOLS).toHaveLength(12);
+      expect(TOOL_SETS.admin_groups.tools).toEqual(LEGACY_ADMIN_GROUP_TOOLS);
+      expect(TOOL_SETS.admin_groups.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_groups')).toBe(false);
+
+      for (const name of [
+        'admin_group_structure',
+        'admin_group_leadership',
+        'admin_group_membership',
+      ]) {
+        const customTools = getToolsForSets([name], true, false)
+          .filter((toolName) => toolName !== 'web_search');
+        expect(customTools.length, name).toBeLessThanOrEqual(12);
+      }
+    });
+
     it('loads only the selected admin domain and rejects it for non-admins', () => {
       const adminTools = getToolsForSets(['admin_prospects'], true, false);
       expect(adminTools).toContain('query_prospects');
@@ -75,6 +93,10 @@ describe('getToolsForSets', () => {
     it('generates the compact catalog from router-visible domains only', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organizations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_groups**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin** *(admin only)*');
     });
   });

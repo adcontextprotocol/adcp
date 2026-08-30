@@ -666,7 +666,9 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 - Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]
-${isAAOAdmin ? `- Adding/removing committee or working group leaders, managing group memberships, chapters, or gatherings (admin action) → ["admin_groups"]
+${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
+- Adding/removing/listing committee or working-group leaders (admin action) → ["admin_group_leadership"]
+- Adding/removing working-group members (admin action) → ["admin_group_membership"]
 - Brand-logo review, registry gaps, community mirrors, ownership transfers, or orphaned brands → ["admin_brands"]
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}

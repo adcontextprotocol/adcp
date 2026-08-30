@@ -102,19 +102,25 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "reject_feed_proposal",
     "add_media_contact",
   ],
-  admin_groups: [
+  admin_group_structure: [
     "create_chapter",
     "list_chapters",
     "create_industry_gathering",
     "list_industry_gatherings",
+    "rename_working_group",
+  ],
+  admin_group_leadership: [
     "list_working_groups",
     "get_working_group",
     "add_committee_leader",
     "remove_committee_leader",
     "list_committee_leaders",
+  ],
+  admin_group_membership: [
+    "list_working_groups",
+    "get_working_group",
     "add_working_group_member",
     "remove_working_group_member",
-    "rename_working_group",
   ],
   admin_organizations: [
     "merge_organizations",
@@ -164,12 +170,34 @@ const LEGACY_ADMIN_OUTREACH_TOOLS = [
   "create_contact",
 ];
 
+/** Exact pre-split group surface retained for already-routed plans. */
+export const LEGACY_ADMIN_GROUP_TOOLS = [
+  "create_chapter",
+  "list_chapters",
+  "create_industry_gathering",
+  "list_industry_gatherings",
+  "list_working_groups",
+  "get_working_group",
+  "add_committee_leader",
+  "remove_committee_leader",
+  "list_committee_leaders",
+  "add_working_group_member",
+  "remove_working_group_member",
+  "rename_working_group",
+];
+
 /**
  * Exact compatibility union for plans created before the admin-domain split.
  * It is deliberately hidden from new router prompts and validation.
  */
 export const LEGACY_ADMIN_TOOLS = [
-  ...Object.values(ADMIN_DOMAIN_TOOL_SETS).flat(),
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_events,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_prospects,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_feeds,
+  ...LEGACY_ADMIN_GROUP_TOOLS,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_organizations,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_workflows,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_brands,
   ...LEGACY_ADMIN_BILLING_TOOLS,
   ...LEGACY_ADMIN_OUTREACH_TOOLS,
 ];
@@ -573,11 +601,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
-  admin_groups: {
-    name: "admin_groups",
+  admin_group_structure: {
+    name: "admin_group_structure",
     description:
-      "Manage chapters, gatherings, committees, working groups, leaders, memberships, and group names (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_groups],
+      "Create or list chapters and industry gatherings, and rename working groups (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_structure],
+    adminOnly: true,
+  },
+
+  admin_group_leadership: {
+    name: "admin_group_leadership",
+    description:
+      "List working groups and manage their committee leaders (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_leadership],
+    adminOnly: true,
+  },
+
+  admin_group_membership: {
+    name: "admin_group_membership",
+    description:
+      "List working groups and add or remove working-group members (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_membership],
     adminOnly: true,
   },
 
@@ -603,6 +647,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "Review brand and property registry gaps, logo submissions, community mirrors, and orphaned brand ownership (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brands],
     adminOnly: true,
+  },
+
+  // Compatibility only: plans already carrying the mixed group set can
+  // finish, while new router prompts choose one bounded group domain.
+  admin_groups: {
+    name: "admin_groups",
+    description: "Legacy mixed admin group compatibility surface",
+    tools: [...LEGACY_ADMIN_GROUP_TOOLS],
+    adminOnly: true,
+    routerVisible: false,
   },
 
   // Compatibility only: a plan already carrying the old `admin` set can

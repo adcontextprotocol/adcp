@@ -1226,9 +1226,9 @@ Flag a Slack user as a known media contact (journalist, reporter, editor). Messa
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_groups (admin only)
+## admin_group_structure (admin only)
 
-Manage chapters, gatherings, committees, working groups, leaders, memberships, and group names (admin only)
+Create or list chapters and industry gatherings, and rename working groups (admin only)
 
 ### `create_chapter`
 
@@ -1253,6 +1253,16 @@ Create an industry gathering for conferences/trade shows. Auto-archives after ev
 List all industry gatherings with their dates, locations, and member counts.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `rename_working_group`
+
+Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_group_leadership (admin only)
+
+List working groups and manage their committee leaders (admin only)
 
 ### `list_working_groups`
 
@@ -1284,6 +1294,22 @@ List all leaders of a committee.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+## admin_group_membership (admin only)
+
+List working groups and add or remove working-group members (admin only)
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_working_group`
+
+Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
 ### `add_working_group_member`
 
 Add a user as a member of a working group, council, chapter, or industry gathering.
@@ -1293,12 +1319,6 @@ Add a user as a member of a working group, council, chapter, or industry gatheri
 ### `remove_working_group_member`
 
 Remove a user from a working group, council, chapter, or industry gathering. The user is deactivated, not deleted.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `rename_working_group`
-
-Rename a working group, chapter, or committee. Updates the display name and optionally the slug. Use this when a chapter or WG needs to be renamed (e.g., "Germany Chapter" → "DACH Chapter").
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 

@@ -41,7 +41,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_prospects** *(admin only)* — add_prospect, update_prospect, enrich_company, query_prospects, prospect_search_lusha, claim_prospect, triage_prospect_domain, suggest_prospects
 - **admin_feeds** *(admin only)* — search_industry_feeds, add_industry_feed, get_feed_stats, list_feed_proposals, approve_feed_proposal, reject_feed_proposal, add_media_contact
-- **admin_groups** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders, add_working_group_member, remove_working_group_member, rename_working_group
+- **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
+- **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
+- **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
 - **admin_organizations** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains, update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
 - **admin_workflows** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation, set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands

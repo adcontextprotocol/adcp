@@ -530,7 +530,10 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should include bounded admin domains and hide the legacy set', () => {
       expect(descriptions).toMatch(/\*\*admin_workflows\*\*/);
-      expect(descriptions).toMatch(/\*\*admin_groups\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_structure\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_leadership\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_membership\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin_groups\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });
 
