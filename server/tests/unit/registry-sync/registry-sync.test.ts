@@ -277,6 +277,52 @@ describe('RegistrySync', () => {
       expect(updated?.channels).toEqual(['ctv']);
       expect(updated?.property_count).toBe(5);
       expect(updated?.has_tmp).toBe(true);
+      // changed_fields is advisory event metadata, not part of AgentProfile —
+      // it must not leak into the stored profile.
+      expect(updated).not.toHaveProperty('changed_fields');
+    });
+
+    it('does not leak advisory or unrecognized payload fields into the stored profile', () => {
+      // Add agent first, with a full profile.
+      sync.agents!.upsert({
+        agent_url: 'https://whitelist-me.example.com',
+        channels: ['ctv'], property_types: ['video'], markets: ['US'], categories: ['news'],
+        tags: ['premium'], delivery_types: ['guaranteed'], format_kinds: ['video'],
+        property_count: 5, publisher_count: 2, has_tmp: true, category_taxonomy: null,
+        updated_at: '2026-01-01',
+      });
+
+      // additionalProperties: true on agentProfilePayload means a producer
+      // (or a future one) could legally attach fields that are not part of
+      // AgentProfile at all. get()/list()/search() must never surface these
+      // as if they were real profile data.
+      const event = {
+        event_id: 'e-profile-update-leak', event_type: 'agent.profile_updated', entity_type: 'agent',
+        entity_id: 'https://whitelist-me.example.com',
+        payload: {
+          agent_url: 'https://whitelist-me.example.com',
+          markets: ['US', 'CA'],
+          changed_fields: ['markets'],
+          type: 'sales', // schema's agentProfilePayload.type — not an AgentProfile field
+          internal_crawl_note: 'seen on run 42', // arbitrary runtime field a producer could attach
+        },
+        actor: 'pipeline:crawler', created_at: new Date('2026-02-01'),
+      };
+
+      (sync as any).applyEvents([event]);
+
+      const updated = sync.agents!.get('https://whitelist-me.example.com');
+      expect(updated?.markets).toEqual(['US', 'CA']);
+      expect(updated).not.toHaveProperty('changed_fields');
+      expect(updated).not.toHaveProperty('type');
+      expect(updated).not.toHaveProperty('internal_crawl_note');
+      expect(Object.keys(updated ?? {}).sort()).toEqual(
+        [
+          'agent_url', 'channels', 'property_types', 'markets', 'categories', 'tags',
+          'delivery_types', 'format_kinds', 'property_count', 'publisher_count', 'has_tmp',
+          'category_taxonomy', 'updated_at',
+        ].sort(),
+      );
     });
 
     it('ignores agent.profile_updated for an agent not already in the index', () => {

@@ -201,13 +201,20 @@ export class RegistrySync extends EventEmitter {
         // Unlike agent.discovered's full snapshot, this payload may carry
         // only the fields that changed (see payload.changed_fields in the
         // registry-event schema), so merge onto the existing profile rather
-        // than reconstructing it — mirrors property.updated below.
+        // than reconstructing it. Do NOT spread the raw payload though: per
+        // the schema's agentProfilePayload def, additionalProperties is
+        // true and this event type additionally carries an advisory
+        // changed_fields array — neither is part of AgentProfile, and a
+        // bare spread would leak them into get()/list()/search() results as
+        // if they were real profile fields. Whitelist explicitly instead,
+        // mirroring collectionFromPayload's explicit-construction pattern
+        // below.
         if (this.agents && payload.agent_url) {
           const existing = this.agents.get(payload.agent_url as string);
           if (existing) {
             this.agents.upsert({
               ...existing,
-              ...(payload as Partial<AgentProfile>),
+              ...this.agentProfilePatchFromPayload(payload),
               updated_at: event.created_at.toString(),
             });
           }
@@ -307,6 +314,28 @@ export class RegistrySync extends EventEmitter {
         }
         break;
     }
+  }
+
+  private agentProfilePatchFromPayload(payload: Record<string, unknown>): Partial<AgentProfile> {
+    // Only real AgentProfile fields, explicitly whitelisted — never a raw
+    // spread of `payload`. agent_url (the lookup key) and updated_at (set
+    // from event.created_at) are handled by the caller, not here.
+    const patch: Partial<AgentProfile> = {};
+    if (typeof payload.name === 'string') patch.name = payload.name;
+    if (Array.isArray(payload.channels)) patch.channels = payload.channels as string[];
+    if (Array.isArray(payload.property_types)) patch.property_types = payload.property_types as string[];
+    if (Array.isArray(payload.markets)) patch.markets = payload.markets as string[];
+    if (Array.isArray(payload.categories)) patch.categories = payload.categories as string[];
+    if (Array.isArray(payload.tags)) patch.tags = payload.tags as string[];
+    if (Array.isArray(payload.delivery_types)) patch.delivery_types = payload.delivery_types as string[];
+    if (Array.isArray(payload.format_kinds)) patch.format_kinds = payload.format_kinds as string[];
+    if (typeof payload.property_count === 'number') patch.property_count = payload.property_count;
+    if (typeof payload.publisher_count === 'number') patch.publisher_count = payload.publisher_count;
+    if (typeof payload.has_tmp === 'boolean') patch.has_tmp = payload.has_tmp;
+    if (payload.category_taxonomy === null || typeof payload.category_taxonomy === 'string') {
+      patch.category_taxonomy = payload.category_taxonomy as string | null;
+    }
+    return patch;
   }
 
   private collectionFromPayload(
