@@ -20,67 +20,242 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // 176 → 153 words and shape violations from 11/12 → 9/12 on the
 // 12-question battery, with zero default-template or banned-ritual
 // regressions.
-const RULE_FILES_BEFORE_CONTEXT = [
-  'identity.md',
-  'behaviors.md',
-  'knowledge.md',
-];
+const IDENTITY_FILE = 'identity.md';
+const BEHAVIORS_FILE = 'behaviors.md';
+const KNOWLEDGE_FILE = 'knowledge.md';
 
-const RULE_FILES_AFTER_CONTEXT = [
-  'urls.md',
-  'constraints.md',
-];
+const URLS_FILE = 'urls.md';
+const CONSTRAINTS_FILE = 'constraints.md';
 
 const RESPONSE_STYLE_FILE = 'response-style.md';
 
 const MAX_CURRENT_CONTEXT_BYTES = 16 * 1024;
 const MAX_AGENT_DESCRIPTION_CHARS = 500;
 
-let cachedPrompt: string | null = null;
-let cachedResponseStyle: string | null = null;
+const GLOBAL_BEHAVIOR_SECTION = null;
 
 /**
- * Load all rule markdown files except response-style.md and return them
- * joined with section separators. Callers append the tool reference after
- * this prompt and `loadResponseStyle()` after that so the response-shape
- * rules sit last in the assembled context window.
+ * Route-scoping for the level-two sections in behaviors.md. A null value
+ * means the instruction is a cross-domain invariant and must be present on
+ * every request. Keeping this exhaustive makes new prose opt-in: an
+ * unclassified section fails prompt assembly and its unit tests instead of
+ * silently disappearing from routed prompts.
+ */
+const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | null>> = {
+  'Spec Feedback Response Pattern': ['knowledge', 'schema_reference', 'github'],
+  'Spec Exploration Follow-Up': ['knowledge', 'schema_reference'],
+  'Slack Invite Domain Restrictions': GLOBAL_BEHAVIOR_SECTION,
+  'Email Verification and Notification Failures': GLOBAL_BEHAVIOR_SECTION,
+  'Post-Exploration Channel Summary': ['knowledge', 'community_groups', 'meetings'],
+  'Individual Practitioner Suitability': ['certification', 'member', 'member_billing', 'member_profile', 'community_groups'],
+  'Partner Directory': ['directory'],
+  'Meeting Tool Selection': ['meetings'],
+  'Capability Questions: Search docs/aao/ First': GLOBAL_BEHAVIOR_SECTION,
+  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory', 'member'],
+  'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
+  'Compliance Controller Skip Framing': ['agent_validation', 'agent_conformance'],
+  'Publisher and Agent Setup Diagnosis': ['agent_validation', 'property_catalog'],
+  'Multi-Participant Thread Awareness': GLOBAL_BEHAVIOR_SECTION,
+  'Anonymous Tier Awareness': GLOBAL_BEHAVIOR_SECTION,
+  'Member Engagement': GLOBAL_BEHAVIOR_SECTION,
+  'Acknowledging Account Linking': GLOBAL_BEHAVIOR_SECTION,
+  'Question-First Approach': GLOBAL_BEHAVIOR_SECTION,
+  'URL Formatting in Replies': GLOBAL_BEHAVIOR_SECTION,
+  'GitHub Issue Drafting': ['github'],
+  'Conversation Pivot - While I Have You': GLOBAL_BEHAVIOR_SECTION,
+  'Opportunistic Information Gathering': GLOBAL_BEHAVIOR_SECTION,
+  'Knowledge Search First': ['knowledge'],
+  'Building and Testing Agents': ['knowledge', 'agent_validation', 'agent_conformance'],
+  'Registering an Agent in the AAO Registry': ['agent_validation'],
+  'Brand-Ownership Intent: Route to Brand Builder': ['brand_registry', 'property_catalog'],
+  'Uncertainty Acknowledgment': GLOBAL_BEHAVIOR_SECTION,
+};
+
+const KNOWLEDGE_RULE_TOOL_SETS = new Set(['knowledge', 'schema_reference']);
+const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
+  'knowledge',
+  'community_research',
+  'github',
+  'content',
+  'publishing',
+  'illustrations',
+]);
+const EVIDENCE_BOUND_URL_FREE_TOOL_SETS = new Set([
+  'knowledge',
+  'schema_reference',
+  'community_research',
+  'illustrations',
+]);
+
+const cachedPrompts = new Map<string, string>();
+const cachedScopedPrompts = new Map<string, string>();
+let cachedCorePrompt: string | null = null;
+let cachedConstraintPrompt: string | null = null;
+let cachedResponseStyle: string | null = null;
+
+export interface LoadRulesOptions {
+  /**
+   * Router-selected domains for this request. Omit to load the complete rule
+   * corpus for configuration hashing, offline analysis, and legacy callers.
+   * An empty array intentionally loads only cross-domain rules.
+   */
+  selectedToolSetNames?: readonly string[];
+}
+
+/**
+ * Load rule markdown except response-style.md and return it joined with
+ * section separators. When router-selected domains are supplied, behavior
+ * sections and the large factual knowledge corpus are included only for
+ * relevant routes. Cross-domain identity, safety, and evidence rules remain
+ * global; roadmap context, expert references, and canonical URLs are scoped
+ * to routes that can use them.
  *
  * Assembly order:
- * 1. identity.md, behaviors.md, knowledge.md — stable persona and knowledge base
- * 2. `.agents/current-context.md` — active AdCP roadmap snapshot (weekly refresh, treated as data-only)
- * 3. Expert-panel reference built from `.claude/agents/*.md` frontmatter
- * 4. urls.md, constraints.md — tone + constraint rules
+ * 1. identity.md and applicable behaviors.md sections
+ * 2. knowledge.md for knowledge/schema routes
+ * 3. `.agents/current-context.md` — active AdCP roadmap snapshot (weekly refresh, treated as data-only)
+ * 4. Expert-panel reference built from `.claude/agents/*.md` frontmatter
+ * 5. urls.md for action routes, then constraints.md for every route
  *
  * response-style.md is loaded separately. Files are read once and cached.
  * Call `invalidateRulesCache()` to force re-read (e.g., after a deploy —
  * but cache invalidation today is de-facto redeploy-only).
  */
-export function loadRules(): string {
+export function loadRules(options: LoadRulesOptions = {}): string {
+  const { selectedToolSetNames } = options;
+  const cacheKey = selectedToolSetNames === undefined
+    ? '*'
+    : [...new Set(selectedToolSetNames)].sort().join('\0');
+  const cachedPrompt = cachedPrompts.get(cacheKey);
   if (cachedPrompt) return cachedPrompt;
 
   const parts: string[] = [];
-  for (const filename of RULE_FILES_BEFORE_CONTEXT) {
-    const content = readFileSync(join(__dirname, filename), 'utf-8').trim();
-    if (content) parts.push(content);
+  parts.push(readRuleFile(IDENTITY_FILE));
+  parts.push(loadBehaviorRules(selectedToolSetNames));
+  if (shouldLoadKnowledgeRules(selectedToolSetNames)) {
+    parts.push(readRuleFile(KNOWLEDGE_FILE));
   }
 
+  if (shouldLoadEcosystemContext(selectedToolSetNames)) {
+    parts.push(...loadEcosystemContext());
+  }
+  if (shouldLoadCanonicalUrls(selectedToolSetNames)) {
+    parts.push(readRuleFile(URLS_FILE));
+  }
+  parts.push(readRuleFile(CONSTRAINTS_FILE));
+
+  const prompt = parts.filter(Boolean).join('\n\n---\n\n');
+  cachedPrompts.set(cacheKey, prompt);
+  return prompt;
+}
+
+/**
+ * Return the route-invariant prompt block. This is kept separate from scoped
+ * prose so providers can reuse their prompt cache across different domains.
+ */
+export function loadCoreRules(): string {
+  if (cachedCorePrompt) return cachedCorePrompt;
+  cachedCorePrompt = [
+    readRuleFile(IDENTITY_FILE),
+    loadBehaviorRules([], 'combined'),
+  ].filter(Boolean).join('\n\n---\n\n');
+  return cachedCorePrompt;
+}
+
+/**
+ * Return only route-specific behavior and factual knowledge sections. The
+ * caller should place this beside the scoped tool reference, after the
+ * cacheable core block.
+ */
+export function loadScopedRules(selectedToolSetNames: readonly string[]): string {
+  const cacheKey = [...new Set(selectedToolSetNames)].sort().join('\0');
+  const cachedPrompt = cachedScopedPrompts.get(cacheKey);
+  if (cachedPrompt !== undefined) return cachedPrompt;
+
+  const parts = [loadBehaviorRules(selectedToolSetNames, 'scoped')];
+  if (shouldLoadKnowledgeRules(selectedToolSetNames)) {
+    parts.push(readRuleFile(KNOWLEDGE_FILE));
+  }
+  if (shouldLoadEcosystemContext(selectedToolSetNames)) {
+    parts.push(...loadEcosystemContext());
+  }
+  if (shouldLoadCanonicalUrls(selectedToolSetNames)) {
+    parts.push(readRuleFile(URLS_FILE));
+  }
+  const prompt = parts.filter(Boolean).join('\n\n---\n\n');
+  cachedScopedPrompts.set(cacheKey, prompt);
+  return prompt;
+}
+
+/**
+ * Return the global constraint layer separately so prompt assembly can place
+ * it after routed rules, retrieved context, and tool guidance.
+ */
+export function loadConstraintRules(): string {
+  if (cachedConstraintPrompt) return cachedConstraintPrompt;
+  cachedConstraintPrompt = readRuleFile(CONSTRAINTS_FILE);
+  return cachedConstraintPrompt;
+}
+
+function readRuleFile(filename: string): string {
+  return readFileSync(join(__dirname, filename), 'utf-8').trim();
+}
+
+function shouldLoadKnowledgeRules(selectedToolSetNames?: readonly string[]): boolean {
+  return selectedToolSetNames === undefined
+    || selectedToolSetNames.some((name) => KNOWLEDGE_RULE_TOOL_SETS.has(name));
+}
+
+function shouldLoadEcosystemContext(selectedToolSetNames?: readonly string[]): boolean {
+  return selectedToolSetNames === undefined
+    || selectedToolSetNames.some((name) => ECOSYSTEM_CONTEXT_TOOL_SETS.has(name));
+}
+
+function shouldLoadCanonicalUrls(selectedToolSetNames?: readonly string[]): boolean {
+  if (selectedToolSetNames === undefined) return true;
+  return selectedToolSetNames.some((name) => !EVIDENCE_BOUND_URL_FREE_TOOL_SETS.has(name));
+}
+
+function loadEcosystemContext(): string[] {
+  const parts: string[] = [];
   const currentContext = loadCurrentContext();
   if (currentContext) {
     parts.push(wrapAsUntrusted('Current AdCP Context', currentContext));
   }
-
   const expertPanel = loadExpertPanelSummary();
   if (expertPanel) {
     parts.push(`# Expert Panel\n\n${expertPanel}`);
   }
+  return parts;
+}
 
-  for (const filename of RULE_FILES_AFTER_CONTEXT) {
-    const content = readFileSync(join(__dirname, filename), 'utf-8').trim();
-    if (content) parts.push(content);
-  }
+function loadBehaviorRules(
+  selectedToolSetNames?: readonly string[],
+  mode: 'combined' | 'scoped' = 'combined',
+): string {
+  const content = readRuleFile(BEHAVIORS_FILE);
+  if (selectedToolSetNames === undefined) return content;
 
-  cachedPrompt = parts.join('\n\n---\n\n');
-  return cachedPrompt;
+  const selected = new Set(selectedToolSetNames);
+  const sections = content.split(/(?=^## )/gm);
+  const included = sections.slice(1).filter((section) => {
+    const heading = section.match(/^## ([^\n]+)$/m)?.[1];
+    if (!heading) {
+      throw new Error('Addie behavior rule section is missing a level-two heading');
+    }
+    if (!Object.prototype.hasOwnProperty.call(BEHAVIOR_SECTION_TOOL_SETS, heading)) {
+      throw new Error(`Addie behavior rule section is not route-classified: ${heading}`);
+    }
+    const toolSets = BEHAVIOR_SECTION_TOOL_SETS[heading];
+    if (mode === 'scoped') {
+      return toolSets !== GLOBAL_BEHAVIOR_SECTION
+        && toolSets.some((name) => selected.has(name));
+    }
+    return toolSets === GLOBAL_BEHAVIOR_SECTION
+      || toolSets.some((name) => selected.has(name));
+  });
+  if (included.length === 0) return '';
+  return `${sections[0].trim()}\n\n${included.join('').trim()}`;
 }
 
 /**
@@ -95,7 +270,10 @@ export function loadResponseStyle(): string {
 }
 
 export function invalidateRulesCache(): void {
-  cachedPrompt = null;
+  cachedPrompts.clear();
+  cachedScopedPrompts.clear();
+  cachedCorePrompt = null;
+  cachedConstraintPrompt = null;
   cachedResponseStyle = null;
 }
 

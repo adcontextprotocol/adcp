@@ -52,6 +52,13 @@ describe('Addie rules loader', () => {
     expect(b).toEqual(a);
   });
 
+  it('caches equivalent routed domain selections under one canonical key', () => {
+    const first = loadRules({ selectedToolSetNames: ['schema_reference', 'knowledge', 'knowledge'] });
+    const second = loadRules({ selectedToolSetNames: ['knowledge', 'schema_reference'] });
+
+    expect(second).toBe(first);
+  });
+
   it('wraps current-context in an untrusted fence with ignore-directives framing', () => {
     const prompt = loadRules();
     // The fence tags prevent injected content from being read as instructions.

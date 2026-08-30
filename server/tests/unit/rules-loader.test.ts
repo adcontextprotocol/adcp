@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadRules, loadResponseStyle, invalidateRulesCache } from '../../src/addie/rules/index.js';
+import {
+  loadCoreRules,
+  loadConstraintRules,
+  loadResponseStyle,
+  loadRules,
+  loadScopedRules,
+  invalidateRulesCache,
+} from '../../src/addie/rules/index.js';
 import {
   ADDIE_TOOL_REFERENCE,
   buildAddieScopedToolReference,
@@ -131,6 +138,75 @@ describe('Rules Loader', () => {
 
     // Content should be the same but it's a fresh read
     expect(first).toEqual(second);
+  });
+
+  it('keeps cross-domain safeguards while omitting unrelated routed guidance', () => {
+    const coreRules = loadRules({ selectedToolSetNames: [] });
+
+    expect(coreRules).toContain('# Core Identity');
+    expect(coreRules).toContain('# Behaviors');
+    expect(coreRules).toContain('## Verify Claims With Tools');
+    expect(coreRules).toContain('## Tool Outcomes — Three Distinct Cases');
+    expect(coreRules).not.toContain('# Knowledge');
+    expect(coreRules).not.toContain('## Meeting Tool Selection');
+    expect(coreRules).not.toContain('## Partner Directory');
+  });
+
+  it('loads only behavior sections relevant to the selected route domains', () => {
+    const knowledgeRules = loadRules({ selectedToolSetNames: ['knowledge'] });
+    const meetingRules = loadRules({ selectedToolSetNames: ['meetings'] });
+    const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
+    const memberRules = loadRules({ selectedToolSetNames: ['member'] });
+
+    expect(knowledgeRules).toContain('# Knowledge');
+    expect(knowledgeRules).toContain('## Spec Feedback Response Pattern');
+    expect(knowledgeRules).toContain('## Knowledge Search First');
+    expect(knowledgeRules).not.toContain('## Meeting Tool Selection');
+    expect(knowledgeRules).not.toContain('## Partner Directory');
+
+    expect(meetingRules).not.toContain('# Knowledge');
+    expect(meetingRules).toContain('## Meeting Tool Selection');
+    expect(meetingRules).toContain('## Post-Exploration Channel Summary');
+    expect(meetingRules).not.toContain('## Knowledge Search First');
+
+    expect(directoryRules).toContain('## Honest Reporting After Search');
+    expect(directoryRules).toContain('Registry visibility is not registry completeness');
+    expect(memberRules).toContain('## Honest Reporting After Search');
+    expect(memberRules).toContain('Registry visibility is not registry completeness');
+  });
+
+  it('separates cacheable core rules from route-specific rules', () => {
+    const coreRules = loadCoreRules();
+    const constraints = loadConstraintRules();
+    const knowledgeRules = loadScopedRules(['knowledge']);
+    const billingRules = loadScopedRules(['member_billing']);
+
+    expect(coreRules).toContain('## Verify Claims With Tools');
+    expect(coreRules).not.toContain('# Knowledge');
+    expect(coreRules).not.toContain('## Knowledge Search First');
+    expect(coreRules).not.toContain('# Current AdCP Context');
+    expect(coreRules).not.toContain('# Expert Panel');
+    expect(coreRules).not.toContain('# Canonical URL Reference');
+    expect(coreRules).not.toContain('# Constraints');
+    expect(constraints).toContain('# Constraints');
+    expect(constraints).toContain('## Tool Outcomes — Three Distinct Cases');
+    expect(knowledgeRules).toContain('# Knowledge');
+    expect(knowledgeRules).toContain('## Knowledge Search First');
+    expect(knowledgeRules).not.toContain('## Verify Claims With Tools');
+    expect(knowledgeRules).toContain('# Current AdCP Context');
+    expect(knowledgeRules).toContain('# Expert Panel');
+    expect(knowledgeRules).not.toContain('# Canonical URL Reference');
+    expect(billingRules).toContain('## Individual Practitioner Suitability');
+    expect(billingRules).not.toContain('# Knowledge');
+    expect(billingRules).not.toContain('# Current AdCP Context');
+    expect(billingRules).toContain('# Canonical URL Reference');
+  });
+
+  it('materially reduces the rule payload for non-knowledge routes', () => {
+    const completeRules = loadRules();
+    const billingRules = loadRules({ selectedToolSetNames: ['member_billing'] });
+
+    expect(billingRules.length).toBeLessThan(completeRules.length * 0.6);
   });
 });
 

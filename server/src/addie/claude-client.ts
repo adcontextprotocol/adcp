@@ -20,7 +20,13 @@ import {
 import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
-import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/index.js';
+import {
+  loadCoreRules,
+  loadConstraintRules,
+  loadResponseStyle,
+  loadScopedRules,
+  invalidateRulesCache,
+} from './rules/index.js';
 import { isAllowedImageType } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
@@ -906,9 +912,9 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Get the system prompt from markdown rule files, with tool reference and
-   * response-style.md appended in that order so the shape rules are the
-   * last thing the model reads before generating.
+   * Get the system prompt from markdown rule files. Stable core instructions
+   * come first for provider caching, routed rules sit beside routed tool
+   * guidance, and constraints + response-style.md remain last.
    *
    * Validated by the prompt-variant eval (server/tests/manual/prompt-variant-eval.ts):
    * on Sonnet 4.6, this ordering cuts mean response length 13% and shape
@@ -939,7 +945,9 @@ export class AddieClaudeClient {
       selectedToolSetNames,
     });
     try {
-      const basePrompt = loadRules();
+      const basePrompt = loadCoreRules();
+      const scopedRules = loadScopedRules(selectedToolSetNames ?? []);
+      const constraints = loadConstraintRules();
       const responseStyle = loadResponseStyle();
       return [
         {
@@ -947,9 +955,12 @@ export class AddieClaudeClient {
           text: `${basePrompt}\n\n---\n\n${stableToolReference}`,
           cache_control: { type: 'ephemeral' },
         },
-        { type: 'text', text: scopedToolReference },
+        {
+          type: 'text',
+          text: [scopedRules, scopedToolReference].filter(Boolean).join('\n\n---\n\n'),
+        },
         ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
-        { type: 'text', text: responseStyle },
+        { type: 'text', text: `${constraints}\n\n---\n\n${responseStyle}` },
       ];
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
