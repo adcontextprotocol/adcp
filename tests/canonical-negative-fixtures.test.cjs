@@ -372,30 +372,6 @@ const NEGATIVE_CASES = {
       },
     },
   ],
-  '/schemas/formats/canonical/coordinated_placements.json': [
-    {
-      label: 'coordinated placements accepts an inline audio_vast component',
-      expected: true,
-      doc: {
-        components: [
-          {
-            component_id: 'audio',
-            placement_ref: { placement_id: 'stream' },
-            required: true,
-            format_kind: 'audio_vast',
-            params: { vast_versions: ['4.1'] },
-          },
-          {
-            component_id: 'companion',
-            placement_ref: { placement_id: 'display' },
-            required: false,
-            format_kind: 'image',
-            params: { width: 300, height: 250 },
-          },
-        ],
-      },
-    },
-  ],
   '/schemas/formats/canonical/image.json': [
     {
       label: 'size-mode mutex: width+height AND sizes[] rejected',

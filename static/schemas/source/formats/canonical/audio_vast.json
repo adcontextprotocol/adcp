@@ -24,24 +24,7 @@
       "description": "Deprecated one-element alias for vast_versions. Producers use either the singular legacy alias or the plural 3.2 field, never both. VAST 4.1+ is the standards-conformant audio profile; older values declare legacy audio interoperability."
     },
     "media_file_requirements": {
-      "allOf": [
-        { "$ref": "/schemas/core/vast-media-file-requirements.json" },
-        {
-          "properties": {
-            "mime_types": {
-              "items": { "type": "string", "pattern": "^[Aa][Uu][Dd][Ii][Oo]/" }
-            }
-          },
-          "not": {
-            "anyOf": [
-              { "required": ["min_width"] },
-              { "required": ["max_width"] },
-              { "required": ["min_height"] },
-              { "required": ["max_height"] }
-            ]
-          }
-        }
-      ],
+      "$ref": "/schemas/core/vast-media-file-requirements.json",
       "description": "Technical acceptance constraints for alternative audio MediaFile renditions in each resolved InLine linear creative. Declared MIME types must be audio/*; visual-dimension constraints are invalid because VAST represents audio MediaFiles with width and height 0."
     },
     "duration_ms_range": {
@@ -86,5 +69,35 @@
     "spec": "docs/creative/channels/audio.mdx"
   },
   "additionalProperties": true,
-  "not": { "required": ["vast_version", "vast_versions"] }
+  "not": {
+    "anyOf": [
+      { "required": ["vast_version", "vast_versions"] },
+      {
+        "properties": {
+          "media_file_requirements": {
+            "properties": {
+              "mime_types": {
+                "contains": { "not": { "pattern": "^[Aa][Uu][Dd][Ii][Oo]/" } }
+              }
+            },
+            "required": ["mime_types"]
+          }
+        },
+        "required": ["media_file_requirements"]
+      },
+      {
+        "properties": {
+          "media_file_requirements": {
+            "anyOf": [
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        },
+        "required": ["media_file_requirements"]
+      }
+    ]
+  }
 }
