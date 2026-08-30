@@ -615,9 +615,9 @@ Remove a document from a committee. The document will no longer be tracked or di
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-## publishing
+## publishing_author
 
-Submit and review member articles or perspectives, read Google Docs supplied for publication, and generate or check published cover illustrations
+Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations
 
 ### `propose_content`
 
@@ -630,6 +630,34 @@ Submit a draft (article or link) for editorial review. Content lands in pending_
 Get all content where the user is an author, proposer, or owner (committee lead). Shows content across all collections with status and relationship info.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `read_google_doc`
+
+Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
+
+*Source: `server/src/addie/mcp/google-docs.ts`*
+
+### `check_illustration_status`
+
+Check if a perspective article has an editorial illustration and whether the author can generate one.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `generate_perspective_illustration`
+
+Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
+
+*Source: `server/src/addie/mcp/illustration-tools.ts`*
+
+### `attach_content_asset`
+
+Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## publishing_review
+
+Review pending member content and approve, reject, or request revisions when the current member leads that collection or is an admin
 
 ### `list_pending_content`
 
@@ -655,33 +683,13 @@ Ask the author to revise and resubmit content. The article stays visible in the 
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-### `read_google_doc`
+## publishing_promotion
 
-Read a Google Doc, Sheet, Slide deck, or file from Google Drive. Returns a JSON object: `{ "status": "ok" | "access_denied" | "empty" | "invalid_input" | "unsupported_type" | "error", "title": string | null, "body": string | null, "format": "markdown" | "csv" | "text" | null, "mime_type": string | null, "message": string | null, "truncated": boolean }`. Branch on `status` — do not try to sniff error text out of `body`. On `ok`, Google Docs return markdown ready to pass straight to `propose_content`'s `content` field; pair with `title`. On `access_denied`, relay `message` (asks the user to share with &#36;&#123;...&#125;).
-
-*Source: `server/src/addie/mcp/google-docs.ts`*
-
-### `check_illustration_status`
-
-Check if a perspective article has an editorial illustration and whether the author can generate one.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
-
-### `generate_perspective_illustration`
-
-Generate an editorial illustration for a perspective article. The author describes what they want to see and the system generates a magazine-style illustration in the amber editorial palette. The author's portrait is automatically composited onto the final card.
-
-*Source: `server/src/addie/mcp/illustration-tools.ts`*
+Browse published community perspectives and draft social posts promoting published content
 
 ### `list_perspectives`
 
 List published perspectives (articles/posts) from AgenticAdvertising.org members. These are public articles shared by the community.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `attach_content_asset`
-
-Attach a file (image, PDF) to a published perspective. Fetches from a URL and stores it. Use after propose_content to add cover images or report PDFs.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 

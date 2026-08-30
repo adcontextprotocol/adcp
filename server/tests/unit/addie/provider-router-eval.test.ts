@@ -146,7 +146,8 @@ describe('strict router eval', () => {
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
-      'adcp_operations', 'sponsored_intelligence', 'content', 'publishing', 'github', 'illustrations',
+      'adcp_operations', 'sponsored_intelligence', 'content',
+      'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
       'member_billing', 'billing', 'events', 'meetings',
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',

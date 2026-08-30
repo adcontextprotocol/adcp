@@ -234,6 +234,46 @@ const LEGACY_MEMBER_CONTENT_TOOLS = [
   "draft_social_posts",
 ] as const;
 
+/** Author-owned submission, document import, asset, and cover-image workflow. */
+export const PUBLISHING_AUTHOR_TOOLS = [
+  "propose_content",
+  "get_my_content",
+  "read_google_doc",
+  "check_illustration_status",
+  "generate_perspective_illustration",
+  "attach_content_asset",
+] as const;
+
+/** Committee-lead and admin editorial review workflow. */
+export const PUBLISHING_REVIEW_TOOLS = [
+  "list_pending_content",
+  "approve_content",
+  "reject_content",
+  "request_revisions",
+] as const;
+
+/** Published-content discovery and member social-promotion workflow. */
+export const PUBLISHING_PROMOTION_TOOLS = [
+  "list_perspectives",
+  "draft_social_posts",
+] as const;
+
+/** Exact pre-split publishing surface retained for already-routed plans. */
+export const LEGACY_PUBLISHING_TOOLS = [
+  "propose_content",
+  "get_my_content",
+  "list_pending_content",
+  "approve_content",
+  "reject_content",
+  "request_revisions",
+  "read_google_doc",
+  "check_illustration_status",
+  "generate_perspective_illustration",
+  "list_perspectives",
+  "attach_content_asset",
+  "draft_social_posts",
+] as const;
+
 /** Exact compatibility union for plans created before the member-domain split. */
 export const LEGACY_MEMBER_TOOLS = [
   ...MEMBER_PROFILE_TOOLS,
@@ -455,24 +495,34 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  publishing_author: {
+    name: "publishing_author",
+    description:
+      "Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations",
+    tools: [...PUBLISHING_AUTHOR_TOOLS],
+  },
+
+  publishing_review: {
+    name: "publishing_review",
+    description:
+      "Review pending member content and approve, reject, or request revisions when the current member leads that collection or is an admin",
+    tools: [...PUBLISHING_REVIEW_TOOLS],
+  },
+
+  publishing_promotion: {
+    name: "publishing_promotion",
+    description:
+      "Browse published community perspectives and draft social posts promoting published content",
+    tools: [...PUBLISHING_PROMOTION_TOOLS],
+  },
+
+  // Compatibility only: plans already carrying the mixed publishing set can
+  // finish, while new router prompts choose an author, review, or promotion domain.
   publishing: {
     name: "publishing",
-    description:
-      "Submit and review member articles or perspectives, read Google Docs supplied for publication, and generate or check published cover illustrations",
-    tools: [
-      "propose_content",
-      "get_my_content",
-      "list_pending_content",
-      "approve_content",
-      "reject_content",
-      "request_revisions",
-      "read_google_doc",
-      "check_illustration_status",
-      "generate_perspective_illustration",
-      "list_perspectives",
-      "attach_content_asset",
-      "draft_social_posts",
-    ],
+    description: "Legacy mixed publishing compatibility surface",
+    tools: [...LEGACY_PUBLISHING_TOOLS],
+    routerVisible: false,
   },
 
   github: {
