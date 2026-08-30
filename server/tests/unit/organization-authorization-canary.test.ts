@@ -34,6 +34,8 @@ import {
 } from "../../src/middleware/organization-authorization-canary.js";
 
 const BOUNDARY = ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_ROLES_READ;
+const DOMAINS_BOUNDARY =
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_DOMAINS_READ;
 
 describe("organization authorization canary", () => {
   beforeEach(() => {
@@ -159,6 +161,34 @@ describe("organization authorization canary", () => {
     expect(getWorkos).not.toHaveBeenCalled();
     expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    [BOUNDARY, DOMAINS_BOUNDARY],
+    [DOMAINS_BOUNDARY, BOUNDARY],
+  ])(
+    "does not enforce %s when runtime enables only %s",
+    async (requestedBoundary, enabledBoundary) => {
+      process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+      process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
+        `${BOUNDARY},${DOMAINS_BOUNDARY}`;
+      const getWorkos = vi.fn();
+
+      const decision = await evaluateOrganizationAuthorizationCanary({
+        boundary: requestedBoundary,
+        principal: { id: "user_test" },
+        organizationId: "org_test",
+        getWorkos,
+        getRuntimeSetting: vi.fn().mockResolvedValue({
+          enabled: true,
+          boundaries: [enabledBoundary],
+        }),
+      });
+
+      expect(decision).toEqual({ enforced: false });
+      expect(getWorkos).not.toHaveBeenCalled();
+      expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("fails closed when the environment is staged but runtime configuration is unavailable", async () => {
     process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
