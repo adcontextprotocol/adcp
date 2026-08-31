@@ -1107,6 +1107,34 @@ Products with multiple collections default to bundles — the buyer gets all lis
 | `false` (default) | Bundle — buyer gets all collections |
 | `true` | Buyer can select specific collections in the media buy |
 
+Selection travels in `targeting_overlay.collection_selection`, mirroring
+`placement_selection`: `mode: "selected"` names the complete required set as
+domain-qualified selectors with explicit `collection_ids` (the domain-only
+bulk-grant form is authorization scoping, not selection), and
+`mode: "default"` accepts the product's full bundle. Buyers who manage
+selection through lists keep using `collection_list` /
+`collection_list_exclude` refs.
+
+```json
+"targeting_overlay": {
+  "collection_selection": {
+    "mode": "selected",
+    "collections": [{
+      "publisher_domain": "channel-owner.example",
+      "collection_ids": ["retro_news"]
+    }]
+  }
+}
+```
+
+On package readback, `collection_selection` is also the audit surface: sellers
+MUST echo the committed collection selection there as concrete selectors —
+including the materialized result of any `collection_list` composition — so a
+buyer can verify what content programming a package runs against without
+re-resolving mutable lists or re-fetching the product catalog. For a channel
+buy this is the readback of the one axis that makes the product distinct: the
+channel itself.
+
 ## Multi-collection bundles
 
 A single product can span multiple collections by listing multiple collection IDs in `collections`. When a product has multiple collections, each installment MUST include canonical `collection_ref` so the buyer agent knows both the parent collection and its publisher namespace. The deprecated `collection_id` shorthand is only unambiguous for single-namespace products.

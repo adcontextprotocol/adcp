@@ -101,7 +101,7 @@
     },
     "targeting_overlay": {
       "$ref": "/schemas/core/targeting.json",
-      "description": "Complete effective targeting accepted for this package, including targeting bound through configured product selection plus package-specific targeting. Sellers MUST echo placement, property, and collection selection so buyers can audit purchased inventory."
+      "description": "Complete effective targeting accepted for this package, including targeting bound through configured product selection plus package-specific targeting. Sellers MUST echo placement, property, and collection selection so buyers can audit purchased inventory: placements via placement_selection, collections via collection_selection (the committed concrete selectors, materialized even when the selection was produced through collection_list references)."
     },
     "targeting_resolution": {
       "$ref": "/schemas/core/package-targeting-resolution.json",

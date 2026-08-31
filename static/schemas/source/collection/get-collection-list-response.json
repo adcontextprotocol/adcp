@@ -27,6 +27,15 @@
             "type": "string",
             "description": "Registry-assigned stable identifier for this collection. Present when the collection has been registered in the collection registry."
           },
+          "publisher_domain": {
+            "type": "string",
+            "description": "Domain of the adagents.json that declares this collection — the canonical namespace for collection_id. SHOULD be returned whenever known: together with collection_id it is the domain-qualified identity that makes a resolved row matchable when no platform-independent distribution identifier exists (e.g. a channel known only by a platform_channel_id)."
+          },
+          "collection_id": {
+            "type": "string",
+            "description": "Publisher-assigned collection ID within publisher_domain's adagents.json. SHOULD be returned whenever known; identity is the tuple (publisher_domain, collection_id).",
+            "x-entity": "collection"
+          },
           "name": {
             "type": "string",
             "description": "Human-readable collection name"

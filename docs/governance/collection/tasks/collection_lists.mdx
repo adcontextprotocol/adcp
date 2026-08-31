@@ -165,6 +165,12 @@ The `auth_token` is only returned at creation time. Store it — it authorizes s
 
 Retrieve a collection list with resolved collections. Sellers call this to fetch and cache the list. When the response supplies `resolved_at`, sellers copy it into product `list_applications` receipts; otherwise the seller timestamps completion of its full snapshot fetch, including all pages.
 
+Resolved rows SHOULD carry `publisher_domain` + `collection_id` whenever
+known — the domain-qualified identity `(publisher_domain, collection_id)`.
+This is what keeps a row matchable when no platform-independent
+`distribution_ids` entry exists, such as a `channel` collection whose only
+host identifier is a `platform_channel_id`.
+
 **Request:**
 
 ```json
@@ -192,6 +198,8 @@ Retrieve a collection list with resolved collections. Sellers call this to fetch
   "collections": [
     {
       "collection_rid": "019abc12-3d4e-7f5a-ab6c-7d8e9f0a1b2c",
+      "publisher_domain": "studio.example.com",
+      "collection_id": "danger_zone",
       "name": "Danger Zone",
       "distribution_ids": [
         { "type": "imdb_id", "value": "tt9999901" }
