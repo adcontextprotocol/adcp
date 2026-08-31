@@ -1,5 +1,8 @@
+import { SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
+
 export type SlackToolSource = 'dm' | 'mention' | 'channel';
 export type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
+export type ActiveCertificationKind = 'learning' | 'assessment' | 'mixed';
 
 export const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
 
@@ -21,16 +24,38 @@ export interface SlackToolSetSelectionInput {
   isAdmin: boolean;
   workingGroupSlug?: string | null;
   systemRole?: SystemChannelRole | null;
-  /** Active certification modules override normal routing only in DMs. */
+  /** Authoritative active-module kind; overrides normal routing only in DMs. */
+  activeCertificationKind?: ActiveCertificationKind | null;
+  /** Legacy boolean callers receive the mixed compatibility-safe workflow. */
   hasActiveCertification?: boolean;
   /** Relevant SI retrievals or an active session make brand-agent tools actionable. */
   hasSponsoredIntelligenceContext?: boolean;
 }
 
 export function hasActiveCertificationProgress(
-  progress: readonly { status: string }[],
+  progress: readonly { status: string; module_id?: string | null }[],
 ): boolean {
-  return progress.some((entry) => entry.status === 'in_progress');
+  return classifyActiveCertificationProgress(progress) !== null;
+}
+
+/** Classify trusted in-progress state so active DMs receive one bounded workflow. */
+export function classifyActiveCertificationProgress(
+  progress: readonly { status: string; module_id?: string | null }[],
+): ActiveCertificationKind | null {
+  let hasLearning = false;
+  let hasAssessment = false;
+  for (const entry of progress) {
+    if (entry.status !== 'in_progress') continue;
+    if (entry.module_id?.toUpperCase().startsWith('S')) {
+      hasAssessment = true;
+    } else {
+      hasLearning = true;
+    }
+  }
+  if (hasLearning && hasAssessment) return 'mixed';
+  if (hasAssessment) return 'assessment';
+  if (hasLearning) return 'learning';
+  return null;
 }
 
 function appendUnique(target: string[], values: readonly string[]): void {
@@ -41,13 +66,18 @@ function appendUnique(target: string[], values: readonly string[]): void {
 
 /** Apply server-owned Slack routing rules after the router proposes sets. */
 export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[] {
-  if (input.source === 'dm' && input.hasActiveCertification) {
-    return ['certification', 'knowledge'];
+  const activeCertificationKind = input.activeCertificationKind
+    ?? (input.hasActiveCertification ? 'mixed' : null);
+  if (input.source === 'dm' && activeCertificationKind) {
+    const certificationSets = activeCertificationKind === 'mixed'
+      ? ['certification_learning', 'certification_assessment']
+      : [`certification_${activeCertificationKind}`];
+    return [...certificationSets, ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS, 'illustrations'];
   }
 
   const selected = input.routerAvailable
     ? [...(input.routerSelectedSets ?? [])]
-    : ['knowledge'];
+    : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
 
   if (input.isAdmin && input.systemRole) {
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);

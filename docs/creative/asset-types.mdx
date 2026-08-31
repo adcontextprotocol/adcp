@@ -298,7 +298,10 @@ Inline markup also records `markup_type` as `iframe_javascript`, `javascript`, o
 
 ### VAST Asset
 
-VAST (Video Ad Serving Template) tags for third-party video ad serving.
+VAST (Video Ad Serving Template) tags for third-party video or audio ad
+serving. Standardized audio support begins with VAST 4.1. `audio_vast`
+products should use 4.1 or newer, but may explicitly advertise an older version
+for seller-supported legacy audio interoperability.
 
 **URL Delivery:**
 ```json
@@ -331,7 +334,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `vast_version`: Exact VAST specification version supplied by this asset (2.0, 3.0, 4.0, 4.1, 4.2, 4.3). Product format options use plural `vast_versions` for their accepted set.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
-- `duration_ms`: Expected video duration in milliseconds (if known)
+- `duration_ms`: Expected audio or video duration in milliseconds (if known)
 - `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Aligned to the IAB VAST 4.2 XSD `TrackingEvents_type/Tracking/@event` enumeration (vast_4.2.xsd lines 112–136), plus AdCP-flattened representations of `Impression`, `Error`, `VideoClicks`, and `ViewableImpression` elements:
   - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
   - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (VAST 2.x/3.x compat), `exitFullscreen` (VAST 2.x/3.x compat), `otherAdInteraction`, `interactiveStart` (SIMID)
@@ -343,6 +346,7 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 
 **Use Cases:**
 - Third-party video ad servers
+- Third-party audio ad servers using VAST 4.1+
 - Programmatic video buying
 - Video ad networks
 - VPAID interactive video ads

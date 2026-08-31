@@ -247,6 +247,131 @@ const NEGATIVE_CASES = {
       doc: { ctv_ad_experience: 'pause', creative_type: 'nonlinear', simid_supported: false },
     },
   ],
+  '/schemas/formats/canonical/audio_vast.json': [
+    {
+      label: 'audio VAST accepts the plural standardized version set',
+      expected: true,
+      doc: { vast_versions: ['4.1', '4.2', '4.3'] },
+    },
+    {
+      label: 'audio VAST accepts the deprecated singular 4.1 version',
+      expected: true,
+      doc: { vast_version: '4.1' },
+    },
+    {
+      label: 'audio VAST accepts explicitly advertised legacy VAST 3.0',
+      expected: true,
+      doc: { vast_versions: ['3.0'] },
+    },
+    {
+      label: 'audio VAST rejects an unknown VAST version',
+      expected: false,
+      doc: { vast_versions: ['5.0'] },
+    },
+    {
+      label: 'audio VAST rejects empty accepted version sets',
+      expected: false,
+      doc: { vast_versions: [] },
+    },
+    {
+      label: 'audio VAST rejects duplicate accepted versions',
+      expected: false,
+      doc: { vast_versions: ['4.1', '4.1'] },
+    },
+    {
+      label: 'audio VAST rejects singular and plural versions together',
+      expected: false,
+      doc: { vast_version: '4.1', vast_versions: ['4.1'] },
+    },
+    {
+      label: 'audio VAST accepts audio MediaFile MIME constraints',
+      expected: true,
+      doc: { media_file_requirements: { mime_types: ['audio/mpeg', 'audio/aac'] } },
+    },
+    {
+      label: 'audio VAST rejects video MediaFile MIME constraints',
+      expected: false,
+      doc: { media_file_requirements: { mime_types: ['video/mp4'] } },
+    },
+    {
+      label: 'audio VAST rejects visual MediaFile dimension constraints',
+      expected: false,
+      doc: { media_file_requirements: { min_width: 1 } },
+    },
+  ],
+  '/schemas/core/canonical-format-option.json': [
+    {
+      label: 'compact format option accepts audio_vast',
+      expected: true,
+      doc: { format_kind: 'audio_vast', params: { vast_versions: ['4.1'] } },
+    },
+  ],
+  '/schemas/core/creative-manifest.json': [
+    {
+      label: 'audio VAST manifest accepts an exact asset version',
+      expected: true,
+      doc: {
+        format_kind: 'audio_vast',
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.example/audio.xml',
+            vast_version: '4.3',
+          },
+        },
+      },
+    },
+    {
+      label: 'audio VAST manifest rejects a missing exact asset version',
+      expected: false,
+      doc: {
+        format_kind: 'audio_vast',
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.example/audio.xml',
+          },
+        },
+      },
+    },
+  ],
+  '/schemas/core/creative-representation.json': [
+    {
+      label: 'audio VAST representation accepts an exact asset version',
+      expected: true,
+      doc: {
+        representation_id: 'audio-vast-43',
+        format_kind: 'audio_vast',
+        source: { system: 'buyer-library', source_representation: 'VAST 4.3 audio' },
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.example/audio.xml',
+            vast_version: '4.3',
+          },
+        },
+      },
+    },
+    {
+      label: 'audio VAST representation rejects a missing exact asset version',
+      expected: false,
+      doc: {
+        representation_id: 'audio-vast-unversioned',
+        format_kind: 'audio_vast',
+        source: { system: 'buyer-library', source_representation: 'Unversioned audio' },
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.example/audio.xml',
+          },
+        },
+      },
+    },
+  ],
   '/schemas/formats/canonical/image.json': [
     {
       label: 'size-mode mutex: width+height AND sizes[] rejected',

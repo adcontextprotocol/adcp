@@ -157,10 +157,25 @@ export async function attemptStripeReconciliation(
   }
 
   const subs = (customer as Stripe.Customer).subscriptions?.data ?? [];
+  let productFetchFailed = false;
   const picked = await pickMembershipSubWithProductFetch(
     subs,
-    (productId) => stripe.products.retrieve(productId),
+    async (productId) => {
+      try {
+        return await stripe.products.retrieve(productId);
+      } catch (err) {
+        productFetchFailed = true;
+        throw err;
+      }
+    },
   );
+  if (!picked && productFetchFailed) {
+    logger.warn(
+      { orgId, customerId: org.stripe_customer_id },
+      'lazy-reconcile: Stripe product classification failed; deferring heal',
+    );
+    return { healed: false, reason: 'stripe_error' };
+  }
   if (!picked) return { healed: false, reason: 'no_membership_sub' };
   if (!ENTITLED_STATUSES.has(picked.sub.status)) return { healed: false, reason: 'sub_not_entitled' };
 

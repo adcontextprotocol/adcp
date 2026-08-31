@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADMIN_CHANNEL_WG_SLUG,
+  classifyActiveCertificationProgress,
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
@@ -9,11 +10,23 @@ import {
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
 
+const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
+
 describe('Slack tool-set selection policy', () => {
   it('distinguishes an active module from the no-module certification warning', () => {
     expect(hasActiveCertificationProgress([])).toBe(false);
     expect(hasActiveCertificationProgress([{ status: 'completed' }])).toBe(false);
     expect(hasActiveCertificationProgress([{ status: 'in_progress' }])).toBe(true);
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 'B2' },
+    ])).toBe('learning');
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 's3' },
+    ])).toBe('assessment');
+    expect(classifyActiveCertificationProgress([
+      { status: 'in_progress', module_id: 'A1' },
+      { status: 'in_progress', module_id: 'S2' },
+    ])).toBe('mixed');
   });
 
   it.each([
@@ -34,23 +47,35 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual(expected);
   });
 
-  it('overrides router and admin sets for an active certification DM', () => {
+  it.each([
+    ['learning', ['certification_learning', ...safeKnowledgeFallback, 'illustrations']],
+    ['assessment', ['certification_assessment', ...safeKnowledgeFallback, 'illustrations']],
+    ['mixed', ['certification_learning', 'certification_assessment', ...safeKnowledgeFallback, 'illustrations']],
+  ] as const)('overrides router and admin sets for an active %s certification DM', (activeCertificationKind, expected) => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['billing', 'admin'],
       routerAvailable: true,
       source: 'dm',
       isAdmin: true,
-      hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+      activeCertificationKind,
+    })).toEqual(expected);
   });
 
-  it('applies the certification override when the router is unavailable', () => {
+  it('keeps legacy boolean callers on the mixed certification workflow when the router is unavailable', () => {
     expect(selectSlackToolSets({
       routerAvailable: false,
       source: 'dm',
       isAdmin: true,
       hasActiveCertification: true,
-    })).toEqual(['certification', 'knowledge']);
+    })).toEqual(['certification_learning', 'certification_assessment', ...safeKnowledgeFallback, 'illustrations']);
+  });
+
+  it('preserves safe read-only knowledge domains when the router is unavailable', () => {
+    expect(selectSlackToolSets({
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin: false,
+    })).toEqual(safeKnowledgeFallback);
   });
 
   it('does not treat a non-DM certification context as a routing override', () => {
@@ -60,7 +85,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'channel',
       isAdmin: true,
       workingGroupSlug: ADMIN_CHANNEL_WG_SLUG,
-      hasActiveCertification: true,
+      activeCertificationKind: 'learning',
     })).toEqual(['knowledge']);
   });
 
@@ -120,7 +145,7 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: false,
       hasSponsoredIntelligenceContext: true,
-    })).toEqual(['knowledge', 'sponsored_intelligence']);
+    })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence']);
   });
 
   it('preserves an already-created legacy admin plan for continuity', () => {

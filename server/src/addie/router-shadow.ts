@@ -33,6 +33,19 @@ export const ROUTER_SHADOW_POLICY_VERSION = 'addie-router-luna-shadow:v2';
 export const ROUTER_SHADOW_PRICING_VERSION = 'openai-gpt-5.6-luna-2026-08-26';
 export const ROUTER_SHADOW_PRIMARY_PRICING_VERSION = 'anthropic-router-2026-08';
 export const ROUTER_SHADOW_MIN_COMPARISON_SAMPLES = 30;
+export const ROUTER_SHADOW_PROMOTION_POLICY_VERSION = 'addie-router-luna-promotion:v1';
+export const ROUTER_SHADOW_PROMOTION_THRESHOLDS = Object.freeze({
+  minimumSamples: ROUTER_SHADOW_MIN_COMPARISON_SAMPLES,
+  minimumPrimaryValidityRate: 0.95,
+  minimumShadowValidityRate: 1,
+  minimumValidActionMatchRate: 0.95,
+  minimumToolSetAgreementRate: 0.95,
+  maximumPrivilegeAttempts: 0,
+  maximumInvalidToolSetAttempts: 0,
+  maximumShadowLatencyP95Ms: 15_000,
+  maximumShadowAverageCostMicros: 5_000,
+  maximumShadowToPrimaryCostRatio: 1,
+});
 export const ROUTER_SHADOW_RETENTION_DAYS = 8;
 export const ROUTER_SHADOW_TIMEOUT_MS = 120_000;
 export const ROUTER_SHADOW_MAX_REQUEST_BYTES = 65_536;
@@ -963,6 +976,130 @@ export interface RouterShadowSummary {
     shadow_p50: number | null;
     shadow_p95: number | null;
   };
+  rollout: RouterShadowPromotionDecision;
+}
+
+export interface RouterShadowPromotionCheck {
+  dimension: string;
+  actual: boolean | number | null;
+  threshold: boolean | number;
+  operator: 'equals' | 'at_least' | 'at_most';
+  pass: boolean;
+}
+
+export interface RouterShadowPromotionDecision {
+  policy_version: typeof ROUTER_SHADOW_PROMOTION_POLICY_VERSION;
+  scope: 'shadow_evidence_only';
+  limitation: 'fixed_trace_gate_must_pass_separately';
+  thresholds: typeof ROUTER_SHADOW_PROMOTION_THRESHOLDS;
+  pass: boolean;
+  failed_dimensions: string[];
+  checks: RouterShadowPromotionCheck[];
+}
+
+type RouterShadowEvidence = Omit<RouterShadowSummary, 'rollout'>;
+
+function boundedRate(pair: { numerator: number; denominator: number }): number | null {
+  if (pair.denominator <= 0 || pair.numerator < 0 || pair.numerator > pair.denominator) return null;
+  return pair.numerator / pair.denominator;
+}
+
+/**
+ * Turn aggregate-only shadow evidence into a fail-closed promotion decision.
+ * This is intentionally stricter than admission: it does not arm or alter a
+ * canary, and agreement with the primary remains a consistency signal rather
+ * than a gold-label quality judgment.
+ */
+export function evaluateRouterShadowPromotion(
+  summary: RouterShadowEvidence,
+): RouterShadowPromotionDecision {
+  const thresholds = ROUTER_SHADOW_PROMOTION_THRESHOLDS;
+  const primaryValidityRate = boundedRate(summary.primary_validity);
+  const shadowValidityRate = boundedRate(summary.shadow_validity);
+  const validActionMatchRate = boundedRate(summary.valid_action_match_all_dispatched);
+  const toolSetAgreementRate = boundedRate(summary.tool_set_agreement);
+  const shadowAverageCostMicros = summary.dispatched > 0
+    ? summary.shadow_usage.estimated_cost_micros / summary.dispatched
+    : null;
+  const shadowToPrimaryCostRatio = summary.primary_usage.estimated_cost_micros > 0
+    ? summary.shadow_usage.estimated_cost_micros / summary.primary_usage.estimated_cost_micros
+    : null;
+  const checks: RouterShadowPromotionCheck[] = [
+    {
+      dimension: 'comparison_eligible', actual: summary.comparison_eligible,
+      threshold: true, operator: 'equals', pass: summary.comparison_eligible,
+    },
+    {
+      dimension: 'cost_comparison_eligible', actual: summary.cost_comparison_eligible,
+      threshold: true, operator: 'equals', pass: summary.cost_comparison_eligible,
+    },
+    {
+      dimension: 'minimum_samples', actual: summary.selected,
+      threshold: thresholds.minimumSamples, operator: 'at_least',
+      pass: summary.selected >= thresholds.minimumSamples,
+    },
+    {
+      dimension: 'primary_validity', actual: primaryValidityRate,
+      threshold: thresholds.minimumPrimaryValidityRate, operator: 'at_least',
+      pass: primaryValidityRate !== null
+        && primaryValidityRate >= thresholds.minimumPrimaryValidityRate,
+    },
+    {
+      dimension: 'shadow_validity', actual: shadowValidityRate,
+      threshold: thresholds.minimumShadowValidityRate, operator: 'at_least',
+      pass: shadowValidityRate !== null
+        && shadowValidityRate >= thresholds.minimumShadowValidityRate,
+    },
+    {
+      dimension: 'valid_action_match', actual: validActionMatchRate,
+      threshold: thresholds.minimumValidActionMatchRate, operator: 'at_least',
+      pass: validActionMatchRate !== null
+        && validActionMatchRate >= thresholds.minimumValidActionMatchRate,
+    },
+    {
+      dimension: 'tool_set_agreement', actual: toolSetAgreementRate,
+      threshold: thresholds.minimumToolSetAgreementRate, operator: 'at_least',
+      pass: toolSetAgreementRate !== null
+        && toolSetAgreementRate >= thresholds.minimumToolSetAgreementRate,
+    },
+    {
+      dimension: 'privilege_attempts', actual: summary.safety.privilege_attempts,
+      threshold: thresholds.maximumPrivilegeAttempts, operator: 'at_most',
+      pass: summary.safety.privilege_attempts <= thresholds.maximumPrivilegeAttempts,
+    },
+    {
+      dimension: 'invalid_tool_set_attempts', actual: summary.safety.invalid_tool_set_attempts,
+      threshold: thresholds.maximumInvalidToolSetAttempts, operator: 'at_most',
+      pass: summary.safety.invalid_tool_set_attempts <= thresholds.maximumInvalidToolSetAttempts,
+    },
+    {
+      dimension: 'shadow_latency_p95', actual: summary.latency_ms.shadow_p95,
+      threshold: thresholds.maximumShadowLatencyP95Ms, operator: 'at_most',
+      pass: summary.latency_ms.shadow_p95 !== null
+        && summary.latency_ms.shadow_p95 <= thresholds.maximumShadowLatencyP95Ms,
+    },
+    {
+      dimension: 'shadow_average_cost_micros', actual: shadowAverageCostMicros,
+      threshold: thresholds.maximumShadowAverageCostMicros, operator: 'at_most',
+      pass: shadowAverageCostMicros !== null
+        && shadowAverageCostMicros <= thresholds.maximumShadowAverageCostMicros,
+    },
+    {
+      dimension: 'shadow_to_primary_cost_ratio', actual: shadowToPrimaryCostRatio,
+      threshold: thresholds.maximumShadowToPrimaryCostRatio, operator: 'at_most',
+      pass: shadowToPrimaryCostRatio !== null
+        && shadowToPrimaryCostRatio <= thresholds.maximumShadowToPrimaryCostRatio,
+    },
+  ];
+  return {
+    policy_version: ROUTER_SHADOW_PROMOTION_POLICY_VERSION,
+    scope: 'shadow_evidence_only',
+    limitation: 'fixed_trace_gate_must_pass_separately',
+    thresholds,
+    pass: checks.every((check) => check.pass),
+    failed_dimensions: checks.filter((check) => !check.pass).map((check) => check.dimension),
+    checks,
+  };
 }
 
 export async function getRouterShadowSummary(
@@ -1205,7 +1342,7 @@ export async function getRouterShadowSummary(
     && count(row?.identity_failures) === 0
     && count(row?.primary_model_count) <= 1
     && count(row?.shadow_model_count) <= 1;
-  return {
+  const summary: RouterShadowEvidence = {
     days,
     scope: {
       policy_version: ROUTER_SHADOW_POLICY_VERSION,
@@ -1295,4 +1432,5 @@ export async function getRouterShadowSummary(
       shadow_p95: row?.shadow_p95 ?? null,
     },
   };
+  return { ...summary, rollout: evaluateRouterShadowPromotion(summary) };
 }

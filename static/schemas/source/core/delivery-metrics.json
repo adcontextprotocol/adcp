@@ -105,7 +105,7 @@
     },
     "plays": {
       "type": "number",
-      "description": "Number of times the ad creative was displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (per-screen rotation count) and from `impressions` (multiplied audience figure). Used for DOOH and broadcast inventory where buyers reconcile against forecast `plays`.",
+      "description": "Number of times the ad creative was displayed or played on DOOH or broadcast inventory. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (scheduled-rotation count) and from `impressions` (multiplied audience figure).",
       "minimum": 0
     },
     "measurement_source": {

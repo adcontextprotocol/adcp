@@ -316,7 +316,7 @@ describe('OpenAIResponsesProvider', () => {
         {
           type: 'function_call_output',
           call_id: 'call_1',
-          output: expect.stringContaining('Official docs: AdCP uses task-based interactions'),
+          output: expect.stringContaining('Official docs: A buyer agent calls a defined task on a seller agent'),
         },
       ]),
     });

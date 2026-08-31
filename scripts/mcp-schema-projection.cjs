@@ -793,18 +793,6 @@ function stripModelContextAnnotations(schema) {
   walkSchema(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
-    // Exact const values and homogeneous enums already communicate their JSON
-    // types. Mixed enums retain type because it still narrows the listed values.
-    if (Object.hasOwn(node, 'const')) delete node.type;
-    if (typeof node.type === 'string' && Array.isArray(node.enum) && node.enum.length > 0) {
-      const matchesType = node.enum.every(value => {
-        if (node.type === 'integer') return Number.isInteger(value);
-        if (node.type === 'number') return typeof value === 'number' && Number.isFinite(value);
-        if (node.type === 'null') return value === null;
-        return typeof value === node.type;
-      });
-      if (matchesType) delete node.type;
-    }
     // Arbitrary implementation extensions are not safe model-authored input.
     // A schema may explicitly opt a negotiated, closed extension surface into
     // model context; canonical validation always retains the source contract.
@@ -816,9 +804,12 @@ function stripModelContextAnnotations(schema) {
         if (Array.isArray(node.required)) {
           node.required = node.required.filter(name => name !== 'ext');
           if (node.required.length === 0) delete node.required;
-          }
         }
       }
+    }
+    // Exact const values and homogeneous enums already communicate their JSON
+    // types. Mixed enums retain type because it still narrows the listed values.
+    if (Object.hasOwn(node, 'const')) delete node.type;
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves
@@ -935,9 +926,8 @@ function inlineMarkedModelContextDefinitions(schema) {
 }
 
 /**
- * Remove root $defs that became unreachable when the discovery projection
- * removed root-only validation branches. Canonical schemas retain the full
- * graph; this only avoids repeating dead definitions in prompt inputs.
+ * Remove root $defs that became unreachable when projection removed fields or
+ * root-only validation branches. Canonical schemas retain the complete graph.
  */
 function pruneUnusedRootDefinitions(schema) {
   const pruned = clone(schema);

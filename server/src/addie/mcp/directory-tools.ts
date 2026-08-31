@@ -7,6 +7,7 @@
 
 import type { AddieTool } from '../types.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from '../../db/brand-db.js';
 import { AgentService } from '../../agent-service.js';
 import { AgentValidator } from '../../validator.js';
 import { FederatedIndexService } from '../../federated-index.js';
@@ -14,8 +15,10 @@ import { hasApiAccess, type MembershipTier } from '../../db/organization-db.js';
 import type { MemberContext } from '../member-context.js';
 import { isValidAgentType, type AgentType, type MemberOffering, type Agent } from '../../types.js';
 import { wrapUntrustedInput } from './untrusted-input.js';
+import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 
 const memberDb = new MemberDatabase();
+const brandDb = new BrandDatabase();
 const agentService = new AgentService();
 const validator = new AgentValidator();
 const federatedIndex = new FederatedIndexService();
@@ -35,6 +38,14 @@ function safeAgentType(value: unknown): AgentType {
   return isValidAgentType(value) ? value : 'unknown';
 }
 
+function summarizeAgentVisibility(agents: ReadonlyArray<{ visibility?: string }> | null | undefined) {
+  const registered = agents ?? [];
+  return {
+    public: registered.filter((agent) => agent.visibility === 'public').length,
+    members_only: registered.filter((agent) => agent.visibility === 'members_only').length,
+  };
+}
+
 /** Accept either a raw identifier or one copied verbatim from a fenced tool result. */
 function unwrapToolIdentifier(value: string): string {
   if (value.startsWith(UNTRUSTED_OPEN_TAG) && value.endsWith(UNTRUSTED_CLOSE_TAG)) {
@@ -49,8 +60,8 @@ function unwrapToolIdentifier(value: string): string {
 export const DIRECTORY_TOOLS: AddieTool[] = [
   {
     name: 'list_members',
-    description: 'List AgenticAdvertising.org member organizations visible to the caller. Public directory members are always returned; callers on an API-access tier also see organizations with members_only agents. Can filter by offerings, markets, or search term. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.',
-    usage_hints: 'Use when asked about AgenticAdvertising.org members, member organizations, who is in the directory, or companies that offer specific services. Preserve the visibility_scope qualification when reporting agent adoption.',
+    description: 'List visible AgenticAdvertising.org member organizations. Public profiles are always returned; API-tier callers also see organizations with members_only agents. Filter by offerings, markets, or search. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.',
+    usage_hints: 'Use when asked about AgenticAdvertising.org members, member organizations, who is in the directory, or companies that offer specific services. Use agent_visibility_summary for registration counts and preserve visibility_scope when describing visible agent details.',
     input_schema: {
       type: 'object',
       properties: {
@@ -80,8 +91,8 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
   },
   {
     name: 'get_member',
-    description: 'Get detailed information about a specific AgenticAdvertising.org member by slug, including agents visible to the caller. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.',
-    usage_hints: 'Use when asked for details about a specific member organization. Preserve the visibility_scope qualification when reporting agent adoption.',
+    description: 'Get an AgenticAdvertising.org member by slug. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.',
+    usage_hints: 'Use when asked for details about a specific member organization. Use agent_visibility_summary for registration counts and preserve visibility_scope when describing visible agent details.',
     input_schema: {
       type: 'object',
       properties: {
@@ -216,6 +227,7 @@ export function createDirectoryToolHandlers(
       markets: wrapList(m.markets, 100),
       website: wrapOptional(m.contact_website, 2_000),
       profile_visibility: m.is_public ? 'public' : 'members_only',
+      agent_visibility_summary: summarizeAgentVisibility(m.agents),
       agents: m.agents
         .filter((a) =>
           a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only')
@@ -259,18 +271,48 @@ export function createDirectoryToolHandlers(
       });
     }
 
+    const brandPrimaryDomain = member.workos_organization_id
+      ? await getBrandPrimaryDomain(member.workos_organization_id)
+      : null;
+    const brandRow = brandPrimaryDomain
+      ? await brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain)
+      : null;
+    const resolvedBrand = brandPrimaryDomain
+      && canSurfaceBrandForMember(brandRow, member.workos_organization_id)
+      ? resolveBrandFromJson(
+          brandPrimaryDomain,
+          brandRow!.brand_manifest as Record<string, unknown>,
+          brandRow!.domain_verified ?? false,
+        )
+      : undefined;
+    const tagline = member.tagline || resolvedBrand?.tagline;
+    const description = member.description || resolvedBrand?.description;
+
     return JSON.stringify({
       untrusted_data_notice: UNTRUSTED_DATA_NOTICE,
       name: wrapUntrustedInput(member.display_name, 200),
       slug: wrapUntrustedInput(member.slug, 200),
-      tagline: wrapOptional(member.tagline, 500),
-      description: wrapOptional(member.description, 1_000),
+      tagline: wrapOptional(tagline, 500),
+      description: wrapOptional(description, 1_000),
+      content_sources: {
+        tagline: member.tagline ? 'member_profile' : resolvedBrand?.tagline ? 'brand_json' : null,
+        description: member.description ? 'member_profile' : resolvedBrand?.description ? 'brand_json' : null,
+      },
       offerings: wrapList(member.offerings, 100),
       headquarters: wrapOptional(member.headquarters, 300),
       markets: wrapList(member.markets, 100),
       website: wrapOptional(member.contact_website, 2_000),
-      logo: wrapOptional(member.resolved_brand?.logo_url, 2_000),
+      brand_identity: resolvedBrand ? {
+        domain: wrapUntrustedInput(resolvedBrand.domain, 300),
+        name: wrapOptional(resolvedBrand.name, 200),
+        tagline: wrapOptional(resolvedBrand.tagline, 500),
+        description: wrapOptional(resolvedBrand.description, 1_000),
+        logo: wrapOptional(resolvedBrand.logo_url, 2_000),
+        verified: resolvedBrand.verified,
+      } : null,
+      logo: wrapOptional(resolvedBrand?.logo_url, 2_000),
       profile_visibility: member.is_public ? 'public' : 'members_only',
+      agent_visibility_summary: summarizeAgentVisibility(member.agents),
       agents: member.agents
         .filter((a) =>
           a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only')

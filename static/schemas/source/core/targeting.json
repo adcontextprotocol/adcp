@@ -199,15 +199,19 @@
     },
     "collection_list": {
       "$ref": "/schemas/core/collection-list-ref.json",
-      "description": "Reference to a collection list for including specific collections (programs, shows) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
+      "description": "Reference to a collection list for including specific collections (programs, publications, channels) within this product. The package runs on the intersection of matched collections and this list. Use for inclusion-based collection targeting. Seller must declare support in get_adcp_capabilities."
     },
     "collection_list_exclude": {
       "$ref": "/schemas/core/collection-list-ref.json",
-      "description": "Reference to a collection list for excluding specific collections (programs, shows) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
+      "description": "Reference to a collection list for excluding specific collections (programs, publications, channels) from this product. Matched collections must not carry the buyer's ads. Use for brand safety do-not-air lists. Seller must declare support in get_adcp_capabilities."
     },
     "placement_selection": {
       "$ref": "/schemas/core/placement-selection.json",
       "description": "Purchased placement selection within the product. This constrains package inventory; it is distinct from creative_assignments[].placement_refs, which only route individual creatives within the purchased set. On create, mode selected supplies the complete selected set and mode default uses the product default. On update, the surrounding targeting_overlay replacement semantics apply."
+    },
+    "collection_selection": {
+      "$ref": "/schemas/core/collection-selection.json",
+      "description": "Purchased collection selection within the product. On create, mode selected supplies the complete selected set and mode default uses the product's full bundle. On package readback this is the committed selection sellers MUST echo as concrete selectors, materializing any collection_list composition; collection_list fields remain the buyer-managed list mechanism. On update, the surrounding targeting_overlay replacement semantics apply."
     },
     "age_restriction": {
       "type": "object",

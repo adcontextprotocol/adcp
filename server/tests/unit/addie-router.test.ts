@@ -11,11 +11,13 @@ import type {
   ModelMessageContent,
   ModelProvider,
   ModelRequest,
+  ModelRespondOptions,
   ModelResponse,
   NormalizedModelEvent,
   PreparedModelInvocation,
 } from '../../src/addie/model-providers/model-provider.js';
 import { ModelConfig } from '../../src/config/models.js';
+import { trackApiCall } from '../../src/addie/services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
   TOOL_SETS,
@@ -54,26 +56,40 @@ const ROUTER_CAPABILITIES = Object.freeze({
 
 function fakeRouterProvider(
   content: ModelMessageContent[],
-  options: { finishReason?: ModelResponse['finishReason']; error?: Error } = {},
-): ModelProvider & { requests: ModelRequest[] } {
+  options: {
+    finishReason?: ModelResponse['finishReason'];
+    error?: Error;
+    providerId?: ModelProvider['id'];
+  } = {},
+): ModelProvider & { requests: ModelRequest[]; signals: Array<AbortSignal | undefined> } {
   const requests: ModelRequest[] = [];
+  const signals: Array<AbortSignal | undefined> = [];
+  const providerId = options.providerId ?? 'anthropic';
   return {
-    id: 'anthropic',
+    id: providerId,
     capabilities: ROUTER_CAPABILITIES,
     requests,
+    signals,
     prepare(request: ModelRequest): PreparedModelInvocation {
       return {
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         capabilities: ROUTER_CAPABILITIES,
         providerRequest: {},
       };
     },
-    async *respond(request: ModelRequest): AsyncIterable<NormalizedModelEvent> {
+    async *respond(
+      request: ModelRequest,
+      respondOptions?: ModelRespondOptions,
+    ): AsyncIterable<NormalizedModelEvent> {
       requests.push(request);
+      signals.push(respondOptions?.signal);
+      if (respondOptions?.signal?.aborted) {
+        throw respondOptions.signal.reason ?? new Error('aborted');
+      }
       if (options.error) throw options.error;
       const response: ModelResponse = {
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         id: 'router-response',
         content,
@@ -83,7 +99,7 @@ function fakeRouterProvider(
       };
       yield {
         type: 'response_start',
-        provider: 'anthropic',
+        provider: providerId,
         model: request.model,
         id: response.id,
       };
@@ -107,6 +123,26 @@ describe('Addie router prompt policy', () => {
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
     expect(adminPrompt).toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
+  });
+
+  it('keeps direct mentions inside Addie\'s domain boundary', () => {
+    const mentionPrompt = buildRoutingPrompt({
+      message: 'Addie, what is the best recipe for soup?',
+      source: 'mention',
+    });
+
+    expect(mentionPrompt).toContain('A mention means the user addressed Addie');
+    expect(mentionPrompt).toContain('Ignore off-topic requests');
+  });
+
+  it('disambiguates working group meetings from working group membership', () => {
+    const prompt = buildRoutingPrompt({
+      message: 'What is on the next working group meeting agenda?',
+      source: 'dm',
+    });
+
+    expect(prompt).toContain('Working group membership or participation');
+    expect(prompt).toContain('select ["meetings"] and do NOT add ["community_groups"]');
   });
 });
 
@@ -482,10 +518,12 @@ describe('getToolSetDescriptionsForRouter', () => {
   describe('non-admin user', () => {
     const descriptions = getToolSetDescriptionsForRouter(false);
 
-    it('should include knowledge, member, directory sets', () => {
+    it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member');
+      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('community_groups');
       expect(descriptions).toContain('directory');
+      expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
 
     it('should NOT include admin set', () => {
@@ -513,7 +551,10 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should include bounded admin domains and hide the legacy set', () => {
       expect(descriptions).toMatch(/\*\*admin_workflows\*\*/);
-      expect(descriptions).toMatch(/\*\*admin_groups\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_structure\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_leadership\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_group_membership\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin_groups\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });
 
@@ -527,8 +568,10 @@ describe('getToolSetDescriptionsForRouter', () => {
 
     it('should still include non-admin sets', () => {
       expect(descriptions).toContain('knowledge');
-      expect(descriptions).toContain('member');
+      expect(descriptions).toContain('member_profile');
+      expect(descriptions).toContain('community_groups');
       expect(descriptions).toContain('directory');
+      expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
   });
 });
@@ -585,32 +628,36 @@ describe('getToolsForSets', () => {
     expect(tools).toContain('web_search');
   });
 
-  it('should always expose content submission and review tools (any channel, any toolset)', () => {
-    // Content tools must be reachable regardless of the router's set choice.
-    // Otherwise a member pasting a draft in an admin/editorial channel gets
-    // an escalation instead of a submission — the root of issues #2695/#2698.
-    const tools = getToolsForSets([], false);
-    expect(tools).toContain('propose_content');
-    expect(tools).toContain('get_my_content');
-    expect(tools).toContain('list_pending_content');
-    expect(tools).toContain('approve_content');
-    expect(tools).toContain('reject_content');
+  it('should expose only the selected bounded publishing workflow', () => {
+    const authorTools = getToolsForSets(['publishing_author'], false);
+    const reviewTools = getToolsForSets(['publishing_review'], false);
+    const promotionTools = getToolsForSets(['publishing_promotion'], false);
+    expect(authorTools).toContain('propose_content');
+    expect(authorTools).toContain('get_my_content');
+    expect(authorTools).not.toContain('approve_content');
+    expect(reviewTools).toContain('list_pending_content');
+    expect(reviewTools).toContain('approve_content');
+    expect(reviewTools).toContain('reject_content');
+    expect(reviewTools).not.toContain('propose_content');
+    expect(promotionTools).toContain('draft_social_posts');
+    expect(promotionTools).not.toContain('approve_content');
+    expect(getToolsForSets([], false)).not.toContain('propose_content');
   });
 
-  it('should always expose read_google_doc so propose_content can consume a Docs link', () => {
-    // Members share Google Doc links as drafts — the reader has to be
-    // reachable before propose_content can be called, regardless of channel.
-    const tools = getToolsForSets([], false);
+  it('should keep read_google_doc with propose_content on the author surface', () => {
+    const tools = getToolsForSets(['publishing_author'], false);
     expect(tools).toContain('read_google_doc');
   });
 
-  it('should always expose illustration tools (#2783)', () => {
-    // Author asking Addie to regenerate their cover shouldn't depend
-    // on the router picking the right set. Permission + quota gating
-    // happens in the handler.
-    const tools = getToolsForSets([], false);
+  it('should keep published-cover operations on the author surface', () => {
+    const tools = getToolsForSets(['publishing_author'], false);
     expect(tools).toContain('check_illustration_status');
     expect(tools).toContain('generate_perspective_illustration');
+  });
+
+  it('should expose illustration search only when routed', () => {
+    expect(getToolsForSets(['illustrations'], false)).toContain('search_image_library');
+    expect(getToolsForSets([], false)).not.toContain('search_image_library');
   });
 
   it('should block admin tools for non-admin users', () => {
@@ -648,7 +695,7 @@ describe('getToolsForSets', () => {
   });
 
   it('should combine multiple sets', () => {
-    const tools = getToolsForSets(['knowledge', 'member'], false);
+    const tools = getToolsForSets(['knowledge', 'member_profile'], false);
     expect(tools).toContain('search_docs');
     expect(tools).toContain('get_my_profile');
   });
@@ -720,6 +767,193 @@ describe('AddieRouter.route', () => {
     });
   });
 
+  it('uses provider-specific model settings with strict output validation', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","requires_depth":false,"reason":"documented"}',
+    }], { providerId: 'openai' });
+    const context: RoutingContext = {
+      message: 'How does AdCP work?',
+      source: 'channel',
+      isAAOAdmin: false,
+    };
+    const subject = new AddieRouter('unused', provider, undefined, {
+      model: 'gpt-5.6-luna',
+      reasoning: { effort: 'none' },
+      strictOutput: true,
+    });
+
+    const plan = await subject.route(context, { failureMode: 'throw' });
+
+    expect(provider.requests).toEqual([
+      buildRouterModelRequest(context, 'gpt-5.6-luna', { effort: 'none' }),
+    ]);
+    expect(plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      model: 'gpt-5.6-luna',
+    });
+  });
+
+  it('uses Haiku after strict Luna output failure and accounts for both calls', async () => {
+    vi.mocked(trackApiCall).mockClear();
+    const lunaProvider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
+      providerId: 'openai',
+    });
+    const haikuProvider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"fallback"}',
+    }]);
+    const haikuRouter = new AddieRouter('unused', haikuProvider);
+    const observer = vi.fn();
+    const subject = new AddieRouter('unused', lunaProvider, undefined, {
+      model: 'gpt-5.6-luna',
+      reasoning: { effort: 'none' },
+      strictOutput: true,
+      fallbackRouter: haikuRouter,
+    });
+
+    await expect(subject.route({ message: 'How does AdCP work?', source: 'dm' }, {
+      observer,
+    })).resolves.toMatchObject({
+      action: 'respond',
+      tool_sets: ['knowledge'],
+      reason: 'fallback',
+      model: ModelConfig.fast,
+    });
+
+    expect(lunaProvider.requests).toHaveLength(1);
+    expect(haikuProvider.requests).toHaveLength(1);
+    expect(trackApiCall).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(trackApiCall).mock.calls.map(([call]) => call.model)).toEqual([
+      'gpt-5.6-luna',
+      ModelConfig.fast,
+    ]);
+    await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
+    expect(observer.mock.calls[0][0]).toMatchObject({
+      requestedProvider: 'anthropic',
+      requestedModel: ModelConfig.fast,
+      primaryErrorCategory: null,
+    });
+  });
+
+  it('falls back when the Luna provider exceeds its hard deadline', async () => {
+    let primarySignal: AbortSignal | undefined;
+    const lunaProvider: ModelProvider = {
+      id: 'openai',
+      capabilities: ROUTER_CAPABILITIES,
+      prepare(request: ModelRequest): PreparedModelInvocation {
+        return {
+          provider: 'openai',
+          model: request.model,
+          capabilities: ROUTER_CAPABILITIES,
+          providerRequest: {},
+        };
+      },
+      async *respond(
+        _request: ModelRequest,
+        respondOptions?: ModelRespondOptions,
+      ): AsyncIterable<NormalizedModelEvent> {
+        primarySignal = respondOptions?.signal;
+        await new Promise<never>((_resolve, reject) => {
+          respondOptions?.signal?.addEventListener(
+            'abort',
+            () => reject(respondOptions.signal?.reason),
+            { once: true },
+          );
+        });
+      },
+    };
+    const haikuProvider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"ignore","reason":"fallback"}',
+    }]);
+    const subject = new AddieRouter('unused', lunaProvider, undefined, {
+      model: 'gpt-5.6-luna',
+      strictOutput: true,
+      fallbackRouter: new AddieRouter('unused', haikuProvider),
+      primaryDeadlineMs: 5,
+    });
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }))
+      .resolves.toMatchObject({ action: 'ignore', reason: 'fallback' });
+    expect(primarySignal?.aborted).toBe(true);
+    expect(haikuProvider.requests).toHaveLength(1);
+  });
+
+  it('rejects invalid primary deadlines', () => {
+    expect(() => new AddieRouter('unused', undefined, undefined, {
+      primaryDeadlineMs: 0,
+    })).toThrow('Invalid router primary deadline');
+  });
+
+  it('forwards an abort signal so a canary boundary can enforce its deadline', async () => {
+    const provider = fakeRouterProvider([{
+      type: 'text',
+      text: '{"action":"ignore","reason":"not needed"}',
+    }]);
+    const subject = new AddieRouter('unused', provider, undefined, { strictOutput: true });
+    const controller = new AbortController();
+    const deadlineError = new Error('router_canary_timeout');
+    controller.abort(deadlineError);
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }, {
+      failureMode: 'throw',
+      signal: controller.signal,
+    })).rejects.toBe(deadlineError);
+    expect(provider.signals).toEqual([controller.signal]);
+  });
+
+  it.each([
+    ['malformed JSON', [{ type: 'text', text: 'not-json' }], 'stop'],
+    ['unauthorized tool set', [{
+      type: 'text',
+      text: '{"action":"respond","tool_sets":["admin"],"confidence":"high","requires_depth":false,"reason":"unsafe"}',
+    }], 'stop'],
+    ['truncated response', [{
+      type: 'text',
+      text: '{"action":"ignore","reason":"partial"}',
+    }], 'length'],
+  ] as const)('throws on strict %s so a caller can invoke fallback', async (
+    _name,
+    content,
+    finishReason,
+  ) => {
+    const provider = fakeRouterProvider([...content], { finishReason });
+    const subject = new AddieRouter('unused', provider, undefined, { strictOutput: true });
+    await expect(subject.route({
+      message: 'important question',
+      source: 'channel',
+      isAAOAdmin: false,
+    }, { failureMode: 'throw' })).rejects.toThrow();
+  });
+
+  it('observes strict candidate failure metadata before the caller falls back', async () => {
+    const provider = fakeRouterProvider([{ type: 'text', text: 'not-json' }], {
+      providerId: 'openai',
+    });
+    const observer = vi.fn();
+    const subject = new AddieRouter('unused', provider, undefined, {
+      model: 'gpt-5.6-luna',
+      strictOutput: true,
+    });
+
+    await expect(subject.route({ message: 'route me', source: 'channel' }, {
+      failureMode: 'throw',
+      observer,
+    })).rejects.toThrow('Router response is not JSON');
+    await vi.waitFor(() => expect(observer).toHaveBeenCalledOnce());
+    expect(observer.mock.calls[0][0]).toMatchObject({
+      requestedProvider: 'openai',
+      requestedModel: 'gpt-5.6-luna',
+      returnedProvider: 'openai',
+      returnedModel: 'gpt-5.6-luna',
+      inputTokens: 12,
+      outputTokens: 7,
+      primaryErrorCategory: 'invalid_json',
+    });
+  });
+
   it('consumes only the first text block and filters unauthorized tool sets', async () => {
     const firstOnly = fakeRouterProvider([
       { type: 'text', text: '{"action":"ignore","reason":"first block wins"}' },
@@ -751,9 +985,9 @@ describe('AddieRouter.route', () => {
       source: 'dm',
     })).resolves.toMatchObject({
       action: 'respond',
-      tool_sets: ['knowledge'],
+      tool_sets: ['knowledge', 'community_research', 'schema_reference'],
       confidence: 'high',
-      reason: 'Router error - defaulting to knowledge tools',
+      reason: 'Router error - defaulting to safe knowledge tools',
       decision_method: 'llm',
     });
   });
@@ -805,7 +1039,7 @@ describe('parseRouterResponse', () => {
   });
 
   it('should handle markdown-wrapped JSON', () => {
-    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member"],"confidence":"suggest","reason":"test"}\n```');
+    const plan = parseRouterResponse('```json\n{"action":"respond","tool_sets":["member_profile"],"confidence":"suggest","reason":"test"}\n```');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
       expect(plan.confidence).toBe('suggest');
@@ -828,9 +1062,9 @@ describe('parseRouterResponse', () => {
     const plan = parseRouterResponse('{"action":"respond","tool_sets":["knowledge"],"confidence":"high","reason":"The user is asking about AdCP protoc');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
-      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.tool_sets).toEqual(['knowledge', 'community_research', 'schema_reference']);
       expect(plan.confidence).toBe('high');
-      expect(plan.reason).toBe('Parse error - defaulting to knowledge tools');
+      expect(plan.reason).toBe('Parse error - defaulting to safe knowledge tools');
     }
   });
 
@@ -838,7 +1072,7 @@ describe('parseRouterResponse', () => {
     const plan = parseRouterResponse('{"action":"clarify","question":"What do you mean?","reason":"ambiguous"}');
     expect(plan.action).toBe('respond');
     if (plan.action === 'respond') {
-      expect(plan.tool_sets).toEqual(['knowledge']);
+      expect(plan.tool_sets).toEqual(['knowledge', 'community_research', 'schema_reference']);
       expect(plan.confidence).toBe('suggest');
     }
   });
@@ -1084,13 +1318,13 @@ describeWithApi('AddieRouter.route (LLM)', () => {
 
     // Harvin — DM — test my agent
     // Prod: 16 msg thread of confusion because tools weren't available
-    it('should route agent testing requests to agent_testing', async () => {
+    it('should route agent testing requests to agent_validation', async () => {
       const plan = await routeAsMember(
         'test https://david-five-kappa.vercel.app/api/ad-mcp'
       );
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('agent_testing');
+        expect(plan.tool_sets).toContain('agent_validation');
       }
     }, 15000);
 
@@ -1119,7 +1353,7 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
         expect(plan.confidence).toBe('high');
-        expect(plan.tool_sets).toContain('member');
+        expect(plan.tool_sets).toContain('community_groups');
       }
     }, 15000);
 

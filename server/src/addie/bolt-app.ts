@@ -173,11 +173,12 @@ import {
 } from './thread-utils.js';
 import { getThreadReplies, getSlackUser, getChannelInfo, getChannelHistory } from '../slack/client.js';
 import { AddieRouter, type RoutingContext, type ExecutionPlan, type ConfidenceTier } from './router.js';
-import { runRouterShadow, selectRouterShadowCohort } from './router-shadow.js';
 import { ProviderHealthController } from './model-providers/provider-health.js';
+import { createProductionRouter } from './router-runtime.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from './tool-sets.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
@@ -248,10 +249,11 @@ import {
   type ProfiledChannelRespondPlan,
 } from './jobs/shadow-replay-cohort.js';
 import {
-  hasActiveCertificationProgress,
+  classifyActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
   selectSlackToolSets,
+  type ActiveCertificationKind,
   type SystemChannelRole,
 } from './slack-tool-selection.js';
 
@@ -774,6 +776,7 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   const botToken = process.env.ADDIE_BOT_TOKEN || process.env.SLACK_BOT_TOKEN;
   const signingSecret = process.env.ADDIE_SIGNING_SECRET || process.env.SLACK_SIGNING_SECRET;
   const anthropicKey = process.env.ADDIE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
 
   if (!botToken || !signingSecret) {
     logger.warn('Addie Bolt: Missing ADDIE_BOT_TOKEN or ADDIE_SIGNING_SECRET, Addie will be disabled');
@@ -794,8 +797,11 @@ export async function initializeAddieBolt(): Promise<{ app: InstanceType<typeof 
   // Initialize Claude client
   claudeClient = new AddieClaudeClient(anthropicKey, AddieModelConfig.chat, providerHealth);
 
-  // Initialize router (uses Haiku for fast classification)
-  addieRouter = new AddieRouter(anthropicKey, undefined, providerHealth);
+  const routerRuntime = createProductionRouter(anthropicKey, openAiKey, providerHealth);
+  addieRouter = routerRuntime.router;
+  if (routerRuntime.primaryProvider !== 'openai') {
+    logger.warn('Addie Bolt: OPENAI_API_KEY missing; using Haiku router fallback only');
+  }
 
   // Initialize database access
   addieDb = new AddieDatabase();
@@ -1053,7 +1059,7 @@ async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
   existingMemberContext?: MemberContext | null
-): Promise<{ requestContext: string; memberContext: MemberContext | null; hasActiveCertification: boolean }> {
+): Promise<{ requestContext: string; memberContext: MemberContext | null; activeCertificationKind: ActiveCertificationKind | null }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
     const memberContextText = memberContext ? formatMemberContextForPrompt(memberContext) : null;
@@ -1089,13 +1095,13 @@ async function buildRequestContext(
     // Add certification module state so Addie remembers active modules
     // even when conversation history is trimmed
     let certContextText = '';
-    let hasActiveCertification = false;
+    let activeCertificationKind: ActiveCertificationKind | null = null;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
     if (workosUserId) {
       try {
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
-        hasActiveCertification = hasActiveCertificationProgress(progress);
+        activeCertificationKind = classifyActiveCertificationProgress(progress);
         certContextText = await buildCertificationContext(inProgress, workosUserId) || '';
         // If no module is in progress, inject a strong reminder to call start_certification_module.
         // Without this, Addie can teach certification content in a guardrail-free zone where
@@ -1127,14 +1133,14 @@ async function buildRequestContext(
     return {
       requestContext: sections.length > 0 ? sections.join('\n\n') : '',
       memberContext,
-      hasActiveCertification,
+      activeCertificationKind,
     };
   } catch (error) {
     logger.warn({ error, userId }, 'Addie Bolt: Failed to get member context, continuing without it');
     return {
       requestContext: buildAuthoritativeTemporalContext(),
       memberContext: null,
-      hasActiveCertification: false,
+      activeCertificationKind: null,
     };
   }
 }
@@ -1503,12 +1509,13 @@ async function selectRoutedToolsForSlackResponse(
   slackUserId: string,
   threadId: string,
   threadContext?: ThreadContext | null,
-  options?: { isThread?: boolean; hasActiveCertification?: boolean; threadMessages?: string[] }
+  options?: { isThread?: boolean; activeCertificationKind?: ActiveCertificationKind | null; threadMessages?: string[] }
 ): Promise<{
   tools: RequestTools;
   isAAOAdmin: boolean;
   unavailableHint: string;
   selectedToolSets: string[];
+  allowedToolNames: string[];
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1529,7 +1536,7 @@ async function selectRoutedToolsForSlackResponse(
       isAdmin: userIsAdmin,
       workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
       systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
-      hasActiveCertification: options?.hasActiveCertification,
+      activeCertificationKind: options?.activeCertificationKind,
       hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
     });
     const { filteredTools, unavailableHint } = filterToolsBySet(
@@ -1543,6 +1550,11 @@ async function selectRoutedToolsForSlackResponse(
       isAAOAdmin: userIsAdmin,
       unavailableHint,
       selectedToolSets: fallbackSets,
+      allowedToolNames: getToolsForSets(
+        fallbackSets,
+        userIsAdmin,
+        threadContext?.viewing_channel_is_private === false,
+      ),
       requiresPrecision: false,
       requiresDepth: false,
       confidence: 'high',
@@ -1565,7 +1577,7 @@ async function selectRoutedToolsForSlackResponse(
   const isDirectInteraction = source === 'dm' || source === 'mention';
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
-    : isDirectInteraction ? ['knowledge'] : [];
+    : isDirectInteraction ? [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS] : [];
   const selectedSets = selectSlackToolSets({
     routerSelectedSets,
     routerAvailable: true,
@@ -1573,7 +1585,7 @@ async function selectRoutedToolsForSlackResponse(
     isAdmin: userIsAdmin,
     workingGroupSlug: threadContext?.viewing_channel_working_group_slug,
     systemRole: threadContext?.viewing_channel_system_role as SystemChannelRole | undefined,
-    hasActiveCertification: options?.hasActiveCertification,
+    activeCertificationKind: options?.activeCertificationKind,
     hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
   });
 
@@ -1590,7 +1602,7 @@ async function selectRoutedToolsForSlackResponse(
       action: plan.action,
       reason: plan.reason,
       selectedSets,
-      hasActiveCertification: !!options?.hasActiveCertification,
+      activeCertificationKind: options?.activeCertificationKind ?? null,
       filteredToolCount: filteredTools.tools.length,
       totalToolCount: userTools.tools.length,
       requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
@@ -1609,6 +1621,11 @@ async function selectRoutedToolsForSlackResponse(
     isAAOAdmin: userIsAdmin,
     unavailableHint,
     selectedToolSets: selectedSets,
+    allowedToolNames: getToolsForSets(
+      selectedSets,
+      userIsAdmin,
+      threadContext?.viewing_channel_is_private === false,
+    ),
     requiresPrecision: plan.action === 'respond' ? !!plan.requires_precision : false,
     requiresDepth: plan.action === 'respond' ? !!plan.requires_depth : false,
     confidence,
@@ -1852,7 +1869,7 @@ async function handleUserMessage({
   }
 
   // Build per-request context for system prompt
-  let { requestContext, memberContext: updatedMemberContext, hasActiveCertification } = await buildRequestContext(
+  let { requestContext, memberContext: updatedMemberContext, activeCertificationKind } = await buildRequestContext(
     userId,
     slackThreadContext
   );
@@ -1889,14 +1906,20 @@ async function handleUserMessage({
     userId,
     thread.thread_id,
     slackThreadContext,
-    { isThread: true, hasActiveCertification }
+    {
+      isThread: true,
+      activeCertificationKind,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    }
   );
   const requestContextWithRouting = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
     .filter(Boolean)
     .join('\n\n');
 
   // Admin users get higher iteration limit; certification sessions get more iterations
-  const certIterations = hasActiveCertification && !routedTools.isAAOAdmin
+  const certIterations = activeCertificationKind && !routedTools.isAAOAdmin
     ? CERTIFICATION_MAX_ITERATIONS
     : undefined;
   const dmEffectiveModel = routedTools.requiresPrecision
@@ -1912,6 +1935,7 @@ async function handleUserMessage({
   const processOptions: import('./claude-client.js').ProcessMessageOptions = {
     requestContext: requestContextWithRouting,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     ...(routedTools.isAAOAdmin && { maxIterations: ADMIN_MAX_ITERATIONS }),
     ...(certIterations && { maxIterations: certIterations }),
     ...(routedTools.requiresPrecision
@@ -2670,6 +2694,7 @@ async function handleAppMention({
     ...(mentionModelOverride ? { modelOverride: mentionModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -3559,13 +3584,19 @@ export async function buildChannelResponseInvocation(input: {
       ...(modelOverride ? { modelOverride } : {}),
       requestContext,
       selectedToolSetNames: selectedToolSets,
+      allowedToolNames: officialDocsProfile
+        ? OFFICIAL_DOCS_ALLOWED_TOOLS
+        : getToolsForSets(
+            selectedToolSets,
+            userIsAdmin,
+            channelContext?.viewing_channel_is_private === false,
+          ),
       slackUserId: userId,
       threadId,
       currentSpeakerName: resolveSpeakerDisplayName(memberContext),
       ...(officialDocsProfile
         ? {
             disableServerTools: true,
-            allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
             initialToolChoice: { type: 'tool', name: 'search_docs' },
             maxIterations: 4,
           }
@@ -3912,7 +3943,7 @@ async function handleDirectMessage(
   let {
     requestContext,
     memberContext: updatedMemberContext,
-    hasActiveCertification,
+    activeCertificationKind,
   } = await buildRequestContext(userId);
   if (historyUnavailable) {
     requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
@@ -3947,7 +3978,13 @@ async function handleDirectMessage(
     userId,
     thread.thread_id,
     null,
-    { isThread: true, hasActiveCertification },
+    {
+      isThread: true,
+      activeCertificationKind,
+      threadMessages: conversationHistory
+        ?.slice(-6)
+        .map((turn) => `${turn.user}: ${turn.text}`),
+    },
   );
 
   requestContext = [requestContext, routedTools.unavailableHint, buildConfidenceCalibration(routedTools.confidence)]
@@ -3971,6 +4008,7 @@ async function handleDirectMessage(
         : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, userId)),
@@ -4366,6 +4404,7 @@ async function handleActiveThreadReply({
     ...(threadModelOverride ? { modelOverride: threadModelOverride } : {}),
     requestContext,
     selectedToolSetNames: routedTools.selectedToolSets,
+    allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
     ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
@@ -4759,34 +4798,8 @@ async function handleChannelMessage({
 
     // If no quick match, use the full router AND retrieve SI agents in parallel
     if (!plan) {
-      const shadowCandidate = selectRouterShadowCohort({
-        channelId,
-        opportunityId: event.ts,
-        // Final admission rechecks current Slack metadata inside the detached
-        // observer. These optimistic values only avoid scheduling work when
-        // the independent feature/config/sample gate is already closed.
-        channelIsPublic: true,
-        channelIsShared: false,
-      });
       const [routerPlan, siResult] = await Promise.all([
-        addieRouter.route(routingCtx, {
-          ...(shadowCandidate.selected && {
-            observer: async (observation) => {
-              const currentChannel = await getChannelInfo(channelId, { forceRefresh: true })
-                .catch(() => null);
-              await runRouterShadow({
-                channelId,
-                opportunityId: event.ts,
-                channelIsPublic: currentChannel?.is_private === false,
-                channelIsShared: currentChannel === null
-                  || currentChannel.is_shared
-                  || currentChannel.is_org_shared
-                  || currentChannel.is_pending_ext_shared === true,
-                observation,
-              });
-            },
-          }),
-        }),
+        addieRouter.route(routingCtx),
         siRetriever.retrieve(messageText),
       ]);
       plan = routerPlan;

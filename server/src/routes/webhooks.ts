@@ -56,6 +56,7 @@ import { getThreadService } from '../addie/thread-service.js';
 import { createEscalation } from '../db/escalation-db.js';
 import { Resend } from 'resend';
 import { boundedRawJson, type RawJsonRequest } from '../middleware/bounded-raw-json.js';
+import { constantTimeEqual } from '../utils/constant-time-equal.js';
 
 const logger = createLogger('webhooks');
 
@@ -1221,7 +1222,7 @@ export function createWebhooksRouter(): Router {
       return res.status(503).json({ error: 'Webhook validation not configured' });
     }
     const providedSecret = req.headers['x-luma-signing-secret'] as string | undefined;
-    if (providedSecret !== LUMA_WEBHOOK_SECRET) {
+    if (!providedSecret || !constantTimeEqual(providedSecret, LUMA_WEBHOOK_SECRET)) {
       logger.warn('Luma webhook rejected: invalid signing secret');
       return res.status(401).json({ error: 'Unauthorized' });
     }

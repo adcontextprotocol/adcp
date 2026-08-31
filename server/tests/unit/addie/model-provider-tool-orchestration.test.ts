@@ -1,16 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  ModelMessage,
   ModelProvider,
   ModelProviderToolCallContent,
   ModelProviderToolResultContent,
+  ModelResponse,
   ModelToolCallContent,
   ModelToolResultContent,
 } from '../../../src/addie/model-providers/model-provider.js';
+import { ModelTurnLoopState } from '../../../src/addie/model-providers/model-turn.js';
 import {
   AddieToolExecutionLedger,
   BLOCKED_TOOL_RESULT,
   createAddieToolExecutor,
   executeAddieToolCalls,
+  orchestrateAcceptedAddieTurn,
   recordProviderToolResults,
 } from '../../../src/addie/model-providers/tool-orchestration.js';
 import type { AddieTool } from '../../../src/addie/types.js';
@@ -159,10 +163,10 @@ describe('createAddieToolExecutor', () => {
     expect(result.execution.parameters).toEqual({ id: 'original' });
   });
 
-  it('fails closed in replay and redacts blocked inputs', async () => {
+  it.each(['replay', 'shadow'] as const)('fails closed in %s and redacts blocked inputs', async (executionMode) => {
     const handler = vi.fn();
     const execute = createAddieToolExecutor([tool], new Map([['lookup', handler]]), {
-      executionMode: 'replay',
+      executionMode,
     });
 
     const result = await execute(call({ id: 'secret' }), 1);
@@ -312,7 +316,7 @@ describe('recordProviderToolResults', () => {
     });
   });
 
-  it('redacts evaluation receipts and safely records unmatched results', () => {
+  it.each(['replay', 'shadow'] as const)('redacts %s receipts and safely records unmatched results', (executionMode) => {
     const deriveProviderToolReceipt = vi.fn(() => ({
       toolCallId: 'server_1',
       toolName: 'web_search',
@@ -326,7 +330,7 @@ describe('recordProviderToolResults', () => {
       { id: 'anthropic', deriveProviderToolReceipt },
       [providerCall],
       [providerResult],
-      { executionMode: 'replay', startingSequence: 0 },
+      { executionMode, startingSequence: 0 },
     );
     const unmatched = recordProviderToolResults(
       { id: 'anthropic' },
@@ -406,12 +410,14 @@ describe('AddieToolExecutionLedger', () => {
       },
     }));
 
-    for await (const event of executeAddieToolCalls([call()], execute, ledger.sequence)) {
-      ledger.recordCustomEvent(event, customResults);
+    const events = [];
+    for await (const event of ledger.executeCustomCalls([call()], execute, customResults)) {
+      events.push(event.type);
     }
 
     expect(providerExecutions[0]?.execution.sequence).toBe(1);
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({ id: 'call_1' }), 2);
+    expect(events).toEqual(['start', 'end']);
     expect(ledger.sequence).toBe(2);
     expect(ledger.toolsUsed).toEqual(['web_search', 'lookup']);
     expect(ledger.executions.map(({ sequence }) => sequence)).toEqual([1, 2]);
@@ -420,28 +426,196 @@ describe('AddieToolExecutionLedger', () => {
     ]);
   });
 
-  it('rejects a custom completion without its matching start event', () => {
+  it('rejects a custom completion whose execution sequence does not match', async () => {
     const ledger = new AddieToolExecutionLedger();
-    expect(() => ledger.recordCustomEvent({
-      type: 'end',
-      call: call(),
-      sequence: 1,
-      executed: {
-        result: {
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => ({
+      result: {
+        type: 'tool_result' as const,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        content: 'result',
+      },
+      execution: {
+        tool_name: toolCall.name,
+        parameters: toolCall.input,
+        result: 'result',
+        is_error: false,
+        duration_ms: 0,
+        sequence: sequence + 1,
+      },
+    }));
+    const consume = async () => {
+      for await (const _event of ledger.executeCustomCalls([call()], execute, [])) {
+        // Consume the full turn so the mismatched completion is validated.
+      }
+    };
+
+    await expect(consume()).rejects.toThrow(
+      'Custom-tool completion does not match its start event',
+    );
+  });
+});
+
+describe('orchestrateAcceptedAddieTurn', () => {
+  const providerCall: ModelProviderToolCallContent = {
+    type: 'provider_tool_call',
+    provider: 'anthropic',
+    id: 'server_1',
+    name: 'web_search',
+    inputKeys: ['query'],
+  };
+  const providerResult: ModelProviderToolResultContent = {
+    type: 'provider_tool_result',
+    provider: 'anthropic',
+    toolCallId: 'server_1',
+    name: 'web_search',
+    resultCount: 1,
+    isError: false,
+  };
+
+  function accept(response: ModelResponse) {
+    return new ModelTurnLoopState(2).beginNext().acceptResponse(response);
+  }
+
+  it('owns provider receipts, custom-tool dispatch, and continuation ordering', async () => {
+    const customCall = call();
+    const response: ModelResponse = {
+      provider: 'anthropic',
+      model: 'test-model',
+      id: 'response_1',
+      content: [
+        { type: 'text', text: 'Checking both sources.' },
+        providerCall,
+        providerResult,
+        customCall,
+      ],
+      finishReason: 'tool_calls',
+      providerFinishReason: 'tool_use',
+      usage: { inputTokens: 10, outputTokens: 5 },
+    };
+    const messages: ModelMessage[] = [
+      { role: 'user', content: [{ type: 'text', text: 'Look this up.' }] },
+    ];
+    const ledger = new AddieToolExecutionLedger();
+    const execute = vi.fn(async (toolCall: ModelToolCallContent, sequence: number) => ({
+      result: {
+        type: 'tool_result' as const,
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        content: 'custom result',
+      },
+      execution: {
+        tool_name: toolCall.name,
+        parameters: toolCall.input,
+        result: 'custom result',
+        is_error: false,
+        duration_ms: 1,
+        sequence,
+      },
+    }));
+    const events = [];
+
+    for await (const event of orchestrateAcceptedAddieTurn({
+      turn: accept(response),
+      provider: { id: 'anthropic' },
+      executionMode: 'production',
+      messages,
+      ledger,
+      execute,
+    })) {
+      events.push(event);
+    }
+
+    expect(events.map((event) => event.type)).toEqual([
+      'provider_tool',
+      'turn_decision',
+      'start',
+      'end',
+    ]);
+    expect(events[1]).toEqual({
+      type: 'turn_decision',
+      decision: {
+        action: 'execute_tools',
+        text: 'Checking both sources.',
+        hasCustomToolCalls: true,
+      },
+    });
+    expect(execute).toHaveBeenCalledWith(customCall, 2);
+    expect(ledger.toolsUsed).toEqual(['web_search', 'lookup']);
+    expect(ledger.executions.map(({ sequence }) => sequence)).toEqual([1, 2]);
+    expect(messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'Look this up.' }] },
+      { role: 'assistant', content: response.content },
+      {
+        role: 'user',
+        content: [{
           type: 'tool_result',
           toolCallId: 'call_1',
           toolName: 'lookup',
-          content: 'result',
-        },
-        execution: {
-          tool_name: 'lookup',
-          parameters: {},
-          result: 'result',
-          is_error: false,
-          duration_ms: 0,
-          sequence: 1,
-        },
+          content: 'custom result',
+        }],
       },
-    }, [])).toThrow('Custom-tool completion does not match its start event');
+    ]);
+  });
+
+  it('appends same-provider continuation state without dispatching custom tools', async () => {
+    const response: ModelResponse = {
+      provider: 'anthropic',
+      model: 'test-model',
+      id: 'response_2',
+      content: [
+        { type: 'provider_state', provider: 'anthropic', kind: 'thinking' },
+      ],
+      finishReason: 'continue',
+      providerFinishReason: 'pause_turn',
+      usage: { inputTokens: 4, outputTokens: 2 },
+    };
+    const messages: ModelMessage[] = [];
+    const execute = vi.fn();
+    const events = [];
+
+    for await (const event of orchestrateAcceptedAddieTurn({
+      turn: accept(response),
+      provider: { id: 'anthropic' },
+      executionMode: 'production',
+      messages,
+      ledger: new AddieToolExecutionLedger(),
+      execute,
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{
+      type: 'turn_decision',
+      decision: { action: 'continue', text: '', hasCustomToolCalls: false },
+    }]);
+    expect(execute).not.toHaveBeenCalled();
+    expect(messages).toEqual([{ role: 'assistant', content: response.content }]);
+  });
+
+  it('does not mutate continuation messages for terminal turns', async () => {
+    const response: ModelResponse = {
+      provider: 'anthropic',
+      model: 'test-model',
+      id: 'response_3',
+      content: [{ type: 'text', text: 'Done.' }],
+      finishReason: 'stop',
+      providerFinishReason: 'end_turn',
+      usage: { inputTokens: 3, outputTokens: 1 },
+    };
+    const messages: ModelMessage[] = [];
+
+    for await (const _event of orchestrateAcceptedAddieTurn({
+      turn: accept(response),
+      provider: { id: 'anthropic' },
+      executionMode: 'production',
+      messages,
+      ledger: new AddieToolExecutionLedger(),
+      execute: vi.fn(),
+    })) {
+      // Consume the shared boundary so its mutation policy is exercised.
+    }
+
+    expect(messages).toEqual([]);
   });
 });

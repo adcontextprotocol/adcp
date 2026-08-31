@@ -34,6 +34,7 @@ import {
   type TaskRegistryTenant,
   type TrainingTaskRegistryScope,
 } from '../task-registry-scope.js';
+import { registerSharedPublicBrandPartition } from '../state.js';
 
 const TRAINING_PRINCIPAL_FIELD = '__training_principal';
 const TRAINING_TASK_OWNER_SCOPE_FIELD = '__training_task_owner_scope';
@@ -91,6 +92,29 @@ async function dispatchV5(
   const cleanInput = { ...input };
   delete cleanInput[TRAINING_PRINCIPAL_FIELD];
   delete cleanInput[TRAINING_TASK_OWNER_SCOPE_FIELD];
+  const assertedAccount = cleanInput.account;
+  if (
+    scenario === 'force_audience_status'
+    && principal.startsWith('static:')
+    && assertedAccount !== null
+    && typeof assertedAccount === 'object'
+    && !Array.isArray(assertedAccount)
+    && (assertedAccount as Record<string, unknown>).sandbox === true
+  ) {
+    try {
+      const canonical = canonicalizeAccountRef(assertedAccount);
+      if (canonical.kind === 'natural') {
+        // Current platform methods attach this unforgeable hint after the SDK
+        // resolves the account. Controller adapters run beside that facade,
+        // so restore the same trusted public-sandbox partition from the
+        // authenticated static principal and validated AccountRef. This keeps
+        // lifecycle mutations account-local without a process-global lookup.
+        registerSharedPublicBrandPartition(cleanInput, canonical.brand.domain);
+      }
+    } catch {
+      // The controller handler owns the canonical invalid-account response.
+    }
+  }
   // The frozen 3.0 facade is itself a sandbox-only surface, but its released
   // AccountRef allowed opaque `{ account_id }` values without the later
   // explicit `sandbox: true` assertion. Restore that trusted adapter context

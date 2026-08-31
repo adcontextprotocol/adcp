@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "name": "A2A JSON number interoperability",
+  "specification": "https://adcontextprotocol.org/docs/building/by-layer/L0/a2a-profile-extension#json-number-interoperability",
+  "description": "Cross-SDK vectors for JSON numbers carried in A2A google.protobuf.Value. input_json_number is a string so the source lexeme remains exact in the vector. Integer-valued numbers outside the safe range must be rejected before encoding and after decoding when detectable. Exact decimals beyond binary64 precision require a schema-defined string representation. The expected result is normative.",
+  "vectors": [
+    {
+      "id": "integer-and-zero-fraction-equivalent",
+      "input_json_number": "3",
+      "echoed_json_number": "3.0",
+      "expected": { "result": "equivalent", "schema_type": "integer" }
+    },
+    {
+      "id": "maximum-safe-integer-accepted",
+      "input_json_number": "9007199254740991",
+      "expected": { "result": "accepted_as_number" }
+    },
+    {
+      "id": "minimum-safe-integer-accepted",
+      "input_json_number": "-9007199254740991",
+      "expected": { "result": "accepted_as_number" }
+    },
+    {
+      "id": "positive-outside-safe-range-rejected",
+      "input_json_number": "9007199254740992",
+      "expected": { "result": "rejected_before_encoding", "required_representation": "string" }
+    },
+    {
+      "id": "negative-outside-safe-range-rejected",
+      "input_json_number": "-9007199254740992",
+      "expected": { "result": "rejected_before_encoding", "required_representation": "string" }
+    },
+    {
+      "id": "rounded-unsafe-integer-rejected",
+      "input_json_number": "9007199254740993",
+      "binary64_decoded_number": "9007199254740992",
+      "expected": { "result": "rejected", "required_representation": "string" }
+    },
+    {
+      "id": "high-precision-decimal-requires-string",
+      "input_json_number": "0.12345678901234567890",
+      "expected": { "result": "rejected_when_exact_digits_required", "required_representation": "string" }
+    }
+  ]
+}

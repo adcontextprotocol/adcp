@@ -230,7 +230,7 @@ test('default navigation matches the stable release branch surface', () => {
   }
 });
 
-test('prerelease banner links to the current versioned beta landing page', () => {
+test('prerelease banner links directly or through a public alias to the current beta story', () => {
   const betaVersion = navigation.versions.find(versionEntry =>
     /-beta$/.test(versionEntry.version)
   );
@@ -248,9 +248,21 @@ test('prerelease banner links to the current versioned beta landing page', () =>
 
   const bannerContent = docsConfig.banner?.content || '';
   const bannerLink = bannerContent.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1];
-  if (bannerLink !== `/${landingPage}`) {
+  const bannerRedirect = docsConfig.redirects?.find(redirect =>
+    redirect.source === bannerLink
+  );
+  const expectedDestination = `/${landingPage}`;
+  const overviewPage = collectPages(betaVersion.groups).find(page =>
+    page.endsWith(`/reference/whats-new-in-${major}-${minor}`)
+  );
+  const allowedDestinations = new Set([
+    expectedDestination,
+    overviewPage ? `/${overviewPage}` : null
+  ]);
+  const resolvedDestination = bannerRedirect?.destination || bannerLink;
+  if (!allowedDestinations.has(resolvedDestination)) {
     throw new Error(
-      `Beta banner must link to /${landingPage}; found ${bannerLink || 'no link'}`
+      `Beta banner must resolve to the current story; found ${bannerLink || 'no link'}`
     );
   }
   if (new RegExp(`AdCP ${major}\\.${minor} beta\\.\\d+`).test(bannerContent)) {

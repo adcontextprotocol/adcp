@@ -138,6 +138,7 @@ type InlineCreativeInput = {
   placement_ids?: string[];
 };
 type TrainingCanonicalFormatKind = CanonicalFormatKind
+  | 'audio_vast'
   | 'seller_rendered_stateful_display'
   | 'coordinated_placements';
 type InlineCreativeIdentity =
@@ -165,7 +166,13 @@ type GetProductsRejectedResponse = {
   suggestions?: string[];
   context?: Record<string, unknown>;
 };
+type GetProductsSubmittedResponse = {
+  status: 'submitted';
+  task_id: string;
+  message?: string;
+};
 type GetProductsReadDirectives = {
+  submitted?: { arm: 'submitted'; taskId: string; message?: string };
   rejection?: { reason: string; suggestions?: string[] };
   staleDirective?: { tool: string; upstreamName?: string; cacheAgeSeconds?: number; createdAt: string };
 };
@@ -343,6 +350,10 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'audio_main', asset_type: 'audio', required: true },
     { asset_group_id: 'companion_image', asset_type: 'image' },
     { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_vast: [
+    { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
   audio_daast: [
@@ -5363,6 +5374,7 @@ function canonicalFormatKind(value: unknown): TrainingCanonicalFormatKind | unde
     case 'video_hosted':
     case 'video_vast':
     case 'audio_hosted':
+    case 'audio_vast':
     case 'audio_daast':
     case 'sponsored_placement':
     case 'native_in_feed':
@@ -9155,7 +9167,7 @@ function productMatchesAudienceActivation(
   ));
 }
 
-export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const paginationOffset = req.pagination
     ? decodeOffsetCursor('products', req.pagination.cursor)
@@ -9211,6 +9223,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
       const fixtureSessionKey = controllerFixtureSessionKey(req, ctx);
       const session = await getSession(sessionScope, fixtureSessionKey);
       const directivePrincipal = ctx.principal ?? 'anonymous';
+      let submittedSession = session;
+      let submitted = buyingMode === 'brief'
+        ? submittedSession.complyExtensions.forcedGetProductsArm
+        : undefined;
       let rejectionSession = session;
       let rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
         ? rejectionSession.complyExtensions.forcedGetProductsRejections.get(directivePrincipal)
@@ -9221,16 +9237,24 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
         : undefined;
       if (!staleDirective && fixtureSessionKey && fixtureSessionKey !== sessionScope) {
         const fixtureDirectiveSession = await getSession(fixtureSessionKey);
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = fixtureDirectiveSession;
+          submitted = fixtureDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         const fixtureDirective = fixtureDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         if (fixtureDirective?.tool === 'get_products') {
           staleDirectiveSession = fixtureDirectiveSession;
           staleDirective = fixtureDirective;
         }
       }
-      if (ctx.principal?.startsWith('static:') && (!rejection || !staleDirective)) {
+      if (ctx.principal?.startsWith('static:') && (!submitted || !rejection || !staleDirective)) {
         const globalDirectiveSession = await getSession(
           sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId, ctx.principal),
         );
+        if (!submitted && buyingMode === 'brief') {
+          submittedSession = globalDirectiveSession;
+          submitted = globalDirectiveSession.complyExtensions.forcedGetProductsArm;
+        }
         if (!rejection) {
           rejectionSession = globalDirectiveSession;
           rejection = buyingMode === 'brief' && supportsGetProductsRejected(ctx.servedAdcpVersion)
@@ -9242,14 +9266,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext): P
           staleDirective = globalDirectiveSession.complyExtensions.forcedUpstreamUnavailable;
         }
       }
+      if (submitted) {
+        submittedSession.complyExtensions.forcedGetProductsArm = undefined;
+      }
       if (rejection) {
         rejectionSession.complyExtensions.forcedGetProductsRejections.delete(directivePrincipal);
       }
       if (staleDirective) {
         staleDirectiveSession.complyExtensions.forcedUpstreamUnavailable = undefined;
       }
-      directives = { rejection, staleDirective };
-      if (rejection || staleDirective) await flushDirtySessions();
+      directives = { submitted, rejection, staleDirective };
+      if (submitted || rejection || staleDirective) await flushDirtySessions();
     } finally {
       await store.release({ principal, key, claimToken: claim.claimToken });
     }
@@ -9273,7 +9300,7 @@ async function handleGetProductsUnlocked(
   ctx: TrainingContext,
   paginationOffset?: number,
   readDirectives?: GetProductsReadDirectives,
-): Promise<GetProductsResponse | GetProductsRejectedResponse | { errors: TaskError[] }> {
+): Promise<GetProductsResponse | GetProductsRejectedResponse | GetProductsSubmittedResponse | { errors: TaskError[] }> {
   const req = args as unknown as GetProductsRequest & ToolArgs;
   const buyingMode = req.buying_mode || 'brief';
   const brief = (req as unknown as Record<string, unknown>).brief;
@@ -9343,6 +9370,15 @@ async function handleGetProductsUnlocked(
     ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
+
+  const submitted = readDirectives?.submitted;
+  if (submitted?.arm === 'submitted') {
+    return {
+      status: 'submitted',
+      task_id: submitted.taskId,
+      ...(submitted.message && { message: submitted.message }),
+    };
+  }
 
   const directivePrincipal = ctx.principal ?? 'anonymous';
   const rejection = readDirectives
@@ -10973,9 +11009,6 @@ function jsonPointerPath(pointer: string): Array<string | number> {
 }
 
 async function validateManifestSchema(manifest: NonNullable<ValidateInputArgs['manifest']>): Promise<ValidateInputViolation[]> {
-  // The protocol JSON Schema is authoritative. SDK 14 beta.15's generated
-  // Zod snapshot accidentally intersects macro-bearing URL strings with
-  // object-only branches, which rejects valid DAAST and tracker assets.
   // WHATWG URL parsing accepts the Unicode full-stop variants as DNS label
   // separators, while AJV's URI format check does not. Normalize only the
   // schema-validation copy so the later URL safety checks still inspect the
@@ -14646,6 +14679,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       spend,
       impressions,
       clicks,
+      ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
       ...audioMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
@@ -14813,6 +14848,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedViewability = simDelivery?.viewability
     ? { viewability: simDelivery.viewability }
     : {};
+  const simulatedDoohMetrics = simDelivery
+    ? {
+      ...(simDelivery.plays !== undefined ? { plays: simDelivery.plays } : {}),
+      ...(simDelivery.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
+    }
+    : {};
 
   const totals: Record<string, unknown> = {
     impressions: totalImpressions,
@@ -14835,6 +14876,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ...conversionTotals,
     ...conversionValueTotals,
     ...simulatedViewability,
+    ...simulatedDoohMetrics,
     ...(totalTwoSecondViews > 0 || totalSixSecondViews > 0 ? {
       time_based_views: [{
         threshold_seconds: 2,
@@ -21340,7 +21382,7 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
         body.adcp_version = servedAdcpVersion;
         if (callerContext !== undefined) body.context = callerContext;
         toolResult = {
-          content: [{ type: 'text', text: JSON.stringify(body) }],
+          content: [{ type: 'text', text: `${name} replay completed successfully.` }],
           structuredContent: body,
         };
         cachableResponse = { ...(outcome.response as Record<string, unknown>) };
@@ -21482,7 +21524,10 @@ export function createTrainingAgentServer(ctx: TrainingContext): Server {
           body.adcp_version = servedAdcpVersion;
           if (callerContext !== undefined) body.context = callerContext;
           toolResult = {
-            content: [{ type: 'text', text: JSON.stringify(body) }],
+            content: [{
+              type: 'text',
+              text: `${name} completed with ${resultObj.errors!.length} reported error${resultObj.errors!.length === 1 ? '' : 's'}.`,
+            }],
             structuredContent: body,
           };
         } else {

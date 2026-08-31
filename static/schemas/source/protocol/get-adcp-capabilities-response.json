@@ -78,6 +78,105 @@
     {
       "if": {
         "properties": {
+          "adcp": {
+            "required": ["principal"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "protocol.principal" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "notification_configs" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "capability_changes": {
+                "properties": {
+                  "notifications": {
+                    "properties": {
+                      "supported": { "const": true },
+                      "registration_task": { "const": "sync_principal" }
+                    },
+                    "required": ["supported", "registration_task"]
+                  }
+                },
+                "required": ["notifications"]
+              }
+            },
+            "required": ["capability_changes"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "capability_changes": {
+                "properties": {
+                  "notifications": {
+                    "properties": {
+                      "registration_task": { "const": "sync_principal" }
+                    },
+                    "required": ["registration_task"]
+                  }
+                },
+                "required": ["notifications"]
+              }
+            },
+            "required": ["capability_changes"]
+          }
+        },
+        "required": ["adcp"]
+      },
+      "then": {
+        "properties": {
+          "adcp": {
+            "properties": {
+              "principal": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "notification_configs" }
+                  }
+                },
+                "required": ["supported_sections"]
+              }
+            },
+            "required": ["principal"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
           "media_buy": {
             "required": ["reporting_delivery"]
           }
@@ -421,6 +520,154 @@
             }
           ]
         },
+        "principal": {
+          "type": "object",
+          "x-status": "experimental",
+          "description": "Caller-scoped durable connection configuration accepted by this agent. This is the buyer-to-seller configuration half of negotiation, not a second seller capability document: the seller advertises its objective offering here, while each authenticated caller submits its desired webhooks and reusable destinations through sync_principal and reads them back through get_principal. Per-account authority and feed selection remain in account/reporting configuration. Sellers exposing this block MUST list protocol.principal in experimental_features.",
+          "properties": {
+            "supported": {
+              "type": "boolean",
+              "const": true
+            },
+            "sync_task": {
+              "type": "string",
+              "const": "sync_principal"
+            },
+            "read_task": {
+              "type": "string",
+              "const": "get_principal",
+              "description": "Side-effect-free task returning the caller's current connection configuration and version."
+            },
+            "supported_sections": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["notification_configs", "reporting_destinations", "declarations"]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Connection configuration sections this seller accepts. Unsupported sections are rejected rather than silently ignored."
+            },
+            "max_reporting_destinations": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "description": "Maximum caller-scoped destination bindings when reporting_destinations is supported. The task schema has a portable maximum of 64; sellers may advertise a lower operational limit."
+            },
+            "reporting_destination_offerings": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 3,
+              "description": "Objective per-pattern delivery offering, so buyers can select a compatible destination without submit-and-reject probing. A destination whose pattern, transport, access mode, format set, or verification-profile set falls outside this offering fails the sync request atomically with UNSUPPORTED_FEATURE; provider-side setup outcomes for in-offering destinations are expressed only through destination states.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "enum": ["file_transfer", "warehouse_materialization", "dataset_share"]
+                  },
+                  "transports": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "description": "Provider transports the seller can deliver through for this pattern."
+                  },
+                  "formats": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["jsonl", "csv", "parquet", "avro", "orc"]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "description": "Physical file formats the seller can produce. Only meaningful for file_transfer."
+                  },
+                  "access_modes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "pattern": "^[a-z][a-z0-9_.-]*$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "description": "Dataset-share access families the seller can provision. Only meaningful for dataset_share."
+                  },
+                  "verification_profiles": {
+                    "$ref": "/schemas/core/reporting-verification-profile-set.json",
+                    "description": "Verification profiles the seller can produce for this pattern. A destination whose accepted_verification_profiles does not intersect this set is out of offering."
+                  }
+                },
+                "required": ["pattern", "transports", "verification_profiles"],
+                "additionalProperties": false
+              }
+            },
+            "suspension_interval_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400,
+              "description": "Advertised upper bound, in seconds, between a committed destination suspension or revocation — or a subscriber deactivation — and the halt of new deliveries and fires."
+            },
+            "caller_event_types": {
+              "type": "array",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/enums/notification-type.json"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "scheduled",
+                        "final",
+                        "delayed",
+                        "adjusted",
+                        "window_update",
+                        "impairment"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Notification types this seller can emit against caller-level subscribers, so buyers select from the offering instead of probing by rejection. Account-anchored entries fire with fire-time authorization scoping. When absent, only capabilities.changed is assumed. A caller-level subscriber requesting a type outside this set fails the sync request with UNSUPPORTED_FEATURE."
+            },
+            "optimistic_concurrency": {
+              "type": "boolean",
+              "description": "Whether expected_configuration_version is enforced. Sellers SHOULD support it when several services may authenticate as the same stable principal. When false, a request carrying expected_configuration_version is rejected with UNSUPPORTED_FEATURE rather than silently ignored."
+            }
+          },
+          "required": ["supported", "sync_task", "read_task", "supported_sections", "optimistic_concurrency"],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "supported_sections": {
+                    "contains": { "const": "reporting_destinations" }
+                  }
+                },
+                "required": ["supported_sections"]
+              },
+              "then": {
+                "required": ["max_reporting_destinations", "reporting_destination_offerings", "suspension_interval_seconds"]
+              }
+            }
+          ],
+          "x-adcp-validation": {
+            "notification_registration": "When capability_changes.notifications.registration_task is sync_principal, supported_sections MUST contain notification_configs. Supporting notification_configs requires the same webhook signing, endpoint proof, and stable-principal controls as sync_agent_notification_configs, and a seller exposing both tasks MUST keep accepting sync_agent_notification_configs while notifications.supported is true.",
+            "task_presence": "The agent's MCP tools/list or A2A skill list MUST include sync_principal and get_principal when this block is present.",
+            "offering_boundary": "Requests are rejected atomically for schema violations, authorization failures, unsupported sections, and out-of-offering destinations. In-offering destinations that fail provider-side setup are reported per destination as validating, action_required, or rejected inside an applied response, never as a failed request."
+          },
+          "additionalProperties": false
+        },
         "capability_changes": {
           "type": "object",
           "description": "Freshness metadata and optional invalidation webhooks for this `get_adcp_capabilities` document. Buyers and registries MAY cache capabilities for up to `cache_ttl_seconds` when present, SHOULD compare `capabilities_version` across refreshes when present, and SHOULD re-run `get_adcp_capabilities` after receiving a `capabilities.changed` webhook. This block describes the agent-wide capability document, not per-caller authorization or account-scoped settings. A material capability change is any externally advertised contract change that can affect routing, validation, conformance coverage, task availability, auth/account handling, sandbox support, billing support, reporting delivery methods, creative-library support, targeting support, protocol versions, or other buyer-visible feature gates. Non-contract operational changes that do not alter the response body do not require a revision or webhook fire.",
@@ -444,7 +691,7 @@
             },
             "notifications": {
               "type": "object",
-              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with `sync_agent_notification_configs`; each `capabilities.changed` fire is a small invalidation payload, and consumers repair by re-reading `get_adcp_capabilities`.",
+              "description": "Whether the seller supports agent-level capability-change webhooks. When supported, interested consumers register endpoint subscribers with the declared registration_task; sync_principal is preferred when the broader connection surface is available, while sync_agent_notification_configs remains the specialized compatibility task. Each capabilities.changed fire is a small invalidation payload, and consumers repair by re-reading get_adcp_capabilities.",
               "oneOf": [
                 {
                   "title": "CapabilityChangeNotificationsSupported",
@@ -452,11 +699,11 @@
                     "supported": {
                       "type": "boolean",
                       "const": true,
-                      "description": "Discriminator. True means the seller accepts `sync_agent_notification_configs` for `capabilities.changed` subscriptions."
+                      "description": "Discriminator. True means the seller accepts the declared registration_task for capabilities.changed subscriptions."
                     },
                     "registration_task": {
                       "type": "string",
-                      "const": "sync_agent_notification_configs",
+                      "enum": ["sync_agent_notification_configs", "sync_principal"],
                       "description": "Task consumers call to manage their caller-scoped agent-level subscriber set."
                     },
                     "event_types": {
@@ -2611,7 +2858,7 @@
         "legacy_hmac_fallback": {
           "type": "boolean",
           "deprecated": true,
-          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
+          "description": "Whether this agent will fall back to HMAC-SHA256 on the legacy push_notification_config.authentication, accounts[].notification_configs[].authentication, sync_principal.configuration.notification_configs[].authentication, or sync_agent_notification_configs.notification_configs[].authentication paths for receivers that have not adopted RFC 9421. Deprecated; removed in AdCP 4.0.",
           "default": false
         },
         "delivery_retry_horizon_seconds": {
@@ -2898,9 +3145,7 @@
       "type": "array",
       "description": "Experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries x-status: experimental and the working group has not yet frozen it. Sellers that implement any experimental surface MUST list its feature id here. Buyers inspect this array before relying on experimental surfaces — a seller that does not list a surface is asserting it does not implement it. Experimental surfaces MAY break between any two 3.x releases with at least 6 weeks notice; the full contract is in docs/reference/experimental-status.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
-        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'measurement.core', 'trusted_match.core')"
+        "$ref": "/schemas/core/experimental-feature-id.json"
       },
       "uniqueItems": true
     },

@@ -116,8 +116,11 @@ describe('product discovery MCP schema parity', () => {
     // Structured targeting and acceptance preflight are intentionally present
     // on listing, proposal, and revision requests. Standalone MCP schemas must
     // bundle those refs, so retain strict validation while keeping the
-    // four-tool surface under 133 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(133 * 1024);
+    // four-tool surface bounded. targeting_overlay.collection_selection (the
+    // committed collection-selection echo contract) bundles ~0.4 KiB into
+    // each of the four tools; 133 → 135 KiB carries that measured, deliberate
+    // increase — it is not headroom for incidental growth.
+    expect(totalBytes).toBeLessThanOrEqual(135 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

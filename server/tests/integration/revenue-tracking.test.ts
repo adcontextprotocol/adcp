@@ -10,6 +10,7 @@ import {
   createSubscriptionUpdatedEvent,
 } from '../fixtures/stripe-webhooks.js';
 import type { Pool } from 'pg';
+import { OrganizationDatabase } from '../../src/db/organization-db.js';
 
 // Mock auth middleware to bypass authentication in tests
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
@@ -23,6 +24,13 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
+  requireGlobalAdmin: [
+    (req: any, _res: any, next: any) => {
+      req.user = { id: 'user_test_admin', email: 'admin@test.com', is_admin: true };
+      next();
+    },
+    (_req: any, _res: any, next: any) => next(),
+  ],
 }));
 
 vi.mock('../../src/middleware/csrf.js', () => ({
@@ -37,13 +45,28 @@ const mocks = vi.hoisted(() => ({
   }),
   // Reject to exercise the handler's description-fallback path (try/catch around products.retrieve).
   mockProductsRetrieve: vi.fn().mockRejectedValue(new Error('No Stripe product in test env')),
+  mockCustomersRetrieve: vi.fn().mockResolvedValue({ deleted: true }),
+  mockCustomersUpdate: vi.fn().mockResolvedValue({}),
+  mockSubscriptionsList: vi.fn().mockResolvedValue({ data: [] }),
+  mockSubscriptionsUpdate: vi.fn().mockResolvedValue({}),
+  mockAttemptStripeReconciliation: vi.fn().mockResolvedValue({
+    healed: false,
+    reason: 'already_entitled',
+  }),
 }));
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: {
     webhooks: { constructEvent: mocks.mockConstructEvent },
     products: { retrieve: mocks.mockProductsRetrieve },
-    customers: { retrieve: vi.fn().mockResolvedValue({ deleted: true }) },
+    customers: {
+      retrieve: mocks.mockCustomersRetrieve,
+      update: mocks.mockCustomersUpdate,
+    },
+    subscriptions: {
+      list: mocks.mockSubscriptionsList,
+      update: mocks.mockSubscriptionsUpdate,
+    },
   },
   STRIPE_WEBHOOK_SECRET: 'whsec_test_fixture',
   createStripeCustomer: vi.fn().mockResolvedValue(null),
@@ -55,6 +78,10 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   getBillingProducts: vi.fn().mockResolvedValue([]),
   getStripeSubscriptionInfo: vi.fn().mockResolvedValue(null),
   listCustomersWithOrgIds: vi.fn().mockResolvedValue(new Map()),
+}));
+
+vi.mock('../../src/billing/lazy-reconcile.js', () => ({
+  attemptStripeReconciliation: mocks.mockAttemptStripeReconciliation,
 }));
 
 describe('Revenue Tracking Integration Tests', () => {
@@ -73,6 +100,31 @@ describe('Revenue Tracking Integration Tests', () => {
       .post('/api/webhooks/stripe')
       .set('stripe-signature', 't=mock_timestamp,v1=mock_signature')
       .send(event);
+  };
+
+  const recordExpectedCheckoutSession = async (sessionId: string) => {
+    await pool.query(
+      `INSERT INTO membership_checkout_attempts (
+         organization_id, payload_fingerprint, idempotency_key,
+         initiated_by_user_id, stripe_session_id, stripe_session_url, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '24 hours')
+       ON CONFLICT (organization_id) DO UPDATE SET
+         payload_fingerprint = EXCLUDED.payload_fingerprint,
+         idempotency_key = EXCLUDED.idempotency_key,
+         initiated_by_user_id = EXCLUDED.initiated_by_user_id,
+         stripe_session_id = EXCLUDED.stripe_session_id,
+         stripe_session_url = EXCLUDED.stripe_session_url,
+         expires_at = EXCLUDED.expires_at,
+         updated_at = NOW()`,
+      [
+        TEST_ORG_ID,
+        `fingerprint:${sessionId}`,
+        `idempotency:${sessionId}`,
+        'user_test_admin',
+        sessionId,
+        `https://checkout.stripe.test/${sessionId}`,
+      ],
+    );
   };
 
   beforeAll(async () => {
@@ -120,6 +172,7 @@ describe('Revenue Tracking Integration Tests', () => {
     // Clean up test data
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM membership_checkout_attempts WHERE organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_TIER_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_TIER_ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ID]);
@@ -129,9 +182,29 @@ describe('Revenue Tracking Integration Tests', () => {
   });
 
   beforeEach(async () => {
+    mocks.mockCustomersRetrieve.mockReset();
+    mocks.mockCustomersRetrieve.mockResolvedValue({ deleted: true });
+    mocks.mockCustomersUpdate.mockReset();
+    mocks.mockCustomersUpdate.mockResolvedValue({});
+    mocks.mockSubscriptionsList.mockReset();
+    mocks.mockSubscriptionsList.mockResolvedValue({ data: [] });
+    mocks.mockSubscriptionsUpdate.mockReset();
+    mocks.mockSubscriptionsUpdate.mockResolvedValue({});
+    mocks.mockAttemptStripeReconciliation.mockReset();
+    mocks.mockAttemptStripeReconciliation.mockResolvedValue({
+      healed: false,
+      reason: 'already_entitled',
+    });
+
     // Clear revenue data before each test
     await pool.query('DELETE FROM revenue_events WHERE workos_organization_id = $1', [TEST_ORG_ID]);
     await pool.query('DELETE FROM subscription_line_items WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query(
+      `UPDATE organizations
+          SET stripe_customer_id = $2
+        WHERE workos_organization_id = $1`,
+      [TEST_ORG_ID, TEST_CUSTOMER_ID],
+    );
     await pool.query(
       `UPDATE organizations
           SET stripe_customer_id = $2,
@@ -275,6 +348,339 @@ describe('Revenue Tracking Integration Tests', () => {
 
       expect(orgResult.rows[0].membership_tier).toBe('company_standard');
       expect(orgResult.rows[0].subscription_price_lookup_key).toBeNull();
+    });
+  });
+
+  describe('checkout.session.completed webhook', () => {
+    it('reconciles an already-linked buyer-agent checkout that has no intake-attempt row', async () => {
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_buyer_agent',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_buyer_agent',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockAttemptStripeReconciliation).toHaveBeenCalledWith(
+        TEST_ORG_ID,
+        expect.objectContaining({ pool }),
+      );
+    });
+
+    it('reconciles billing state for an already-linked, metadata-verified customer', async () => {
+      await recordExpectedCheckoutSession('cs_test_reconcile');
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+      mocks.mockAttemptStripeReconciliation.mockResolvedValue({
+        healed: true,
+        reason: 'healed_from_stripe',
+        subscriptionStatus: 'active',
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_reconcile',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_reconcile',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockAttemptStripeReconciliation).toHaveBeenCalledWith(
+        TEST_ORG_ID,
+        expect.objectContaining({
+          pool,
+          stripe: expect.any(Object),
+          logger: expect.any(Object),
+        }),
+      );
+    });
+
+    it('links a new checkout customer before reconciling billing state', async () => {
+      await recordExpectedCheckoutSession('cs_test_new_customer');
+      await pool.query(
+        `UPDATE organizations
+            SET stripe_customer_id = NULL
+          WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: {},
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_new_customer',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_new_customer',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockCustomersUpdate).toHaveBeenCalledWith(TEST_CUSTOMER_ID, {
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+      const linked = await pool.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id
+           FROM organizations
+          WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(linked.rows[0]?.stripe_customer_id).toBe(TEST_CUSTOMER_ID);
+      expect(mocks.mockAttemptStripeReconciliation).toHaveBeenCalledWith(
+        TEST_ORG_ID,
+        expect.objectContaining({ pool }),
+      );
+    });
+
+    it('does not reconcile when Stripe customer metadata points to another org', async () => {
+      await recordExpectedCheckoutSession('cs_test_conflict');
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: 'org_different_customer_owner' },
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_conflict',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_conflict',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockAttemptStripeReconciliation).not.toHaveBeenCalled();
+    });
+
+    it('does not reconcile when the org is linked to a different Stripe customer', async () => {
+      const checkoutCustomerId = 'cus_test_different_checkout_customer';
+      await recordExpectedCheckoutSession('cs_test_local_link_conflict');
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: checkoutCustomerId,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_local_link_conflict',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_local_link_conflict',
+            mode: 'subscription',
+            customer: checkoutCustomerId,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockAttemptStripeReconciliation).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 so Stripe retries a transient reconciliation failure', async () => {
+      await recordExpectedCheckoutSession('cs_test_transient_failure');
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+      mocks.mockAttemptStripeReconciliation.mockResolvedValue({
+        healed: false,
+        reason: 'stripe_error',
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_transient_failure',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_transient_failure',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      const response = await sendWebhook(event).expect(500);
+
+      expect(response.body).toEqual({ error: 'Webhook processing failed' });
+    });
+
+    it('returns 500 so Stripe retries a transient local-link database failure', async () => {
+      await recordExpectedCheckoutSession('cs_test_link_db_failure');
+      await pool.query(
+        `UPDATE organizations
+            SET stripe_customer_id = NULL
+          WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+      const setCustomerSpy = vi.spyOn(
+        OrganizationDatabase.prototype,
+        'setStripeCustomerId',
+      ).mockRejectedValueOnce(new Error('database unavailable'));
+
+      const event = {
+        id: 'evt_checkout_completed_link_db_failure',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_link_db_failure',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      try {
+        const response = await sendWebhook(event).expect(500);
+        expect(response.body).toEqual({ error: 'Webhook processing failed' });
+        expect(mocks.mockAttemptStripeReconciliation).not.toHaveBeenCalled();
+      } finally {
+        setCustomerSpy.mockRestore();
+      }
+    });
+
+    it('ignores a replay after its checkout generation was invalidated by an admin unlink', async () => {
+      await pool.query(
+        `UPDATE organizations SET
+            stripe_customer_id = NULL,
+            stripe_subscription_id = NULL,
+            subscription_status = NULL,
+            subscription_amount = NULL,
+            subscription_price_lookup_key = NULL
+          WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: {},
+      });
+
+      const event = {
+        id: 'evt_checkout_completed_invalidated_replay',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_invalidated_replay',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      };
+
+      await sendWebhook(event).expect(200, { received: true });
+
+      expect(mocks.mockCustomersRetrieve).not.toHaveBeenCalled();
+      expect(mocks.mockCustomersUpdate).not.toHaveBeenCalled();
+      expect(mocks.mockAttemptStripeReconciliation).not.toHaveBeenCalled();
+      const org = await pool.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(org.rows[0]?.stripe_customer_id).toBeNull();
+    });
+
+    it('serializes admin unlink ahead of a concurrent checkout replay', async () => {
+      await recordExpectedCheckoutSession('cs_test_concurrent_unlink');
+      let releaseMetadataClear!: () => void;
+      let signalMetadataClear!: () => void;
+      const metadataClearStarted = new Promise<void>((resolve) => {
+        signalMetadataClear = resolve;
+      });
+      const holdMetadataClear = new Promise<void>((resolve) => {
+        releaseMetadataClear = resolve;
+      });
+      mocks.mockCustomersUpdate.mockImplementationOnce(async () => {
+        signalMetadataClear();
+        await holdMetadataClear;
+        return {};
+      });
+      mocks.mockCustomersRetrieve.mockResolvedValue({
+        id: TEST_CUSTOMER_ID,
+        deleted: false,
+        metadata: { workos_organization_id: TEST_ORG_ID },
+      });
+
+      const unlinkPromise = request(app)
+        .post(`/api/admin/stripe-customers/${TEST_CUSTOMER_ID}/unlink`)
+        .then((response) => response);
+      await metadataClearStarted;
+
+      const webhookPromise = sendWebhook({
+        id: 'evt_checkout_completed_concurrent_unlink',
+        type: 'checkout.session.completed',
+        data: {
+          object: {
+            id: 'cs_test_concurrent_unlink',
+            mode: 'subscription',
+            customer: TEST_CUSTOMER_ID,
+            metadata: { workos_organization_id: TEST_ORG_ID },
+          },
+        },
+      }).then((response) => response);
+
+      releaseMetadataClear();
+      const unlinkResponse = await unlinkPromise;
+      const webhookResponse = await webhookPromise;
+
+      expect(unlinkResponse.status).toBe(200);
+      expect(webhookResponse.status).toBe(200);
+      expect(mocks.mockCustomersUpdate).toHaveBeenCalledTimes(1);
+      expect(mocks.mockCustomersRetrieve).not.toHaveBeenCalled();
+      expect(mocks.mockAttemptStripeReconciliation).not.toHaveBeenCalled();
+      const org = await pool.query<{ stripe_customer_id: string | null }>(
+        `SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(org.rows[0]?.stripe_customer_id).toBeNull();
     });
   });
 

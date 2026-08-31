@@ -117,9 +117,12 @@ function profile(input: {
   providerToolCount?: number;
   route?: string;
   selectedToolSets?: string[];
+  allowedToolNames?: readonly string[];
   conditionalMaximums?: string[];
 }): Profile {
-  const combined = [...input.globalTools, ...(input.requestTools ?? [])];
+  const allowed = input.allowedToolNames ? new Set(input.allowedToolNames) : null;
+  const combined = [...input.globalTools, ...(input.requestTools ?? [])]
+    .filter((tool) => !allowed || allowed.has(tool.name));
   const seen = new Map<string, string>();
   const overriddenNames = new Set<string>();
   const conflictingNames = new Set<string>();
@@ -136,7 +139,11 @@ function profile(input: {
     }
     seen.set(tool.name, rendered);
   }
-  const merged = mergeAddieToolDefinitions(input.globalTools, input.requestTools);
+  const merged = mergeAddieToolDefinitions(
+    input.globalTools,
+    input.requestTools,
+    input.allowedToolNames,
+  );
   const wire = buildAddieWireTools(merged);
   const orderedNames = merged.map((tool) => tool.name);
   const renderedWire = JSON.stringify(wire);
@@ -317,6 +324,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
         audience: surface.audience,
         route: setName,
         selectedToolSets: selectedSets,
+        allowedToolNames: [...allowed],
         globalTools,
         requestTools: routedRequest,
         // Non-streaming calls additionally expose Anthropic web search. The
@@ -353,6 +361,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'all_valid_sets_maximum',
       selectedToolSets: selectedAllValidSets,
+      allowedToolNames: [...allAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => allAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -381,6 +390,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: surface.audience,
       route: 'router_unavailable',
       selectedToolSets: fallbackSets,
+      allowedToolNames: [...fallbackAllowed],
       globalTools,
       requestTools: surface.available.filter((tool) => fallbackAllowed.has(tool.name)),
       providerToolCount: 1,
@@ -388,33 +398,36 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     }));
 
     if (surface.source === 'dm') {
-      const certificationSets = selectSlackToolSets({
-        routerSelectedSets: ['admin'],
-        routerAvailable: true,
-        source: surface.source,
-        isAdmin: surface.isAdmin,
-        hasActiveCertification: true,
-      });
-      const certificationAllowed = new Set(toolSets.getToolsForSets(
-        certificationSets,
-        surface.isAdmin,
-        surface.isPublic,
-      ));
-      profiles.push(profile({
-        id: `slack_bolt:${surface.audience}:certification_session`,
-        runtime: 'slack_bolt',
-        audience: surface.audience,
-        route: 'certification_session',
-        selectedToolSets: certificationSets,
-        globalTools,
-        requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
-        providerToolCount: 1,
-        conditionalMaximums: [
-          'active_certification_overrides_router_admin_and_fallback',
-          'google_docs_configured',
-          'nonstreaming_web_search',
-        ],
-      }));
+      for (const activeCertificationKind of ['learning', 'assessment', 'mixed'] as const) {
+        const certificationSets = selectSlackToolSets({
+          routerSelectedSets: ['admin'],
+          routerAvailable: true,
+          source: surface.source,
+          isAdmin: surface.isAdmin,
+          activeCertificationKind,
+        });
+        const certificationAllowed = new Set(toolSets.getToolsForSets(
+          certificationSets,
+          surface.isAdmin,
+          surface.isPublic,
+        ));
+        profiles.push(profile({
+          id: `slack_bolt:${surface.audience}:certification_${activeCertificationKind}_session`,
+          runtime: 'slack_bolt',
+          audience: surface.audience,
+          route: `certification_${activeCertificationKind}_session`,
+          selectedToolSets: certificationSets,
+          allowedToolNames: [...certificationAllowed],
+          globalTools,
+          requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+          providerToolCount: 1,
+          conditionalMaximums: [
+            'active_certification_overrides_router_admin_and_fallback',
+            'google_docs_configured',
+            'nonstreaming_web_search',
+          ],
+        }));
+      }
     }
   }
 
@@ -425,12 +438,52 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     audience: 'admin_dm',
     route: 'legacy_admin_compatibility',
     selectedToolSets: ['admin'],
+    allowedToolNames: [...legacyAdminAllowed],
     globalTools,
     requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
     providerToolCount: 1,
     conditionalMaximums: [
       'plan_created_before_admin_domain_split',
       'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
+  const legacyMemberAllowed = new Set(toolSets.getToolsForSets(['member'], false, false));
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_member_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_member_compatibility',
+    selectedToolSets: ['member'],
+    allowedToolNames: [...legacyMemberAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyMemberAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_member_domain_split',
+      'google_docs_configured',
+      'nonstreaming_web_search',
+    ],
+  }));
+
+  const legacyAgentTestingAllowed = new Set(
+    toolSets.getToolsForSets(['agent_testing'], false, false),
+  );
+  profiles.push(profile({
+    id: 'slack_bolt:member_dm:legacy_agent_testing_compatibility',
+    runtime: 'slack_bolt',
+    audience: 'member_dm',
+    route: 'legacy_agent_testing_compatibility',
+    selectedToolSets: ['agent_testing'],
+    allowedToolNames: [...legacyAgentTestingAllowed],
+    globalTools,
+    requestTools: memberRequest.filter((tool) => legacyAgentTestingAllowed.has(tool.name)),
+    providerToolCount: 1,
+    conditionalMaximums: [
+      'plan_created_before_agent_property_split',
+      'google_docs_configured',
+      'conformance_socket_enabled',
       'nonstreaming_web_search',
     ],
   }));
@@ -453,6 +506,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       audience: 'system_channel_admin',
       route: `system_role_${systemRole}_all_valid_sets_maximum`,
       selectedToolSets: selectedSets,
+      allowedToolNames: [...allowed],
       globalTools,
       requestTools: adminRequest.filter((tool) => allowed.has(tool.name)),
       providerToolCount: 1,
@@ -801,31 +855,55 @@ function surfaceMaximums(profiles: Profile[]): Record<string, SurfaceMaximum> {
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)));
 }
 
-const CERTIFICATION_WIRE_REQUIREMENTS = [
-  'start_certification_module',
-  'complete_certification_module',
-  'check_credentials',
-  'checkpoint_teaching_progress',
-  'get_build_phase_instructions',
-  'save_learner_feedback',
-  'set_my_name',
-  'find_membership_products',
-  'call_adcp_task',
-] as const;
+const CERTIFICATION_WIRE_REQUIREMENTS = {
+  certification_overview: [
+    'list_certification_tracks',
+    'get_certification_module',
+    'get_learner_progress',
+    'check_credentials',
+    'set_my_name',
+  ],
+  certification_learning: [
+    'start_certification_module',
+    'complete_certification_module',
+    'get_learner_progress',
+    'check_credentials',
+    'checkpoint_teaching_progress',
+    'get_build_phase_instructions',
+    'save_learner_feedback',
+    'set_my_name',
+    'find_membership_products',
+    'call_adcp_task',
+  ],
+  certification_assessment: [
+    'get_learner_progress',
+    'test_out_modules',
+    'start_certification_exam',
+    'complete_certification_exam',
+    'check_credentials',
+    'checkpoint_teaching_progress',
+    'set_my_name',
+    'find_membership_products',
+    'call_adcp_task',
+  ],
+} as const;
 
 function assertCertificationWireContract(profiles: Profile[]): void {
-  const certificationProfiles = profiles.filter((entry) =>
-    entry.selected_tool_sets?.includes('certification'));
-  if (certificationProfiles.length === 0) {
-    throw new Error('Addie tool inventory has no certification profiles');
+  const errors: string[] = [];
+  for (const [setName, requirements] of Object.entries(CERTIFICATION_WIRE_REQUIREMENTS)) {
+    const certificationProfiles = profiles.filter((entry) =>
+      entry.selected_tool_sets?.includes(setName));
+    if (certificationProfiles.length === 0) {
+      errors.push(`Addie tool inventory has no ${setName} profiles`);
+      continue;
+    }
+    for (const entry of certificationProfiles) {
+      const available = new Set(entry.ordered_tool_names);
+      for (const name of requirements) {
+        if (!available.has(name)) errors.push(`${entry.id} is missing ${name}`);
+      }
+    }
   }
-
-  const errors = certificationProfiles.flatMap((entry) => {
-    const available = new Set(entry.ordered_tool_names);
-    return CERTIFICATION_WIRE_REQUIREMENTS
-      .filter((name) => !available.has(name))
-      .map((name) => `${entry.id} is missing ${name}`);
-  });
   if (errors.length > 0) {
     throw new Error(`Certification wire contract failed:\n- ${errors.join('\n- ')}`);
   }

@@ -18,6 +18,20 @@ const { mockProfiles, mockOrgs } = vi.hoisted(() => ({
         { url: 'https://private.acme', visibility: 'private', name: 'Private' },
       ],
     },
+    {
+      id: 'p2',
+      workos_organization_id: 'org-origin-brand',
+      slug: 'origin-brand',
+      display_name: 'Origin Brand',
+      tagline: null,
+      description: null,
+      contact_email: null,
+      contact_website: null,
+      is_public: true,
+      created_at: new Date('2026-01-01'),
+      resolved_brand: null,
+      agents: [],
+    },
   ],
   mockOrgs: new Map<string, { membership_tier: string | null; subscription_status: string | null; subscription_amount: number | null; subscription_interval: string | null; subscription_price_lookup_key: string | null; is_personal: boolean }>([
     ['org_pro', { membership_tier: 'individual_professional', subscription_status: 'active', subscription_amount: 25000, subscription_interval: 'year', subscription_price_lookup_key: null, is_personal: true }],
@@ -59,6 +73,30 @@ vi.mock('../../src/validator.js', () => ({ AgentValidator: class {} }));
 vi.mock('../../src/federated-index.js', () => ({ FederatedIndexService: class {} }));
 vi.mock('../../src/brand-manager.js', () => ({ BrandManager: class {} }));
 vi.mock('../../src/adagents-manager.js', () => ({ AdAgentsManager: class {} }));
+vi.mock('../../src/services/brand-domain-resolver.js', () => ({
+  getBrandPrimaryDomain: vi.fn().mockImplementation(async (orgId: string) =>
+    orgId === 'org-origin-brand' ? 'origin.example' : null
+  ),
+}));
+vi.mock('../../src/db/brand-db.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/db/brand-db.js')>(
+    '../../src/db/brand-db.js',
+  );
+  return {
+    ...actual,
+    brandDb: {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
+        brand_manifest: {
+          house: { name: 'Origin Brand' },
+          brands: [{ tagline: 'Brand tagline', description: 'Brand description' }],
+        },
+        source_type: 'brand_json',
+        domain_verified: false,
+        is_public: true,
+      }),
+    },
+  };
+});
 
 const { MCPToolHandler } = await import('../../src/mcp-tools.js');
 
@@ -117,6 +155,7 @@ describe('MCP get_member viewer context', () => {
     const body = parseResource(result);
     const urls = body.agents.map((a: { url: string }) => a.url).sort();
     expect(urls).toEqual(['https://public.acme']);
+    expect(body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
   });
 
   it('reveals members_only agents to Professional callers', async () => {
@@ -127,5 +166,31 @@ describe('MCP get_member viewer context', () => {
     const body = parseResource(result);
     const urls = body.agents.map((a: { url: string }) => a.url).sort();
     expect(urls).toEqual(['https://members.acme', 'https://public.acme']);
+    expect(body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
+  });
+
+  it('surfaces authoritative brand.json content when profile fields are empty', async () => {
+    const h = new MCPToolHandler();
+    const result = await h.handleToolCall('get_member', { slug: 'origin-brand' });
+    const body = parseResource(result);
+
+    expect(body.tagline).toBe('Brand tagline');
+    expect(body.description).toBe('Brand description');
+    expect(body.content_sources).toEqual({
+      tagline: 'brand_json',
+      description: 'brand_json',
+    });
+    expect(body.brand_identity.domain).toBe('origin.example');
+  });
+});
+
+describe('MCP list_members visibility summary', () => {
+  it('reports public and members-only registrations without revealing private existence', async () => {
+    const h = new MCPToolHandler();
+    const result = await h.handleToolCall('list_members', {}, undefined);
+    const body = parseResource(result);
+
+    expect(body.members[0].agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
+    expect(body.members[0].agent_visibility_summary).not.toHaveProperty('private');
   });
 });

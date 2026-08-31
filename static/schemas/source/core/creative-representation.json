@@ -16,9 +16,9 @@
       }
     },
     {
-      "$comment": "The opt-in late-bound VAST representation path requires one exact asset version. Ordinary legacy/canonical CreativeManifest and CreativeAsset payloads retain additive 3.x compatibility.",
+      "$comment": "The opt-in late-bound VAST representation path requires one exact asset version. Existing video_vast and named-format CreativeManifest/CreativeAsset payloads retain additive 3.x compatibility; audio_vast is new in 3.2 and already requires the exact version in the base manifest.",
       "if": {
-        "properties": { "format_kind": { "const": "video_vast" } },
+        "properties": { "format_kind": { "enum": ["video_vast", "audio_vast"] } },
         "required": ["format_kind"]
       },
       "then": {

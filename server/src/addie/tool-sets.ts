@@ -39,30 +39,6 @@ export const ALWAYS_AVAILABLE_TOOLS = [
   "capture_learning", // Save insights from conversations
   "web_search", // Built-in Claude tool, always available
   "set_outreach_preference", // Users can always opt out of proactive outreach
-  "search_image_library", // Illustrations to enrich explanations — not topic-dependent
-  "draft_github_issue", // Bug reports & feature requests should always be possible
-  "create_github_issue", // Paired with draft — if a member wants it filed directly, keep it reachable
-  "get_github_issue", // Users paste GitHub links in any conversation; reading should never be routed away
-  // Content submission is a first-class action — a member sharing a draft in
-  // any channel (editorial, admin, DM) should land in pending_review, not an
-  // escalation. Permission gating happens inside the handlers.
-  "propose_content",
-  "get_my_content",
-  "list_pending_content",
-  "approve_content",
-  "reject_content",
-  "request_revisions",
-  // Members routinely share Google Doc links as drafts. Reading the doc is
-  // the precondition for calling propose_content, so it should be available
-  // in any channel regardless of router intent selection. The handler is
-  // gated on GOOGLE_* credentials at registration, so environments without
-  // Google integration don't expose it anyway.
-  "read_google_doc",
-  // Illustration tools — members ask for covers on their own posts from
-  // any channel. Handler gates on author-of-perspective + monthly quota
-  // + tool-call rate limit. #2783.
-  "check_illustration_status",
-  "generate_perspective_illustration",
 ];
 
 /**
@@ -74,6 +50,18 @@ export const ALWAYS_AVAILABLE_ADMIN_TOOLS = [
   "resolve_escalation",
   "list_escalations",
 ];
+
+/**
+ * Safe read-only domains used when intent routing cannot provide a narrower
+ * selection. This preserves the documentation, community, and schema access
+ * that the pre-split knowledge set provided without enabling GitHub mutation
+ * workflows through the broader github set.
+ */
+export const SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS = [
+  "knowledge",
+  "community_research",
+  "schema_reference",
+] as const;
 
 /**
  * Tools excluded from ALWAYS_AVAILABLE in public channels
@@ -114,19 +102,25 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "reject_feed_proposal",
     "add_media_contact",
   ],
-  admin_groups: [
+  admin_group_structure: [
     "create_chapter",
     "list_chapters",
     "create_industry_gathering",
     "list_industry_gatherings",
+    "rename_working_group",
+  ],
+  admin_group_leadership: [
     "list_working_groups",
     "get_working_group",
     "add_committee_leader",
     "remove_committee_leader",
     "list_committee_leaders",
+  ],
+  admin_group_membership: [
+    "list_working_groups",
+    "get_working_group",
     "add_working_group_member",
     "remove_working_group_member",
-    "rename_working_group",
   ],
   admin_organizations: [
     "merge_organizations",
@@ -176,14 +170,205 @@ const LEGACY_ADMIN_OUTREACH_TOOLS = [
   "create_contact",
 ];
 
+/** Exact pre-split group surface retained for already-routed plans. */
+export const LEGACY_ADMIN_GROUP_TOOLS = [
+  "create_chapter",
+  "list_chapters",
+  "create_industry_gathering",
+  "list_industry_gatherings",
+  "list_working_groups",
+  "get_working_group",
+  "add_committee_leader",
+  "remove_committee_leader",
+  "list_committee_leaders",
+  "add_working_group_member",
+  "remove_working_group_member",
+  "rename_working_group",
+];
+
 /**
  * Exact compatibility union for plans created before the admin-domain split.
  * It is deliberately hidden from new router prompts and validation.
  */
 export const LEGACY_ADMIN_TOOLS = [
-  ...Object.values(ADMIN_DOMAIN_TOOL_SETS).flat(),
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_events,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_prospects,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_feeds,
+  ...LEGACY_ADMIN_GROUP_TOOLS,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_organizations,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_workflows,
+  ...ADMIN_DOMAIN_TOOL_SETS.admin_brands,
   ...LEGACY_ADMIN_BILLING_TOOLS,
   ...LEGACY_ADMIN_OUTREACH_TOOLS,
+];
+
+/** Bounded member account/profile surface for new router plans. */
+export const MEMBER_PROFILE_TOOLS = [
+  "get_my_profile",
+  "update_my_profile",
+  "get_company_listing",
+  "update_company_listing",
+  "update_company_logo",
+  "request_brand_domain_challenge",
+  "verify_brand_domain_challenge",
+] as const;
+
+/** Bounded group participation and community contribution surface. */
+export const COMMUNITY_GROUP_TOOLS = [
+  "list_working_groups",
+  "get_working_group",
+  "join_working_group",
+  "request_working_group_invitation",
+  "get_my_working_groups",
+  "express_council_interest",
+  "withdraw_council_interest",
+  "get_my_council_interests",
+  "create_working_group_post",
+  "bookmark_resource",
+  "list_committee_documents",
+] as const;
+
+const LEGACY_MEMBER_CONTENT_TOOLS = [
+  "list_perspectives",
+  "attach_content_asset",
+  "draft_social_posts",
+] as const;
+
+/** Author-owned submission, document import, asset, and cover-image workflow. */
+export const PUBLISHING_AUTHOR_TOOLS = [
+  "propose_content",
+  "get_my_content",
+  "read_google_doc",
+  "check_illustration_status",
+  "generate_perspective_illustration",
+  "attach_content_asset",
+] as const;
+
+/** Committee-lead and admin editorial review workflow. */
+export const PUBLISHING_REVIEW_TOOLS = [
+  "list_pending_content",
+  "approve_content",
+  "reject_content",
+  "request_revisions",
+] as const;
+
+/** Published-content discovery and member social-promotion workflow. */
+export const PUBLISHING_PROMOTION_TOOLS = [
+  "list_perspectives",
+  "draft_social_posts",
+] as const;
+
+/** Low-risk certification discovery, progress, and credential recovery. */
+export const CERTIFICATION_OVERVIEW_TOOLS = [
+  "list_certification_tracks",
+  "get_certification_module",
+  "get_learner_progress",
+  "check_credentials",
+  "set_my_name",
+] as const;
+
+/** Standard module teaching, checkpoint, build, and completion workflow. */
+export const CERTIFICATION_LEARNING_TOOLS = [
+  "start_certification_module",
+  "complete_certification_module",
+  "get_learner_progress",
+  "checkpoint_teaching_progress",
+  "get_build_phase_instructions",
+  "save_learner_feedback",
+  "set_my_name",
+  "check_credentials",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
+/** Placement assessment and specialist capstone workflow. */
+export const CERTIFICATION_ASSESSMENT_TOOLS = [
+  "get_learner_progress",
+  "test_out_modules",
+  "start_certification_exam",
+  "complete_certification_exam",
+  "checkpoint_teaching_progress",
+  "set_my_name",
+  "check_credentials",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
+/** Exact pre-split certification surface retained for already-routed plans. */
+export const LEGACY_CERTIFICATION_TOOLS = [
+  "list_certification_tracks",
+  "get_certification_module",
+  "start_certification_module",
+  "complete_certification_module",
+  "get_learner_progress",
+  "test_out_modules",
+  "start_certification_exam",
+  "complete_certification_exam",
+  "check_credentials",
+  "checkpoint_teaching_progress",
+  "get_build_phase_instructions",
+  "save_learner_feedback",
+  "set_my_name",
+  "find_membership_products",
+  "call_adcp_task",
+] as const;
+
+/** Exact pre-split publishing surface retained for already-routed plans. */
+export const LEGACY_PUBLISHING_TOOLS = [
+  "propose_content",
+  "get_my_content",
+  "list_pending_content",
+  "approve_content",
+  "reject_content",
+  "request_revisions",
+  "read_google_doc",
+  "check_illustration_status",
+  "generate_perspective_illustration",
+  "list_perspectives",
+  "attach_content_asset",
+  "draft_social_posts",
+] as const;
+
+/** Exact compatibility union for plans created before the member-domain split. */
+export const LEGACY_MEMBER_TOOLS = [
+  ...MEMBER_PROFILE_TOOLS,
+  ...COMMUNITY_GROUP_TOOLS,
+  ...LEGACY_MEMBER_CONTENT_TOOLS,
+];
+
+/** Bounded publisher and agent implementation validation surface. */
+export const AGENT_VALIDATION_TOOLS = [
+  "validate_adagents",
+  "resolve_brand",
+  "get_agent_status",
+  "check_publisher_authorization",
+  "test_adcp_agent",
+  "evaluate_agent_quality",
+  "grade_agent_signing",
+  "diagnose_agent_auth",
+  "compare_media_kit",
+  "test_rfp_response",
+  "test_io_execution",
+  "validate_agent",
+] as const;
+
+/** Bounded property-registry audit, enrichment, and catalog surface. */
+export const PROPERTY_CATALOG_TOOLS = [
+  "resolve_property",
+  "save_property",
+  "list_properties",
+  "list_missing_properties",
+  "check_property_list",
+  "enhance_property",
+  "resolve_catalog",
+  "browse_catalog",
+  "dispute_catalog_entry",
+] as const;
+
+/** Exact compatibility union for plans created before the agent/property split. */
+export const LEGACY_AGENT_TESTING_TOOLS = [
+  ...AGENT_VALIDATION_TOOLS,
+  ...PROPERTY_CATALOG_TOOLS,
 ];
 
 /**
@@ -193,24 +378,33 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   knowledge: {
     name: "knowledge",
     description:
-      "Search documentation, code repos, Slack history, curated resources, GitHub issues/PRs, and validate JSON against AdCP schemas for protocol questions, implementation help, roadmap/RFC lookups, and community discussions",
+      "Search AdCP documentation and indexed ad tech specifications for protocol questions and implementation help",
     tools: [
       "search_docs",
       "get_doc",
       "search_repos",
+    ],
+  },
+
+  community_research: {
+    name: "community_research",
+    description:
+      "When requested, search Slack history, channel activity, curated industry resources, recent news, supplied web pages, and files shared in Slack",
+    tools: [
       "search_slack",
       "get_channel_activity",
       "search_resources",
       "get_recent_news",
       "fetch_url",
       "read_slack_file",
-      // GitHub read tools — list/search issues, PRs, RFCs, epics.
-      // NOTE: get_github_issue is intentionally NOT listed here — it lives in
-      // ALWAYS_AVAILABLE_TOOLS and is reachable regardless of routing. Keeping
-      // it here caused Sonnet to hallucinate that reading individual issues was
-      // unavailable when `knowledge` wasn't selected. See #2998.
-      "list_github_issues",
-      // Schema validation tools
+    ],
+  },
+
+  schema_reference: {
+    name: "schema_reference",
+    description:
+      "Inspect, compare, and validate JSON against versioned AdCP schemas",
+    tools: [
       "validate_json",
       "get_schema",
       "list_schemas",
@@ -218,48 +412,39 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  member_profile: {
+    name: "member_profile",
+    description:
+      "Manage the current member's personal profile, company directory listing, logo and brand color, account settings, and organization brand-domain claim",
+    tools: [...MEMBER_PROFILE_TOOLS],
+  },
+
+  community_groups: {
+    name: "community_groups",
+    description:
+      "Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents",
+    tools: [...COMMUNITY_GROUP_TOOLS],
+  },
+
+  // Compatibility only: a plan already carrying the old `member` set can
+  // finish without losing profile, group, or member-content tools. New router
+  // prompts select the bounded member_profile, community_groups, or publishing
+  // domains instead.
   member: {
     name: "member",
-    // NOTE: propose_content, get_my_content, and set_outreach_preference are
-    // intentionally NOT listed here — neither in the description nor the tools
-    // array. They live in ALWAYS_AVAILABLE_TOOLS and are reachable in every
-    // conversation. Duplicating them here caused Sonnet to hallucinate that
-    // content submission/retrieval and outreach preferences were unavailable
-    // when the router didn't pick `member`. See #2998.
-    description:
-      "Manage member profile, working groups, committees, and account settings. Includes listing working group documents, attaching assets to content, and updating the company logo or brand color.",
-    tools: [
-      "get_my_profile",
-      "update_my_profile",
-      "get_company_listing",
-      "update_company_listing",
-      "update_company_logo",
-      "request_brand_domain_challenge",
-      "verify_brand_domain_challenge",
-      "list_working_groups",
-      "get_working_group",
-      "join_working_group",
-      "request_working_group_invitation",
-      "get_my_working_groups",
-      "express_council_interest",
-      "withdraw_council_interest",
-      "get_my_council_interests",
-      "list_perspectives",
-      "create_working_group_post",
-      "attach_content_asset",
-      "bookmark_resource",
-      "draft_social_posts",
-      "list_committee_documents",
-    ],
+    description: "Legacy monolithic member compatibility surface",
+    tools: [...LEGACY_MEMBER_TOOLS],
+    routerVisible: false,
   },
 
   directory: {
     name: "directory",
     // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
     // Anonymous web/MCP users get only the DIRECTORY_TOOLS subset (read-only public lookups).
-    // This set adds member-scoped tools (search_members, request_introduction) and brand tools.
+    // This set adds member-scoped search and introduction tools, but deliberately
+    // excludes brand-registry mutations and canonical-document workflows.
     description:
-      "The searchable partner/vendor directory — find partners, vendors, consultants, service providers, and member organizations. Also: request introductions, browse the member directory, research brands, look up brand assets, and find registry gaps",
+      "Search the member, agent, and publisher directory for organizations, partners, vendors, consultants, service providers, and introductions",
     tools: [
       "search_members",
       "request_introduction",
@@ -270,6 +455,14 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "get_agent",
       "list_publishers",
       "lookup_domain",
+    ],
+  },
+
+  brand_registry: {
+    name: "brand_registry",
+    description:
+      "Research and manage brand-registry entries, logos, canonical brand documents, reciprocal brand.json assertions, and registry gaps",
+    tools: [
       "research_brand",
       "resolve_brand",
       "save_brand",
@@ -283,33 +476,28 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  agent_validation: {
+    name: "agent_validation",
+    description:
+      'Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.',
+    tools: [...AGENT_VALIDATION_TOOLS],
+  },
+
+  property_catalog: {
+    name: "property_catalog",
+    description:
+      'Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.',
+    tools: [...PROPERTY_CATALOG_TOOLS],
+  },
+
+  // Compatibility only: a plan already carrying the old `agent_testing` set
+  // can finish without losing agent-validation or property-catalog tools. New
+  // router prompts select the bounded domains above.
   agent_testing: {
     name: "agent_testing",
-    description:
-      'Publisher and agent setup, verification, and testing — validate adagents.json, check brand.json, verify publisher authorization, resolve properties, probe agent endpoints, run compliance tests, grade RFC 9421 request signing, and diagnose OAuth handshakes. Use for any "my agent can\'t see properties", "authorization not working", "is my signing setup correct?", "diagnose OAuth", or publisher setup questions.',
-    tools: [
-      "validate_adagents",
-      "resolve_brand",
-      "get_agent_status",
-      "check_publisher_authorization",
-      "test_adcp_agent",
-      "evaluate_agent_quality",
-      "grade_agent_signing",
-      "diagnose_agent_auth",
-      "compare_media_kit",
-      "test_rfp_response",
-      "test_io_execution",
-      "validate_agent",
-      "resolve_property",
-      "save_property",
-      "list_properties",
-      "list_missing_properties",
-      "check_property_list",
-      "enhance_property",
-      "resolve_catalog",
-      "browse_catalog",
-      "dispute_catalog_entry",
-    ],
+    description: "Legacy combined agent-testing and property-catalog compatibility surface",
+    tools: [...LEGACY_AGENT_TESTING_TOOLS],
+    routerVisible: false,
   },
 
   agent_conformance: {
@@ -352,17 +540,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 
   content: {
     name: "content",
-    // NOTE: GitHub issue filing lives in ALWAYS_AVAILABLE_TOOLS and is
-    // intentionally NOT listed here — neither in the description nor the tools
-    // array. Duplicating it caused Addie to hallucinate "I can't file GitHub
-    // issues" when the router didn't pick `content`.
-    //
-    // NOTE: list_pending_content, approve_content, and reject_content are also
-    // intentionally NOT listed here. They live in ALWAYS_AVAILABLE_TOOLS so
-    // content review is reachable in every conversation. Keeping them here
-    // (and saying "handle content approvals" in the description) caused Sonnet
-    // to hallucinate that approval tools were unavailable when `content` wasn't
-    // selected. See #2998.
     description:
       "Manage content workflows — propose news sources, add or update committee documents (admin actions)",
     tools: [
@@ -371,6 +548,55 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "update_committee_document",
       "delete_committee_document",
     ],
+  },
+
+  publishing_author: {
+    name: "publishing_author",
+    description:
+      "Submit and manage the current member's articles or perspectives, import Google Docs for publication, attach assets, and generate or check published cover illustrations",
+    tools: [...PUBLISHING_AUTHOR_TOOLS],
+  },
+
+  publishing_review: {
+    name: "publishing_review",
+    description:
+      "Review pending member content and approve, reject, or request revisions when the current member leads that collection or is an admin",
+    tools: [...PUBLISHING_REVIEW_TOOLS],
+  },
+
+  publishing_promotion: {
+    name: "publishing_promotion",
+    description:
+      "Browse published community perspectives and draft social posts promoting published content",
+    tools: [...PUBLISHING_PROMOTION_TOOLS],
+  },
+
+  // Compatibility only: plans already carrying the mixed publishing set can
+  // finish, while new router prompts choose an author, review, or promotion domain.
+  publishing: {
+    name: "publishing",
+    description: "Legacy mixed publishing compatibility surface",
+    tools: [...LEGACY_PUBLISHING_TOOLS],
+    routerVisible: false,
+  },
+
+  github: {
+    name: "github",
+    description:
+      "Read a specific GitHub issue or pull request, draft a bug report or feature request, and create a confirmed issue",
+    tools: [
+      "draft_github_issue",
+      "create_github_issue",
+      "get_github_issue",
+      "list_github_issues",
+    ],
+  },
+
+  illustrations: {
+    name: "illustrations",
+    description:
+      "Search the approved illustration library when a user requests a diagram or a substantive explanation would materially benefit from a visual",
+    tools: ["search_image_library"],
   },
 
   member_billing: {
@@ -459,7 +685,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
   admin_events: {
     name: "admin_events",
     description:
-      "Administer events: create or update events, manage registrations, check a person's status, and send invitations (admin only)",
+      "Admin mutation companion for the events set: create or update events, manage registrations, check a person's status, and send invitations; always select together with events (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_events],
     adminOnly: true,
   },
@@ -480,11 +706,27 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
-  admin_groups: {
-    name: "admin_groups",
+  admin_group_structure: {
+    name: "admin_group_structure",
     description:
-      "Manage chapters, gatherings, committees, working groups, leaders, memberships, and group names (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_groups],
+      "Create or list chapters and industry gatherings, and rename working groups (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_structure],
+    adminOnly: true,
+  },
+
+  admin_group_leadership: {
+    name: "admin_group_leadership",
+    description:
+      "List working groups and manage their committee leaders (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_leadership],
+    adminOnly: true,
+  },
+
+  admin_group_membership: {
+    name: "admin_group_membership",
+    description:
+      "List working groups and add or remove working-group members (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_group_membership],
     adminOnly: true,
   },
 
@@ -510,6 +752,16 @@ export const TOOL_SETS: Record<string, ToolSet> = {
       "Review brand and property registry gaps, logo submissions, community mirrors, and orphaned brand ownership (admin only)",
     tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brands],
     adminOnly: true,
+  },
+
+  // Compatibility only: plans already carrying the mixed group set can
+  // finish, while new router prompts choose one bounded group domain.
+  admin_groups: {
+    name: "admin_groups",
+    description: "Legacy mixed admin group compatibility surface",
+    tools: [...LEGACY_ADMIN_GROUP_TOOLS],
+    adminOnly: true,
+    routerVisible: false,
   },
 
   // Compatibility only: a plan already carrying the old `admin` set can
@@ -545,31 +797,35 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: ["send_member_dm"],
   },
 
+  certification_overview: {
+    name: "certification_overview",
+    description:
+      "AdCP Academy catalog, module previews, learner progress, and earned credential checks",
+    tools: [...CERTIFICATION_OVERVIEW_TOOLS],
+  },
+
+  certification_learning: {
+    name: "certification_learning",
+    description:
+      "AdCP Academy standard modules — start or continue teaching, checkpoint progress, run build exercises, and complete modules",
+    tools: [...CERTIFICATION_LEARNING_TOOLS],
+  },
+
+  certification_assessment: {
+    name: "certification_assessment",
+    description:
+      "AdCP Academy placement assessments and specialist capstones — test out modules, run exams, checkpoint, and complete credentials",
+    tools: [...CERTIFICATION_ASSESSMENT_TOOLS],
+  },
+
+  // Compatibility only: plans already carrying the mixed certification set
+  // can finish, while new routing and active-session selection use a bounded
+  // overview, learning, or assessment domain.
   certification: {
     name: "certification",
-    description:
-      "AdCP Academy — list tracks, teach modules, run exercises, placement assessment, and track learner progress",
-    tools: [
-      "list_certification_tracks",
-      "get_certification_module",
-      "start_certification_module",
-      "complete_certification_module",
-      "get_learner_progress",
-      "test_out_modules",
-      "start_certification_exam",
-      "complete_certification_exam",
-      "check_credentials",
-      "checkpoint_teaching_progress",
-      "get_build_phase_instructions",
-      "save_learner_feedback",
-      // Credential issuance can require the learner to supply a display name.
-      // Keep the recovery pair on the same routed surface.
-      "set_my_name",
-      // Certification paywalls direct learners to the read-only product lookup.
-      "find_membership_products",
-      // AdCP tasks (route to training agent during certification via call_adcp_task)
-      "call_adcp_task",
-    ],
+    description: "Legacy mixed certification compatibility surface",
+    tools: [...LEGACY_CERTIFICATION_TOOLS],
+    routerVisible: false,
   },
 };
 
@@ -658,28 +914,15 @@ export function buildUnavailableSetsHint(
     return `- **${setName}**: ${set.description}`;
   });
 
-  // Remind Claude which escape-hatch tools bypass set routing. Without this,
-  // the model sometimes reads an unavailable-set description that overlaps
-  // with an always-available capability (e.g., GitHub issue filing) and
-  // hallucinates that the capability is off. Keep this list tight — only the
-  // tools users explicitly ask for by name.
+  // Remind Claude which escape-hatch tools bypass set routing. Keep this list
+  // tight — only the tools users explicitly ask for by name.
   //
   // NOTE: each key MUST exist in ALWAYS_AVAILABLE_TOOLS. A test enforces this
   // so a renamed/removed tool can't silently rot into a lying hint.
   const ALWAYS_AVAILABLE_BLURBS: Record<string, string> = {
-    draft_github_issue:
-      "filing bugs / feature requests as a pre-filled GitHub link",
-    create_github_issue:
-      "filing an issue directly under the member's GitHub account (if connected)",
-    get_github_issue: "reading a GitHub issue or PR by number or URL",
     escalate_to_admin: "handing the thread to a human admin",
     get_escalation_status:
       "checking the status of an escalation the member filed",
-    propose_content: "submitting a content draft for publication",
-    get_my_content: "viewing the member's own submitted content and proposals",
-    list_pending_content: "listing content items awaiting review",
-    approve_content: "approving a pending content item (admin)",
-    reject_content: "rejecting a pending content item (admin)",
     set_outreach_preference: "opting out of proactive outreach messages",
   };
   const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)

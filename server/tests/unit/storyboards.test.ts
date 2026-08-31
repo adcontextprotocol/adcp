@@ -506,6 +506,12 @@ describe('compareAdcpVersions', () => {
     expect(compareAdcpVersions('3.1', '3.2-beta.2')).toBeLessThan(0);
   });
 
+  it('accepts exact stable and prerelease patch versions', () => {
+    expect(compareAdcpVersions('3.1', '3.1.18')).toBe(0);
+    expect(compareAdcpVersions('3.2.0-beta.9', '3.2')).toBe(0);
+    expect(compareAdcpVersions('3.2.0-beta.9', '3.1.99')).toBeGreaterThan(0);
+  });
+
   it('treats malformed values as 0.0 (sort first, fail loudly elsewhere)', () => {
     // Defensive: malformed values should not crash the comparator. The DB
     // CHECK constraint ensures they never reach the comparator in
@@ -516,6 +522,13 @@ describe('compareAdcpVersions', () => {
 });
 
 describe('getStoryboardsForVersion', () => {
+  it('preserves introduced storyboards for exact stable and prerelease versions', () => {
+    expect(getStoryboardsForVersion('3.1.18').length).toBe(getStoryboardsForVersion('3.1').length);
+    expect(getStoryboardsForVersion('3.2.0-beta.9').length).toBe(
+      getStoryboardsForVersion('3.2-beta.9').length,
+    );
+  });
+
   it('returns every storyboard when target is the highest supported version', () => {
     const all = getAllStoryboards();
     const highestIntroduced = all.reduce((highest, sb) => {

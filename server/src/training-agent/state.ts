@@ -549,6 +549,7 @@ function deserializeSession(data: Record<string, unknown>): SessionState {
       provenanceAuditObservations: asMap(hydratedComply.provenanceAuditObservations, fresh.complyExtensions.provenanceAuditObservations),
       forcedCreateMediaBuyArm: hydratedComply.forcedCreateMediaBuyArm,
       forcedGetSignalsArm: hydratedComply.forcedGetSignalsArm,
+      forcedGetProductsArm: hydratedComply.forcedGetProductsArm,
       forcedGetProductsRejections: asMap(hydratedComply.forcedGetProductsRejections, fresh.complyExtensions.forcedGetProductsRejections),
       forcedUpstreamUnavailable: hydratedComply.forcedUpstreamUnavailable,
     },

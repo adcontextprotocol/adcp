@@ -1,5 +1,5 @@
 /**
- * /sales tenant — sales-non-guaranteed + sales-guaranteed specialisms.
+ * /sales tenant — non-guaranteed, guaranteed, and DOOH sales specialisms.
  *
  * Distinct platform from /signals (single-specialism per tenant). Buyers
  * call sales-track tools at this URL; signals tools live on /signals.
@@ -102,7 +102,7 @@ export function buildSalesTenantConfig(
         // persistence boundary without leaking legacy identity into current paths.
         legacyHandlers: {
           mediaBuy: {
-            getProducts: legacyGetProductsHandler(options.storyboardCompat),
+            getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
           },

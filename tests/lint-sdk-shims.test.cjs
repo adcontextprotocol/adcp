@@ -30,7 +30,6 @@ test('source tree private SDK shims are ledgered', () => {
 
 test('ledger entries include removal conditions and upstream asks', () => {
   const ledger = loadLedger();
-  assert.ok(ledger.length >= 1);
   for (const entry of ledger) {
     assert.match(entry.id, /^[a-z0-9-]+$/);
     assert.ok(entry.upstream.includes('adcontextprotocol/adcp-client'), entry.id);
@@ -39,10 +38,9 @@ test('ledger entries include removal conditions and upstream asks', () => {
   }
 });
 
-test('scanner finds the expected high-risk SDK reach-ins', () => {
+test('source tree has no remaining private SDK reach-ins', () => {
   const findings = collectFindings();
-  assert.ok(findings.some((f) => f.file === 'scripts/stage-sdk-schema-bundle.sh' && f.term.includes('schemas-data')));
-  assert.ok(findings.some((f) => f.file === 'scripts/overlay-compliance-cache.sh' && f.term.includes('schemas.generated.js')));
+  assert.deepEqual(findings, []);
 });
 
 test('matchingPrivateTerm ignores comment-only lines but catches private SDK code', () => {

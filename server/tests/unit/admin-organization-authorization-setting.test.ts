@@ -7,11 +7,15 @@ const {
   setSettingMock,
   invalidateCacheMock,
   environmentAllowsBoundaryMock,
+  getShadowSettingMock,
+  setShadowSettingMock,
 } = vi.hoisted(() => ({
   getSettingMock: vi.fn(),
   setSettingMock: vi.fn(),
   invalidateCacheMock: vi.fn(),
   environmentAllowsBoundaryMock: vi.fn(),
+  getShadowSettingMock: vi.fn(),
+  setShadowSettingMock: vi.fn(),
 }));
 
 vi.mock("../../src/middleware/auth.js", () => {
@@ -30,6 +34,7 @@ vi.mock("../../src/middleware/auth.js", () => {
 vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
   ORGANIZATION_AUTHORIZATION_BOUNDARIES: {
     ORGANIZATION_ROLES_READ: "organization_roles_read",
+    ORGANIZATION_DOMAINS_READ: "organization_domains_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -37,8 +42,20 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
 
 vi.mock("../../src/db/system-settings-db.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/db/system-settings-db.js")>()),
+  getAllSettings: vi.fn().mockResolvedValue([]),
+  getBillingChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getEscalationChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getAdminChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getProspectChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getProspectTriageEnabled: vi.fn().mockResolvedValue(false),
+  getErrorChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getEditorialChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getAnnouncementChannel: vi.fn().mockResolvedValue({ channel_id: null, channel_name: null }),
+  getS2CanonicalFormatsDeltaRelease: vi.fn().mockResolvedValue({}),
   getOrganizationAuthorizationEnforcement: getSettingMock,
   setOrganizationAuthorizationEnforcement: setSettingMock,
+  getVerificationProfileShadowRollout: getShadowSettingMock,
+  setVerificationProfileShadowRollout: setShadowSettingMock,
 }));
 
 import { createAdminSettingsRouter } from "../../src/routes/admin/settings.js";
@@ -56,6 +73,43 @@ describe("organization authorization runtime admin setting", () => {
     getSettingMock.mockResolvedValue({ enabled: false, boundaries: [] });
     setSettingMock.mockResolvedValue(undefined);
     environmentAllowsBoundaryMock.mockReturnValue(true);
+    getShadowSettingMock.mockResolvedValue({ enabled: false, expires_at: null });
+    setShadowSettingMock.mockResolvedValue({
+      enabled: true,
+      expires_at: '2026-09-02T10:00:00.000Z',
+    });
+  });
+
+  it('returns and auditably updates the observation-only verification profile shadow switch', async () => {
+    const getResponse = await request(createApp()).get('/api/admin/settings');
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.verification_profile_shadow_rollout).toEqual({
+      enabled: false,
+      expires_at: null,
+    });
+
+    const putResponse = await request(createApp())
+      .put('/api/admin/settings/verification-profile-shadow-rollout')
+      .send({ enabled: true });
+
+    expect(putResponse.status).toBe(200);
+    expect(setShadowSettingMock).toHaveBeenCalledWith(
+      { enabled: true },
+      'user_authenticated_admin',
+    );
+    expect(putResponse.body.verification_profile_shadow_rollout).toEqual({
+      enabled: true,
+      expires_at: '2026-09-02T10:00:00.000Z',
+    });
+  });
+
+  it('rejects a malformed verification profile shadow switch', async () => {
+    const response = await request(createApp())
+      .put('/api/admin/settings/verification-profile-shadow-rollout')
+      .send({ enabled: 'true' });
+
+    expect(response.status).toBe(400);
+    expect(setShadowSettingMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -91,6 +145,54 @@ describe("organization authorization runtime admin setting", () => {
       enabled: true,
       boundaries: ["organization_roles_read"],
     });
+  });
+
+  it("reports the environment ceiling independently for each supported boundary", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary === "organization_domains_read",
+    );
+
+    const response = await request(createApp()).get("/api/admin/settings");
+
+    expect(response.status).toBe(200);
+    expect(response.body.organization_authorization_environment_ceiling).toEqual({
+      boundaries: ["organization_domains_read"],
+    });
+  });
+
+  it("persists independently selected read boundaries", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_domains_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      {
+        enabled: true,
+        boundaries: ["organization_domains_read"],
+      },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("rejects a mixed selection when any boundary is outside the environment ceiling", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary === "organization_roles_read",
+    );
+
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      });
+
+    expect(response.status).toBe(409);
+    expect(setSettingMock).not.toHaveBeenCalled();
+    expect(invalidateCacheMock).not.toHaveBeenCalled();
   });
 
   it("allows an audited runtime rollback without removing the staged boundary", async () => {

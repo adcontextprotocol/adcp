@@ -80,6 +80,8 @@ vi.mock('../../src/db/system-settings-db.js', () => ({
   setAnnouncementChannel: (...args: unknown[]) => mockSetAnnouncementChannel(...args),
   getOrganizationAuthorizationEnforcement: vi.fn().mockResolvedValue({ enabled: false, boundaries: [] }),
   setOrganizationAuthorizationEnforcement: vi.fn(),
+  getVerificationProfileShadowRollout: vi.fn().mockResolvedValue({ enabled: false }),
+  setVerificationProfileShadowRollout: vi.fn(),
 }));
 
 async function buildApp() {

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/assets/vast-asset.json",
   "title": "VAST Asset",
-  "description": "VAST (Video Ad Serving Template) tag for third-party video ad serving. Unlike the hosted `video` asset, a VAST tag carries no `width`/`height`: a VAST response can return multiple renditions of differing dimensions, and the player selects one per device at serve time, so there is no single width/height for the ad. Dimensional, duration, and codec *constraints* for a placement live on the format/requirements layer, not on this asset.",
+  "description": "VAST (Video Ad Serving Template) tag for third-party video or audio ad serving. Unlike a hosted media asset, a VAST tag carries no single `width`/`height`: a response can return multiple renditions and the player selects one at serve time. Standardized VAST audio support begins at 4.1 and uses MediaFile width and height values of 0; older audio-in-VAST versions are seller-declared legacy interoperability. Dimensional, duration, MIME-type, and codec constraints live on the format/requirements layer, not on this asset.",
   "type": "object",
   "properties": {
     "asset_type": {
@@ -12,7 +12,7 @@
     },
     "vast_version": {
       "$ref": "/schemas/enums/vast-version.json",
-      "description": "Exact VAST version declared by the supplied URL response or inline document. Required by the 3.2 canonical `video_vast` manifest path; optional only on the deprecated named-format compatibility path. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
+      "description": "Exact VAST version declared by the supplied URL response or inline document. Required by the 3.2 canonical `video_vast` and `audio_vast` manifest paths; optional only on the deprecated named-format compatibility path. Receivers MUST NOT relabel or synthesize a newer version merely because the destination accepts it."
     },
     "macro_declarations": {
       "type": "array",
@@ -26,7 +26,7 @@
     },
     "duration_ms": {
       "type": "integer",
-      "description": "Expected video duration in milliseconds (if known)",
+      "description": "Expected media duration in milliseconds (if known)",
       "minimum": 0
     },
     "tracking_events": {

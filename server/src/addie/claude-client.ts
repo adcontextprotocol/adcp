@@ -20,7 +20,13 @@ import {
 import { AddieDatabase } from '../db/addie-db.js';
 import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
-import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/index.js';
+import {
+  loadCoreRules,
+  loadConstraintRules,
+  loadResponseStyle,
+  loadScopedRules,
+  invalidateRulesCache,
+} from './rules/index.js';
 import { isAllowedImageType } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
@@ -42,8 +48,11 @@ import {
 import type { AddieInputAttachment } from './chat-attachments.js';
 import type {
   ModelExecution,
+  ModelFallbackReason,
   ModelMessage,
   ModelMessageContent,
+  ModelProvider,
+  ModelProviderId,
   ModelRequest,
   ModelResponse,
   ModelToolChoice,
@@ -51,19 +60,21 @@ import type {
   ModelToolDefinition,
   ModelToolResultContent,
   ModelUsage,
+  PreparedModelInvocation,
 } from './model-providers/model-provider.js';
+import { attemptSiblingModelFallback } from './model-providers/model-fallback.js';
 import {
   AnthropicModelProvider,
   type AnthropicMessagesTransport,
 } from './model-providers/anthropic-provider.js';
 import {
-  appendModelTurnContinuation,
   ModelTurnLoopState,
 } from './model-providers/model-turn.js';
 import {
   AddieToolExecutionLedger,
   createAddieToolExecutor,
-  executeAddieToolCalls,
+  orchestrateAcceptedAddieTurn,
+  type AddieAcceptedTurnDecision,
   type AddieExecutionMode,
   type ToolExecution,
   type ToolExecutionPolicy,
@@ -96,6 +107,7 @@ import {
   renderToolExecutionsFallback,
   type ToolResultPresentation,
 } from './tool-result-contract.js';
+import { enforceFailedLookupEvidenceBoundary } from './failed-lookup-evidence.js';
 
 export interface InvocationPreparedSnapshot {
   execution_mode: AddieExecutionMode;
@@ -106,7 +118,7 @@ export interface InvocationPreparedSnapshot {
   tool_schemas: Array<{ index: number; name: string; sha256: string }>;
   message_payloads: Array<{ index: number; sha256: string }>;
   message_count: number;
-  /** HMAC/SHA-256 of the exact object handed to the Anthropic SDK. */
+  /** HMAC/SHA-256 of the exact object handed to the selected provider SDK. */
   provider_request_sha256: string;
 }
 
@@ -140,8 +152,14 @@ function addieModelOutputControls(
   return { max_tokens: Math.min(DEFAULT_MAX_OUTPUT_TOKENS, maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) };
 }
 
-function isEvaluationExecution(options?: ProcessMessageOptions): boolean {
-  return options?.executionMode === 'evaluation' || options?.executionMode === 'replay';
+function isIsolatedExecution(options?: ProcessMessageOptions): boolean {
+  return options?.executionMode === 'evaluation'
+    || options?.executionMode === 'replay'
+    || options?.executionMode === 'shadow';
+}
+
+function isExactlyOnceExecution(options?: ProcessMessageOptions): boolean {
+  return options?.executionMode === 'replay' || options?.executionMode === 'shadow';
 }
 
 function hashPreparedPayload(
@@ -157,7 +175,7 @@ function hashPreparedPayload(
   // inputs are present. A partial configuration must never silently fall back
   // to an unkeyed digest. Production callers that do not request HMAC hashing
   // retain the historical SHA-256 behavior.
-  if (hasKey || hasDomain || executionMode === 'evaluation' || executionMode === 'replay') {
+  if (hasKey || hasDomain || executionMode !== 'production') {
     if (!hasKey || !hasDomain) return 'unavailable';
     return createHmac('sha256', key)
       .update('addie-invocation\0', 'utf8')
@@ -544,6 +562,7 @@ function applyResponsePipelineWithEmptyMonitoring(
 interface FinalizedAssistantText {
   text: string;
   emptyReason: string | null;
+  localReplacementReason: string | null;
   lengthExceeded: boolean;
 }
 
@@ -554,12 +573,27 @@ function finalizeAssistantText(
   toolExecutions: readonly ToolExecution[],
   forceTruncation: boolean = false,
 ): FinalizedAssistantText {
-  const processed = applyResponsePipelineWithEmptyMonitoring(question, rawText, toolExecutions);
+  const evidenceBoundary = enforceFailedLookupEvidenceBoundary(rawText, toolExecutions);
+  if (evidenceBoundary.enforced) {
+    logger.warn(
+      {
+        event: 'addie_failed_lookup_evidence_boundary',
+        failedToolNames: evidenceBoundary.failedToolNames,
+      },
+      'Addie: Replaced unsupported provider prose after failed source lookups',
+    );
+  }
+  const processed = applyResponsePipelineWithEmptyMonitoring(
+    question,
+    evidenceBoundary.text,
+    toolExecutions,
+  );
   const lengthExceeded = processed.text.length > MAX_OUTPUT_LENGTH;
   const truncated = forceTruncation || lengthExceeded;
   return {
     text: truncated ? formatTruncatedOutput(processed.text) : processed.text,
     emptyReason: processed.reason,
+    localReplacementReason: evidenceBoundary.reason,
     lengthExceeded,
   };
 }
@@ -573,7 +607,7 @@ function reportEmptyResponseFallback(
   model: string,
   iteration: number,
 ): void {
-  if (isEvaluationExecution(options)) return;
+  if (isIsolatedExecution(options)) return;
 
   const successful = toolExecutions.filter(t => !t.is_error).length;
   const errored = toolExecutions.length - successful;
@@ -646,7 +680,7 @@ export interface UserScopedToolsResult {
  * Options for message processing
  */
 export interface ProcessMessageOptions {
-  /** Request-local execution mode. Evaluation/replay suppress operational side effects. */
+  /** Request-local execution mode. Evaluation, replay, and shadow suppress operational side effects. */
   executionMode?: AddieExecutionMode;
   /** Exclude provider-managed tools such as web search for this request only. */
   disableServerTools?: boolean;
@@ -667,7 +701,7 @@ export interface ProcessMessageOptions {
   /** Fail-closed hook evaluated immediately before each custom handler dispatch. */
   toolExecutionPolicy?: ToolExecutionPolicy;
   /**
-   * Called immediately before an Anthropic invocation with hashes of the exact,
+   * Called immediately before a provider invocation with hashes of the exact,
    * ordered system and tool payloads. Transcript content is intentionally absent.
    */
   onInvocationPrepared?: (
@@ -774,25 +808,43 @@ function toAddieUsage(usage: ModelUsage): NonNullable<AddieResponse['usage']> {
   };
 }
 
-function anthropicModelExecution(model: string, requestedModel: string): ModelExecution {
+function providerModelExecution(
+  response: Pick<ModelResponse, 'provider' | 'model'>,
+  requestedProvider: ModelProviderId,
+  requestedModel: string,
+  fallbackReason: ModelFallbackReason | null = null,
+): ModelExecution {
+  // A configured alias can resolve to the same provider model as the original
+  // request. Persist that as exact/canonicalized rather than violating the DB
+  // invariant that fallback provenance must identify a genuinely different
+  // provider or model; the attempted fallback remains in bounded server logs.
+  const effectiveFallbackReason = fallbackReason
+    && (response.provider !== requestedProvider || response.model !== requestedModel)
+    ? fallbackReason
+    : null;
   return {
     source: 'provider',
-    requested_provider: 'anthropic',
+    requested_provider: requestedProvider,
     requested_model: requestedModel,
-    provider: 'anthropic',
-    model,
-    model_resolution: model === requestedModel ? 'exact' : 'provider_canonicalized',
-    fallback_reason: null,
+    provider: response.provider,
+    model: response.model,
+    model_resolution: effectiveFallbackReason
+      ? 'fallback'
+      : response.model === requestedModel
+        ? 'exact'
+        : 'provider_canonicalized',
+    fallback_reason: effectiveFallbackReason,
   };
 }
 
 function localModelExecution(
   reason: Extract<ModelExecution, { source: 'local' }>['reason'],
+  requestedProvider: ModelProviderId,
   requestedModel: string,
 ): ModelExecution {
   return {
     source: 'local',
-    requested_provider: 'anthropic',
+    requested_provider: requestedProvider,
     requested_model: requestedModel,
     reason,
   };
@@ -800,6 +852,7 @@ function localModelExecution(
 
 function providerUnavailableResponse(
   availability: ProviderAvailability,
+  requestedProvider: ModelProviderId,
   requestedModel: string,
   toolsUsed: readonly string[] = [],
   toolExecutions: readonly ToolExecution[] = [],
@@ -815,7 +868,7 @@ function providerUnavailableResponse(
     tool_executions: [...toolExecutions],
     flagged: true,
     flag_reason: `provider_unavailable:${availability.category ?? 'unknown'}`,
-    model_execution: localModelExecution('provider_error', requestedModel),
+    model_execution: localModelExecution('provider_error', requestedProvider, requestedModel),
     capacity: { certification_reserve_used: certificationReserveUsed },
   };
 }
@@ -862,10 +915,20 @@ interface PayloadDebugStats {
   largest_message?: { index: number; role: string; chars: number };
 }
 
+/**
+ * Injectable provider seam for isolated full-response evaluation. Alternate
+ * providers remain barred from production delivery until provider-specific
+ * accounting and rollout gates are in place.
+ */
+export interface AddieModelProviderBinding {
+  provider: ModelProvider;
+  /** Provider instance whose transport performs exactly one SDK submission. */
+  exactlyOnceProvider?: ModelProvider;
+}
+
 export class AddieClaudeClient {
-  private client: Anthropic;
-  private readonly anthropicProvider: AnthropicModelProvider;
-  private readonly exactlyOnceAnthropicProvider: AnthropicModelProvider;
+  private readonly modelProvider: ModelProvider;
+  private readonly exactlyOnceModelProvider: ModelProvider;
   private model: string;
   private tools: AddieTool[] = [];
   private toolHandlers: Map<string, ToolHandler> = new Map();
@@ -877,19 +940,29 @@ export class AddieClaudeClient {
     apiKey: string,
     model: string = AddieModelConfig.chat,
     providerHealth: ProviderHealthController = new ProviderHealthController(),
+    providerBinding?: AddieModelProviderBinding,
   ) {
-    this.client = new Anthropic({ apiKey });
-    const transport = this.client as unknown as AnthropicMessagesTransport;
-    this.anthropicProvider = new AnthropicModelProvider(
-      apiKey,
-      transport,
-      { transportMaxRetries: 2 },
-    );
-    this.exactlyOnceAnthropicProvider = new AnthropicModelProvider(
-      apiKey,
-      transport,
-      { transportMaxRetries: 0 },
-    );
+    if (providerBinding) {
+      this.modelProvider = providerBinding.provider;
+      this.exactlyOnceModelProvider = providerBinding.exactlyOnceProvider
+        ?? providerBinding.provider;
+    } else {
+      const client = new Anthropic({ apiKey });
+      const transport = client as unknown as AnthropicMessagesTransport;
+      this.modelProvider = new AnthropicModelProvider(
+        apiKey,
+        transport,
+        { transportMaxRetries: 2 },
+      );
+      this.exactlyOnceModelProvider = new AnthropicModelProvider(
+        apiKey,
+        transport,
+        { transportMaxRetries: 0 },
+      );
+    }
+    if (this.exactlyOnceModelProvider.id !== this.modelProvider.id) {
+      throw new Error('Normal and exactly-once Addie providers must use the same provider');
+    }
     this.model = model;
     this.addieDb = new AddieDatabase();
     this.providerHealth = providerHealth;
@@ -907,9 +980,9 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Get the system prompt from markdown rule files, with tool reference and
-   * response-style.md appended in that order so the shape rules are the
-   * last thing the model reads before generating.
+   * Get the system prompt from markdown rule files. Stable core instructions
+   * come first for provider caching, routed rules sit beside routed tool
+   * guidance, and constraints + response-style.md remain last.
    *
    * Validated by the prompt-variant eval (server/tests/manual/prompt-variant-eval.ts):
    * on Sonnet 4.6, this ordering cuts mean response length 13% and shape
@@ -940,7 +1013,9 @@ export class AddieClaudeClient {
       selectedToolSetNames,
     });
     try {
-      const basePrompt = loadRules();
+      const basePrompt = loadCoreRules();
+      const scopedRules = loadScopedRules(selectedToolSetNames ?? []);
+      const constraints = loadConstraintRules();
       const responseStyle = loadResponseStyle();
       return [
         {
@@ -948,9 +1023,12 @@ export class AddieClaudeClient {
           text: `${basePrompt}\n\n---\n\n${stableToolReference}`,
           cache_control: { type: 'ephemeral' },
         },
-        { type: 'text', text: scopedToolReference },
+        {
+          type: 'text',
+          text: [scopedRules, scopedToolReference].filter(Boolean).join('\n\n---\n\n'),
+        },
         ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
-        { type: 'text', text: responseStyle },
+        { type: 'text', text: `${constraints}\n\n---\n\n${responseStyle}` },
       ];
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
@@ -1064,7 +1142,8 @@ export class AddieClaudeClient {
 
   private buildInvocationPreparedSnapshot(
     options: ProcessMessageOptions | undefined,
-    providerRequest: PreparedProviderRequest,
+    modelRequest: ModelRequest,
+    preparedInvocation: PreparedModelInvocation,
     iteration: number,
     attempt: number,
   ): InvocationPreparedSnapshot {
@@ -1075,39 +1154,63 @@ export class AddieClaudeClient {
       options?.invocationHashKey,
       options?.invocationHashDomain,
     );
+    const providerRequest = preparedInvocation.providerRequest;
+    // Preserve the existing Anthropic envelope hashes byte-for-byte. Other
+    // adapters expose different SDK shapes, so their component hashes use the
+    // canonical ordered request while the full request hash always covers the
+    // exact provider SDK payload.
+    const anthropicRequest = preparedInvocation.provider === 'anthropic'
+      ? providerRequest as unknown as PreparedProviderRequest
+      : null;
+    const systemBlocks: readonly unknown[] = anthropicRequest?.system ?? modelRequest.system;
+    const toolPayloads: Array<{ name: string; payload: unknown }> = anthropicRequest
+      ? anthropicRequest.tools.map((tool, index) => ({
+          name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
+          payload: tool,
+        }))
+      : [
+          ...modelRequest.tools.map((tool) => ({ name: tool.name, payload: tool })),
+          ...(modelRequest.providerTools ?? []).map((tool) => ({
+            name: `provider:${tool.type}`,
+            payload: tool,
+          })),
+        ];
+    const messagePayloads: readonly unknown[] = anthropicRequest?.messages ?? modelRequest.messages;
     return {
       execution_mode: executionMode,
-      model: providerRequest.model,
+      model: preparedInvocation.model,
       iteration,
       attempt,
-      system_blocks: providerRequest.system.map((block, index) => ({
+      system_blocks: systemBlocks.map((block, index) => ({
         index,
         sha256: hash(block),
       })),
-      tool_schemas: providerRequest.tools.map((tool, index) => ({
+      tool_schemas: toolPayloads.map(({ name, payload }, index) => ({
         index,
-        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
-        sha256: hash(tool),
+        name,
+        sha256: hash(payload),
       })),
-      message_payloads: providerRequest.messages.map((message, index) => ({
+      message_payloads: messagePayloads.map((message, index) => ({
         index,
         sha256: hash(message),
       })),
-      message_count: providerRequest.messages.length,
+      message_count: messagePayloads.length,
       provider_request_sha256: hash(providerRequest),
     };
   }
 
   private async notifyInvocationPrepared(
     options: ProcessMessageOptions | undefined,
-    providerRequest: PreparedProviderRequest,
+    modelRequest: ModelRequest,
+    preparedInvocation: PreparedModelInvocation,
     iteration: number,
     attempt: number,
   ): Promise<void> {
     if (!options?.onInvocationPrepared) return;
     await options.onInvocationPrepared(this.buildInvocationPreparedSnapshot(
       options,
-      providerRequest,
+      modelRequest,
+      preparedInvocation,
       iteration,
       attempt,
     ));
@@ -1117,7 +1220,7 @@ export class AddieClaudeClient {
     options: ProcessMessageOptions | undefined,
     toolInput: Record<string, unknown>,
   ): Record<string, unknown> {
-    return isEvaluationExecution(options) ? {} : toolInput;
+    return isIsolatedExecution(options) ? {} : toolInput;
   }
 
   /**
@@ -1141,15 +1244,34 @@ export class AddieClaudeClient {
     return toolNames.every((name) => definitions.has(name) && this.toolHandlers.has(name));
   }
 
-  private prepareFirstNonStreamingInvocation(
+  /**
+   * Copy the registered tool surface into a provider-isolated client. This is
+   * deliberately not a production selector: alternate providers remain
+   * blocked by the operational guards in both message entry points.
+   */
+  forkForIsolatedProvider(
+    model: string,
+    providerBinding: AddieModelProviderBinding,
+  ): AddieClaudeClient {
+    const fork = new AddieClaudeClient('', model, undefined, providerBinding);
+    fork.tools = [...this.tools];
+    fork.toolHandlers = new Map(this.toolHandlers);
+    fork.webSearchEnabled = false;
+    return fork;
+  }
+
+  /** Assemble the shared prompt, tool surface, history, and attachments for either delivery mode. */
+  private prepareFirstInvocation(
     userMessage: string,
     threadContext?: Array<{ user: string; text: string }>,
     requestTools?: RequestTools,
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
+    delivery: 'non_streaming' | 'streaming' = 'non_streaming',
   ) {
-    const requestWebSearchEnabled = this.webSearchEnabled
-      && !isEvaluationExecution(options)
+    const requestWebSearchEnabled = delivery === 'non_streaming'
+      && this.webSearchEnabled
+      && !isIsolatedExecution(options)
       && options?.disableServerTools !== true;
     const effectiveModel = options?.modelOverride ?? this.model;
     const allowedToolNames = options?.allowedToolNames
@@ -1241,7 +1363,9 @@ export class AddieClaudeClient {
       model: effectiveModel,
       system: systemBlocks.map((block) => ({
         text: block.text,
-        ...('cache_control' in block && block.cache_control?.type === 'ephemeral'
+        ...(this.modelProvider.id === 'anthropic'
+          && 'cache_control' in block
+          && block.cache_control?.type === 'ephemeral'
           ? { cacheHint: 'ephemeral' as const }
           : {}),
       })),
@@ -1268,7 +1392,7 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions,
   ): InvocationPreparedSnapshot {
-    const prepared = this.prepareFirstNonStreamingInvocation(
+    const prepared = this.prepareFirstInvocation(
       userMessage,
       threadContext,
       requestTools,
@@ -1285,11 +1409,11 @@ export class AddieClaudeClient {
       false,
       options?.initialToolChoice,
     );
-    const providerRequest = this.anthropicProvider.prepare(modelRequest)
-      .providerRequest as unknown as PreparedProviderRequest;
+    const preparedInvocation = this.modelProvider.prepare(modelRequest);
     return this.buildInvocationPreparedSnapshot(
       options,
-      providerRequest,
+      modelRequest,
+      preparedInvocation,
       1,
       1,
     );
@@ -1312,8 +1436,11 @@ export class AddieClaudeClient {
     rulesOverride?: RulesOverride,
     options?: ProcessMessageOptions
   ): Promise<AddieResponse> {
-    const operationalExecution = !isEvaluationExecution(options);
+    const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
+      throw new Error('Alternate Addie model providers are restricted to isolated execution');
+    }
 
     // #2950: warn when a caller has neither `costScope` nor explicit
     // `uncapped: true`. Silent default meant a future user-facing
@@ -1357,12 +1484,11 @@ export class AddieClaudeClient {
           tool_executions: [],
           flagged: true,
           flag_reason: 'cost_cap_exceeded',
-          model_execution: {
-            source: 'local',
-            requested_provider: 'anthropic',
-            requested_model: requestedModel,
-            reason: 'cost_cap_exceeded',
-          },
+          model_execution: localModelExecution(
+            'cost_cap_exceeded',
+            this.modelProvider.id,
+            requestedModel,
+          ),
         };
       }
     }
@@ -1370,9 +1496,13 @@ export class AddieClaudeClient {
     // Reserve a half-open probe only after local gates have passed so a
     // request that never reaches the provider cannot hold the probe lease.
     if (operationalExecution) {
-      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      const availability = this.providerHealth.acquire(this.modelProvider.id, 'chat');
       if (!availability.allowed) {
-        return providerUnavailableResponse(availability, requestedModel);
+        return providerUnavailableResponse(
+          availability,
+          this.modelProvider.id,
+          requestedModel,
+        );
       }
     }
 
@@ -1386,7 +1516,7 @@ export class AddieClaudeClient {
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;
 
-    const prepared = this.prepareFirstNonStreamingInvocation(
+    const prepared = this.prepareFirstInvocation(
       userMessage,
       threadContext,
       requestTools,
@@ -1450,6 +1580,9 @@ export class AddieClaudeClient {
     }
     let iteration = 0;
     let hasExecutedCustomTool = false;
+    let activeModel = effectiveModel;
+    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
+    let modelFallbackReason: ModelFallbackReason | null = null;
 
     while (modelLoop.hasRemaining) {
       const activeTurn = modelLoop.beginNext();
@@ -1457,99 +1590,158 @@ export class AddieClaudeClient {
 
       // Use beta API to access web search
       const llmStart = Date.now();
-      let response: ModelResponse;
+      let response!: ModelResponse;
       let reusedEmptyResponse = false;
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
       const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
-      try {
-        const invokeProvider = async (exactlyOnce: boolean) => {
-          invocationAttempt++;
-          const modelRequest = this.buildModelRequest(
-            effectiveModel,
-            systemBlocks,
-            invocationTools,
-            modelMessages,
-            recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
-            recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
-            false,
-            iteration === 1 && invocationTools.length > 0
-              ? options?.initialToolChoice
-              : undefined,
-          );
-          const provider = exactlyOnce
-            ? this.exactlyOnceAnthropicProvider
-            : this.anthropicProvider;
-          return activeTurn.invoke(
-            provider,
-            modelRequest,
-            {
-              beforeDispatch: async (preparedInvocation) => {
-                await this.notifyInvocationPrepared(
-                  options,
-                  preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
-                  iteration,
-                  invocationAttempt,
-                );
-              },
+      const invokeProvider = async (exactlyOnce: boolean, model = activeModel) => {
+        invocationAttempt++;
+        const modelRequest = this.buildModelRequest(
+          model,
+          systemBlocks,
+          invocationTools,
+          modelMessages,
+          recoveryInvocation.toolsAllowed && requestWebSearchEnabled,
+          recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+          false,
+          iteration === 1 && invocationTools.length > 0
+            ? options?.initialToolChoice
+            : undefined,
+        );
+        const provider = exactlyOnce
+          ? this.exactlyOnceModelProvider
+          : this.modelProvider;
+        return activeTurn.invoke(
+          provider,
+          modelRequest,
+          {
+            beforeDispatch: async (preparedInvocation) => {
+              await this.notifyInvocationPrepared(
+                options,
+                modelRequest,
+                preparedInvocation,
+                iteration,
+                invocationAttempt,
+              );
             },
-          );
-        };
-        // A replay is an exactly-once paid experiment. A timeout can occur
-        // after provider acceptance, so neither our outer retry helper nor the
-        // Anthropic SDK may submit the request again.
-        response = options?.executionMode === 'replay' || recoveryInvocation.requiresExactlyOnce
+          },
+        );
+      };
+      try {
+        // Replay and shadow are exactly-once paid experiments. A timeout can
+        // occur after provider acceptance, so neither our outer retry helper
+        // nor the provider SDK may submit the request again.
+        response = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
           ? await invokeProvider(true)
           : await withRetry(
             () => invokeProvider(false),
             { maxRetries: 3, initialDelayMs: 1000 },
             'processMessage',
           );
-        if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
+        if (operationalExecution) this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
         modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
       } catch (error) {
-        const fallbackResponse = modelLoop.emptyResponseRecovery
-          .fallbackAfterInvocationFailure(recoveryInvocation);
-        if (fallbackResponse) {
-          // The empty end_turn was a valid terminal response. Recovery is
-          // best-effort: if its one extra call fails, retain that terminal and
-          // its already-accounted usage rather than turning fallback into an
-          // exception. Do not log a provider error that may echo input text.
-          logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
-          response = fallbackResponse;
-          reusedEmptyResponse = true;
-        } else {
-          const stats = this.buildPayloadDebugStats(
-            effectiveModel,
-            systemBlocks,
-            customTools,
-            anthropicMessages,
+        let invocationError = error;
+        let fallbackSucceeded = false;
+        const fallbackAttempt = await attemptSiblingModelFallback(
+          {
+            provider: this.modelProvider.id,
+            model: activeModel,
+            executionMode: options?.executionMode ?? 'production',
             iteration,
-            requestWebSearchEnabled ? 1 : 0,
-            options?.requestContext?.trim() ? options.requestContext.length : 0,
-          );
-          if (options?.executionMode === 'replay') {
-            // Provider errors may echo request text. Replay logs only categorical
-            // metadata; the signed ledger records the terminal outcome.
-            logger.error(
-              { source: 'processMessage', payload: stats },
-              'Addie: Replay provider invocation failed',
-            );
-          } else {
-            this.logPromptOverflow(error, stats, 'processMessage');
-          }
+            retriesExhausted: error instanceof RetriesExhaustedError,
+            isRecoveryInvocation: recoveryInvocation.isRecovery,
+            hasExecutedCustomTool,
+            hasProviderContinuation: modelLoop.pinnedProvider !== null,
+            receivedDeltaCount: 0,
+            error,
+          },
+          model => invokeProvider(true, model),
+        );
+        if (fallbackAttempt.status === 'succeeded') {
+          const { decision: fallback } = fallbackAttempt;
+          response = fallbackAttempt.response;
+          activeModel = fallback.model;
+          costModel = fallback.model;
+          modelFallbackReason = fallback.reason;
+          modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
           if (operationalExecution) {
-            const availability = this.providerHealth.recordFailure('anthropic', 'chat', error);
-            if (!availability.allowed) {
-              return providerUnavailableResponse(
-                availability,
-                requestedModel,
-                toolsUsed,
-                toolExecutions,
-              );
-            }
+            this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
           }
-          throw error;
+          logger.warn(
+            {
+              event: 'addie_model_fallback',
+              requestedModel,
+              fallbackModel: fallback.model,
+              reason: fallback.reason,
+              disclosure: fallback.disclosure,
+            },
+            'Addie: Preferred model unavailable; sibling fallback succeeded',
+          );
+          fallbackSucceeded = true;
+        } else if (fallbackAttempt.status === 'failed') {
+          const { decision: fallback } = fallbackAttempt;
+          invocationError = fallbackAttempt.error;
+          logger.warn(
+            {
+              event: 'addie_model_fallback_failed',
+              requestedModel,
+              fallbackModel: fallback.model,
+              reason: fallback.reason,
+            },
+            'Addie: Sibling model fallback failed',
+          );
+        }
+        if (!fallbackSucceeded) {
+          const fallbackResponse = modelLoop.emptyResponseRecovery
+            .fallbackAfterInvocationFailure(recoveryInvocation);
+          if (fallbackResponse) {
+            // The empty end_turn was a valid terminal response. Recovery is
+            // best-effort: if its one extra call fails, retain that terminal and
+            // its already-accounted usage rather than turning fallback into an
+            // exception. Do not log a provider error that may echo input text.
+            logger.warn({ iteration }, 'Addie: Empty-response recovery failed');
+            response = fallbackResponse;
+            reusedEmptyResponse = true;
+          } else {
+            const stats = this.buildPayloadDebugStats(
+              effectiveModel,
+              systemBlocks,
+              customTools,
+              anthropicMessages,
+              iteration,
+              requestWebSearchEnabled ? 1 : 0,
+              options?.requestContext?.trim() ? options.requestContext.length : 0,
+            );
+            if (isIsolatedExecution(options)) {
+              // Provider errors may echo request text. Isolated executions log
+              // only categorical metadata; the caller's ledger records the outcome.
+              logger.error(
+                { source: 'processMessage', payload: stats },
+                'Addie: Isolated provider invocation failed',
+              );
+            } else {
+              this.logPromptOverflow(invocationError, stats, 'processMessage');
+            }
+            if (operationalExecution) {
+              const availability = this.providerHealth.recordFailure(
+                this.modelProvider.id,
+                'chat',
+                invocationError,
+              );
+              if (!availability.allowed) {
+                return providerUnavailableResponse(
+                  availability,
+                  this.modelProvider.id,
+                  requestedModel,
+                  toolsUsed,
+                  toolExecutions,
+                );
+              }
+            }
+            throw invocationError;
+          }
         }
       }
 
@@ -1563,7 +1755,7 @@ export class AddieClaudeClient {
         llmDurationMs: llmDuration,
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
-      }, 'Addie: Claude response received');
+      }, 'Addie: Model response received');
 
       const turn = activeTurn.acceptResponse(response, { countUsage: !reusedEmptyResponse });
       response = turn.response;
@@ -1571,32 +1763,45 @@ export class AddieClaudeClient {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
       }
 
-      // Provider results may accompany a terminal, provider-continuation, or
-      // mixed custom-tool turn. Record them once at the normalized boundary.
-      const providerToolExecutions = executionLedger.recordProviderResults(
-        this.anthropicProvider,
-        turn.providerToolCalls,
-        turn.providerToolResults,
-        options?.executionMode ?? 'production',
-      );
-      for (const recorded of providerToolExecutions) {
-        logger.debug(
-          {
-            toolName: recorded.execution.tool_name,
-            resultCount: recorded.result.resultCount,
-            parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
-          },
-          'Addie: Provider tool completed',
-        );
+      let turnDecision: AddieAcceptedTurnDecision | undefined;
+      for await (const event of orchestrateAcceptedAddieTurn({
+        turn,
+        provider: this.modelProvider,
+        executionMode: options?.executionMode ?? 'production',
+        messages: modelMessages,
+        ledger: executionLedger,
+        execute: executeToolCall,
+      })) {
+        if (event.type === 'provider_tool') {
+          logger.debug(
+            {
+              toolName: event.recorded.execution.tool_name,
+              resultCount: event.recorded.result.resultCount,
+              parameterKeys: Object.keys(event.recorded.receipt.parameters).sort(),
+            },
+            'Addie: Provider tool completed',
+          );
+        } else if (event.type === 'turn_decision') {
+          turnDecision = event.decision;
+          hasExecutedCustomTool ||= event.decision.hasCustomToolCalls;
+        } else if (event.type === 'start') {
+          logger.debug(
+            {
+              toolName: event.call.name,
+              ...(operationalExecution && { toolInput: event.call.input }),
+            },
+            'Addie: Calling tool',
+          );
+        }
       }
+      if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
-      const stopAction = turn.action;
+      const stopAction = turnDecision.action;
 
       if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
         // Anthropic pause_turn and compaction responses are resumable only
         // when their content is included in the next request. Repeating the
         // unchanged prompt can loop or repeat server-side work.
-        appendModelTurnContinuation(modelMessages, response);
         logger.info(
           { stopReason: response.providerFinishReason, iteration },
           'Addie: Continuing resumable provider turn',
@@ -1605,10 +1810,7 @@ export class AddieClaudeClient {
       }
 
       if (stopAction === 'truncated') {
-        const rawText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n')
-          .trim();
+        const rawText = turnDecision.text.trim();
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
         if (finalized.emptyReason) {
           reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
@@ -1627,12 +1829,12 @@ export class AddieClaudeClient {
             contentTypes: boundedModelContentTypes(response.content),
             outputTokens: response.usage.outputTokens,
           },
-          'Addie: Anthropic stopped before response completion',
+          'Addie: Model provider stopped before response completion',
         );
         if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
-            options.modelOverride ?? AddieModelConfig.chat,
+            costModel,
             finalUsage,
           );
         }
@@ -1645,8 +1847,15 @@ export class AddieClaudeClient {
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', effectiveModel)
-            : anthropicModelExecution(response.model, effectiveModel),
+            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
+            : finalized.localReplacementReason
+              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+            : providerModelExecution(
+                response,
+                this.modelProvider.id,
+                effectiveModel,
+                modelFallbackReason,
+              ),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1660,10 +1869,7 @@ export class AddieClaudeClient {
       // Done - no tool use, just text
       if (stopAction === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
-        const rawText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n')
-          .trim();
+        const rawText = turnDecision.text.trim();
         // A provider-successful but wholly empty first sample has no visible
         // output or side effect. Production may safely resample it once; eval
         // and replay preserve the original terminal outcome for integrity.
@@ -1718,7 +1924,7 @@ export class AddieClaudeClient {
         }
         const flagReason = finalized.lengthExceeded
           ? 'Output truncated due to length'
-          : hallucinationReason ?? finalized.emptyReason;
+          : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
 
         const finalUsage = toAddieUsage(modelLoop.usage);
         // Record the call against the user's daily budget (#2790).
@@ -1728,7 +1934,7 @@ export class AddieClaudeClient {
         if (operationalExecution && options?.costScope) {
           await recordCost(
             options.costScope.userId,
-            options?.modelOverride ?? AddieModelConfig.chat,
+            costModel,
             finalUsage,
           );
         }
@@ -1742,8 +1948,15 @@ export class AddieClaudeClient {
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', effectiveModel)
-            : anthropicModelExecution(response.model, effectiveModel),
+            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
+            : finalized.localReplacementReason
+              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+            : providerModelExecution(
+                response,
+                this.modelProvider.id,
+                effectiveModel,
+                modelFallbackReason,
+              ),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -1754,42 +1967,19 @@ export class AddieClaudeClient {
         };
       }
 
-      // Handle custom tool use. Provider-managed results were recorded above.
-      if (stopAction === 'execute_tools') {
-        const toolResults: ModelToolResultContent[] = [];
-
-        for await (const event of executeAddieToolCalls(
-          turn.toolCalls,
-          executeToolCall,
-          executionLedger.sequence,
-        )) {
-          executionLedger.recordCustomEvent(event, toolResults);
-          if (event.type === 'start') {
-            hasExecutedCustomTool = true;
-            logger.debug(
-              {
-                toolName: event.call.name,
-                ...(operationalExecution && { toolInput: event.call.input }),
-              },
-              'Addie: Calling tool',
-            );
-          }
-        }
-
-        appendModelTurnContinuation(modelMessages, response, toolResults);
-      }
+      // Custom tool execution and continuation state are owned by the shared
+      // accepted-turn orchestration boundary above.
     }
 
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
     const maxIterationsUsage = toAddieUsage(modelLoop.usage);
-    // Still charge the user for tokens actually consumed on the way
-    // to hitting max-iterations — those bytes DID go to Anthropic
-    // and DID cost money, regardless of whether the session converged.
+    // Still charge the user for tokens actually consumed on the way to
+    // hitting max-iterations. Production delivery is Anthropic-only here.
     if (operationalExecution && options?.costScope) {
       await recordCost(
         options.costScope.userId,
-        options?.modelOverride ?? AddieModelConfig.chat,
+        costModel,
         maxIterationsUsage,
       );
     }
@@ -1801,7 +1991,7 @@ export class AddieClaudeClient {
       flag_reason: 'Max tool iterations reached',
       active_rule_ids: undefined,
       config_version_id: configVersionId ?? undefined,
-      model_execution: localModelExecution('canned_response', effectiveModel),
+      model_execution: localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
       timing: {
         system_prompt_ms: systemPromptMs,
         total_llm_ms: totalLlmMs,
@@ -1829,8 +2019,11 @@ export class AddieClaudeClient {
     requestTools?: RequestTools,
     options?: ProcessMessageOptions
   ): AsyncGenerator<StreamEvent> {
-    const operationalExecution = !isEvaluationExecution(options);
+    const operationalExecution = !isIsolatedExecution(options);
     const requestedModel = options?.modelOverride ?? this.model;
+    if (operationalExecution && this.modelProvider.id !== 'anthropic') {
+      throw new Error('Alternate Addie model providers are restricted to isolated execution');
+    }
 
     // #2950: matching fail-closed warn on the stream path.
     if (operationalExecution && !options?.costScope && !options?.uncapped) {
@@ -1875,12 +2068,11 @@ export class AddieClaudeClient {
             tool_executions: [],
             flagged: true,
             flag_reason: 'cost_cap_exceeded',
-            model_execution: {
-              source: 'local',
-              requested_provider: 'anthropic',
-              requested_model: requestedModel,
-              reason: 'cost_cap_exceeded',
-            },
+            model_execution: localModelExecution(
+              'cost_cap_exceeded',
+              this.modelProvider.id,
+              requestedModel,
+            ),
           },
         };
         return;
@@ -1889,13 +2081,17 @@ export class AddieClaudeClient {
 
     // As above, cost-capped requests must not consume the one half-open probe.
     if (operationalExecution) {
-      const availability = this.providerHealth.acquire('anthropic', 'chat');
+      const availability = this.providerHealth.acquire(this.modelProvider.id, 'chat');
       if (!availability.allowed) {
         await releaseCertificationReserve(options?.costScope?.userId, certificationLeaseId);
         certificationLeaseId = undefined;
         yield {
           type: 'done',
-          response: providerUnavailableResponse(availability, requestedModel),
+          response: providerUnavailableResponse(
+            availability,
+            this.modelProvider.id,
+            requestedModel,
+          ),
         };
         return;
       }
@@ -1926,38 +2122,33 @@ export class AddieClaudeClient {
       ? await getCurrentConfigVersionId()
       : undefined;
 
-    // Determine effective model (support precision mode override for billing/financial)
-    const effectiveModel = options?.modelOverride ?? this.model;
+    const prepared = this.prepareFirstInvocation(
+      userMessage,
+      threadContext,
+      requestTools,
+      undefined,
+      options,
+      'streaming',
+    );
+    const {
+      effectiveModel,
+      systemBlocks,
+      allHandlers,
+      toolsByName,
+      toolCount,
+      messageTurnsResult,
+      messages,
+      modelMessages,
+      customTools,
+      modelTools,
+    } = prepared;
+    systemPromptMs = prepared.systemPromptMs;
+
     if (options?.modelOverride && options.modelOverride !== this.model) {
       logger.info({ model: effectiveModel, defaultModel: this.model }, 'Addie Stream: Using precision model for billing/financial query');
     }
 
-    // Combine global tools with per-request tools, deduplicating by name (last wins)
-    // Calculate tool count first to inform token budget for conversation history
-    const allowedToolNames = options?.allowedToolNames
-      ? new Set(options.allowedToolNames)
-      : null;
-    const allTools = mergeAddieToolDefinitions(
-      this.tools,
-      requestTools?.tools,
-      options?.allowedToolNames,
-    );
-    const allHandlers = new Map(
-      [...this.toolHandlers, ...(requestTools?.handlers || [])]
-        .filter(([name]) => !allowedToolNames || allowedToolNames.has(name)),
-    );
-
-    // Build the prompt after resolving the exact tool wire surface so domain
-    // guidance and the authoritative catalog cannot advertise omitted tools.
-    const promptStart = Date.now();
-    const systemBlocks = this.buildSystemBlocks(
-      allTools.map(tool => tool.name),
-      options?.selectedToolSetNames,
-      options?.requestContext,
-    );
-    systemPromptMs = Date.now() - promptStart;
-
-    const executeToolCall = createAddieToolExecutor(allTools, allHandlers, {
+    const executeToolCall = createAddieToolExecutor([...toolsByName.values()], allHandlers, {
       executionMode: options?.executionMode ?? 'production',
       policy: options?.toolExecutionPolicy,
       notificationContext: {
@@ -1965,19 +2156,6 @@ export class AddieClaudeClient {
         userDisplayName: options?.userDisplayName,
         threadId: options?.threadId,
       },
-    });
-    const toolCount = allTools.length; // Note: streaming doesn't use web search
-
-    // Build proper message turns from thread context
-    // This sends conversation history as actual user/assistant turns, not flattened text
-    // Token-aware: automatically trims older messages if conversation exceeds limits
-    // Compact old tool results in all conversations to reclaim context
-    const messageTurnsResult = buildMessageTurnsWithMetadata(userMessage, threadContext, {
-      model: effectiveModel,
-      toolCount,
-      maxMessages: options?.maxMessages,
-      compactToolResults: true,
-      currentSpeakerName: options?.currentSpeakerName,
     });
 
     if (messageTurnsResult.wasTrimmed) {
@@ -1990,33 +2168,13 @@ export class AddieClaudeClient {
         },
         'Addie Stream: Trimmed conversation history to fit context limit'
       );
-      // Inject dropped conversation summary so Addie has context from earlier turns
-      if (messageTurnsResult.messagesRemoved > 10) {
-        const summary = messageTurnsResult.droppedMessages
-          ? buildDroppedMessagesSummary(messageTurnsResult.droppedMessages)
-          : null;
-        const contextWarning = summary
-          || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
-        systemBlocks.push({ type: 'text', text: contextWarning });
-      }
     }
-
-    const messages: Anthropic.MessageParam[] = appendInputAttachments(
-      toAnthropicMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-    const modelMessages = appendModelInputAttachments(
-      toModelMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
-
-    // Build tool list once — rebuilt every iteration is wasteful since tools don't change.
-    // Mark the last tool with cache_control so Anthropic caches all tool definitions.
-    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
-    const modelTools = buildModelToolDefinitions(allTools);
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
     let iteration = 0;
     let lastProviderModel: string | undefined;
+    let activeModel = effectiveModel;
+    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
+    let modelFallbackReason: ModelFallbackReason | null = null;
 
       while (modelLoop.hasRemaining) {
         const activeTurn = modelLoop.beginNext();
@@ -2032,7 +2190,7 @@ export class AddieClaudeClient {
         // Logical-turn buffering means no model output is exposed and no
         // custom tool executes until a complete response is assembled, so a
         // failed sample is safe to discard and retry even after deltas arrive.
-        const maxStreamRetries = 3;
+        const maxStreamRetries = isExactlyOnceExecution(options) ? 0 : 3;
         let streamRetryCount = 0;
         let streamSucceeded = false;
         let receivedDeltaCount = 0;
@@ -2042,7 +2200,7 @@ export class AddieClaudeClient {
           try {
             const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
             const modelRequest = this.buildModelRequest(
-              effectiveModel,
+              activeModel,
               systemBlocks,
               invocationTools,
               modelMessages,
@@ -2053,9 +2211,9 @@ export class AddieClaudeClient {
                 ? options?.initialToolChoice
                 : undefined,
             );
-            const provider = recoveryInvocation.requiresExactlyOnce
-              ? this.exactlyOnceAnthropicProvider
-              : this.anthropicProvider;
+            const provider = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
+              ? this.exactlyOnceModelProvider
+              : this.modelProvider;
             currentResponse = await activeTurn.invoke(
               provider,
               modelRequest,
@@ -2068,7 +2226,8 @@ export class AddieClaudeClient {
                 beforeDispatch: async (preparedInvocation) => {
                   await this.notifyInvocationPrepared(
                     options,
-                    preparedInvocation.providerRequest as unknown as PreparedProviderRequest,
+                    modelRequest,
+                    preparedInvocation,
                     iteration,
                     streamRetryCount + 1,
                   );
@@ -2076,7 +2235,7 @@ export class AddieClaudeClient {
               },
             );
 
-            if (operationalExecution) this.providerHealth.recordSuccess('anthropic', 'chat');
+            if (operationalExecution) this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
             streamSucceeded = true;
             lastProviderModel = currentResponse.model;
             modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
@@ -2102,7 +2261,16 @@ export class AddieClaudeClient {
               0,
               options?.requestContext?.trim() ? options.requestContext.length : 0,
             );
-            this.logPromptOverflow(streamError, stats, 'processMessageStream');
+            if (isIsolatedExecution(options)) {
+              // Provider errors may echo request text. Isolated executions log
+              // only categorical metadata; the caller's ledger records the outcome.
+              logger.error(
+                { source: 'processMessageStream', payload: stats },
+                'Addie Stream: Isolated provider invocation failed',
+              );
+            } else {
+              this.logPromptOverflow(streamError, stats, 'processMessageStream');
+            }
 
             const retryable = isRetryableError(streamError);
             const retryAfterSeconds = getProviderRetryAfterSeconds(streamError);
@@ -2116,11 +2284,102 @@ export class AddieClaudeClient {
               const isExhausted = retryable && (
                 streamRetryCount > maxStreamRetries || !retryAfterWithinRequestBudget
               );
+              let terminalError = streamError;
+              const fallbackAttempt = await attemptSiblingModelFallback(
+                {
+                  provider: this.modelProvider.id,
+                  model: activeModel,
+                  executionMode: options?.executionMode ?? 'production',
+                  iteration,
+                  retriesExhausted: isExhausted,
+                  isRecoveryInvocation: recoveryInvocation.isRecovery,
+                  hasExecutedCustomTool: toolExecutions.length > 0,
+                  hasProviderContinuation: modelLoop.pinnedProvider !== null,
+                  receivedDeltaCount: totalReceivedDeltas,
+                  error: streamError,
+                },
+                async (model) => {
+                  const fallbackTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+                  const fallbackRequest = this.buildModelRequest(
+                    model,
+                    systemBlocks,
+                    fallbackTools,
+                    modelMessages,
+                    false,
+                    undefined,
+                    true,
+                    iteration === 1 && fallbackTools.length > 0
+                      ? options?.initialToolChoice
+                      : undefined,
+                  );
+                  return activeTurn.invoke(
+                    this.exactlyOnceModelProvider,
+                    fallbackRequest,
+                    {
+                      stream: true,
+                      onStreamProgress: () => {
+                        totalReceivedDeltas++;
+                        receivedDeltaCount++;
+                      },
+                      beforeDispatch: async (preparedInvocation) => {
+                        await this.notifyInvocationPrepared(
+                          options,
+                          fallbackRequest,
+                          preparedInvocation,
+                          iteration,
+                          streamRetryCount + 1,
+                        );
+                      },
+                    },
+                  );
+                },
+              );
+              if (fallbackAttempt.status === 'succeeded') {
+                const { decision: fallback } = fallbackAttempt;
+                currentResponse = fallbackAttempt.response;
+                activeModel = fallback.model;
+                costModel = fallback.model;
+                modelFallbackReason = fallback.reason;
+                lastProviderModel = currentResponse.model;
+                modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
+                if (operationalExecution) {
+                  this.providerHealth.recordSuccess(this.modelProvider.id, 'chat');
+                }
+                logger.warn(
+                  {
+                    event: 'addie_model_fallback',
+                    requestedModel,
+                    fallbackModel: fallback.model,
+                    reason: fallback.reason,
+                    disclosure: fallback.disclosure,
+                  },
+                  'Addie Stream: Preferred model unavailable; sibling fallback succeeded',
+                );
+                break;
+              }
+              if (fallbackAttempt.status === 'failed') {
+                const { decision: fallback } = fallbackAttempt;
+                terminalError = fallbackAttempt.error;
+                logger.warn(
+                  {
+                    event: 'addie_model_fallback_failed',
+                    requestedModel,
+                    fallbackModel: fallback.model,
+                    reason: fallback.reason,
+                  },
+                  'Addie Stream: Sibling model fallback failed',
+                );
+              }
               if (operationalExecution) {
-                const availability = this.providerHealth.recordFailure('anthropic', 'chat', streamError);
+                const availability = this.providerHealth.recordFailure(
+                  this.modelProvider.id,
+                  'chat',
+                  terminalError,
+                );
                 if (!availability.allowed) {
                   const terminalResponse = providerUnavailableResponse(
                     availability,
+                    this.modelProvider.id,
                     requestedModel,
                     toolsUsed,
                     toolExecutions,
@@ -2141,7 +2400,9 @@ export class AddieClaudeClient {
               }
               if (isExhausted) {
                 if (receivedDeltaCount > 0) {
-                  const errorMsg = streamError instanceof Error ? streamError.message : String(streamError);
+                  const errorMsg = terminalError instanceof Error
+                    ? terminalError.message
+                    : String(terminalError);
                   const reason = errorMsg.includes('overloaded') ? 'API is busy' :
                                 errorMsg.includes('rate') ? 'Rate limited' :
                                 errorMsg.includes('timeout') ? 'Request timed out' :
@@ -2155,10 +2416,10 @@ export class AddieClaudeClient {
                     certification_reserve_used: certificationReserveUsed,
                   };
                 }
-                throw new RetriesExhaustedError(streamError, streamRetryCount);
+                throw new RetriesExhaustedError(terminalError, streamRetryCount);
               }
               // Non-retryable failures are surfaced by the outer error path.
-              throw streamError;
+              throw terminalError;
             }
 
             // Calculate delay with exponential backoff
@@ -2215,7 +2476,7 @@ export class AddieClaudeClient {
           llmDurationMs: llmDuration,
           inputTokens: currentResponse.usage.inputTokens,
           outputTokens: currentResponse.usage.outputTokens,
-        }, 'Addie Stream: Claude response received');
+        }, 'Addie Stream: Model response received');
 
         const turn = activeTurn.acceptResponse(currentResponse, { countUsage: !reusedEmptyResponse });
         currentResponse = turn.response;
@@ -2223,34 +2484,66 @@ export class AddieClaudeClient {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
 
-        const providerToolExecutions = executionLedger.recordProviderResults(
-          this.anthropicProvider,
-          turn.providerToolCalls,
-          turn.providerToolResults,
-          options?.executionMode ?? 'production',
-        );
-        for (const recorded of providerToolExecutions) {
-          yield {
-            type: 'tool_start',
-            tool_name: recorded.execution.tool_name,
-            parameters: recorded.execution.parameters,
-          };
-          yield {
-            type: 'tool_end',
-            tool_name: recorded.execution.tool_name,
-            result: recorded.execution.result,
-            is_error: recorded.execution.is_error,
-            normalized_result: recorded.execution.normalized_result,
-          };
-          logger.debug(
-            {
-              toolName: recorded.execution.tool_name,
-              resultCount: recorded.result.resultCount,
-              parameterKeys: Object.keys(recorded.receipt.parameters).sort(),
-            },
-            'Addie Stream: Provider tool completed',
-          );
+        let turnDecision: AddieAcceptedTurnDecision | undefined;
+        for await (const event of orchestrateAcceptedAddieTurn({
+          turn,
+          provider: this.modelProvider,
+          executionMode: options?.executionMode ?? 'production',
+          messages: modelMessages,
+          ledger: executionLedger,
+          execute: executeToolCall,
+        })) {
+          if (event.type === 'provider_tool') {
+            yield {
+              type: 'tool_start',
+              tool_name: event.recorded.execution.tool_name,
+              parameters: event.recorded.execution.parameters,
+            };
+            yield {
+              type: 'tool_end',
+              tool_name: event.recorded.execution.tool_name,
+              result: event.recorded.execution.result,
+              is_error: event.recorded.execution.is_error,
+              normalized_result: event.recorded.execution.normalized_result,
+            };
+            logger.debug(
+              {
+                toolName: event.recorded.execution.tool_name,
+                resultCount: event.recorded.result.resultCount,
+                parameterKeys: Object.keys(event.recorded.receipt.parameters).sort(),
+              },
+              'Addie Stream: Provider tool completed',
+            );
+          } else if (event.type === 'turn_decision') {
+            turnDecision = event.decision;
+            if (event.decision.action === 'execute_tools') {
+              // Preserve accepted text before a tool handler can fail.
+              logicalText += event.decision.text;
+            }
+          } else if (event.type === 'start') {
+            logger.debug(
+              {
+                toolName: event.call.name,
+                ...(operationalExecution && { toolInput: event.call.input }),
+              },
+              'Addie Stream: Calling tool',
+            );
+            yield {
+              type: 'tool_start',
+              tool_name: event.call.name,
+              parameters: this.recordedToolParameters(options, event.call.input),
+            };
+          } else {
+            yield {
+              type: 'tool_end',
+              tool_name: event.call.name,
+              result: event.executed.execution.result,
+              is_error: event.executed.execution.is_error,
+              normalized_result: event.executed.execution.normalized_result,
+            };
+          }
         }
+        if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
         // Build the final usage block + charge the user's cost
         // budget (#2790). Both stream terminal paths (end_turn and
@@ -2260,19 +2553,16 @@ export class AddieClaudeClient {
           if (operationalExecution && options?.costScope) {
             await recordCost(
               options.costScope.userId,
-              options?.modelOverride ?? AddieModelConfig.chat,
+              costModel,
               usage,
             );
           }
         };
 
-        const stopAction = turn.action;
-        const iterationText = turn.textBlocks
-          .map((block) => block.text)
-          .join('\n\n');
+        const stopAction = turnDecision.action;
+        const iterationText = turnDecision.text;
         if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
           // Resume from the provider response without exposing interim text.
-          appendModelTurnContinuation(modelMessages, currentResponse);
           logger.info(
             { stopReason: currentResponse.providerFinishReason, iteration },
             'Addie Stream: Continuing resumable provider turn',
@@ -2315,8 +2605,15 @@ export class AddieClaudeClient {
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', effectiveModel)
-                : anthropicModelExecution(currentResponse.model, effectiveModel),
+                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
+                : finalized.localReplacementReason
+                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+                : providerModelExecution(
+                    currentResponse,
+                    this.modelProvider.id,
+                    effectiveModel,
+                    modelFallbackReason,
+                  ),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2381,7 +2678,7 @@ export class AddieClaudeClient {
           }
           const flagReason = finalized.lengthExceeded
             ? 'Output truncated due to length'
-            : hallucinationReason ?? finalized.emptyReason;
+            : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
@@ -2397,8 +2694,15 @@ export class AddieClaudeClient {
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', effectiveModel)
-                : anthropicModelExecution(currentResponse.model, effectiveModel),
+                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
+                : finalized.localReplacementReason
+                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+                : providerModelExecution(
+                    currentResponse,
+                    this.modelProvider.id,
+                    effectiveModel,
+                    modelFallbackReason,
+                  ),
               timing: {
                 system_prompt_ms: systemPromptMs,
                 total_llm_ms: totalLlmMs,
@@ -2414,42 +2718,6 @@ export class AddieClaudeClient {
 
         // Handle tool use
         if (stopAction === 'execute_tools') {
-          logicalText += iterationText;
-          const toolResults: ModelToolResultContent[] = [];
-
-          for await (const event of executeAddieToolCalls(
-            turn.toolCalls,
-            executeToolCall,
-            executionLedger.sequence,
-          )) {
-            executionLedger.recordCustomEvent(event, toolResults);
-            if (event.type === 'start') {
-              logger.debug(
-                {
-                  toolName: event.call.name,
-                  ...(operationalExecution && { toolInput: event.call.input }),
-                },
-                'Addie Stream: Calling tool',
-              );
-              yield {
-                type: 'tool_start',
-                tool_name: event.call.name,
-                parameters: this.recordedToolParameters(options, event.call.input),
-              };
-            } else {
-              yield {
-                type: 'tool_end',
-                tool_name: event.call.name,
-                result: event.executed.execution.result,
-                is_error: event.executed.execution.is_error,
-                normalized_result: event.executed.execution.normalized_result,
-              };
-            }
-          }
-
-          // Continue the conversation with tool results
-          appendModelTurnContinuation(modelMessages, currentResponse, toolResults);
-
           // Add spacing between tool use and subsequent text to prevent run-on text
           if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
             logicalText += '\n\n';
@@ -2466,7 +2734,7 @@ export class AddieClaudeClient {
       if (operationalExecution && options?.costScope) {
         await recordCost(
           options.costScope.userId,
-          options?.modelOverride ?? AddieModelConfig.chat,
+          costModel,
           maxIterUsage,
         );
       }
@@ -2492,9 +2760,16 @@ export class AddieClaudeClient {
           flag_reason: 'Max tool iterations reached',
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
-          model_execution: logicalText && lastProviderModel
-            ? anthropicModelExecution(lastProviderModel, effectiveModel)
-            : localModelExecution('canned_response', effectiveModel),
+          model_execution: finalizedMaxIter.localReplacementReason
+            ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
+            : logicalText && lastProviderModel
+            ? providerModelExecution(
+                { provider: this.modelProvider.id, model: lastProviderModel },
+                this.modelProvider.id,
+                effectiveModel,
+                modelFallbackReason,
+              )
+            : localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
           timing: {
             system_prompt_ms: systemPromptMs,
             total_llm_ms: totalLlmMs,
@@ -2506,7 +2781,14 @@ export class AddieClaudeClient {
         },
       };
     } catch (error) {
-      logger.error({ error }, 'Addie Stream: Error during streaming');
+      if (isIsolatedExecution(options)) {
+        logger.error(
+          { source: 'processMessageStream' },
+          'Addie Stream: Isolated execution terminated',
+        );
+      } else {
+        logger.error({ error }, 'Addie Stream: Error during streaming');
+      }
       if (!streamErrorEmitted) {
         yield {
           type: 'stream_error',

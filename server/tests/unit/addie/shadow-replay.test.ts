@@ -13,6 +13,7 @@ import {
   executeShadowReplay,
   executeVerifiedOfficialDocsReplay,
   hashReplayValue,
+  prepareVerifiedOfficialDocsReplayTarget,
 } from '../../../src/addie/jobs/shadow-replay.js';
 import { OFFICIAL_DOCS_ALLOWED_TOOLS } from '../../../src/addie/jobs/shadow-replay-cohort.js';
 import type { ResolvedShadowReplayTrace } from '../../../src/addie/jobs/shadow-replay-trace.js';
@@ -487,6 +488,12 @@ describe('verified official docs replay generation', () => {
         if (decision?.allowed) await requestTools.handlers.get('search_docs')?.(input);
         return generatedResponse({
           tools_used: ['search_docs'],
+          usage: {
+            input_tokens: 123,
+            output_tokens: 45,
+            cache_read_input_tokens: 67,
+            cache_creation_input_tokens: 8,
+          },
           tool_executions: [{
             tool_name: 'search_docs',
             parameters: {},
@@ -507,6 +514,7 @@ describe('verified official docs replay generation', () => {
       client: fakeClient as never,
       getDocsFingerprint: () => 'docs-fingerprint',
       renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(350),
       createKnowledgeHandlers: createHandlers as never,
     });
 
@@ -519,6 +527,10 @@ describe('verified official docs replay generation', () => {
       outputBytes: expect.any(Number),
       inputTokens: 123,
       outputTokens: 45,
+      cacheReadTokens: 67,
+      cacheWriteTokens: 8,
+      usageAvailable: true,
+      latencyMs: 250,
     });
     expect(result.outputHmac).toMatch(/^[0-9a-f]{64}$/);
     expect(result.toolExecutions).toMatchObject([{
@@ -529,6 +541,153 @@ describe('verified official docs replay generation', () => {
     expect(result.toolExecutions[0].input_hmac).not.toBe(result.toolExecutions[0].result_hmac);
     expect(result.toolExecutions[0].result_hmac).not.toBe(result.outputHmac);
     expect(JSON.stringify(result)).not.toContain(PRIVATE_SENTINEL);
+  });
+
+  it('binds an alternate target to its exact prepared request without changing source parity', async () => {
+    const targetSnapshot = officialDocsSnapshot({
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        expect(options.modelOverride).toBe('gemini-3.7-flash');
+        await options.onInvocationPrepared?.(targetSnapshot);
+        return generatedResponse({
+          model_execution: {
+            source: 'provider',
+            requested_provider: 'google',
+            requested_model: 'gemini-3.7-flash',
+            provider: 'google',
+            model: 'gemini-3.7-flash-20260801',
+            model_resolution: 'provider_canonicalized',
+            fallback_reason: null,
+          },
+        });
+      }),
+    };
+
+    const result = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+      target: {
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+        firstInvocation: targetSnapshot,
+      },
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    });
+
+    expect(result).toMatchObject({
+      status: 'succeeded',
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      returnedProvider: 'google',
+      returnedModel: 'gemini-3.7-flash-20260801',
+      invocations: [{ provider_request_hmac: 'f'.repeat(64) }],
+    });
+    expect(result.invocations[0].provider_request_hmac).not.toBe(PROVIDER_HMAC);
+  });
+
+  it('prepares the exact replay-mode alternate request without dispatching', () => {
+    const firstInvocation = officialDocsSnapshot({
+      execution_mode: 'replay',
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const prepareMessageInvocation = vi.fn().mockReturnValue(firstInvocation);
+    const input = {
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    };
+
+    expect(prepareVerifiedOfficialDocsReplayTarget(input, {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+    }, { prepareMessageInvocation } as never)).toEqual({
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      firstInvocation,
+    });
+    expect(prepareMessageInvocation).toHaveBeenCalledWith(
+      input.trace.question,
+      undefined,
+      input.invocation.requestTools,
+      undefined,
+      expect.objectContaining({
+        executionMode: 'replay',
+        disableServerTools: true,
+        allowedToolNames: OFFICIAL_DOCS_ALLOWED_TOOLS,
+        maxIterations: 4,
+        invocationHashKey: input.trace.identity.hashKey,
+        invocationHashDomain: input.trace.identity.hashDomain,
+        uncapped: true,
+        modelOverride: 'gemini-3.7-flash',
+      }),
+    );
+  });
+
+  it('blocks alternate dispatch when its prepared request drifts from preflight', async () => {
+    const expected = officialDocsSnapshot({
+      model: 'gemini-3.7-flash',
+      provider_request_sha256: 'f'.repeat(64),
+    });
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.({
+          ...expected,
+          provider_request_sha256: '9'.repeat(64),
+        });
+        return generatedResponse();
+      }),
+    };
+
+    await expect(executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+      target: {
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+        firstInvocation: expected,
+      },
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    })).rejects.toMatchObject({
+      name: 'OfficialDocsReplayExecutionError',
+      completion: {
+        status: 'blocked',
+        reason: 'target_invocation_drift',
+        provider: 'google',
+        model: 'gemini-3.7-flash',
+      },
+    });
   });
 
   it('blocks output rejected by the production security validator', async () => {
@@ -567,6 +726,44 @@ describe('verified official docs replay generation', () => {
     });
     expect(outputConsumer).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it('marks missing terminal usage incomplete instead of treating it as zero', async () => {
+    const fakeClient = {
+      processMessage: vi.fn(async (
+        _question: string,
+        _history: unknown,
+        _requestTools: RequestTools,
+        _rules: unknown,
+        options: ProcessMessageOptions,
+      ) => {
+        await options.onInvocationPrepared?.(officialDocsSnapshot());
+        return generatedResponse({ usage: undefined });
+      }),
+    };
+    const result = await executeVerifiedOfficialDocsReplay({
+      trace: officialDocsTrace(),
+      invocation: officialDocsInvocation(),
+      docsCorpusFingerprint: 'docs-fingerprint',
+    }, {
+      client: fakeClient as never,
+      getDocsFingerprint: () => 'docs-fingerprint',
+      renewLease: async () => true,
+      monotonicNow: vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(200),
+      createKnowledgeHandlers: () => new Map([
+        ['search_docs', vi.fn()],
+        ['get_doc', vi.fn()],
+      ]),
+    });
+    expect(result).toMatchObject({
+      status: 'blocked',
+      reason: 'usage_unavailable',
+      usageAvailable: false,
+      inputTokens: 0,
+      outputTokens: 0,
+      latencyMs: 100,
+      blockedCapabilities: ['usage_unavailable'],
+    });
   });
 
   it('contains consumer failures behind a safe post-generation completion', async () => {

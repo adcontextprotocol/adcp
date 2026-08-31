@@ -315,6 +315,7 @@ describe('add_to_brand_refs', () => {
       'https://nikeinc.com/.well-known/brand.json',
       expect.objectContaining({
         maxRedirects: 3,
+        redirectHostPolicy: 'original-host-and-www',
         // Body cap + timeout: a hostile counterparty-controlled brand.json
         // must not be able to hang the worker or stream gigabytes through.
         timeoutMs: expect.any(Number),
@@ -366,6 +367,62 @@ describe('check_mutual_assertion (trust-tier resolution)', () => {
     expect(result.leaf_house_domain).toBe('nikeinc.com');
     expect(result.resolved_house_domain).toBe('nikeinc.com');
     expect(result.house_contact_email).toBe('brand@nike.com');
+    expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+      1,
+      'https://converse.com/.well-known/brand.json',
+      expect.objectContaining({
+        maxRedirects: 3,
+        redirectHostPolicy: 'original-host-and-www',
+      }),
+    );
+    expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+      2,
+      'https://nikeinc.com/.well-known/brand.json',
+      expect.objectContaining({
+        maxRedirects: 3,
+        redirectHostPolicy: 'original-host-and-www',
+      }),
+    );
+  });
+
+  it('fetches authoritative_location exactly with zero HTTP redirects', async () => {
+    const authoritativeUrl = 'https://cdn.example/portfolios/house.json';
+    mockedSafeFetch
+      .mockResolvedValueOnce(mockJsonResponse(canonicalDoc({ house_domain: 'house.example' })))
+      .mockResolvedValueOnce(mockJsonResponse({ authoritative_location: authoritativeUrl }))
+      .mockResolvedValueOnce(mockJsonResponse(housePortfolio({
+        house: { domain: 'house.example', name: 'Example House' },
+      })));
+
+    const result = await checkMutualAssertion('converse.com');
+
+    expect(result.tier).toBe('mutual');
+    expect(result.resolved_house_domain).toBe('house.example');
+    expect(result.redirect_chain).toEqual(['house.example']);
+    expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+      3,
+      authoritativeUrl,
+      expect.objectContaining({ maxRedirects: 0 }),
+    );
+    expect(mockedSafeFetch.mock.calls[2][1]?.redirectHostPolicy).toBeUndefined();
+  });
+
+  it('treats a redirect response from authoritative_location as unverifiable', async () => {
+    const authoritativeUrl = 'https://cdn.example/portfolios/house.json';
+    mockedSafeFetch
+      .mockResolvedValueOnce(mockJsonResponse(canonicalDoc({ house_domain: 'house.example' })))
+      .mockResolvedValueOnce(mockJsonResponse({ authoritative_location: authoritativeUrl }))
+      .mockResolvedValueOnce({
+        status: 302,
+        data: Buffer.alloc(0),
+        headers: { location: 'https://www.cdn.example/portfolios/house.json' },
+        url: authoritativeUrl,
+      });
+
+    const result = await checkMutualAssertion('converse.com');
+
+    expect(result.tier).toBe('unverifiable');
+    expect(result.errors?.[0]).toMatch(/HTTP 302/);
   });
 
   it('returns leaf_only when leaf claims house but house brand_refs[] is silent', async () => {

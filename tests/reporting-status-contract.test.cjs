@@ -774,6 +774,7 @@ describe('managed reporting status contract', () => {
     assert.equal(validateResponse(response), false);
     response.health = 'action_required';
     response.issues = [{
+      issue_id: 'iss_history_unavailable_daily_share',
       code: 'HISTORY_UNAVAILABLE',
       severity: 'action_required',
       responsible_party: 'seller',
@@ -1057,6 +1058,7 @@ describe('managed reporting status contract', () => {
       media_buy: {
         reporting_delivery: {
           supported: true,
+          managed_delivery: true,
           configuration_task: 'sync_accounts',
           status_task: 'get_reporting_status',
           receipt_task: 'sync_reporting_receipts',

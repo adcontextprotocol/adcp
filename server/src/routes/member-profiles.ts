@@ -17,7 +17,7 @@ import {
 } from "../middleware/auth.js";
 import { query, getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
-import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
+import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
 import { canonicalizeAgentUrl } from "../db/publisher-db.js";
@@ -233,18 +233,20 @@ export interface MemberProfileRoutesConfig {
 }
 
 /**
- * Resolve brand identity from the brand registry for a given domain.
- * Skips orphaned manifests — when a prior owner relinquished, the manifest
- * is preserved for adoption but should not surface on member-facing reads
- * until a new claim adopts (or clears) it. See updateBrandIdentity.
+ * Resolve authoritative brand identity for a member organization.
  */
-async function resolveBrand(brandDb: BrandDatabase, domain: string): Promise<MemberBrandInfo | undefined> {
+async function resolveBrand(
+  brandDb: BrandDatabase,
+  domain: string,
+  workosOrganizationId: string,
+): Promise<MemberBrandInfo | undefined> {
   const brand = await brandDb.getDiscoveredBrandByDomain(domain);
-  if (brand?.manifest_orphaned) return undefined;
-  if (brand?.brand_manifest) {
-    return resolveBrandFromJson(domain, brand.brand_manifest as Record<string, unknown>, brand.domain_verified ?? false);
-  }
-  return undefined;
+  if (!canSurfaceBrandForMember(brand, workosOrganizationId)) return undefined;
+  return resolveBrandFromJson(
+    domain,
+    brand!.brand_manifest as Record<string, unknown>,
+    brand!.domain_verified ?? false,
+  );
 }
 
 /**
@@ -694,7 +696,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         const devBrandRecord = await getBrandPrimaryDomainRecord(devOrgId);
         if (profile) {
           if (devBrandRecord) {
-            profile.resolved_brand = await resolveBrand(brandDb, devBrandRecord.domain);
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandRecord.domain, devOrgId);
             (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandRecord.domain;
           }
         }
@@ -743,7 +745,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       const brandRecord = await getBrandPrimaryDomainRecord(targetOrgId);
       if (profile) {
         if (brandRecord) {
-          profile.resolved_brand = await resolveBrand(brandDb, brandRecord.domain);
+          profile.resolved_brand = await resolveBrand(brandDb, brandRecord.domain, targetOrgId);
           // After Stage 2 of #4159 dropped the column, the field is
           // re-derived from organization_domains.is_primary so clients
           // (member-profile.html, dashboard-agents.html) keep working.
@@ -2410,7 +2412,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         throw err;
       }
 
-      const resolvedBrand = await resolveBrand(brandDb, result.brandDomain);
+      const resolvedBrand = await resolveBrand(brandDb, result.brandDomain, targetOrgId);
       invalidateMemberContextCache();
 
       const duration = Date.now() - startTime;

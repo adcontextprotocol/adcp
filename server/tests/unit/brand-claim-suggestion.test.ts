@@ -137,6 +137,27 @@ describe('getBrandClaimSuggestionForUser', () => {
     });
   });
 
+  it('uses the domain instead of an inferred enrichment name in claim prompts', async () => {
+    mocks.getDiscoveredBrandByDomain.mockResolvedValue({
+      domain: 'scope3.com',
+      brand_name: 'Misclassified tagline',
+      source_type: 'enriched',
+      domain_verified: false,
+    });
+
+    const result = await getBrandClaimSuggestionForUser(
+      'user_test',
+      'alice@scope3.com',
+      makeCtx(),
+    );
+
+    expect(result).toMatchObject({
+      domain: 'scope3.com',
+      brand_name: null,
+      active: true,
+    });
+  });
+
   it('returns an inactive suggestion when the user dismissed within the cooldown', async () => {
     mocks.getDiscoveredBrandByDomain.mockResolvedValue({
       domain: 'scope3.com',

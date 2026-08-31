@@ -527,10 +527,14 @@
               "kind": "data",
               "data": {
                 "adcp_error": {
-                  "code": "CREATIVE_REJECTED",
-                  "message": "Creative failed content policy review",
-                  "recovery": "correctable",
-                  "suggestion": "Revise creative to comply with alcohol advertising policy",
+                "code": "CREATIVE_REJECTED",
+                "message": "Creative failed content policy review",
+                "recovery": "correctable",
+                "buyer_reason": {
+                  "code": "POLICY_VIOLATION",
+                  "message": "The creative does not satisfy the published alcohol advertising policy."
+                },
+                "suggestion": "Revise creative to comply with alcohol advertising policy",
                   "details": {
                     "policy_id": "alcohol-advertising-v2",
                     "reasons": ["Contains health claims not permitted for alcohol products"]
@@ -542,10 +546,14 @@
         }]
       },
       "expected_error": {
-        "code": "CREATIVE_REJECTED",
-        "message": "Creative failed content policy review",
-        "recovery": "correctable",
-        "suggestion": "Revise creative to comply with alcohol advertising policy",
+    "code": "CREATIVE_REJECTED",
+    "message": "Creative failed content policy review",
+    "recovery": "correctable",
+    "buyer_reason": {
+      "code": "POLICY_VIOLATION",
+      "message": "The creative does not satisfy the published alcohol advertising policy."
+    },
+    "suggestion": "Revise creative to comply with alcohol advertising policy",
         "details": {
           "policy_id": "alcohol-advertising-v2",
           "reasons": ["Contains health claims not permitted for alcohol products"]

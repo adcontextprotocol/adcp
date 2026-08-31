@@ -133,7 +133,7 @@ Use the manifest's `industry_identifiers` list for the traffic or clearance iden
 
 The reference declarations contain only the required `audio_main` file slot. Terrestrial broadcast radio has no renderer in which a VAST/DAAST tag, impression pixel, click tracker, or clickthrough URL can operate. Their absence is part of the format contract; do not add tracker slots or represent these spots as `audio_daast`.
 
-Digital streaming or SSAI inventory is a separate execution context. It may use `audio_hosted` with explicitly declared impression, click, or other supported `pixel_tracker` slots. Standardized audio quartile and completion tag events use `audio_daast`. A terrestrial spot simulcast digitally does not make trackers operational on the terrestrial airing.
+Digital streaming or SSAI inventory is a separate execution context. It may use `audio_hosted` with explicitly declared impression, click, or other supported `pixel_tracker` slots. Standardized audio quartile and completion tag events use `audio_vast` for VAST 4.1+ delivery or `audio_daast` for DAAST delivery. A terrestrial spot simulcast digitally does not make trackers operational on the terrestrial airing.
 
 ## Delivery measurement and reconciliation
 

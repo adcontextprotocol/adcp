@@ -35,6 +35,7 @@ import {
 import { OrganizationDatabase, TIER_PRESERVING_STATUSES, buildSubscriptionUpdate } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { pickMembershipSub } from "../billing/membership-prices.js";
+import { withOrgIntakeLock } from "../billing/org-intake-lock.js";
 
 const logger = createLogger("billing-routes");
 
@@ -1090,6 +1091,18 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       }
 
       const org = linkedOrg.rows[0];
+      const unlinked = await withOrgIntakeLock(org.workos_organization_id, async () => {
+      // Re-check after acquiring the same per-org lock used by Checkout
+      // completion. If another operation already changed the link, do not
+      // clear metadata or entitlement for a newly linked customer.
+      const currentLink = await pool.query(
+        `SELECT 1 FROM organizations
+          WHERE workos_organization_id = $1 AND stripe_customer_id = $2`,
+        [org.workos_organization_id, customerId],
+      );
+      if (currentLink.rows.length === 0) {
+        return false;
+      }
 
       // Clear the workos_organization_id metadata on BOTH the Stripe
       // customer AND every active subscription on it BEFORE nulling the DB
@@ -1147,8 +1160,9 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       // appear as a paying member with no Stripe customer attached. The
       // entitlement gate would silently grant access on stale state until
       // the next webhook (which never fires, since the customer is gone).
-      await pool.query(
-        `UPDATE organizations SET
+      const unlinkResult = await pool.query<{ workos_organization_id: string }>(
+        `WITH unlinked_org AS (
+           UPDATE organizations SET
             stripe_customer_id = NULL,
             stripe_subscription_id = NULL,
             subscription_status = NULL,
@@ -1161,9 +1175,19 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
             subscription_price_id = NULL,
             subscription_price_lookup_key = NULL,
             updated_at = NOW()
-         WHERE stripe_customer_id = $1`,
-        [customerId],
+           WHERE stripe_customer_id = $1
+             AND workos_organization_id = $2
+           RETURNING workos_organization_id
+         ), invalidated_checkout_attempts AS (
+           DELETE FROM membership_checkout_attempts
+            WHERE organization_id IN (
+              SELECT workos_organization_id FROM unlinked_org
+            )
+         )
+         SELECT workos_organization_id FROM unlinked_org`,
+        [customerId, org.workos_organization_id],
       );
+      if (unlinkResult.rows.length === 0) return false;
       invalidateMembershipCache(org.workos_organization_id);
 
       // Forensic record of the entitlement-affecting admin action. Without
@@ -1194,6 +1218,12 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
         "Unlinked Stripe customer from org"
       );
 
+      return true;
+      });
+
+      if (!unlinked) {
+        return res.status(409).json({ error: "Customer link changed while unlink was waiting" });
+      }
       res.json({
         success: true,
         message: `Unlinked Stripe customer ${customerId} from "${org.name}"`,

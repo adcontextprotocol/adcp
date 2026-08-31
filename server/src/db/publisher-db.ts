@@ -67,6 +67,8 @@ export interface AdagentsAuthorizedAgent {
     property_tags?: string[];
   }>;
   signing_keys?: Array<Record<string, unknown>>;
+  /** Collection constraints; a selector without collection_ids is a bulk grant. */
+  collections?: Array<{ publisher_domain?: unknown; collection_ids?: unknown }>;
 }
 
 export interface AdagentsManifest {
@@ -1867,6 +1869,36 @@ export class PublisherDatabase {
       ? JSON.stringify(entry.signing_keys)
       : null;
 
+    // Collection constraints ride on every row this entry projects, same as
+    // signing_keys, so registry consumers see the narrowing instead of an
+    // unqualified property grant. Selectors are re-validated at the writer;
+    // an entry whose declared constraint yields zero usable selectors is
+    // skipped entirely (fail closed) rather than projected as unconstrained.
+    let collectionsJson: string | null = null;
+    if (entry.collections !== undefined) {
+      const selectors = (Array.isArray(entry.collections) ? entry.collections : [])
+        .filter((selector): selector is { publisher_domain: string; collection_ids?: string[] } =>
+          !!selector && typeof selector === 'object'
+          && typeof (selector as { publisher_domain?: unknown }).publisher_domain === 'string'
+          && (selector as { publisher_domain: string }).publisher_domain.length > 0
+          && ((selector as { collection_ids?: unknown }).collection_ids === undefined
+            || (Array.isArray((selector as { collection_ids?: unknown }).collection_ids)
+              && ((selector as { collection_ids: unknown[] }).collection_ids).length > 0
+              && ((selector as { collection_ids: unknown[] }).collection_ids)
+                .every((id) => typeof id === 'string' && id.length > 0))))
+        .map((selector) => selector.collection_ids === undefined
+          ? { publisher_domain: selector.publisher_domain }
+          : { publisher_domain: selector.publisher_domain, collection_ids: [...new Set(selector.collection_ids)] });
+      if (selectors.length === 0) {
+        log.warn(
+          { publisherDomain, agentUrl: agentCanonical },
+          'Skipping auth projection: collections constraint present but unparseable (fail closed)'
+        );
+        return;
+      }
+      collectionsJson = JSON.stringify(selectors);
+    }
+
     const variant = entry.authorization_type;
 
     if (variant === 'property_tags' || variant === 'signal_ids' || variant === 'signal_tags') {
@@ -2059,8 +2091,8 @@ export class PublisherDatabase {
       await client.query(
         `INSERT INTO catalog_agent_authorizations
            (agent_url, agent_url_canonical, property_rid, property_id_slug,
-            publisher_domain, authorized_for, signing_keys, evidence, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'adagents_json', 'system')
+            publisher_domain, authorized_for, signing_keys, collections, evidence, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, 'adagents_json', 'system')
          ON CONFLICT (agent_url_canonical,
                       (COALESCE(property_rid::text, '')),
                       (COALESCE(publisher_domain, '')),
@@ -2069,6 +2101,7 @@ export class PublisherDatabase {
          DO UPDATE SET
            authorized_for = EXCLUDED.authorized_for,
            signing_keys   = EXCLUDED.signing_keys,
+           collections    = EXCLUDED.collections,
            updated_at     = NOW()`,
         [
           agentRaw,
@@ -2078,6 +2111,7 @@ export class PublisherDatabase {
           isPropertyScope ? null : publisherDomain,
           authorizedFor,
           signingKeys,
+          collectionsJson,
         ]
       );
     }

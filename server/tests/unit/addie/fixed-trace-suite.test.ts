@@ -106,6 +106,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
     terminalStage: ['ignored', 'reacted'].includes(terminalStatus) ? 'surface' : 'generation',
     terminalStatus,
     boundaryReason: null,
+    localReplacementReason: null,
     finishReason: terminalStatus === 'truncated' ? 'length' : terminalStatus === 'provider_error' ? null : 'stop',
     output: outputMarkers.join(' '),
     flagged: trace.expectation.requireFlagged ?? false,
@@ -127,7 +128,7 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v4');
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v7');
     expect(FIXED_TRACE_SUITE).toHaveLength(11);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
@@ -204,6 +205,31 @@ describe('fixed cross-provider trace suite', () => {
     const smartPunctuation = passingObservation(toolErrorTrace);
     smartPunctuation.output = 'The search failed, so I can’t verify the official wording.';
     expect(gradeFixedTrace(toolErrorTrace, smartPunctuation)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
+    });
+
+    const reachFailure = passingObservation(toolErrorTrace);
+    reachFailure.output = "I couldn't reach documentation search in this session.";
+    expect(gradeFixedTrace(toolErrorTrace, reachFailure)).toMatchObject({
+      deterministicPass: true,
+      answerPass: true,
+    });
+  });
+
+  it('requires task-model answers to explain both parties and the response flow', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-task-model')!;
+    const incomplete = passingObservation(trace);
+    incomplete.output = 'AdCP structures interactions between buyer and seller agents using task-based interactions.';
+    expect(gradeFixedTrace(trace, incomplete)).toMatchObject({
+      deterministicPass: false,
+      answerPass: false,
+      failures: expect.arrayContaining(['answer_assertion_failed']),
+    });
+
+    const complete = passingObservation(trace);
+    complete.output = 'A buyer calls a defined task on the seller with structured input, and the seller returns the task response.';
+    expect(gradeFixedTrace(trace, complete)).toMatchObject({
       deterministicPass: true,
       answerPass: true,
     });
@@ -364,5 +390,16 @@ describe('fixed cross-provider trace suite', () => {
       'answer_assertion_failed',
     ]));
     expect(gradeFixedTrace(trace, observation).failures).not.toContain('terminal_stage_mismatch');
+  });
+
+  it('rejects an unflagged local response replacement', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'knowledge-tool-error')!;
+    const observation = passingObservation(trace);
+    observation.localReplacementReason = 'failed_lookup_evidence';
+    observation.flagged = false;
+
+    expect(gradeFixedTrace(trace, observation).failures).toContain(
+      'local_replacement_metadata_invalid',
+    );
   });
 });

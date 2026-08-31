@@ -16,7 +16,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { AgentType, MemberOffering } from "./types.js";
 import { BrandManager } from "./brand-manager.js";
-import { brandDb } from "./db/brand-db.js";
+import { brandDb, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { propertyDb } from "./db/property-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "./services/brandfetch.js";
@@ -29,6 +29,7 @@ import { createLogger } from "./logger.js";
 import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { serializeInlineScriptJson } from './utils/inline-script-json.js';
+import { getBrandPrimaryDomain } from './services/brand-domain-resolver.js';
 
 const logger = createLogger('mcp-tools');
 
@@ -45,6 +46,14 @@ function sanitizeDomain(raw: string | undefined): string | null {
   return DOMAIN_REGEX.test(cleaned) ? cleaned : null;
 }
 
+function summarizeAgentVisibility(agents: ReadonlyArray<{ visibility?: string }> | null | undefined) {
+  const registered = agents ?? [];
+  return {
+    public: registered.filter((agent) => agent.visibility === 'public').length,
+    members_only: registered.filter((agent) => agent.visibility === 'members_only').length,
+  };
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -57,7 +66,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_members",
     description:
-      "List AdCP member organizations visible to the caller. Public-directory members are always returned. Callers whose organization has API-access tier (Professional or higher) also see organizations that opted out of the public directory but have agents marked 'members_only'. Each agent row includes a 'visibility' field only for API-access callers; unauth callers always see 'public' and the field is omitted for brevity.",
+      "List AdCP member organizations visible to the caller. Public-directory members are always returned. Callers whose organization has API-access tier (Professional or higher) also see organizations that opted out of the public directory but have agents marked 'members_only'. Each result includes public/members-only registration counts; private registrations are excluded. Each agent row includes a 'visibility' field only for API-access callers; unauth callers always see 'public' and the field is omitted for brevity.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -87,7 +96,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: "get_member",
-    description: "Get detailed information about a specific AdCP member by slug",
+    description: "Get detailed information about a specific AdCP member by slug, including public/members-only registration counts. Private registrations are excluded.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -156,7 +165,19 @@ export const TOOL_DEFINITIONS = [
         collection_ids: {
           type: "array",
           items: { type: "string" },
-          description: "Optional collection IDs to validate collection-scoped authorization",
+          description: "Legacy host-publisher collection IDs to validate collection-scoped authorization",
+        },
+        collections: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              publisher_domain: { type: "string" },
+              collection_ids: { type: "array", items: { type: "string" }, minItems: 1 },
+            },
+            required: ["publisher_domain"],
+          },
+          description: "Optional domain-qualified collection selectors to validate collection-scoped authorization. Omit collection_ids in a selector to ask about all collections declared at that publisher_domain.",
         },
         placement_ids: {
           type: "array",
@@ -674,6 +695,7 @@ export class MCPToolHandler {
           headquarters: m.headquarters,
           markets: m.markets,
           profile_visibility: m.is_public ? 'public' : 'members_only',
+          agent_visibility_summary: summarizeAgentVisibility(m.agents),
           agents: m.agents
             .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
             .map((a) => ({
@@ -729,19 +751,40 @@ export class MCPToolHandler {
           };
         }
 
+        const brandPrimaryDomain = member.workos_organization_id
+          ? await getBrandPrimaryDomain(member.workos_organization_id)
+          : null;
+        const brandRow = brandPrimaryDomain
+          ? await brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain)
+          : null;
+        const resolvedBrand = brandPrimaryDomain
+          && canSurfaceBrandForMember(brandRow, member.workos_organization_id)
+          ? resolveBrandFromJson(
+              brandPrimaryDomain,
+              brandRow!.brand_manifest as Record<string, unknown>,
+              brandRow!.domain_verified ?? false,
+            )
+          : undefined;
+
         // Public agents to everyone; members_only when the caller has API access
         const result = {
           slug: member.slug,
           display_name: member.display_name,
-          tagline: member.tagline,
-          description: member.description,
-          logo_url: member.resolved_brand?.logo_url,
-          brand_color: member.resolved_brand?.brand_color,
+          tagline: member.tagline || resolvedBrand?.tagline,
+          description: member.description || resolvedBrand?.description,
+          content_sources: {
+            tagline: member.tagline ? 'member_profile' : resolvedBrand?.tagline ? 'brand_json' : null,
+            description: member.description ? 'member_profile' : resolvedBrand?.description ? 'brand_json' : null,
+          },
+          logo_url: resolvedBrand?.logo_url,
+          brand_color: resolvedBrand?.brand_color,
+          brand_identity: resolvedBrand ?? null,
           offerings: member.offerings,
           headquarters: member.headquarters,
           markets: member.markets,
           tags: member.tags,
           profile_visibility: member.is_public ? 'public' : 'members_only',
+          agent_visibility_summary: summarizeAgentVisibility(member.agents),
           agents: member.agents
             .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
             .map((a) => ({
@@ -834,6 +877,9 @@ export class MCPToolHandler {
         const result = await this.validator.validate(domain, agentUrl, {
           property_id: args?.property_id as string | undefined,
           property_tags: Array.isArray(args?.property_tags) ? args.property_tags as string[] : undefined,
+          collections: Array.isArray(args?.collections)
+            ? args.collections as Array<{ publisher_domain: string; collection_ids?: string[] }>
+            : undefined,
           collection_ids: Array.isArray(args?.collection_ids) ? args.collection_ids as string[] : undefined,
           placement_ids: Array.isArray(args?.placement_ids) ? args.placement_ids as string[] : undefined,
           placement_tags: Array.isArray(args?.placement_tags) ? args.placement_tags as string[] : undefined,

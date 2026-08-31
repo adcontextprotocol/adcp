@@ -16,8 +16,10 @@ import type {
 import {
   createAddieToolExecutor,
   executeAddieToolCalls,
+  type ToolExecution,
   type ToolHandler,
 } from '../model-providers/tool-orchestration.js';
+import { enforceFailedLookupEvidenceBoundary } from '../failed-lookup-evidence.js';
 import type {
   FixedTraceBoundaryReason,
   FixedTraceCase,
@@ -43,6 +45,7 @@ export interface FixedTraceToolExecution extends FixedTraceToolObservation {
 export interface FixedTraceToolLoopResult {
   response: ModelResponse;
   text: string;
+  localReplacementReason: string | null;
   iterations: number;
   usage: ModelUsage;
   tools: ReadonlyArray<FixedTraceToolExecution>;
@@ -141,6 +144,7 @@ export async function executeFixedTraceToolLoop(
 ): Promise<FixedTraceToolLoopResult> {
   const request = snapshotRequest(initialRequest);
   validateInitialRequest(request);
+  const { toolChoice: initialToolChoice, ...requestWithoutToolChoice } = request;
   const registered = registerFixtures(trace, definitions);
   const iterationLimit = safeIterationLimit(trace, options.maxIterations);
   const handlers = new Map<string, ToolHandler>();
@@ -170,6 +174,7 @@ export async function executeFixedTraceToolLoop(
 
   let messages = [...request.messages];
   const executions: FixedTraceToolExecution[] = [];
+  const completedExecutions: ToolExecution[] = [];
   const invocations: PreparedModelInvocation[] = [];
   const seenCallIds = new Set<string>();
   const seenToolNames = new Set<string>();
@@ -179,12 +184,16 @@ export async function executeFixedTraceToolLoop(
     const activeTurn = modelLoop.beginNext();
     const iteration = activeTurn.iteration;
     const response = await activeTurn.invoke(provider, {
-      ...request,
+      ...requestWithoutToolChoice,
       messages,
       tools: buildModelToolDefinitions(
         [...registered.values()].map((entry) => entry.definition),
       ),
       providerTools: [],
+      // Production's official-docs profile forces search_docs only on the
+      // first turn. Requiring it again after the fixture result would create
+      // a duplicate call and make replay diverge from the live loop.
+      ...(iteration === 1 && initialToolChoice ? { toolChoice: initialToolChoice } : {}),
     }, {
       signal: options.signal,
       beforeDispatch: async (prepared) => {
@@ -202,9 +211,14 @@ export async function executeFixedTraceToolLoop(
       continue;
     }
     if (turn.action !== 'execute_tools') {
+      const evidenceBoundary = enforceFailedLookupEvidenceBoundary(
+        turn.textBlocks.map((content) => content.text).join(''),
+        completedExecutions,
+      );
       return {
         response,
-        text: turn.textBlocks.map((content) => content.text).join(''),
+        text: evidenceBoundary.text,
+        localReplacementReason: evidenceBoundary.reason,
         iterations: iteration,
         usage: modelLoop.usage,
         tools: Object.freeze([...executions]),
@@ -244,6 +258,7 @@ export async function executeFixedTraceToolLoop(
       } else {
         const entry = registered.get(event.call.name)!;
         const blocked = event.executed.execution.blocked_by_policy === true;
+        completedExecutions.push(event.executed.execution);
         executions.push(Object.freeze({
           sequence: event.sequence,
           name: event.call.name,

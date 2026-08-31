@@ -1,5 +1,5 @@
 id: creative/creative_lifecycle_webhooks
-version: "1.0.0"
+version: "1.0.1"
 introduced_in: "3.1"
 title: "Creative lifecycle webhooks"
 category: creative
@@ -10,6 +10,10 @@ required_tools:
   - sync_creatives
   - list_creatives
   - comply_test_controller
+
+requires_capability:
+  path: creative.has_creative_library
+  equals: true
 
 narrative: |
   A buyer registers an account-level webhook subscriber through

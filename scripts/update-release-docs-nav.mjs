@@ -12,8 +12,20 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DIST_DOCS_PREFIX_RE = /^dist\/docs\/[^/]+\//;
+const DIST_DOCS_ABSOLUTE_PREFIX_RE = /^\/dist\/docs\/[^/]+\//;
 const PRERELEASE_DOCS_LABEL_RE = /^(\d+)\.(\d+)-([0-9A-Za-z]+)$/;
 const PRERELEASE_BANNER_VERSION_RE = /AdCP (\d+)\.(\d+) ([0-9A-Za-z]+)\.\d+/g;
+const VERSION_LINE_RE = /^(\d+\.\d+)/;
+const RELEASE_STORY_ALIASES = new Set([
+  '/3.2',
+  '/3.2/try',
+  '/3.2/migrate',
+  '/3.2/sdk',
+  '/docs/reference/whats-new-in-3-2',
+  '/docs/reference/3-2-beta',
+  '/docs/reference/migration/3-1-to-3-2',
+  '/docs/media-buy/product-discovery/proposal-negotiation',
+]);
 // Production builds fetch versioned navigation specs reliably from public URLs;
 // release tags keep each docs version tied to the spec shipped with that release.
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
@@ -67,6 +79,28 @@ function snapshotPath(releaseVersion, value) {
     return `dist/docs/${releaseVersion}/${value.slice('docs/'.length)}`;
   }
   return retargetExistingPath(releaseVersion, value);
+}
+
+function versionLine(value) {
+  return typeof value === 'string' ? VERSION_LINE_RE.exec(value)?.[1] : undefined;
+}
+
+function updateReleaseStoryAliases(config, releaseVersion) {
+  if (!Array.isArray(config.redirects) || versionLine(releaseVersion) !== '3.2') {
+    return;
+  }
+
+  for (const redirect of config.redirects) {
+    if (
+      RELEASE_STORY_ALIASES.has(redirect?.source) &&
+      typeof redirect.destination === 'string'
+    ) {
+      redirect.destination = redirect.destination.replace(
+        DIST_DOCS_ABSOLUTE_PREFIX_RE,
+        `/dist/docs/${releaseVersion}/`
+      );
+    }
+  }
 }
 
 function updatePrereleaseBanner(config, releaseVersion, majorMinor) {
@@ -182,6 +216,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     }
     versions[existingIndex] = entry;
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
+    updateReleaseStoryAliases(config, releaseVersion);
     return {
       config,
       action: 'updated',
@@ -189,8 +224,12 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     };
   }
 
+  const targetLine = versionLine(majorMinor);
+  const sameLineIndex = versions.findIndex(
+    (entry) => entry.version !== majorMinor && versionLine(entry.version) === targetLine
+  );
   const defaultIndex = versions.findIndex((entry) => entry.default);
-  const sourceIndex = defaultIndex >= 0 ? defaultIndex : 0;
+  const sourceIndex = sameLineIndex >= 0 ? sameLineIndex : defaultIndex >= 0 ? defaultIndex : 0;
   const sourceEntry = versions[sourceIndex];
   if (!sourceEntry) {
     throw new Error('docs.json navigation.versions cannot be empty');
@@ -206,8 +245,13 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
     )
   );
 
-  versions.splice(sourceIndex + 1, 0, newEntry);
+  if (sameLineIndex >= 0) {
+    delete versions[sameLineIndex].tag;
+  }
+  const insertionIndex = sameLineIndex >= 0 ? sameLineIndex : sourceIndex + 1;
+  versions.splice(insertionIndex, 0, newEntry);
   updatePrereleaseBanner(config, releaseVersion, majorMinor);
+  updateReleaseStoryAliases(config, releaseVersion);
   return {
     config,
     action: 'added',
@@ -233,6 +277,6 @@ function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

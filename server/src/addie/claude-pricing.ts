@@ -24,6 +24,8 @@ interface ModelRates {
   cacheReadUsd: number;
 }
 
+export const CLAUDE_PRICING_VERSION = 'anthropic-standard-2026-08' as const;
+
 const PRICING_PER_MILLION_TOKENS: Record<string, ModelRates> = {
   // Claude Fable — highest-cost generally available tier
   'claude-fable-5': { inputUsd: 10, outputUsd: 50, cacheCreationUsd: 12.5, cacheReadUsd: 1 },
@@ -92,7 +94,10 @@ export function costUsdMicros(model: string, usage: ClaudeUsage): number {
   return Math.ceil(total);
 }
 
-/** Test-only helper to assert a model has known pricing. */
-export function __hasKnownPricing(model: string): boolean {
+/** Return whether cost calculations can use an exact reviewed rate. */
+export function hasKnownClaudePricing(model: string): boolean {
   return Object.prototype.hasOwnProperty.call(PRICING_PER_MILLION_TOKENS, model);
 }
+
+/** Backwards-compatible test helper. */
+export const __hasKnownPricing = hasKnownClaudePricing;

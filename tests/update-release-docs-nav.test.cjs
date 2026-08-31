@@ -203,6 +203,71 @@ function sampleConfig() {
     assert.equal(config.navigation.versions[1].groups[0].pages[0], 'dist/docs/3.1.0-rc.5/intro');
   });
 
+  test('carries the 3.2 story from beta to RC and retargets its public aliases', () => {
+    const config = sampleConfig();
+    config.banner.content =
+      'AdCP 3.2 preview is available — [see what is new →](/3.2)';
+    config.navigation.versions.splice(1, 0, {
+      version: '3.2-beta',
+      groups: [
+        {
+          group: 'Release notes & migration',
+          pages: [
+            'dist/docs/3.2.0-beta.9/reference/whats-new-in-3-2',
+            'dist/docs/3.2.0-beta.9/reference/migration/3-1-to-3-2',
+          ],
+        },
+        {
+          group: 'Media Buy',
+          pages: [
+            'dist/docs/3.2.0-beta.9/media-buy/product-discovery/proposal-negotiation',
+          ],
+        },
+      ],
+    });
+    config.redirects = [
+      {
+        source: '/3.2',
+        destination: '/dist/docs/3.2.0-beta.9/reference/whats-new-in-3-2',
+        permanent: false,
+      },
+      {
+        source: '/3.2/try',
+        destination:
+          '/dist/docs/3.2.0-beta.9/media-buy/product-discovery/proposal-negotiation',
+        permanent: false,
+      },
+    ];
+
+    const result = updateDocsConfig(config, '3.2.0-rc.0', '3.2-rc');
+
+    assert.equal(result.action, 'added');
+    assert.equal(result.sourceVersion, '3.2-beta');
+    assert.deepEqual(
+      config.navigation.versions.map((entry) => entry.version),
+      ['3.0', '3.2-rc', '3.2-beta', '2.5']
+    );
+    const added = config.navigation.versions.find((entry) => entry.version === '3.2-rc');
+    const strings = collectStrings(added.groups);
+    assert.ok(strings.includes('dist/docs/3.2.0-rc.0/reference/whats-new-in-3-2'));
+    assert.ok(
+      strings.includes(
+        'dist/docs/3.2.0-rc.0/media-buy/product-discovery/proposal-negotiation'
+      )
+    );
+    assert.deepEqual(
+      config.redirects.map((redirect) => redirect.destination),
+      [
+        '/dist/docs/3.2.0-rc.0/reference/whats-new-in-3-2',
+        '/dist/docs/3.2.0-rc.0/media-buy/product-discovery/proposal-negotiation',
+      ]
+    );
+    assert.equal(
+      config.banner.content,
+      'AdCP 3.2 preview is available — [see what is new →](/3.2)'
+    );
+  });
+
   test('throws a clear error when navigation.versions is empty', () => {
     assert.throws(
       () => updateDocsConfig({ navigation: { versions: [] } }, '3.1.0-rc.5', '3.1-rc'),

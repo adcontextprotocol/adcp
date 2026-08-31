@@ -18,6 +18,7 @@ import {
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import type { ModelRequest } from '../../../src/addie/model-providers/model-provider.js';
 import type { AddieTool } from '../../../src/addie/types.js';
+import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 
 function trace(id: string): FixedTraceCase {
   const value = FIXED_TRACE_SUITE.find((candidate) => candidate.id === id);
@@ -104,10 +105,11 @@ describe('executeFixedTraceToolLoop', () => {
       type: 'tool_result',
       tool_use_id: 'tool_1',
       content: expect.stringMatching(
-        /<tool_result_evidence status="ok">\nOfficial docs: AdCP uses task-based interactions between agents\.\n<\/tool_result_evidence>/,
+        /<tool_result_evidence status="ok">\nOfficial docs: A buyer agent calls a defined task on a seller agent with structured input\. The seller returns that task's structured response, including its status\.\n<\/tool_result_evidence>/,
       ),
     }]);
     expect(result.text).toBe('AdCP uses task-based interactions.');
+    expect(result.localReplacementReason).toBeNull();
     expect(result.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
     expect(result.tools).toEqual([{
       sequence: 1,
@@ -121,6 +123,36 @@ describe('executeFixedTraceToolLoop', () => {
     }]);
     expect(Object.isFrozen(result.tools[0].input)).toBe(true);
     expect(result.invocations).toHaveLength(2);
+  });
+
+  it('replaces unsupported provider prose after the synthetic source lookup fails', async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_1', name: 'search_docs', input: { query: 'package identifiers' },
+      }], 'tool_use', 'msg_1'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'text', text: 'The docs confirm it. See https://invented.example/docs.',
+      }], 'end_turn', 'msg_2'));
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create } },
+    } as AnthropicMessagesTransport);
+
+    const result = await executeFixedTraceToolLoop(
+      provider,
+      request('claude-test'),
+      trace('knowledge-tool-error'),
+      [tool('search_docs', ['query'])],
+    );
+
+    expect(result.text).toBe(FAILED_LOOKUP_EVIDENCE_RESPONSE);
+    expect(result.text).not.toContain('invented.example');
+    expect(result.localReplacementReason).toBe(
+      'Failed lookup evidence boundary enforced (search_docs)',
+    );
+    expect(result.tools).toEqual([expect.objectContaining({
+      name: 'search_docs',
+      resultStatus: 'recoverable_error',
+    })]);
   });
 
   it('simulates an explicitly confirmed mutation through the Gemini adapter', async () => {

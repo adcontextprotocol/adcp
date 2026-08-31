@@ -182,7 +182,8 @@ export interface AgentSigningKey {
 
 export interface CollectionSelector {
   publisher_domain: string;
-  collection_ids: string[];
+  /** Omitted = all collections declared in publisher_domain's adagents.json (bulk grant). */
+  collection_ids?: string[];
 }
 
 export interface PublisherPropertySelector {
@@ -277,6 +278,9 @@ export interface AdAgentsJson {
 export interface AuthorizationScope {
   property_id?: string;
   property_tags?: string[];
+  /** Domain-qualified collection selectors. Prefer this over collection_ids. */
+  collections?: CollectionSelector[];
+  /** Legacy host-publisher collection IDs. */
   collection_ids?: string[];
   placement_ids?: string[];
   placement_tags?: string[];
@@ -296,6 +300,7 @@ export interface AuthorizationResult {
     delegation_type?: string;
     exclusive?: boolean;
     countries?: string[];
+    collections?: CollectionSelector[];
     collection_ids?: string[];
     placement_ids?: string[];
     placement_tags?: string[];
@@ -793,6 +798,7 @@ export interface MemberBrandInfo {
   verified: boolean;
   // Extended fields resolved from brand.json
   name?: string;
+  tagline?: string;
   description?: string;
   contact?: { name?: string; email?: string; domain?: string };
   agent_types?: string[];

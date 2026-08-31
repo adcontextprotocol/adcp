@@ -1461,6 +1461,8 @@
 
     function renderMemberDetail(member, perspectives, registryContributions, githubUsername) {
       const content = document.getElementById('detail-content');
+      const detailTagline = member.tagline || member.resolved_brand?.tagline || '';
+      const detailDescription = member.description || member.resolved_brand?.description || '';
 
       const foundingBadgeHtml = member.is_founding_member
         ? '<span class="founding-member-badge detail-founding-badge">Founding Member</span>'
@@ -1510,7 +1512,7 @@
                   <h1>${escapeHtml(member.display_name)}</h1>
                   ${foundingBadgeHtml}
                 </div>
-                ${member.tagline ? `<p class="tagline">${escapeHtml(member.tagline)}</p>` : ''}
+                ${detailTagline ? `<p class="tagline">${escapeHtml(detailTagline)}</p>` : ''}
               </div>
               ${member.markets && member.markets.length > 0 ? `
                 <div class="detail-markets">
@@ -1526,10 +1528,10 @@
           </div>
         </div>
 
-        ${member.description ? `
+        ${detailDescription ? `
           <div class="detail-section">
             <h2>About</h2>
-            <p class="detail-description">${escapeHtml(member.description)}</p>
+            <p class="detail-description">${escapeHtml(detailDescription)}</p>
           </div>
         ` : ''}
 
