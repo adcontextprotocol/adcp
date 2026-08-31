@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/get-principal-response.json",
+  "title": "Get Principal Response",
+  "x-status": "experimental",
+  "description": "Result of reading the authenticated principal's standing configuration. Current responses return the complete credential-free configuration with its version. Unconfigured responses indicate the authenticated caller has no persisted connection. Failed responses deliberately cannot carry connection identifiers, versions, or configuration state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "title": "Current principal configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "current"
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for this authenticated caller relationship. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "configuration_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_principal replacement."
+            },
+            "configuration": {
+              "$ref": "/schemas/core/principal-state.json"
+            }
+          },
+          "required": ["kind", "principal_id", "configuration_version", "configuration"],
+          "additionalProperties": false
+        },
+        {
+          "title": "Unconfigured principal",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unconfigured"
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "title": "Failed principal read",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "errors"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["result"],
+  "additionalProperties": true,
+  "if": {
+    "properties": {
+      "result": {
+        "properties": {
+          "kind": { "const": "failed" }
+        },
+        "required": ["kind"]
+      }
+    },
+    "required": ["result"]
+  },
+  "then": {
+    "properties": {
+      "status": {
+        "enum": ["failed", "rejected"]
+      }
+    }
+  },
+  "examples": [
+    {
+      "description": "Current connection configuration with a superseded generation",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "current",
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+          "configuration": {
+            "notification_configs": [],
+            "reporting_destinations": [
+              {
+                "destination_id": "analytics-warehouse",
+                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+                "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
+                "state": "ready",
+                "configuration": {
+                  "pattern": "warehouse_materialization",
+                  "destination_id": "analytics-warehouse",
+                  "active": true,
+                  "provider": { "domain": "data-warehouse.example" },
+                  "transport": "bigquery",
+                  "location": "pinnacle-analytics.adcp_reporting",
+                  "accepted_verification_profiles": ["native_commit", "canonical_digest"]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Caller has no persisted connection",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "unconfigured"
+        }
+      }
+    }
+  ]
+}

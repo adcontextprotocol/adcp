@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/capabilities-changed-webhook.json",
   "title": "Capabilities Changed Webhook",
-  "description": "Agent-level webhook payload fired when the seller's advertised `get_adcp_capabilities` document materially changes. Registered through `sync_agent_notification_configs` using `event_types: [\"capabilities.changed\"]`. The payload is an invalidation signal, not a replacement capability document: receivers SHOULD re-run `get_adcp_capabilities`, compare the returned `adcp.capability_changes.capabilities_version`, and update their cache from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's `capabilities_version` is observable on read. Sellers SHOULD coalesce bursts of configuration changes and fire once for the post-change revision.",
+  "description": "Agent-level webhook payload fired when the seller's advertised get_adcp_capabilities document materially changes. Registered through sync_principal or the specialized sync_agent_notification_configs task using event_types: [capabilities.changed]. The payload is an invalidation signal, not a replacement capability document: receivers SHOULD re-run get_adcp_capabilities, compare the returned adcp.capability_changes.capabilities_version, and update their cache from the fresh response. Sellers MUST publish the new capability snapshot before firing so the webhook's capabilities_version is observable on read. Sellers SHOULD coalesce bursts of configuration changes and fire once for the post-change revision.",
   "type": "object",
   "properties": {
     "idempotency_key": {
@@ -31,7 +31,7 @@
     },
     "subscriber_id": {
       "type": "string",
-      "description": "Identifies which `sync_agent_notification_configs.notification_configs[]` entry is receiving this fire. Echoed verbatim from the entry's `subscriber_id`.",
+      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
       "minLength": 1,
       "maxLength": 64,
       "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
