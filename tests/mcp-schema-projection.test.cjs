@@ -32,6 +32,7 @@ const {
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
+  pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripPresentationAnnotations,
   stripModelContextAnnotations,
@@ -46,8 +47,12 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // Macro occurrence contracts and representation-set resolution add shared,
 // structurally enforced graphs to media-buy tasks. The 3.2 tracker contract
 // adds one seller-bound destination contract to build_creative; keep that
-// measured increase isolated to the creative profile while retaining the
-// 400 KiB media-buy ceiling and a tight prompt-view bound.
+// measured increase isolated to the creative profile with a tight
+// prompt-view bound. targeting_overlay.collection_selection (the committed
+// collection-selection echo contract) adds one shared inventory-selection
+// graph (~0.7 KiB per targeting-bearing request schema) to media-buy tasks;
+// concurrent schema slimming absorbed it, so the 400 KiB media-buy ceiling
+// holds (~394 KiB measured post-merge).
 const MODEL_CONTEXT_BUDGET_KIB = {
   'media-buy': 400,
   creative: 410,
@@ -207,6 +212,10 @@ test('model-context presentation keeps request shape and omits validation-only d
         type: 'object',
         additionalProperties: true,
       },
+      ext: {
+        type: 'object',
+        additionalProperties: true,
+      },
     },
     required: ['destination'],
     oneOf: [
@@ -229,7 +238,48 @@ test('model-context presentation keeps request shape and omits validation-only d
   assert.equal(projected.properties.exactMode.type, undefined);
   assert.equal(projected.properties.strict.additionalProperties, undefined);
   assert.equal(projected.properties.extensions.additionalProperties, true);
+  assert.equal(projected.properties.ext, undefined);
   assert.equal(projected.oneOf[1].not.required[0], 'mode');
+
+  const negotiated = stripModelContextAnnotations({
+    type: 'object',
+    properties: {
+      ext: {
+        type: 'object',
+        additionalProperties: true,
+        'x-adcp-model-context': 'include',
+      },
+    },
+  });
+  assert.deepEqual(negotiated.properties.ext, {
+    type: 'object',
+    additionalProperties: true,
+  });
+});
+
+test('model-context pruning removes only unreachable root definitions', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      kept: { $ref: '#/$defs/Kept' },
+    },
+    $defs: {
+      Kept: { $ref: '#/$defs/Nested' },
+      Nested: { type: 'string' },
+      Removed: { type: 'integer' },
+    },
+  };
+  assert.deepEqual(pruneUnusedRootDefinitions(source), {
+    type: 'object',
+    properties: {
+      kept: { $ref: '#/$defs/Kept' },
+    },
+    $defs: {
+      Kept: { $ref: '#/$defs/Nested' },
+      Nested: { type: 'string' },
+    },
+  });
+  assert.deepEqual(source.$defs.Removed, { type: 'integer' });
 });
 
 test('draft-07 projection converts dialect-specific keywords without tightening', () => {

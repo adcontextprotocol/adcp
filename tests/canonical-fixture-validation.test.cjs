@@ -115,7 +115,7 @@ function main() {
   // the product-envelope schema's additionalProperties:true would let pass.
   const STRICT_CANONICALS = [
     'image', 'html5', 'display_tag', 'image_carousel',
-    'video_hosted', 'video_vast', 'audio_hosted', 'audio_daast',
+    'video_hosted', 'video_vast', 'audio_hosted', 'audio_vast', 'audio_daast',
     'sponsored_placement', 'responsive_creative', 'agent_placement',
     'seller_rendered_stateful_display', 'coordinated_placements',
   ];

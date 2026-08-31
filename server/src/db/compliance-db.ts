@@ -2,6 +2,7 @@ import { query, getClient } from './client.js';
 import { decrypt as decryptToken } from './encryption.js';
 import { logger as baseLogger } from '../logger.js';
 import { CatalogEventsDatabase } from './catalog-events-db.js';
+import { ComplianceRefreshLeaseLostError } from './compliance-refresh-requests-db.js';
 
 const logger = baseLogger.child({ module: 'compliance-db' });
 const catalogEventsDb = new CatalogEventsDatabase();
@@ -287,6 +288,10 @@ export interface RecordComplianceRunInput {
    */
   triggered_org_id?: string | null;
   dry_run?: boolean;
+  /** Durable refresh operation that produced this run; makes lease recovery idempotent. */
+  refresh_operation_id?: string | null;
+  /** Lease token paired with refresh_operation_id for fenced persistence. */
+  refresh_operation_lease_token?: string | null;
   storyboard_statuses?: StoryboardStatusEntry[];
   /**
    * When true, this run is authoritative for the agent's full storyboard
@@ -575,11 +580,28 @@ export class ComplianceDatabase {
     run: ComplianceRun;
     statusTransition: { previous: ComplianceStatus; current: ComplianceStatus } | null;
     storyboardStatuses: StoryboardStatusEntry[];
+    replayedExisting: boolean;
   }> {
     const client = await getClient();
 
     try {
       await client.query('BEGIN');
+
+      if (input.refresh_operation_id || input.refresh_operation_lease_token) {
+        if (!input.refresh_operation_id || !input.refresh_operation_lease_token) {
+          throw new ComplianceRefreshLeaseLostError();
+        }
+        const lease = await client.query(
+          `SELECT 1
+             FROM agent_compliance_refresh_requests
+            WHERE id = $1
+              AND status = 'running'
+              AND lease_token = $2
+              AND lease_expires_at > NOW()`,
+          [input.refresh_operation_id, input.refresh_operation_lease_token],
+        );
+        if (lease.rowCount !== 1) throw new ComplianceRefreshLeaseLostError();
+      }
 
       // 1. Insert the run
       const runResult = await client.query(
@@ -588,8 +610,9 @@ export class ComplianceDatabase {
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
           observations_json, triggered_by, triggered_org_id, dry_run,
-          notices_json
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          notices_json, refresh_operation_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT (refresh_operation_id) DO NOTHING
         RETURNING *`,
         [
           input.agent_url,
@@ -610,9 +633,38 @@ export class ComplianceDatabase {
           input.triggered_org_id ?? null,
           input.dry_run ?? true,
           input.notices_json ? JSON.stringify(input.notices_json) : null,
+          input.refresh_operation_id ?? null,
         ],
       );
-      const run = runResult.rows[0] as ComplianceRun;
+      let run = runResult.rows[0] as ComplianceRun | undefined;
+      if (!run && input.refresh_operation_id) {
+        const existingRun = await client.query<ComplianceRun>(
+          'SELECT * FROM agent_compliance_runs WHERE refresh_operation_id = $1',
+          [input.refresh_operation_id],
+        );
+        run = existingRun.rows[0];
+        if (!run) {
+          throw new Error('Refresh operation conflict did not resolve to an existing compliance run');
+        }
+        const existingStatuses = await client.query<StoryboardStatusEntry>(
+          `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
+                  steps_passed, steps_total, failure_count, skipped_count,
+                  first_failed_step_id, first_failed_step_title,
+                  first_failed_step_task, first_failure_message
+             FROM agent_storyboard_status
+            WHERE agent_url = $1 AND run_id = $2
+            ORDER BY storyboard_id`,
+          [input.agent_url, run.id],
+        );
+        await client.query('COMMIT');
+        return {
+          run,
+          statusTransition: null,
+          storyboardStatuses: existingStatuses.rows,
+          replayedExisting: true,
+        };
+      }
+      if (!run) throw new Error('Compliance run insert returned no row');
 
       // 2. Compute new status
       const newStatus = this.computeStatus(input.overall_status);
@@ -885,13 +937,37 @@ export class ComplianceDatabase {
         adcp_version: s.adcp_version ?? input.adcp_version ?? null,
       }));
 
-      return { run, statusTransition: transition, storyboardStatuses };
+      return { run, statusTransition: transition, storyboardStatuses, replayedExisting: false };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {
       client.release();
     }
+  }
+
+  /** Recover immutable evidence after a refresh worker restarts post-persistence. */
+  async getRunForRefreshOperation(refreshOperationId: string): Promise<{
+    run: ComplianceRun;
+    storyboardStatuses: StoryboardStatusEntry[];
+  } | null> {
+    const runResult = await query<ComplianceRun>(
+      'SELECT * FROM agent_compliance_runs WHERE refresh_operation_id = $1',
+      [refreshOperationId],
+    );
+    const run = runResult.rows[0];
+    if (!run) return null;
+    const statuses = await query<StoryboardStatusEntry>(
+      `SELECT storyboard_id, requested_compliance_target, adcp_version, status,
+              steps_passed, steps_total, failure_count, skipped_count,
+              first_failed_step_id, first_failed_step_title,
+              first_failed_step_task, first_failure_message
+         FROM agent_storyboard_status
+        WHERE agent_url = $1 AND run_id = $2
+        ORDER BY storyboard_id`,
+      [run.agent_url, run.id],
+    );
+    return { run, storyboardStatuses: statuses.rows };
   }
 
   // ----- Status Queries -----
@@ -1097,6 +1173,25 @@ export class ComplianceDatabase {
    * window. This is a warm fallback for transient capability-discovery
    * failures; live discovery remains authoritative whenever it succeeds.
    */
+  /**
+   * Number of recorded compliance runs for an agent (all-time, including
+   * dry runs). Used as the persisted per-agent `storyboard_start_offset`
+   * for budget-limited heartbeat assessments (adcp#6632 /
+   * adcp-client#2639): the offset is applied modulo the runnable
+   * storyboard count, so any monotonically increasing integer distributes
+   * coverage across truncated runs — the run counter is exactly that, with
+   * no schema change.
+   */
+  async countComplianceRuns(agentUrl: string): Promise<number> {
+    const result = await query(
+      `SELECT COUNT(*)::int AS run_count FROM agent_compliance_runs WHERE agent_url = $1`,
+      [agentUrl],
+    );
+    const raw = result.rows[0]?.run_count;
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? 0), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
   async getRecentSupportedVersions(agentUrl: string, maxAgeHours = 7 * 24): Promise<string[]> {
     if (!Number.isInteger(maxAgeHours) || maxAgeHours <= 0) {
       throw new Error('maxAgeHours must be a positive integer');

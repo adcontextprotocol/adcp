@@ -484,16 +484,19 @@
     },
     "collections": {
       "type": "array",
-      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json.",
+      "description": "Collections available in this product. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
-        "$ref": "/schemas/core/collection-selector.json"
+        "allOf": [
+          { "$ref": "/schemas/core/collection-selector.json" },
+          { "required": ["collection_ids"] }
+        ]
       },
       "minItems": 1
     },
     "collection_targeting_allowed": {
       "type": "boolean",
       "default": false,
-      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list. When false, the product is a fixed bundle; when true, collection selection is a product-scoped overlay capability."
+      "description": "Whether buyers can select a subset of this product's collections through targeting_overlay.collection_list or targeting_overlay.collection_selection. When false, the product is a fixed bundle (a collection_selection that exactly restates the complete bundle remains an inherent match); when true, collection selection is a product-scoped overlay capability."
     },
     "list_applications": {
       "type": "array",

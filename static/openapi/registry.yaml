@@ -1554,9 +1554,9 @@ components:
                 type: array
                 items:
                   type: string
+                minItems: 1
             required:
               - publisher_domain
-              - collection_ids
         placement_ids:
           type: array
           items:
@@ -4030,7 +4030,9 @@ components:
           items:
             type: string
         collections:
-          type: array
+          type:
+            - array
+            - "null"
           items:
             type: object
             properties:
@@ -4043,7 +4045,6 @@ components:
                 minItems: 1
             required:
               - publisher_domain
-              - collection_ids
             additionalProperties: {}
         countries:
           type: array
@@ -7834,6 +7835,13 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
           content:
             application/json:
               schema:
@@ -8120,8 +8128,8 @@ paths:
   /api/registry/validate/product-authorization:
     post:
       operationId: validateProductAuthorization
-      summary: Validate product authorization
-      description: Check whether an agent is authorized to sell a product based on its publisher_properties.
+      summary: Validate product property coverage
+      description: Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.
       tags:
         - Authorization Lookups
       requestBody:
@@ -8141,7 +8149,7 @@ paths:
                 - publisher_properties
       responses:
         "200":
-          description: Authorization validation result
+          description: Publisher-property coverage result
           content:
             application/json:
               schema:
@@ -8151,13 +8159,180 @@ paths:
                     type: string
                   authorized:
                     type: boolean
+                  validation_scope:
+                    type: string
+                    enum:
+                      - publisher_properties_only
                   checked_at:
                     type: string
                 required:
                   - agent_url
                   - authorized
+                  - validation_scope
                   - checked_at
                 additionalProperties: {}
+  /api/registry/verify/supply-path:
+    post:
+      operationId: verifySupplyPath
+      summary: Verify an owner-sold supply path
+      description: "Joins the owner's and host's cached adagents.json manifests (plus the host's ads.txt/app-ads.txt inventorypartnerdomain lines when needed) and returns the verification state of one owner-sold carriage path, leg by leg. States follow the documented ladder: verified_owner_sold (host adagents.json authorizes the agent for the host property, collection-scoped), host_delegated (ads.txt inventorypartnerdomain + owner-side declarations, policy-gated), owner_attested (owner distribution claim only — discovery, never authorization), unverified. The response is evidence-bearing so callers can reproduce the verdict from the authoritative files; the registry cache is a convenience, not the trust root. For a live-fetch check of a file you just changed, use POST /api/adagents/validate."
+      tags:
+        - Authorization Lookups
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                owner_domain:
+                  type: string
+                  minLength: 1
+                  description: Channel owner's publisher domain — where the canonical collection is declared.
+                host_domain:
+                  type: string
+                  minLength: 1
+                  description: Host publisher domain — where the carrying property (e.g. CTV app) is declared.
+                agent_url:
+                  type: string
+                  minLength: 1
+                  description: Sales agent URL the buyer would transact with. Canonicalized server-side.
+                collection_id:
+                  type: string
+                  minLength: 1
+                  description: Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals).
+              required:
+                - owner_domain
+                - host_domain
+                - agent_url
+      responses:
+        "200":
+          description: Supply-path verification verdict with per-leg evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                    enum:
+                      - verified_owner_sold
+                      - host_delegated
+                      - owner_attested
+                      - unverified
+                  legs:
+                    type: object
+                    properties:
+                      owner_collection_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_distribution_carriage:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      owner_agent_declared:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      host_authorization:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                      inventory_partner_domain:
+                        type: object
+                        properties:
+                          ok:
+                            type: boolean
+                          failure:
+                            type: string
+                            description: Machine-readable reason this leg failed. Absent when ok.
+                          detail:
+                            type: string
+                            description: Human-readable diagnosis for the failing (or notable) leg.
+                        required:
+                          - ok
+                        additionalProperties: {}
+                    required:
+                      - owner_collection_declared
+                      - owner_distribution_carriage
+                      - owner_agent_declared
+                      - host_authorization
+                      - inventory_partner_domain
+                  owner_domain:
+                    type: string
+                  host_domain:
+                    type: string
+                  agent_url:
+                    type: string
+                  collection_id:
+                    type: string
+                  sources:
+                    type: object
+                    properties:
+                      owner_adagents_url:
+                        type: string
+                      host_adagents_url:
+                        type: string
+                      cached:
+                        type: boolean
+                        description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement."
+                    required:
+                      - owner_adagents_url
+                      - host_adagents_url
+                      - cached
+                  checked_at:
+                    type: string
+                required:
+                  - state
+                  - legs
+                  - owner_domain
+                  - host_domain
+                  - agent_url
+                  - sources
+                  - checked_at
+                additionalProperties: {}
+        "400":
+          description: Invalid request body or uncanonicalizable domain
   /api/registry/expand/product-identifiers:
     post:
       operationId: expandProductIdentifiers
@@ -10092,6 +10267,24 @@ paths:
                           items:
                             $ref: "#/components/schemas/SigningKey"
                           description: Publisher-pinned JWK set (authorized_agents[*].signing_keys) from the source adagents.json. Consumers verifying inbound TMP signatures key on kid → JWK. Null when the publisher declared no keys; consumers fall back to the agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).
+                        collections:
+                          type:
+                            - array
+                            - "null"
+                          items:
+                            type: object
+                            properties:
+                              publisher_domain:
+                                type: string
+                              collection_ids:
+                                type: array
+                                items:
+                                  type: string
+                                minItems: 1
+                            required:
+                              - publisher_domain
+                            additionalProperties: {}
+                          description: Collection constraints (authorized_agents[*].collections) from the source adagents.json. Null when the entry is unconstrained. When set, the row does NOT authorize the property unqualified — consumers MUST scope it to these selectors. A selector without collection_ids is a bulk grant for all collections declared at that publisher_domain.
                         override_applied:
                           type: boolean
                         override_reason:
@@ -10113,6 +10306,7 @@ paths:
                         - created_at
                         - updated_at
                         - signing_keys
+                        - collections
                         - override_applied
                         - override_reason
                   count:
@@ -11961,6 +12155,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            enum:
+              - respond-async
+            description: Return the durable refresh operation immediately instead of waiting up to 90 seconds for a legacy synchronous result.
+          required: false
+          description: Return the durable refresh operation immediately instead of waiting up to 90 seconds for a legacy synchronous result.
+          name: Prefer
+          in: header
       requestBody:
         content:
           application/json:
@@ -11972,7 +12175,7 @@ paths:
                   description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
       responses:
         "200":
-          description: Snapshot refreshed
+          description: Snapshot refreshed inside the bounded 90-second compatibility window
           content:
             application/json:
               schema:
@@ -12000,6 +12203,18 @@ paths:
                     type: string
                   error:
                     type: string
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                    description: Present when this response recovered a recently completed operation.
+                  test_session_id:
+                    type: string
+                    description: Stable test-session identity, present on recovered responses.
+                  status_url:
+                    type: string
+                    description: Durable operation URL, present on recovered responses.
+                  coalesced:
+                    type: boolean
                   compliance:
                     type: object
                     properties:
@@ -12041,11 +12256,15 @@ paths:
                       notices_count:
                         type: integer
                         description: Number of run-summary notices emitted by this run.
+                      auth_available:
+                        type: boolean
+                        description: True when the verifier resolved saved credentials for the compliance run.
                       error:
                         type: string
                         description: Reason compliance didn't run when `ran` is false.
                     required:
                       - ran
+                      - auth_available
                     description: Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot.
                 required:
                   - online
@@ -12056,6 +12275,57 @@ paths:
                   - oauth_required
                   - checked_at
                   - compliance
+        "202":
+          description: Refresh accepted and observable through the durable status resource
+          headers:
+            Location:
+              schema:
+                type: string
+                description: Relative URL of the durable refresh operation
+              required: true
+              description: Relative URL of the durable refresh operation
+            Retry-After:
+              schema:
+                type: string
+                description: Recommended polling interval in seconds
+              required: true
+              description: Recommended polling interval in seconds
+            Preference-Applied:
+              schema:
+                type: string
+                description: Present as respond-async when requested
+              required: false
+              description: Present as respond-async when requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                  test_session_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                  coalesced:
+                    type: boolean
+                    description: True when the same credential context already had an active refresh.
+                  status_url:
+                    type: string
+                  requested_at:
+                    type: string
+                    format: date-time
+                required:
+                  - refresh_operation_id
+                  - test_session_id
+                  - status
+                  - coalesced
+                  - status_url
+                  - requested_at
         "400":
           description: Invalid agent URL
           content:
@@ -12075,7 +12345,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Monitoring paused for this agent
+          description: Monitoring paused, or another credential context is already refreshing this agent
           content:
             application/json:
               schema:
@@ -12095,8 +12365,165 @@ paths:
                 required:
                   - error
                   - retry_after
+        "500":
+          description: Refresh failed after durable execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "502":
           description: Probe failed (timeout, DNS, OAuth wall, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Durable refresh queue unavailable or at capacity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
+    get:
+      operationId: getAgentRefreshOperation
+      summary: Get agent refresh status
+      description: Returns the durable lifecycle and, after success, the same snapshot result as the synchronous refresh response. The selected owner organization or a current registry administrator may read the operation. Poll no more frequently than the Retry-After value.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: operationId
+          in: path
+      responses:
+        "200":
+          description: Durable refresh lifecycle
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Present while queued or running
+              required: false
+              description: Present while queued or running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                  test_session_id:
+                    type: string
+                  agent_url:
+                    type: string
+                    format: uri
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                      - succeeded
+                      - failed
+                  attempts:
+                    type: integer
+                  requested_at:
+                    type: string
+                    format: date-time
+                  started_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  result:
+                    type:
+                      - object
+                      - "null"
+                    additionalProperties: {}
+                  error:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                    required:
+                      - code
+                      - message
+                required:
+                  - refresh_operation_id
+                  - test_session_id
+                  - agent_url
+                  - status
+                  - attempts
+                  - requested_at
+                  - started_at
+                  - completed_at
+                  - result
+                  - error
+        "400":
+          description: Invalid agent URL or operation ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Operation not found or not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Refresh status polling rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retry_after:
+                    type: integer
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+        "503":
+          description: Refresh status temporarily unavailable
           content:
             application/json:
               schema:

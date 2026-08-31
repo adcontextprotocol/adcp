@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/schema.json",
   "name": "AdCP - Ad Context Protocol",
   "banner": {
-    "content": "AdCP 3.2 beta and the TypeScript SDK beta are available — [start testing →](/dist/docs/3.2.0-beta.9/reference/3-2-beta)",
+    "content": "AdCP 3.2 preview is available — [see what's new and try the proposal lifecycle →](/3.2)",
     "dismissible": true
   },
   "description": "AdCP (Ad Context Protocol) is the open standard for agentic advertising. It defines how AI agents buy media, generate creatives, activate audiences, and enforce governance across platforms.",
@@ -2208,6 +2208,46 @@
     {
       "source": "/extensions/adcp/v3",
       "destination": "/docs/building/by-layer/L0/a2a-profile-extension"
+    },
+    {
+      "source": "/3.2",
+      "destination": "/dist/docs/3.2.0-beta.9/reference/whats-new-in-3-2",
+      "permanent": false
+    },
+    {
+      "source": "/3.2/try",
+      "destination": "/dist/docs/3.2.0-beta.9/media-buy/product-discovery/proposal-negotiation",
+      "permanent": false
+    },
+    {
+      "source": "/3.2/migrate",
+      "destination": "/dist/docs/3.2.0-beta.9/reference/migration/3-1-to-3-2",
+      "permanent": false
+    },
+    {
+      "source": "/3.2/sdk",
+      "destination": "/dist/docs/3.2.0-beta.9/building/by-layer/L4/choose-your-sdk",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/whats-new-in-3-2",
+      "destination": "/dist/docs/3.2.0-beta.9/reference/whats-new-in-3-2",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/3-2-beta",
+      "destination": "/dist/docs/3.2.0-beta.9/reference/3-2-beta",
+      "permanent": false
+    },
+    {
+      "source": "/docs/reference/migration/3-1-to-3-2",
+      "destination": "/dist/docs/3.2.0-beta.9/reference/migration/3-1-to-3-2",
+      "permanent": false
+    },
+    {
+      "source": "/docs/media-buy/product-discovery/proposal-negotiation",
+      "destination": "/dist/docs/3.2.0-beta.9/media-buy/product-discovery/proposal-negotiation",
+      "permanent": false
     },
     {
       "source": "/docs/intro",

@@ -16,6 +16,10 @@ const AUDIO_DOC = path.join(ROOT, 'docs/creative/channels/audio.mdx');
 const RADIO_DOC = path.join(ROOT, 'docs/creative/channels/radio.mdx');
 const DOOH_DOC = path.join(ROOT, 'docs/creative/channels/dooh.mdx');
 const SCHEMA_BASE_DIR = path.join(ROOT, 'static/schemas/source');
+const AUDIO_VAST = path.join(
+  ROOT,
+  'static/schemas/source/formats/canonical/audio_vast.json'
+);
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -113,6 +117,34 @@ test('streaming audio example declares and reports its loudness profile', () => 
   assert.equal(manifest.assets.audio_main.true_peak_dbfs, -2);
 });
 
+test('audio VAST recommends 4.1+ while preserving declared legacy compatibility', () => {
+  const schema = readJson(AUDIO_VAST);
+  const examples = jsonExamples(AUDIO_DOC);
+  const declaration = examples.find(example =>
+    example.format_option_id === 'streaming_audio_vast_30s'
+  );
+  const manifest = examples.find(example =>
+    example.$schema?.endsWith('/core/creative-manifest.json')
+      && example.format_kind === 'audio_vast'
+  );
+
+  assert.deepEqual(schema.properties.slots.default, [
+    { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
+    { asset_group_id: 'landing_page_url', asset_type: 'url', required: false },
+  ]);
+  assert.deepEqual(declaration.params.vast_versions, ['4.1', '4.2', '4.3']);
+  assert.deepEqual(declaration.params.media_file_requirements.mime_types, [
+    'audio/mpeg',
+    'audio/aac',
+  ]);
+  assert.equal(manifest.assets.vast_tag.asset_type, 'vast');
+  assert.equal(manifest.assets.vast_tag.vast_version, '4.3');
+  assert.match(schema['x-adcp-validation'].verifier_constraints.audio_profile, /Linear/);
+  assert.match(schema['x-adcp-validation'].verifier_constraints.audio_profile, /adType/);
+  assert.match(schema.properties.vast_versions.description, /legacy audio interoperability/);
+  assert.match(schema.properties.vast_versions.description, /4\.1/);
+});
+
 test('radio manifest uses industry identifiers without tracker or tag assets', () => {
   const examples = jsonExamples(RADIO_DOC);
   const manifest = examples.find(example =>
@@ -145,7 +177,8 @@ test('audio and radio guidance preserves loudness and normalization semantics', 
   assert.match(audio, /Platform normalization happens after source-asset validation/);
   assert.match(radio, /no renderer in which a VAST\/DAAST tag/);
   assert.match(radio, /do not add tracker slots/);
-  assert.match(radio, /Standardized audio quartile and completion tag events use `audio_daast`/);
+  assert.match(radio, /Standardized audio quartile and completion tag events use `audio_vast`/);
+  assert.match(radio, /or `audio_daast` for DAAST delivery/);
 });
 
 test('audio-only DOOH example preserves venue context and canonical audio semantics', async () => {

@@ -174,6 +174,46 @@ describe('CollectionCatalogDatabase integration', () => {
     expect(afterIdempotentFeed.events.filter((event) => event.actor === 'test:collections:authoritative')).toHaveLength(1);
   });
 
+  it('preserves property-only FAST channel carriage during projection', async () => {
+    await publisherDb.upsertAdagentsCache({
+      domain: TEST_PUB,
+      manifest: {
+        authorized_agents: [],
+        collections: [{
+          collection_id: 'retro_news',
+          name: 'Acme Retro News',
+          kind: 'channel',
+          distribution: [{
+            publisher_domain: 'hoststream.example',
+            property_ids: ['hoststream_ctv'],
+          }],
+        }],
+      },
+      eventsDb,
+      collectionEventActor: 'test:collections:fast-channel',
+    });
+
+    const stored = await pool.query<{ collection_json: Record<string, unknown> }>(
+      `SELECT collection_json
+         FROM catalog_collections
+        WHERE publisher_domain = $1 AND collection_id = 'retro_news'`,
+      [TEST_PUB],
+    );
+    expect(stored.rows[0]?.collection_json).toMatchObject({
+      kind: 'channel',
+      distribution: [{
+        publisher_domain: 'hoststream.example',
+        property_ids: ['hoststream_ctv'],
+      }],
+    });
+
+    const feed = await eventsDb.queryFeed(null, ['collection.*'], 10);
+    if ('error' in feed) throw new Error(feed.message);
+    const created = feed.events.find((event) => event.actor === 'test:collections:fast-channel');
+    expect(created?.payload.identifiers).toEqual([]);
+    expect(validateRegistryEvent(eventForSchema(created!))).toBe(true);
+  });
+
   it('retires renamed collections and lets the new collection reclaim the same identifier in one crawl', async () => {
     await publisherDb.upsertAdagentsCache({
       domain: TEST_PUB,

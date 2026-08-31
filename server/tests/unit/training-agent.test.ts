@@ -2693,6 +2693,80 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('validates the canonical audio_vast slot contract', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const manifest = {
+      format_kind: 'audio_vast',
+      assets: {
+        vast_tag: {
+          asset_type: 'vast',
+          delivery_type: 'url',
+          url: 'https://vast.acme.example/audio.xml',
+          vast_version: '4.3',
+        },
+      },
+    };
+
+    const passing = await simulateCallTool(server, 'validate_input', {
+      manifest,
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(passing.result.results).toEqual([
+      { target: { kind: 'canonical', id: 'audio_vast' }, result_kind: 'validated_pass' },
+    ]);
+
+    const failing = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        ...manifest,
+        assets: {
+          vast_tag: {
+            asset_type: 'daast',
+            delivery_type: 'url',
+            url: 'https://vast.acme.example/audio.xml',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(failing.result.results[0]).toMatchObject({
+      target: { kind: 'canonical', id: 'audio_vast' },
+      result_kind: 'validated_fail',
+      violations: [
+        expect.objectContaining({
+          rule: 'asset_type',
+          field: 'assets.vast_tag.asset_type',
+          expected: 'vast',
+          predicted: 'daast',
+        }),
+      ],
+    });
+
+    const missingVersion = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        ...manifest,
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.acme.example/audio.xml',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(missingVersion.result.results[0]).toMatchObject({
+      target: { kind: 'canonical', id: 'audio_vast' },
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({
+          rule: 'schema',
+          field: 'manifest.assets.vast_tag',
+          expected: "must have required property 'vast_version'",
+        }),
+      ]),
+    });
+  });
+
   it('routes validation through an advertised capability ID', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {
@@ -17782,6 +17856,46 @@ describe('proposal lifecycle', () => {
     ).toBeUndefined();
     return finalized.proposal as Record<string, unknown>;
   }
+
+  it('isolates anonymous proposal state by trusted chat principal', async () => {
+    const principalA: TrainingContext = { mode: 'training', principal: 'anonymous-chat:thread-a' };
+    const principalB: TrainingContext = { mode: 'training', principal: 'anonymous-chat:thread-b' };
+    const requested = await executeTrainingAgentTool('request_proposals', {
+      idempotency_key: 'anonymous-thread-a-request-0001',
+      brand: { domain: 'anonymous-isolation.example' },
+      brief: 'Plan a social engagement display campaign',
+    }, principalA);
+    expect(requested.success, requested.error).toBe(true);
+    const proposal = (requested.data?.proposals as Array<Record<string, unknown>>)[0];
+
+    const crossPrincipal = await executeTrainingAgentTool('refine_proposals', {
+      idempotency_key: 'anonymous-thread-b-refine-0001',
+      refinements: [{
+        proposal_id: proposal.proposal_id,
+        action: 'revise',
+        ask: 'Change a proposal from another anonymous chat.',
+      }],
+    }, principalB);
+    expect(crossPrincipal.success, crossPrincipal.error).toBe(true);
+    expect((crossPrincipal.data?.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+      source_proposal_id: proposal.proposal_id,
+      outcome: 'unable',
+    });
+
+    const samePrincipal = await executeTrainingAgentTool('refine_proposals', {
+      idempotency_key: 'anonymous-thread-a-refine-0001',
+      refinements: [{
+        proposal_id: proposal.proposal_id,
+        action: 'revise',
+        ask: 'Prefer social inventory while preserving the budget.',
+      }],
+    }, principalA);
+    expect(samePrincipal.success, samePrincipal.error).toBe(true);
+    expect((samePrincipal.data?.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+      source_proposal_id: proposal.proposal_id,
+      outcome: 'partial',
+    });
+  });
 
   it('returns structured INVALID_REQUEST when canonical root constraints reject a discovery-valid call', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);

@@ -459,9 +459,14 @@ mechanism supplied it.
 
 Properties, collections, and placements follow the same model as audience and
 geographic targeting. Select a targetable placement with
-`targeting_overlay.placement_selection`; use
+`targeting_overlay.placement_selection`, and select collections with
+`targeting_overlay.collection_selection` (complete selector sets with explicit
+`collection_ids`; partial selection requires the product's
+`collection_targeting_allowed`). Use
 `creative_assignments[].placement_refs` only to route creatives among the
-placements already selected by package targeting.
+placements already selected by package targeting. On readback, sellers echo
+the committed placement and collection selections in the same fields so the
+purchased inventory is auditable.
 
 ### No raw ad-server key/value targeting
 

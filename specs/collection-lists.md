@@ -145,7 +145,7 @@ Filters narrow the resolved list. Applied after base collection selection.
 | `genres_exclude` | string[] | OR (exclude any match) | Exclude collections tagged with any of these genres |
 | `genres_include` | string[] | OR (include any match) | Include only collections with any of these genres |
 | `genre_taxonomy` | string | — | Taxonomy for genre filter values (e.g., `iab_content_3.0`) |
-| `kinds` | string[] | OR | Filter to collection kinds (series, publication, event_series, rotation) |
+| `kinds` | string[] | OR | Filter to collection kinds (series, publication, event_series, rotation, channel) |
 | `exclude_distribution_ids` | DistributionIdentifier[] | OR | Always exclude collections with these distribution IDs |
 | `production_quality` | string[] | OR | Filter by production quality (professional, prosumer, ugc) |
 
@@ -209,7 +209,7 @@ The property registry's fact-graph model extends naturally to collections:
 CREATE TABLE registry_collections (
   collection_rid UUID PRIMARY KEY,
   name TEXT NOT NULL,
-  kind TEXT CHECK (kind IN ('series', 'publication', 'event_series', 'rotation')),
+  kind TEXT CHECK (kind IN ('series', 'publication', 'event_series', 'rotation', 'channel')),
   genre TEXT[],
   genre_taxonomy TEXT,
   content_rating_system TEXT,

@@ -18,6 +18,7 @@ import {
 } from '../tool-result-contract.js';
 import type { AddieTool } from '../types.js';
 import type {
+  ModelMessage,
   ModelProvider,
   ModelProviderToolCallContent,
   ModelProviderToolReceipt,
@@ -25,6 +26,11 @@ import type {
   ModelToolCallContent,
   ModelToolResultContent,
 } from './model-provider.js';
+import {
+  appendModelTurnContinuation,
+  type AcceptedModelTurn,
+  type ModelTurnAction,
+} from './model-turn.js';
 
 const logger = createLogger('addie-tool-orchestration');
 const definitionSnapshots = new WeakMap<AddieTool, AddieTool>();
@@ -101,6 +107,26 @@ export interface AddieProviderToolExecution {
   result: ModelProviderToolResultContent;
   receipt: ModelProviderToolReceipt;
   execution: ToolExecution;
+}
+
+export interface AddieAcceptedTurnDecision {
+  action: ModelTurnAction;
+  text: string;
+  hasCustomToolCalls: boolean;
+}
+
+export type AddieAcceptedTurnEvent =
+  | { type: 'provider_tool'; recorded: AddieProviderToolExecution }
+  | AddieToolExecutionEvent
+  | { type: 'turn_decision'; decision: AddieAcceptedTurnDecision };
+
+export interface OrchestrateAcceptedAddieTurnOptions {
+  turn: AcceptedModelTurn;
+  provider: Pick<ModelProvider, 'id' | 'deriveProviderToolReceipt'>;
+  executionMode: AddieExecutionMode;
+  messages: ModelMessage[];
+  ledger: AddieToolExecutionLedger;
+  execute: AddieToolExecutor;
 }
 
 /**
@@ -188,6 +214,59 @@ export class AddieToolExecutionLedger {
     this.completedExecutions.push(event.executed.execution);
     this.pendingCustomSequence = null;
   }
+}
+
+/**
+ * Apply one accepted provider-neutral turn to Addie's shared tool and message
+ * state. Delivery adapters consume the emitted events for logging/UI only;
+ * this boundary owns provider receipts, sequential custom-tool execution, and
+ * the exact assistant/tool-result continuation written to the next request.
+ */
+export async function* orchestrateAcceptedAddieTurn(
+  options: OrchestrateAcceptedAddieTurnOptions,
+): AsyncGenerator<AddieAcceptedTurnEvent> {
+  const {
+    turn,
+    provider,
+    executionMode,
+    messages,
+    ledger,
+    execute,
+  } = options;
+
+  const providerExecutions = ledger.recordProviderResults(
+    provider,
+    turn.providerToolCalls,
+    turn.providerToolResults,
+    executionMode,
+  );
+  for (const recorded of providerExecutions) {
+    yield { type: 'provider_tool', recorded };
+  }
+
+  const decision: AddieAcceptedTurnDecision = Object.freeze({
+    action: turn.action,
+    text: turn.textBlocks.map((block) => block.text).join('\n\n'),
+    hasCustomToolCalls: turn.toolCalls.length > 0,
+  });
+  yield { type: 'turn_decision', decision };
+
+  if (decision.action === 'continue' || decision.action === 'continue_provider_tools') {
+    appendModelTurnContinuation(messages, turn.response);
+    return;
+  }
+
+  if (decision.action !== 'execute_tools') return;
+
+  const toolResults: ModelToolResultContent[] = [];
+  for await (const event of ledger.executeCustomCalls(
+    turn.toolCalls,
+    execute,
+    toolResults,
+  )) {
+    yield event;
+  }
+  appendModelTurnContinuation(messages, turn.response, toolResults);
 }
 
 interface RegisteredTool {

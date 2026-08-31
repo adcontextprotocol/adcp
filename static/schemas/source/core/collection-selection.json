@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/collection-selection.json",
+  "title": "Collection Selection",
+  "description": "Complete purchased collection set within a product. Mode selected names the complete required set (partial selection requires product collection_targeting_allowed: true; exactly restating the full bundle is an inherent match); mode default accepts the product's full bundle. Package readback MUST echo the committed selection here as concrete selectors, materializing any collection_list composition. Sellers reject unknown, duplicate, or partially applicable selectors rather than silently changing the selection.",
+  "type": "object",
+  "discriminator": {
+    "propertyName": "mode"
+  },
+  "oneOf": [
+    {
+      "title": "Selected collections",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "selected"
+        },
+        "collections": {
+          "type": "array",
+          "description": "Complete required collection set as domain-qualified selectors with explicit collection_ids; the domain-only bulk-grant form is authorization scoping, not selection. publisher_domain may be an external channel owner's domain.",
+          "items": {
+            "allOf": [
+              { "$ref": "/schemas/core/collection-selector.json" },
+              { "required": ["collection_ids"] }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["mode", "collections"],
+      "additionalProperties": false
+    },
+    {
+      "title": "Product default collections",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "const": "default"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["mode"],
+      "additionalProperties": false
+    }
+  ]
+}

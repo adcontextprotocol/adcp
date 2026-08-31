@@ -36,6 +36,8 @@ import {
   withHostedStoryboardRunOptions,
   withHostedTestOptions,
   selectCanonicalHostedComplianceTargetForProfile,
+  agentAdvertisesBadgeEligibleHostedComplianceTarget,
+  badgeEligibleVersionsForHostedComplianceTarget,
 } from "../services/hosted-compliance-version.js";
 import {
   comply,
@@ -62,7 +64,39 @@ import { buildAaoVerificationBlock } from "../services/aao-verification-enrichme
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
-import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
+import { validateCrawlDomain, validateExternalUrl, safeFetchAxiosLike } from "../utils/url-security.js";
+import { verifySupplyPath, parseInventoryPartnerDomains } from "../services/supply-path-verifier.js";
+import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
+import { AAO_UA_VALIDATOR } from "../config/user-agents.js";
+
+/**
+ * Union of inventorypartnerdomain= declarations from the host's
+ * app-ads.txt and ads.txt. Returns null only when neither file could be
+ * fetched — distinct from fetched-and-absent (empty array), which the
+ * verifier treats as an explicit "not declared".
+ */
+async function fetchHostInventoryPartnerDomains(hostDomain: string): Promise<string[] | null> {
+  const partners = new Set<string>();
+  let anyFetched = false;
+  for (const file of ["app-ads.txt", "ads.txt"]) {
+    try {
+      const response = await safeFetchAxiosLike(`https://${hostDomain}/${file}`, {
+        timeoutMs: 10000,
+        maxRedirects: 3,
+        headers: { Accept: "text/plain", "User-Agent": AAO_UA_VALIDATOR },
+      });
+      if (response.status === 200) {
+        anyFetched = true;
+        for (const partner of parseInventoryPartnerDomains(response.data.toString("utf-8"))) {
+          partners.add(partner);
+        }
+      }
+    } catch {
+      // Unreachable file — treated as unavailable unless the other resolves.
+    }
+  }
+  return anyFetched ? [...partners] : null;
+}
 import {
   projectPublicComplianceNotices,
   type PublicComplianceNotice,
@@ -173,6 +207,13 @@ import {
   CrawlQueueCapacityError,
   CrawlRequestRateLimitError,
 } from "../db/publisher-crawl-requests-db.js";
+import {
+  ComplianceRefreshQueueCapacityError,
+  ComplianceRefreshInProgressError,
+  ComplianceRefreshRateLimitError,
+  type ClaimedComplianceRefreshRequest,
+} from "../db/compliance-refresh-requests-db.js";
+import { ComplianceRefreshQueue } from "../services/compliance-refresh-queue.js";
 
 type PublisherBrandSummary = {
   name?: string;
@@ -727,6 +768,9 @@ export interface RegistryApiConfig {
   };
   requireAuth?: RequestHandler;
   optionalAuth?: RequestHandler;
+  refreshLegacyWaitMs?: number;
+  refreshPollIntervalMs?: number;
+  refreshQueueIntervalMs?: number;
 }
 
 function serializeBrandValidation(
@@ -1843,6 +1887,9 @@ registry.registerPath({
     403: { description: "Admin access required", content: { "application/json": { schema: ErrorSchema } } },
     429: {
       description: "Rate limit exceeded",
+      headers: z.object({
+        "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
+      }),
       content: {
         "application/json": {
           schema: z.object({
@@ -1957,9 +2004,9 @@ registry.registerPath({
   method: "post",
   path: "/api/registry/validate/product-authorization",
   operationId: "validateProductAuthorization",
-  summary: "Validate product authorization",
+  summary: "Validate product property coverage",
   description:
-    "Check whether an agent is authorized to sell a product based on its publisher_properties.",
+    "Checks whether an agent covers a product's publisher_properties. This endpoint does not validate collection, placement, country, or time qualifiers and must not be used as full product authorization proof; validate those qualifiers against the publisher's authoritative adagents.json.",
   tags: ["Authorization Lookups"],
   request: {
     body: {
@@ -1974,7 +2021,73 @@ registry.registerPath({
     },
   },
   responses: {
-    200: { description: "Authorization validation result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), checked_at: z.string() }).passthrough() } } },
+    200: { description: "Publisher-property coverage result", content: { "application/json": { schema: z.object({ agent_url: z.string(), authorized: z.boolean(), validation_scope: z.literal("publisher_properties_only"), checked_at: z.string() }).passthrough() } } },
+  },
+});
+
+const SupplyPathLegSchema = z
+  .object({
+    ok: z.boolean(),
+    failure: z.string().optional().openapi({ description: "Machine-readable reason this leg failed. Absent when ok." }),
+    detail: z.string().optional().openapi({ description: "Human-readable diagnosis for the failing (or notable) leg." }),
+  })
+  .passthrough();
+
+const VerifySupplyPathRequestSchema = z.object({
+  owner_domain: z.string().min(1).openapi({ description: "Channel owner's publisher domain — where the canonical collection is declared." }),
+  host_domain: z.string().min(1).openapi({ description: "Host publisher domain — where the carrying property (e.g. CTV app) is declared." }),
+  agent_url: z.string().min(1).openapi({ description: "Sales agent URL the buyer would transact with. Canonicalized server-side." }),
+  collection_id: z.string().min(1).optional().openapi({ description: "Owner-assigned collection ID. Omit to verify the path at domain level (bulk deals)." }),
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/verify/supply-path",
+  operationId: "verifySupplyPath",
+  summary: "Verify an owner-sold supply path",
+  description:
+    "Joins the owner's and host's cached adagents.json manifests (plus the host's ads.txt/app-ads.txt " +
+    "inventorypartnerdomain lines when needed) and returns the verification state of one owner-sold " +
+    "carriage path, leg by leg. States follow the documented ladder: verified_owner_sold (host " +
+    "adagents.json authorizes the agent for the host property, collection-scoped), host_delegated " +
+    "(ads.txt inventorypartnerdomain + owner-side declarations, policy-gated), owner_attested " +
+    "(owner distribution claim only — discovery, never authorization), unverified. The response is " +
+    "evidence-bearing so callers can reproduce the verdict from the authoritative files; the registry " +
+    "cache is a convenience, not the trust root. For a live-fetch check of a file you just changed, " +
+    "use POST /api/adagents/validate.",
+  tags: ["Authorization Lookups"],
+  request: {
+    body: { content: { "application/json": { schema: VerifySupplyPathRequestSchema } } },
+  },
+  responses: {
+    200: {
+      description: "Supply-path verification verdict with per-leg evidence",
+      content: {
+        "application/json": {
+          schema: z.object({
+            state: z.enum(["verified_owner_sold", "host_delegated", "owner_attested", "unverified"]),
+            legs: z.object({
+              owner_collection_declared: SupplyPathLegSchema,
+              owner_distribution_carriage: SupplyPathLegSchema,
+              owner_agent_declared: SupplyPathLegSchema,
+              host_authorization: SupplyPathLegSchema,
+              inventory_partner_domain: SupplyPathLegSchema,
+            }),
+            owner_domain: z.string(),
+            host_domain: z.string(),
+            agent_url: z.string(),
+            collection_id: z.string().optional(),
+            sources: z.object({
+              owner_adagents_url: z.string(),
+              host_adagents_url: z.string(),
+              cached: z.boolean().openapi({ description: "true: manifests came from the registry's crawl cache. Re-derive from the URLs above for enforcement." }),
+            }),
+            checked_at: z.string(),
+          }).passthrough(),
+        },
+      },
+    },
+    400: { description: "Invalid request body or uncanonicalizable domain" },
   },
 });
 
@@ -2753,8 +2866,12 @@ const AuthorizationEventPayloadSchema = z
     property_id_slug: z.string().nullable().optional().openapi({ description: "Publisher-local property id for materialized per-property authorization rows." }),
     placement_ids: z.array(z.string()).optional(),
     placement_tags: z.array(z.string()).optional(),
+    // Nullable because caa_event_payload emits {"collections": null} on
+    // base-row events for unconstrained entries (the common case). A
+    // selector without collection_ids is the bulk-grant form.
     collections: z
-      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1) }).passthrough())
+      .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+      .nullable()
       .optional(),
     countries: z.array(z.string()).optional(),
     delegation_type: z.string().optional(),
@@ -2971,6 +3088,17 @@ const AuthorizationRowSchema = z.object({
       "Null when the publisher declared no keys; consumers fall back to the " +
       "agent-hosted JWKS per spec R-2 (docs/governance/property/adagents.mdx).",
   }),
+  collections: z
+    .array(z.object({ publisher_domain: z.string(), collection_ids: z.array(z.string()).min(1).optional() }).passthrough())
+    .nullable()
+    .openapi({
+      description:
+        "Collection constraints (authorized_agents[*].collections) from the source " +
+        "adagents.json. Null when the entry is unconstrained. When set, the row does " +
+        "NOT authorize the property unqualified — consumers MUST scope it to these " +
+        "selectors. A selector without collection_ids is a bulk grant for all " +
+        "collections declared at that publisher_domain.",
+    }),
   override_applied: z.boolean(),
   override_reason: z.string().nullable(),
 });
@@ -3913,6 +4041,11 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fvastlint.org%2Fmcp" }),
     }),
+    headers: z.object({
+      Prefer: z.literal("respond-async").optional().openapi({
+        description: "Return the durable refresh operation immediately instead of waiting up to 90 seconds for a legacy synchronous result.",
+      }),
+    }),
     body: {
       content: {
         "application/json": {
@@ -3925,7 +4058,7 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: "Snapshot refreshed",
+      description: "Snapshot refreshed inside the bounded 90-second compatibility window",
       content: {
         "application/json": {
           schema: z.object({
@@ -3937,6 +4070,10 @@ registry.registerPath({
             oauth_required: z.boolean(),
             checked_at: z.string(),
             error: z.string().optional(),
+            refresh_operation_id: z.string().uuid().optional().openapi({ description: "Present when this response recovered a recently completed operation." }),
+            test_session_id: z.string().optional().openapi({ description: "Stable test-session identity, present on recovered responses." }),
+            status_url: z.string().optional().openapi({ description: "Durable operation URL, present on recovered responses." }),
+            coalesced: z.boolean().optional(),
             compliance: z.object({
               ran: z.boolean().openapi({ description: "True if the full storyboard suite ran and agent_storyboard_status was updated. False when ownership couldn't be resolved, the agent reported auth_required, or the compliance call itself failed." }),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
@@ -3950,8 +4087,29 @@ registry.registerPath({
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
               observations_count: z.number().int().optional().openapi({ description: "Number of advisory observations emitted by this run." }),
               notices_count: z.number().int().optional().openapi({ description: "Number of run-summary notices emitted by this run." }),
+              auth_available: z.boolean().openapi({ description: "True when the verifier resolved saved credentials for the compliance run." }),
               error: z.string().optional().openapi({ description: "Reason compliance didn't run when `ran` is false." }),
             }).openapi({ description: "Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot." }),
+          }),
+        },
+      },
+    },
+    202: {
+      description: "Refresh accepted and observable through the durable status resource",
+      headers: z.object({
+        Location: z.string().openapi({ description: "Relative URL of the durable refresh operation" }),
+        "Retry-After": z.string().openapi({ description: "Recommended polling interval in seconds" }),
+        "Preference-Applied": z.string().optional().openapi({ description: "Present as respond-async when requested" }),
+      }),
+      content: {
+        "application/json": {
+          schema: z.object({
+            refresh_operation_id: z.string().uuid(),
+            test_session_id: z.string(),
+            status: z.enum(["queued", "running"]),
+            coalesced: z.boolean().openapi({ description: "True when the same credential context already had an active refresh." }),
+            status_url: z.string(),
+            requested_at: z.string().datetime(),
           }),
         },
       },
@@ -3959,7 +4117,7 @@ registry.registerPath({
     400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized — must be owner or AAO admin", content: { "application/json": { schema: ErrorSchema } } },
-    409: { description: "Monitoring paused for this agent", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Monitoring paused, or another credential context is already refreshing this agent", content: { "application/json": { schema: ErrorSchema } } },
     429: {
       description: "Rate limit exceeded",
       content: {
@@ -3971,7 +4129,70 @@ registry.registerPath({
         },
       },
     },
+    500: { description: "Refresh failed after durable execution", content: { "application/json": { schema: ErrorSchema } } },
     502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
+    503: { description: "Durable refresh queue unavailable or at capacity", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/agents/{encodedUrl}/refreshes/{operationId}",
+  operationId: "getAgentRefreshOperation",
+  summary: "Get agent refresh status",
+  description:
+    "Returns the durable lifecycle and, after success, the same snapshot result as the synchronous refresh response. The selected owner organization or a current registry administrator may read the operation. Poll no more frequently than the Retry-After value.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+      operationId: z.string().uuid(),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Durable refresh lifecycle",
+      headers: z.object({
+        "Retry-After": z.string().optional().openapi({ description: "Present while queued or running" }),
+      }),
+      content: {
+        "application/json": {
+          schema: z.object({
+            refresh_operation_id: z.string().uuid(),
+            test_session_id: z.string(),
+            agent_url: z.string().url(),
+            status: z.enum(["queued", "running", "succeeded", "failed"]),
+            attempts: z.number().int(),
+            requested_at: z.string().datetime(),
+            started_at: z.string().datetime().nullable(),
+            completed_at: z.string().datetime().nullable(),
+            result: z.record(z.string(), z.unknown()).nullable(),
+            error: z.object({ code: z.string(), message: z.string() }).nullable(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL or operation ID", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "Operation not found or not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Refresh status polling rate limit exceeded",
+      headers: z.object({
+        "Retry-After": z.string().openapi({ description: "Seconds to wait before retrying" }),
+      }),
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            message: z.string().optional(),
+            retry_after: z.number().int().optional(),
+            retryAfter: z.number().int().optional(),
+          }),
+        },
+      },
+    },
+    503: { description: "Refresh status temporarily unavailable", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -4785,7 +5006,11 @@ function invalidBadgeRoleBody(role: string) {
   };
 }
 
-export function createRegistryApiRouters(config: RegistryApiConfig): { router: Router; v1AgentsRouter: Router } {
+export function createRegistryApiRouters(config: RegistryApiConfig): {
+  router: Router;
+  v1AgentsRouter: Router;
+  complianceRefreshQueue: ComplianceRefreshQueue;
+} {
   const router = Router();
   const {
     brandManager,
@@ -7423,30 +7648,438 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  // Per-agent refresh rate limits. In-memory; resets on deploy. 60 seconds
-  // per agent URL — owners iterating on their own agent (fix DNS, retry,
-  // fix something else, retry) need a tight loop. The /crawl-request 5-min
-  // limit is for full domain re-crawls; this is per-agent owner-initiated.
-  // The per-user hourly limit is local to this endpoint (separate counter
-  // from the one /crawl-request uses) — keeps the two surfaces decoupled.
-  const refreshAgentRateLimits = new Map<string, number>();
-  const refreshUserCounts = new Map<string, { count: number; windowStart: number }>();
+  // Refresh admission and execution are durable because the full compliance
+  // suite can outlive both the public edge timeout and a rolling deploy.
+  // The queue stores only owner/requester references. Saved credential
+  // material is resolved again after a worker claims the operation.
   const REFRESH_AGENT_RATE_LIMIT_MS = 60 * 1000;
   const REFRESH_USER_LIMIT = 30;
   const REFRESH_USER_WINDOW_MS = 60 * 60 * 1000;
 
-  const refreshRateLimitCleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [url, ts] of refreshAgentRateLimits) {
-      if (now - ts > 2 * REFRESH_AGENT_RATE_LIMIT_MS) refreshAgentRateLimits.delete(url);
-    }
-    for (const [user, state] of refreshUserCounts) {
-      if (now - state.windowStart > REFRESH_USER_WINDOW_MS) refreshUserCounts.delete(user);
-    }
-  }, REFRESH_AGENT_RATE_LIMIT_MS);
-  refreshRateLimitCleanupInterval.unref();
+  function refreshFailure(code: string, message: string): Error & { code: string } {
+    return Object.assign(new Error(message), { code });
+  }
 
-  router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
+  const legacyRefreshWaitMs = config.refreshLegacyWaitMs ?? 90_000;
+  const refreshPollIntervalMs = config.refreshPollIntervalMs ?? 2_000;
+
+  function publicRefreshFailure(code: string | null): { code: string; message: string } {
+    switch (code) {
+      case 'authorization_revoked':
+        return { code: 'authorization_revoked', message: 'Access changed before the refresh started' };
+      case 'monitoring_paused':
+        return { code: 'monitoring_paused', message: 'Monitoring is paused for this agent' };
+      case 'probe_failed':
+        return { code: 'probe_failed', message: 'The agent capability probe failed' };
+      case 'badge_update_failed':
+        return {
+          code: 'badge_update_failed',
+          message: 'The compliance evidence was saved but badge state could not be updated',
+        };
+      case 'lease_expired':
+      case 'lease_lost':
+        return { code: 'worker_interrupted', message: 'The refresh worker was interrupted' };
+      default:
+        return { code: 'refresh_failed', message: 'The refresh could not be completed' };
+    }
+  }
+
+  function prefersAsync(req: Request): boolean {
+    return (req.get('Prefer') ?? '')
+      .split(',')
+      .some(preference => preference.trim().toLowerCase() === 'respond-async');
+  }
+
+  async function waitForRefreshTerminal(operationId: string, deadline: number) {
+    while (Date.now() < deadline) {
+      const operation = await complianceRefreshQueue.getById(operationId);
+      if (!operation || operation.status === 'succeeded' || operation.status === 'failed') {
+        return operation;
+      }
+      await new Promise(resolve => setTimeout(resolve, refreshPollIntervalMs));
+    }
+    return complianceRefreshQueue.getById(operationId);
+  }
+
+  async function executeComplianceRefresh(
+    request: ClaimedComplianceRefreshRequest,
+    lease: { assertValid(): void },
+  ): Promise<Record<string, unknown>> {
+    const agentUrl = request.agent_url;
+
+    // Authorization is checked both when the request is admitted and when a
+    // worker claims it. This closes the queue-time revocation window before
+    // saved owner credentials are resolved.
+    if (request.triggered_by === 'owner_test') {
+      if (
+        !request.owner_org_id
+        || !request.requested_by_user_id
+        || !(await isOrgOwnerOfAgent(request.owner_org_id, request.requested_by_user_id, agentUrl))
+      ) {
+        throw refreshFailure('authorization_revoked', 'Agent ownership changed before the refresh started');
+      }
+    } else if (request.requester_type === 'user') {
+      const isCurrentAdmin = !!request.requested_by_user_id
+        && (
+          await isWebUserAAOAdmin(request.requested_by_user_id)
+          || (
+            isDevModeEnabled()
+            && process.env.DEV_USER_ID === request.requested_by_user_id
+          )
+        );
+      if (!isCurrentAdmin) {
+        throw refreshFailure('authorization_revoked', 'Administrator access changed before the refresh started');
+      }
+    }
+
+    // A prior attempt may have persisted the canonical run and then died
+    // before completing the queue row. Recover that immutable evidence rather
+    // than executing a second expensive suite against potentially changed
+    // agent behavior.
+    const persistedRefreshRun = await complianceDb.getRunForRefreshOperation(request.id);
+
+    type RefreshProbeResult = Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
+    const safeProbeResult = (result: RefreshProbeResult): RefreshProbeResult => ({
+      online: result.online,
+      tools_count: result.tools_count,
+      response_time_ms: result.response_time_ms,
+      inferred_type: result.inferred_type,
+      type_promoted: result.type_promoted,
+      oauth_required: result.oauth_required,
+      checked_at: result.checked_at,
+      ...(result.error ? { error: 'Agent health check failed' } : {}),
+    });
+    const probeCheckpoint = (value: Record<string, unknown> | null): RefreshProbeResult | null => {
+      if (
+        !value
+        || typeof value.online !== 'boolean'
+        || !(typeof value.tools_count === 'number' || value.tools_count === null)
+        || !(typeof value.response_time_ms === 'number' || value.response_time_ms === null)
+        || typeof value.inferred_type !== 'string'
+        || typeof value.type_promoted !== 'boolean'
+        || typeof value.oauth_required !== 'boolean'
+        || typeof value.checked_at !== 'string'
+      ) {
+        return null;
+      }
+      return value as unknown as RefreshProbeResult;
+    };
+
+    let resolvedAuth: SdkAuth | undefined;
+    let complianceAuth: SdkAuth | undefined;
+    if (!persistedRefreshRun) {
+      if (request.owner_org_id) {
+        const auth = await resolveUserAgentAuth(
+          agentContextDb,
+          request.owner_org_id,
+          agentUrl,
+          logger,
+        );
+        resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
+      }
+      complianceAuth = resolvedAuth;
+      if (!complianceAuth && !request.owner_org_id) {
+        const ownerAuth = await complianceDb.resolveOwnerAuth(agentUrl);
+        if (ownerAuth) {
+          complianceAuth = await adaptAuthForSdk(ownerAuth, {
+            tokenEndpointLabel: `admin-refresh:${agentUrl}`,
+          });
+        }
+      }
+    }
+
+    let probeResult = probeCheckpoint(request.probe_result_json);
+    if (!probeResult && persistedRefreshRun) {
+      // Migration-era fallback only: every new refresh saves the probe before
+      // compliance. Never make another outbound call after canonical evidence
+      // has committed, because a transient probe failure must not hide its run.
+      const [healthByUrl, capabilitiesByUrl] = await Promise.all([
+        agentSnapshotDb.bulkGetHealth([agentUrl]),
+        agentSnapshotDb.bulkGetCapabilities([agentUrl]),
+      ]);
+      const health = healthByUrl.get(agentUrl);
+      const capabilities = capabilitiesByUrl.get(agentUrl);
+      probeResult = {
+        online: health?.online ?? true,
+        tools_count: health?.tools_count ?? capabilities?.discovered_tools_json.length ?? null,
+        response_time_ms: health?.response_time_ms ?? null,
+        inferred_type: capabilities?.inferred_type ?? 'unknown',
+        type_promoted: false,
+        oauth_required: capabilities?.oauth_required ?? false,
+        checked_at: health?.checked_at.toISOString()
+          ?? request.started_at?.toISOString()
+          ?? request.created_at.toISOString(),
+        ...(health?.error ? { error: 'Agent health check failed' } : {}),
+      };
+    }
+    if (!probeResult) {
+      try {
+        lease.assertValid();
+        probeResult = safeProbeResult(await crawler.refreshSingleAgent(agentUrl, {
+          auth: resolvedAuth,
+          ...(request.owner_org_id ? { ownerOrgId: request.owner_org_id } : {}),
+        }));
+        lease.assertValid();
+        const probeRecorded = await complianceRefreshQueue.recordProbeResult(
+          request.id,
+          request.lease_token,
+          probeResult,
+          !!complianceAuth,
+        );
+        if (!probeRecorded) throw refreshFailure('lease_lost', 'Refresh lease expired');
+      } catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'lease_lost') {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : 'Probe failed';
+        throw refreshFailure(
+          /Monitoring paused/i.test(message) ? 'monitoring_paused' : 'probe_failed',
+          message,
+        );
+      }
+    }
+
+    let complianceSummary: {
+      ran: boolean;
+      requested_compliance_target?: string;
+      adcp_version?: string;
+      badge_eligible?: boolean;
+      badge_eligible_adcp_versions?: string[];
+      overall_status?: string;
+      storyboards_passing?: number;
+      storyboards_total?: number;
+      run_id?: string;
+      test_session_id?: string;
+      observations_count?: number;
+      notices_count?: number;
+      error?: string;
+    } = { ran: false, test_session_id: request.test_session_id };
+
+    if (persistedRefreshRun) {
+      const { run, storyboardStatuses } = persistedRefreshRun;
+      complianceSummary = {
+        ran: true,
+        run_id: run.id,
+        test_session_id: request.test_session_id,
+        requested_compliance_target: run.requested_compliance_target ?? undefined,
+        adcp_version: run.adcp_version ?? undefined,
+        overall_status: run.overall_status,
+        storyboards_passing: storyboardStatuses.filter(status => status.status === 'passing').length,
+        storyboards_total: storyboardStatuses.length,
+        observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
+        notices_count: Array.isArray(run.notices_json) ? run.notices_json.length : 0,
+      };
+      const profile = run.agent_profile_json ?? {};
+      const supportedVersions = Array.isArray(profile.adcp_supported_versions)
+        ? profile.adcp_supported_versions.filter((version: unknown): version is string => typeof version === 'string')
+        : [];
+      let badgeVersions: readonly string[] = [];
+      if (run.requested_compliance_target) {
+        try {
+          const persistedTarget = hostedComplianceTarget(run.requested_compliance_target);
+          if (agentAdvertisesBadgeEligibleHostedComplianceTarget(supportedVersions, persistedTarget)) {
+            badgeVersions = badgeEligibleVersionsForHostedComplianceTarget(persistedTarget);
+          }
+        } catch {
+          badgeVersions = [];
+        }
+      }
+      complianceSummary = {
+        ...complianceSummary,
+        ...badgeEligibilityMetadata(badgeVersions),
+      };
+      lease.assertValid();
+      if (
+        Array.isArray(profile.specialisms)
+        && profile.specialisms.length > 0
+        && storyboardStatuses.length > 0
+        && badgeVersions.length > 0
+      ) {
+        await runBadgeFanOut({
+          complianceDb,
+          agentUrl,
+          declaredSpecialisms: profile.specialisms,
+          runId: run.id,
+          adcpVersions: badgeVersions,
+          supportedVersions,
+          throwOnFailure: true,
+        });
+      } else {
+        await revokeUnsupportedPublicBadges({ complianceDb, agentUrl, supportedVersions });
+      }
+      lease.assertValid();
+    } else if (!probeResult.error && !probeResult.oauth_required) {
+      const complianceStart = Date.now();
+      try {
+        const testSessionId = request.test_session_id;
+        // Rotate the storyboard starting point so repeated, budget-limited
+        // refreshes cover different tracks, matching the heartbeat path.
+        const storyboardStartOffset = await complianceDb.countComplianceRuns(agentUrl);
+        const complyOptions = {
+          test_session_id: testSessionId,
+          timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
+          userAgent: AAO_UA_COMPLIANCE,
+          storyboard_start_offset: storyboardStartOffset,
+          ...(complianceAuth && { auth: complianceAuth }),
+        };
+        const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
+        const runTargetSelection = await selectComplianceTargetForAgentSelection(
+          agentUrl,
+          complyOptions,
+          complianceTarget,
+          'canonical',
+          seededSupportedVersions,
+        );
+        if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
+          throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
+        }
+        const runTarget = runTargetSelection.target;
+        lease.assertValid();
+        const complyResult = await comply(agentUrl, complyOptions, runTarget);
+        lease.assertValid();
+        if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
+          throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
+        }
+        const runBadgeEligibleVersions = [
+          ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
+        ];
+        logOutboundRequest({
+          agent_url: agentUrl,
+          request_type: 'compliance',
+          user_agent: AAO_UA_COMPLIANCE,
+          response_time_ms: Date.now() - complianceStart,
+          success: true,
+        });
+        if (complyResult.overall_status === 'auth_required') {
+          complianceSummary = {
+            ran: false,
+            test_session_id: request.test_session_id,
+            error: 'Agent requires OAuth authorization',
+          };
+        } else {
+          const metadata = await complianceDb.getRegistryMetadata(agentUrl);
+          const dbInput = complianceResultToDbInput(
+            complyResult,
+            agentUrl,
+            metadata?.lifecycle_stage || 'production',
+            request.triggered_by,
+          );
+          dbInput.dry_run = false;
+          dbInput.requested_compliance_target = runTarget.requested;
+          dbInput.adcp_version = complyResult.adcp_version ?? runTarget.version;
+          dbInput.triggered_org_id = request.owner_org_id;
+          dbInput.refresh_operation_id = request.id;
+          dbInput.refresh_operation_lease_token = request.lease_token;
+          lease.assertValid();
+          const { run, storyboardStatuses, replayedExisting } = await complianceDb.recordComplianceRun(dbInput);
+          const passing = storyboardStatuses.filter(status => status.status === 'passing').length;
+          complianceSummary = {
+            ran: true,
+            run_id: run.id,
+            test_session_id: testSessionId,
+            requested_compliance_target: run.requested_compliance_target ?? undefined,
+            adcp_version: run.adcp_version ?? undefined,
+            ...(replayedExisting ? {} : badgeEligibilityMetadata(runBadgeEligibleVersions)),
+            overall_status: run.overall_status,
+            storyboards_passing: passing,
+            storyboards_total: storyboardStatuses.length,
+            observations_count: Array.isArray(run.observations_json) ? run.observations_json.length : 0,
+            notices_count: Array.isArray(run.notices_json) ? run.notices_json.length : 0,
+          };
+
+          const declaredSpecialisms = run.agent_profile_json?.specialisms ?? [];
+          if (!replayedExisting) {
+            if (
+              declaredSpecialisms.length > 0
+              && storyboardStatuses.length > 0
+              && runBadgeEligibleVersions.length > 0
+            ) {
+              try {
+                lease.assertValid();
+                await runBadgeFanOut({
+                  complianceDb,
+                  agentUrl,
+                  declaredSpecialisms,
+                  runId: run.id,
+                  adcpVersions: runBadgeEligibleVersions,
+                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions
+                    ?? runTargetSelection.supportedVersions,
+                  throwOnFailure: true,
+                });
+              } catch {
+                throw refreshFailure('badge_update_failed', 'Badge state could not be updated');
+              }
+            } else {
+              try {
+                lease.assertValid();
+                await revokeUnsupportedPublicBadges({
+                  complianceDb,
+                  agentUrl,
+                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions
+                    ?? runTargetSelection.supportedVersions,
+                });
+              } catch {
+                throw refreshFailure('badge_update_failed', 'Badge state could not be updated');
+              }
+            }
+          }
+        }
+      } catch (error) {
+        if (
+          error && typeof error === 'object' && 'code' in error
+          && (error.code === 'badge_update_failed' || error.code === 'lease_lost')
+        ) {
+          throw error;
+        }
+        const internalMessage = error instanceof Error ? error.message : 'Compliance run failed';
+        const publicMessage = internalMessage === UNRESOLVED_COMPLIANCE_TARGET_MESSAGE
+          ? UNRESOLVED_COMPLIANCE_TARGET_MESSAGE
+          : 'Compliance run could not be completed';
+        logOutboundRequest({
+          agent_url: agentUrl,
+          request_type: 'compliance',
+          user_agent: AAO_UA_COMPLIANCE,
+          response_time_ms: Date.now() - complianceStart,
+          success: false,
+          error_message: publicMessage,
+        });
+        logger.warn({ agentUrl, errorCode: 'compliance_failed' }, 'Compliance re-run failed during owner refresh');
+        complianceSummary = {
+          ran: false,
+          test_session_id: request.test_session_id,
+          error: publicMessage,
+        };
+      }
+    }
+
+    lease.assertValid();
+    return {
+      online: probeResult.online,
+      tools_count: probeResult.tools_count,
+      response_time_ms: probeResult.response_time_ms,
+      inferred_type: probeResult.inferred_type,
+      type_promoted: probeResult.type_promoted,
+      oauth_required: probeResult.oauth_required,
+      checked_at: probeResult.checked_at,
+      ...(probeResult.error ? { error: probeResult.error } : {}),
+      compliance: {
+        ...complianceSummary,
+        auth_available: persistedRefreshRun
+          ? request.auth_available ?? false
+          : !!complianceAuth,
+      },
+    };
+  }
+
+  const complianceRefreshQueue = new ComplianceRefreshQueue(
+    executeComplianceRefresh,
+    undefined,
+    undefined,
+    config.refreshQueueIntervalMs,
+  );
+
+  router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, capabilityProbeRateLimiter, async (req, res) => {
+    const responseDeadline = Date.now() + legacyRefreshWaitMs;
     try {
       const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
       if (!validateAgentUrlParam(rawAgentUrl)) {
@@ -7479,203 +8112,181 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       if (!isOwner && !isAaoAdmin && !isDevAdmin && !isStaticAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
       }
-      const canRunCompliance = isOwner || isAaoAdmin || isDevAdmin || isStaticAdmin;
-
-      const now = Date.now();
-
-      const lastRefresh = refreshAgentRateLimits.get(agentUrl);
-      if (lastRefresh && now - lastRefresh < REFRESH_AGENT_RATE_LIMIT_MS) {
-        const retryAfter = Math.ceil((REFRESH_AGENT_RATE_LIMIT_MS - (now - lastRefresh)) / 1000);
-        return res.status(429).json({ error: "Rate limit exceeded for this agent", retry_after: retryAfter });
-      }
-
-      const userState = refreshUserCounts.get(req.user.id);
-      if (userState && now - userState.windowStart < REFRESH_USER_WINDOW_MS) {
-        if (userState.count >= REFRESH_USER_LIMIT) {
-          return res.status(429).json({
-            error: "Hourly refresh limit exceeded",
-            retry_after: Math.ceil((REFRESH_USER_WINDOW_MS - (now - userState.windowStart)) / 1000),
-          });
-        }
-        userState.count++;
-      } else {
-        refreshUserCounts.set(req.user.id, { count: 1, windowStart: now });
-      }
-      // Lock the agent BEFORE probing — a flapping agent (timeout, OAuth
-      // wall, DNS fail) shouldn't be hammered by retries within the window.
-      // Owner sees 502/409 error → has 60s to fix and try again.
-      refreshAgentRateLimits.set(agentUrl, now);
-
-      // Resolve saved owner auth (static bearer / basic / OAuth) so the
-      // probe sees the same credentials evaluate_agent_quality uses. The
-      // periodic crawl path also now resolves owner credentials when any
-      // org has registered them (see CrawlerService.resolveProbeAuth); this
-      // route still scopes auth to the caller's own org so an AAO admin
-      // refreshing someone else's agent probes anonymously rather than
-      // accidentally running with the owner's tokens.
-      let resolvedAuth: SdkAuth | undefined;
-      if (ownerOrgId) {
-        const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
-        resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
-      }
-
-      let probeResult: Awaited<ReturnType<typeof crawler.refreshSingleAgent>>;
       try {
-        probeResult = await crawler.refreshSingleAgent(agentUrl, {
-          auth: resolvedAuth,
-          ...(ownerOrgId ? { ownerOrgId } : {}),
+        const operationId = randomUUID();
+        const { request, coalesced } = await complianceRefreshQueue.enqueue({
+          id: operationId,
+          agentUrl,
+          ownerOrgId,
+          requesterType: isStaticAdmin ? 'static_admin' : 'user',
+          requestedByUserId: isStaticAdmin ? null : req.user.id,
+          triggeredBy: ownerOrgId ? 'owner_test' : 'manual',
+          agentWindowMs: REFRESH_AGENT_RATE_LIMIT_MS,
+          requesterWindowMs: REFRESH_USER_WINDOW_MS,
+          requesterLimit: REFRESH_USER_LIMIT,
         });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Probe failed';
-        if (/Monitoring paused/i.test(message)) {
-          return res.status(409).json({ error: message });
-        }
-        logger.warn({ agentUrl, err }, 'Manual agent refresh probe failed');
-        return res.status(502).json({ error: `Probe failed: ${message}` });
-      }
-
-      // Also re-run compliance so the dashboard verdict updates alongside the
-      // capability/health probe. Prior to #4886, /refresh probed capabilities
-      // and health but left agent_storyboard_status untouched, leaving owners
-      // to stare at a stale verdict for up to a full heartbeat cycle after
-      // deploying a fix. The full storyboard suite can run for several minutes
-      // on capability-rich agents (bounded by HOSTED_FULL_COMPLIANCE_TIMEOUT_MS).
-      // The per-agent 60s rate limit above only bounds repeat-clicks, not the
-      // duration of an in-flight run, so a second refresh of the same agent can
-      // start while the first is still running; that is acceptable for this
-      // owner/admin-gated path. comply() failure is a soft-fail — we still
-      // return the capability/health refresh so a partially-working agent still
-      // moves the snapshot forward.
-      let complianceSummary: {
-        ran: boolean;
-        requested_compliance_target?: string;
-        adcp_version?: string;
-        badge_eligible?: boolean;
-        badge_eligible_adcp_versions?: string[];
-        overall_status?: string;
-        storyboards_passing?: number;
-        storyboards_total?: number;
-        run_id?: string;
-        test_session_id?: string;
-        observations_count?: number;
-        notices_count?: number;
-        error?: string;
-      } = { ran: false };
-
-      if (canRunCompliance && !probeResult.error && !probeResult.oauth_required) {
-        const complianceStart = Date.now();
-        try {
-          const testSessionId = `owner-refresh-${Date.now()}-${randomUUID()}`;
-          const triggeredBy = ownerOrgId ? 'owner_test' : 'manual';
-          const complyOptions = {
-            test_session_id: testSessionId,
-            timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
-            userAgent: AAO_UA_COMPLIANCE,
-            ...(resolvedAuth && { auth: resolvedAuth }),
-          };
-          const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agentUrl);
-          const runTargetSelection = await selectComplianceTargetForAgentSelection(
-            agentUrl,
-            complyOptions,
-            complianceTarget,
-            'canonical',
-            seededSupportedVersions,
-          );
-          if (!hasTrustworthyComplianceTarget(runTargetSelection)) {
-            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
-          }
-          const runTarget = runTargetSelection.target;
-          const complyResult = await comply(agentUrl, complyOptions, runTarget);
-          if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complyResult.agent_profile)) {
-            throw new Error(UNRESOLVED_COMPLIANCE_TARGET_MESSAGE);
-          }
-          const runBadgeEligibleVersions = [
-            ...badgeEligibleVersionsForTargetSelection(runTargetSelection, complyResult.agent_profile),
-          ];
-          logOutboundRequest({
-            agent_url: agentUrl,
-            request_type: 'compliance',
-            user_agent: AAO_UA_COMPLIANCE,
-            response_time_ms: Date.now() - complianceStart,
-            success: true,
+        const statusUrl = `/api/registry/agents/${encodeURIComponent(agentUrl)}/refreshes/${request.id}`;
+        res.setHeader('Location', statusUrl);
+        res.setHeader('Cache-Control', 'private, no-store');
+        if (coalesced && request.status === 'succeeded' && request.result_json) {
+          return res.status(200).json({
+            ...request.result_json,
+            refresh_operation_id: request.id,
+            test_session_id: request.test_session_id,
+            status_url: statusUrl,
+            coalesced: true,
           });
-          if (complyResult.overall_status === 'auth_required') {
-            complianceSummary = { ran: false, error: 'Agent requires OAuth authorization' };
-          } else {
-            const metadata = await complianceDb.getRegistryMetadata(agentUrl);
-            const dbInput = complianceResultToDbInput(
-              complyResult,
-              agentUrl,
-              metadata?.lifecycle_stage || 'production',
-              triggeredBy,
+        }
+        if (coalesced && request.status === 'failed') {
+          const failure = publicRefreshFailure(request.last_error_code);
+          const status = failure.code === 'authorization_revoked'
+            ? 403
+            : failure.code === 'monitoring_paused'
+              ? 409
+              : failure.code === 'probe_failed'
+                ? 502
+                : 500;
+          return res.status(status).json({
+            error: failure.message,
+            code: failure.code,
+          });
+        }
+        if (!prefersAsync(req) && !coalesced) {
+          let terminal: Awaited<ReturnType<typeof waitForRefreshTerminal>> = null;
+          try {
+            terminal = await waitForRefreshTerminal(request.id, responseDeadline);
+          } catch {
+            logger.warn(
+              { operationId: request.id },
+              'Refresh wait failed after durable admission; returning the polling handle',
             );
-            dbInput.dry_run = false;
-            dbInput.triggered_org_id = ownerOrgId;
-            const { run, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
-            const passing = storyboardStatuses.filter(s => s.status === 'passing').length;
-            complianceSummary = {
-              ran: true,
-              run_id: run.id,
-              test_session_id: testSessionId,
-              requested_compliance_target: runTarget.requested,
-              adcp_version: complyResult.adcp_version,
-              ...badgeEligibilityMetadata(runBadgeEligibleVersions),
-              overall_status: dbInput.overall_status,
-              storyboards_passing: passing,
-              storyboards_total: storyboardStatuses.length,
-              observations_count: Array.isArray(dbInput.observations_json) ? dbInput.observations_json.length : 0,
-              notices_count: Array.isArray(dbInput.notices_json) ? dbInput.notices_json.length : 0,
-            };
-
-            // Fan out badge issuance so verification badges reflect the new
-            // verdict immediately. Matches the per-storyboard owner-test path.
-            const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
-            if (declaredSpecialisms.length > 0 && storyboardStatuses.length > 0 && runBadgeEligibleVersions.length > 0) {
-              try {
-                await runBadgeFanOut({
-                  complianceDb,
-                  agentUrl,
-                  declaredSpecialisms,
-                  runId: run.id,
-                  adcpVersions: runBadgeEligibleVersions,
-                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-                });
-              } catch (badgeError) {
-                logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after manual refresh');
-              }
-            } else {
-              try {
-                await revokeUnsupportedPublicBadges({
-                  complianceDb,
-                  agentUrl,
-                  supportedVersions: complyResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
-                });
-              } catch (badgeError) {
-                logger.warn({ err: badgeError, agentUrl }, 'Unsupported public badge revocation failed after manual refresh');
-              }
-            }
           }
-        } catch (complyErr) {
-          const msg = complyErr instanceof Error ? complyErr.message : 'compliance run failed';
-          logOutboundRequest({
-            agent_url: agentUrl,
-            request_type: 'compliance',
-            user_agent: AAO_UA_COMPLIANCE,
-            response_time_ms: Date.now() - complianceStart,
-            success: false,
-            error_message: msg,
-          });
-          logger.warn({ agentUrl, err: complyErr }, 'Compliance re-run failed during owner refresh');
-          complianceSummary = { ran: false, error: msg };
+          if (terminal?.status === 'succeeded' && terminal.result_json) {
+            return res.status(200).json(terminal.result_json);
+          }
+          if (terminal?.status === 'failed') {
+            const failure = publicRefreshFailure(terminal.last_error_code);
+            const status = failure.code === 'authorization_revoked'
+              ? 403
+              : failure.code === 'monitoring_paused'
+                ? 409
+                : failure.code === 'probe_failed'
+                  ? 502
+                  : 500;
+            return res.status(status).json({ error: failure.message, code: failure.code });
+          }
+        } else if (prefersAsync(req)) {
+          res.setHeader('Preference-Applied', 'respond-async');
         }
+        res.setHeader('Retry-After', '5');
+        return res.status(202).json({
+          refresh_operation_id: request.id,
+          test_session_id: request.test_session_id,
+          status: request.status,
+          coalesced,
+          status_url: statusUrl,
+          requested_at: request.created_at.toISOString(),
+        });
+      } catch (error) {
+        if (error instanceof ComplianceRefreshRateLimitError) {
+          res.setHeader('Retry-After', String(error.retryAfterSeconds));
+          return res.status(429).json({
+            error: error.scope === 'agent'
+              ? 'Rate limit exceeded for this agent'
+              : 'Hourly refresh limit exceeded',
+            retry_after: error.retryAfterSeconds,
+          });
+        }
+        if (error instanceof ComplianceRefreshInProgressError) {
+          res.setHeader('Retry-After', String(error.retryAfterSeconds));
+          return res.status(409).json({
+            error: 'A refresh is already in progress for this agent',
+            code: 'refresh_in_progress',
+            retry_after: error.retryAfterSeconds,
+          });
+        }
+        if (error instanceof ComplianceRefreshQueueCapacityError) {
+          res.setHeader('Retry-After', '60');
+          return res.status(503).json({
+            error: 'Compliance refresh queue is temporarily at capacity',
+            code: 'refresh_queue_at_capacity',
+            retry_after: 60,
+          });
+        }
+        throw error;
       }
-
-      return res.json({ ...probeResult, compliance: complianceSummary });
     } catch (error) {
-      logger.error({ err: error, path: req.path }, "Failed to refresh agent");
-      res.status(500).json({ error: "Failed to refresh agent" });
+      logger.error({ err: error, path: req.path }, "Failed to enqueue agent refresh");
+      res.setHeader('Retry-After', '5');
+      res.status(503).json({
+        error: "Compliance refresh queue is temporarily unavailable",
+        code: "refresh_queue_unavailable",
+        retry_after: 5,
+      });
     }
   });
+
+  router.get(
+    "/registry/agents/:encodedUrl/refreshes/:operationId",
+    ...complianceWriteMiddleware,
+    agentReadRateLimiter,
+    async (req, res) => {
+      try {
+        const rawAgentUrl = decodeURIComponent(req.params.encodedUrl);
+        if (!validateAgentUrlParam(rawAgentUrl)) {
+          return res.status(400).json({ error: "Invalid agent URL" });
+        }
+        const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
+        if (!isUuid(req.params.operationId)) {
+          return res.status(400).json({ error: "Invalid refresh operation ID" });
+        }
+        if (!req.user) {
+          return res.status(401).json({ error: "Authentication required" });
+        }
+
+        const operation = await complianceRefreshQueue.getById(req.params.operationId);
+        if (!operation || operation.agent_url !== agentUrl) {
+          return res.status(404).json({ error: "Refresh operation not found" });
+        }
+        const ownsCredentialContext = !!operation.owner_org_id
+          && await isOrgOwnerOfAgent(operation.owner_org_id, req.user.id, agentUrl);
+        const canRead = isStaticAdminRequest(req)
+          || ownsCredentialContext
+          || await isRegistryAdminRequest(req);
+        if (!canRead) {
+          return res.status(404).json({ error: "Refresh operation not found" });
+        }
+
+        res.setHeader('Cache-Control', 'private, no-store');
+        if (operation.status === 'queued' || operation.status === 'running') {
+          res.setHeader('Retry-After', '5');
+        }
+        const failure = operation.status === 'failed'
+          ? publicRefreshFailure(operation.last_error_code)
+          : null;
+        return res.json({
+          refresh_operation_id: operation.id,
+          test_session_id: operation.test_session_id,
+          agent_url: operation.agent_url,
+          status: operation.status,
+          attempts: operation.attempts,
+          requested_at: operation.created_at.toISOString(),
+          started_at: operation.started_at?.toISOString() ?? null,
+          completed_at: operation.completed_at?.toISOString() ?? null,
+          result: operation.status === 'succeeded' ? operation.result_json : null,
+          error: failure,
+        });
+      } catch (error) {
+        logger.error({ err: error, path: req.path }, "Failed to read agent refresh operation");
+        res.setHeader('Retry-After', '5');
+        return res.status(503).json({
+          error: "Refresh status is temporarily unavailable",
+          code: "refresh_status_unavailable",
+          retry_after: 5,
+        });
+      }
+    },
+  );
 
   // ── Per-step compliance diagnostics (owner/static-admin, adcp#4738) ─
   //
@@ -9933,10 +10544,75 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
       }
 
       const result = await federatedIndex.validateAgentForProduct(agent_url, publisher_properties);
-      res.json({ agent_url, ...result, checked_at: new Date().toISOString() });
+      res.json({
+        agent_url,
+        ...result,
+        validation_scope: "publisher_properties_only",
+        checked_at: new Date().toISOString(),
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Product authorization validation failed");
       res.status(500).json({ error: "Product authorization validation failed" });
+    }
+  });
+
+  router.post("/registry/verify/supply-path", async (req, res) => {
+    try {
+      const parsed = VerifySupplyPathRequestSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid request", issues: parsed.error.issues });
+      }
+      const ownerDomain = canonicalizePublisherDomain(parsed.data.owner_domain);
+      const hostDomain = canonicalizePublisherDomain(parsed.data.host_domain);
+      if (!ownerDomain || !hostDomain) {
+        return res.status(400).json({ error: "owner_domain and host_domain must be valid publisher domains" });
+      }
+
+      const [ownerManifest, hostManifest] = await Promise.all([
+        publisherDb.getCachedAdagentsJson(ownerDomain),
+        publisherDb.getCachedAdagentsJson(hostDomain),
+      ]);
+
+      // First pass without ads.txt — the fetch is only needed when the
+      // enforcement-grade host leg fails and the ladder falls through to
+      // host_delegated.
+      let verdict = verifySupplyPath({
+        ownerDomain,
+        hostDomain,
+        agentUrl: parsed.data.agent_url,
+        collectionId: parsed.data.collection_id,
+        ownerManifest,
+        hostManifest,
+        hostInventoryPartnerDomains: null,
+      });
+      if (!verdict.legs.host_authorization.ok) {
+        verdict = verifySupplyPath({
+          ownerDomain,
+          hostDomain,
+          agentUrl: parsed.data.agent_url,
+          collectionId: parsed.data.collection_id,
+          ownerManifest,
+          hostManifest,
+          hostInventoryPartnerDomains: await fetchHostInventoryPartnerDomains(hostDomain),
+        });
+      }
+
+      res.json({
+        ...verdict,
+        owner_domain: ownerDomain,
+        host_domain: hostDomain,
+        agent_url: parsed.data.agent_url,
+        ...(parsed.data.collection_id !== undefined ? { collection_id: parsed.data.collection_id } : {}),
+        sources: {
+          owner_adagents_url: `https://${ownerDomain}/.well-known/adagents.json`,
+          host_adagents_url: `https://${hostDomain}/.well-known/adagents.json`,
+          cached: true,
+        },
+        checked_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Supply-path verification failed");
+      res.status(500).json({ error: "Supply-path verification failed" });
     }
   });
 
@@ -11708,5 +12384,5 @@ export function createRegistryApiRouters(config: RegistryApiConfig): { router: R
     }
   });
 
-  return { router, v1AgentsRouter };
+  return { router, v1AgentsRouter, complianceRefreshQueue };
 }

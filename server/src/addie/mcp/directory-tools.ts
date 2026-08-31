@@ -7,6 +7,7 @@
 
 import type { AddieTool } from '../types.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from '../../db/brand-db.js';
 import { AgentService } from '../../agent-service.js';
 import { AgentValidator } from '../../validator.js';
 import { FederatedIndexService } from '../../federated-index.js';
@@ -14,8 +15,10 @@ import { hasApiAccess, type MembershipTier } from '../../db/organization-db.js';
 import type { MemberContext } from '../member-context.js';
 import { isValidAgentType, type AgentType, type MemberOffering, type Agent } from '../../types.js';
 import { wrapUntrustedInput } from './untrusted-input.js';
+import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 
 const memberDb = new MemberDatabase();
+const brandDb = new BrandDatabase();
 const agentService = new AgentService();
 const validator = new AgentValidator();
 const federatedIndex = new FederatedIndexService();
@@ -259,17 +262,46 @@ export function createDirectoryToolHandlers(
       });
     }
 
+    const brandPrimaryDomain = member.workos_organization_id
+      ? await getBrandPrimaryDomain(member.workos_organization_id)
+      : null;
+    const brandRow = brandPrimaryDomain
+      ? await brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain)
+      : null;
+    const resolvedBrand = brandPrimaryDomain
+      && canSurfaceBrandForMember(brandRow, member.workos_organization_id)
+      ? resolveBrandFromJson(
+          brandPrimaryDomain,
+          brandRow!.brand_manifest as Record<string, unknown>,
+          brandRow!.domain_verified ?? false,
+        )
+      : undefined;
+    const tagline = member.tagline || resolvedBrand?.tagline;
+    const description = member.description || resolvedBrand?.description;
+
     return JSON.stringify({
       untrusted_data_notice: UNTRUSTED_DATA_NOTICE,
       name: wrapUntrustedInput(member.display_name, 200),
       slug: wrapUntrustedInput(member.slug, 200),
-      tagline: wrapOptional(member.tagline, 500),
-      description: wrapOptional(member.description, 1_000),
+      tagline: wrapOptional(tagline, 500),
+      description: wrapOptional(description, 1_000),
+      content_sources: {
+        tagline: member.tagline ? 'member_profile' : resolvedBrand?.tagline ? 'brand_json' : null,
+        description: member.description ? 'member_profile' : resolvedBrand?.description ? 'brand_json' : null,
+      },
       offerings: wrapList(member.offerings, 100),
       headquarters: wrapOptional(member.headquarters, 300),
       markets: wrapList(member.markets, 100),
       website: wrapOptional(member.contact_website, 2_000),
-      logo: wrapOptional(member.resolved_brand?.logo_url, 2_000),
+      brand_identity: resolvedBrand ? {
+        domain: wrapUntrustedInput(resolvedBrand.domain, 300),
+        name: wrapOptional(resolvedBrand.name, 200),
+        tagline: wrapOptional(resolvedBrand.tagline, 500),
+        description: wrapOptional(resolvedBrand.description, 1_000),
+        logo: wrapOptional(resolvedBrand.logo_url, 2_000),
+        verified: resolvedBrand.verified,
+      } : null,
+      logo: wrapOptional(resolvedBrand?.logo_url, 2_000),
       profile_visibility: member.is_public ? 'public' : 'members_only',
       agents: member.agents
         .filter((a) =>

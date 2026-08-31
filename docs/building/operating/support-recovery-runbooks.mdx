@@ -201,10 +201,21 @@ AGENT_URL="https://seller.example/adcp"
 ENCODED_URL="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$AGENT_URL")"
 
 curl -X POST "https://agenticadvertising.org/api/registry/agents/$ENCODED_URL/refresh" \
+  -H "Prefer: respond-async" \
   -b "$SESSION_COOKIE"
 ```
 
-Refresh returns the latest probe result or a `409`, `429`, or `502` error if monitoring is paused, rate-limited, or the probe fails.
+The async form returns `202 Accepted`, a `Location` header, and a body containing
+`refresh_operation_id`, `test_session_id`, and `status_url`. Poll `status_url`
+with the same authenticated owner or admin session, honoring `Retry-After`,
+until the operation is `succeeded` or `failed`. The operation remains available
+if the original response is lost, and a same-context retry recovers its handle.
+
+Clients that omit `Prefer: respond-async` retain the compatibility behavior:
+the server waits for a terminal result for at most 90 seconds, returning `200`
+when it finishes in that window and otherwise returning the same durable `202`
+handle. `409`, `429`, `500`, `502`, and `503` identify a conflicting credential
+context, rate limit, terminal refresh failure, probe failure, or queue outage.
 
 Queue heartbeat without synchronous probing when the agent should be checked by the normal monitor:
 

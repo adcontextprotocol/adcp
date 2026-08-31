@@ -793,18 +793,23 @@ function stripModelContextAnnotations(schema) {
   walkSchema(stripped, node => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     for (const keyword of MODEL_CONTEXT_OMISSIONS) delete node[keyword];
+    // Arbitrary implementation extensions are not safe model-authored input.
+    // A schema may explicitly opt a negotiated, closed extension surface into
+    // model context; canonical validation always retains the source contract.
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties) && node.properties.ext) {
+      if (node.properties.ext['x-adcp-model-context'] === 'include') {
+        node.properties.ext = { type: 'object', additionalProperties: true };
+      } else {
+        delete node.properties.ext;
+        if (Array.isArray(node.required)) {
+          node.required = node.required.filter(name => name !== 'ext');
+          if (node.required.length === 0) delete node.required;
+        }
+      }
+    }
     // Exact const values and homogeneous enums already communicate their JSON
     // types. Mixed enums retain type because it still narrows the listed values.
     if (Object.hasOwn(node, 'const')) delete node.type;
-    if (typeof node.type === 'string' && Array.isArray(node.enum) && node.enum.length > 0) {
-      const matchesType = node.enum.every(value => {
-        if (node.type === 'integer') return Number.isInteger(value);
-        if (node.type === 'number') return typeof value === 'number' && Number.isFinite(value);
-        if (node.type === 'null') return value === null;
-        return typeof value === node.type;
-      });
-      if (matchesType) delete node.type;
-    }
     // Closed-object enforcement belongs to the validation profile. The
     // declared property list already communicates the prompt shape, while
     // retaining `additionalProperties: true` and schema-valued maps preserves
@@ -829,6 +834,41 @@ function stripModelContextAnnotations(schema) {
     }
   });
   return stripped;
+}
+
+/**
+ * Remove root $defs that became unreachable when projection removed fields or
+ * root-only validation branches. Canonical schemas retain the complete graph.
+ */
+function pruneUnusedRootDefinitions(schema) {
+  const pruned = clone(schema);
+  const definitions = pruned.$defs;
+  if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) return pruned;
+
+  const reachable = new Set();
+  function visit(value) {
+    if (!value || typeof value !== 'object') return;
+    if (typeof value.$ref === 'string' && value.$ref.startsWith('#/$defs/')) {
+      const encodedName = value.$ref.slice('#/$defs/'.length).split('/')[0];
+      const name = encodedName.replace(/~1/g, '/').replace(/~0/g, '~');
+      if (Object.hasOwn(definitions, name) && !reachable.has(name)) {
+        reachable.add(name);
+        visit(definitions[name]);
+      }
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== '$defs') visit(child);
+    }
+  }
+
+  visit(pruned);
+  if (reachable.size === 0) delete pruned.$defs;
+  else {
+    pruned.$defs = Object.fromEntries(
+      Object.entries(definitions).filter(([name]) => reachable.has(name))
+    );
+  }
+  return pruned;
 }
 
 function enforceSchemaBounds(schema, label) {
@@ -869,7 +909,9 @@ function projectSourceSchema(
     projected = discovery.schema;
   }
   if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
-  else if (annotationMode === 'model-context') projected = stripModelContextAnnotations(projected);
+  else if (annotationMode === 'model-context') {
+    projected = pruneUnusedRootDefinitions(stripModelContextAnnotations(projected));
+  }
   else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
   if (discoveryInput && annotationMode !== 'model-context') {
     restoreRootConstraintDescriptions(projected, discoveryDescriptions);
@@ -1139,6 +1181,7 @@ module.exports = {
   projectMcpDiscoveryInputSchema,
   projectDraft07Node,
   projectSourceSchema,
+  pruneUnusedRootDefinitions,
   selectRuntimeToolNames,
   stripModelContextAnnotations,
   stripPresentationAnnotations,

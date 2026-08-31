@@ -692,6 +692,15 @@ test('creative representation resolution vectors retain the complete revision an
     'representation strategy is explicit and replayable');
   assert.equal(validateBuild({ ...resolutionRequest, representation_selection_strategy: 'highest_compatible_vast' }), false,
     'highest-compatible VAST strategy is invalid for a non-VAST destination');
+  const audioVastResolutionRequest = structuredClone(resolutionRequest);
+  audioVastResolutionRequest.representation_selection_strategy = 'highest_compatible_vast';
+  audioVastResolutionRequest.representation_destination.format_option = {
+    format_option_id: 'streaming_audio_vast',
+    format_kind: 'audio_vast',
+    params: { vast_versions: ['4.1', '4.2', '4.3'] }
+  };
+  assert.equal(validateBuild(audioVastResolutionRequest), true,
+    `highest-compatible VAST strategy accepts audio_vast destinations: ${JSON.stringify(validateBuild.errors)}`);
 
   derivedManifest.representation_selection = selection;
   const validateBuildResponse = ajv.getSchema('/schemas/media-buy/build-creative-response.json');

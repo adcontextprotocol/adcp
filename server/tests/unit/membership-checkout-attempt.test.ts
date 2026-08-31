@@ -8,6 +8,7 @@ import {
   completeMembershipCheckoutAttempt,
   fingerprintMembershipCheckoutPayload,
   isDefinitiveCheckoutFailure,
+  isExpectedMembershipCheckoutSession,
 } from '../../src/billing/membership-checkout-attempt.js';
 
 beforeEach(() => vi.clearAllMocks());
@@ -82,6 +83,17 @@ describe('membership checkout attempts', () => {
       url: 'https://checkout.stripe.test/cs_123',
     })).resolves.toBe(true);
     expect(query.mock.calls[0][0]).toContain('stripe_session_id IS NULL');
+  });
+
+  it('recognizes only the checkout session generation recorded for the org', async () => {
+    query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+
+    await expect(isExpectedMembershipCheckoutSession('org_1', 'cs_123')).resolves.toBe(true);
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('organization_id = $1 AND stripe_session_id = $2'),
+      ['org_1', 'cs_123'],
+    );
   });
 
   it('clears only failures that prove no Stripe session was created', () => {

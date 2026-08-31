@@ -24,6 +24,7 @@ The collection/installment model maps to familiar concepts across media channels
 |---|---|---|---|
 | Podcast | Program | Episode | "Serial" → "Chapter 1" |
 | Linear TV / CTV | Series | Episode / Airing | "Monday Night Football" → "Week 12" |
+| Programmed audio/video channel | Channel stream | Scheduled airing / programming block | "Acme Retro" → "Tuesday 20:00 movie" |
 | Print / Magazine | Publication | Issue | "Vogue Germany" → "May 2026" |
 | Newsletter | Publication | Edition | "Money Stuff" → "Tuesday March 24" |
 | YouTube / Social | Series | Video / Post | "Hot Ones" → "Gordon Ramsay" |
@@ -41,21 +42,21 @@ A collection is a persistent, publisher-controlled content program that produces
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `collection_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference collections via `collections` selectors. Use distribution identifiers for cross-seller matching. |
-| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH). Defaults to `series`. |
+| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH), `channel` (continuously programmed audio/video stream). Defaults to `series`. |
 | `name` | string | Yes | Human-readable collection name |
 | `description` | string | No | What the collection is about |
 | `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
 | `genre_taxonomy` | string | No | Taxonomy system for genre values (e.g., `iab_content_3.0`). Recommended for machine-readable brand safety. |
 | `language` | string | No | Primary language (BCP 47) |
 | `content_rating` | object | No | Baseline rating: `system` + `rating`. Systems: `tv_parental`, `mpaa`, `podcast`, `esrb`, `bbfc`, `fsk`, `acb`, `custom`. Episodes can override. |
-| `cadence` | string | No | `daily`, `weekly`, `seasonal`, `event`, `irregular` |
+| `cadence` | string | No | `daily`, `weekly`, `monthly`, `seasonal`, `event`, `irregular`. Continuously programmed `channel` collections typically omit it. |
 | `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
 | `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
 | `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
 | `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/docs/brand-protocol/brand-json). |
 | `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
 | `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
-| `distribution` | array | No | Where this collection is distributed, with platform-specific identifiers per publisher. |
+| `distribution` | array | No | Where this collection is distributed, with host `property_ids`, identifiers, or both per publisher. For `channel` collections this is the carriage map, not proof of sales authorization. |
 | `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
 | `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
 
@@ -99,6 +100,190 @@ A collection is a persistent, publisher-controlled content program that produces
   ]
 }
 ```
+
+## Programmed channels and owner-sold carriage
+
+FAST describes a channel's carriage and monetization model, not a distinct kind
+of inventory. AdCP represents the underlying programmed audio or video stream
+as a `channel` collection. The same structure applies to FAST, virtual linear,
+and syndicated audio channels. This preserves three independent inventory axes:
+
+- the host CTV app is the **property** where the ad runs;
+- the programmed channel is the **collection** whose content surrounds the ad;
+- pre-roll, mid-roll, or another avail is the **placement** within the product.
+
+The channel owner declares the canonical collection in its own `adagents.json`.
+Each `distribution` entry can name both the host properties carrying the
+channel and identifiers used by the host or an independent metadata system:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
+  "collection_id": "retro_news",
+  "kind": "channel",
+  "name": "Acme Retro News",
+  "status": "active",
+  "distribution": [{
+    "publisher_domain": "hoststream.example",
+    "property_ids": ["hoststream_ctv"],
+    "identifiers": [
+      { "type": "platform_channel_id", "value": "channel_942" },
+      { "type": "gracenote_id", "value": "example-channel-id" }
+    ]
+  }]
+}
+```
+
+`platform_channel_id` is the generic fallback for a host-assigned channel
+identifier. Its namespace is the enclosing `publisher_domain`; the stable
+identity is therefore `(publisher_domain, value)`. Because the tuple is what
+identifies the channel, this type is only meaningful inside a distribution
+entry: it MUST NOT appear in bare `{type, value}` identifier lists
+(`distribution_ids` sources, `exclude_distribution_ids` filters), where a
+value like `1005` would silently collide across hosts. Use the platform's
+stable catalog identifier, not an EPG position number — hosts renumber
+lineups. Use a more specific identifier type when one exists.
+
+A distribution entry carries `property_ids`, `identifiers`, or both.
+Distributions SHOULD include `identifiers` whenever the host assigns one, and
+consumers MUST NOT assume `identifiers` is present — a property-only entry is
+valid, and is the shape an owner ships when the host has not yet published
+identifiers to cite.
+
+The owner's distribution declaration is a discoverability claim, not sales
+authorization. For verified owner-sold carriage, the host's `adagents.json`
+authorizes the owner's sales agent for the host property and narrows that grant
+to the owner's canonical collection:
+
+```json
+{
+  "url": "https://sales.channel-owner.example",
+  "authorized_for": "Owner-sold avails for Acme Retro News",
+  "authorization_type": "property_ids",
+  "property_ids": ["hoststream_ctv"],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "delegation_type": "direct"
+}
+```
+
+The seller's product then combines the same host property and owner collection.
+The placement may be `seller_inline`, so the host does not have to enumerate
+the channel owner's avail definitions:
+
+```json
+{
+  "publisher_properties": [{
+    "publisher_domain": "hoststream.example",
+    "selection_type": "by_id",
+    "property_ids": ["hoststream_ctv"]
+  }],
+  "collections": [{
+    "publisher_domain": "channel-owner.example",
+    "collection_ids": ["retro_news"]
+  }],
+  "placements": [{
+    "kind": "seller_inline",
+    "seller_agent": {
+      "agent_url": "https://sales.channel-owner.example"
+    },
+    "publisher_domain": "channel-owner.example",
+    "placement_id": "owner_avails",
+    "name": "Channel-owner avails",
+    "mode": "included"
+  }]
+}
+```
+
+Buyers MUST NOT treat a seller as authorized for owner-sold carriage absent a
+host `authorized_agents` entry matching the host property scope and the owner's
+collection selector. Missing host authorization fails closed. Dangling
+references fail closed the same way: a `distribution[].property_ids` value that
+does not resolve to a property in the host's `adagents.json` MUST be treated as
+unverified carriage.
+
+A host that carries many of one owner's channels does not need to track the
+owner's collection IDs. A collection selector without `collection_ids` is a
+**bulk grant**: it scopes the authorization to every collection declared in
+that publisher's `adagents.json`. This matches how carriage deals are
+structured — the host's contract is with the owner, not with each channel —
+and avoids a cross-company ID-sync dependency that would silently break the
+supply path when the owner renames a collection:
+
+```json
+"collections": [{ "publisher_domain": "channel-owner.example" }]
+```
+
+Position-specific host narrowing has a namespace rule. Host `placement_ids`
+and `placement_tags` resolve against placements published in the host's own
+`adagents.json`; they never match a seller's `seller_inline` placements, which
+live in the owner's namespace. A host that must constrain positions therefore
+publishes those placement definitions itself, and owner products MUST reference
+them via `kind: "publisher_ref"` into the host namespace. `seller_inline`
+placements and host placement narrowing are mutually exclusive on the same
+supply path — owner-sold carriage without position constraints is the shape
+that keeps hosts out of the owner's avail definitions.
+
+### Verification states
+
+The host attestation will roll out unevenly — channel owners have a direct
+incentive to publish; hosts publish on their own schedule. Buyer agents SHOULD
+distinguish three states rather than inventing their own interim policy:
+
+1. **Verified owner-sold.** The host's `adagents.json` authorizes the seller
+   for the host property, narrowed by the owner's collection selector (exact
+   or bulk grant). Full supply-path verification; suitable for enforcement.
+2. **Host-delegated.** The host has not published a collection-narrowed
+   `adagents.json` entry, but its `app-ads.txt` (or `ads.txt`) names the owner
+   via `inventorypartnerdomain=`, and the owner's own `adagents.json` names
+   the sales agent and the channel collection. The `inventorypartnerdomain`
+   line is host-authored, so it is genuine host-side evidence that the owner
+   sells some of this property's inventory — but it binds neither the agent
+   URL nor the collection, so it MUST NOT be treated as equivalent to the
+   collection-narrowed entry. Buyers MAY accept this state under their own
+   policy, the way DSPs ran ads.txt grace periods.
+3. **Owner-attested.** Only the owner's `distribution[]` entry asserts
+   carriage. This is discovery data with no host-side corroboration; buyers
+   MUST NOT treat it as sales authorization.
+
+For hosts, the collection-narrowed entry is not a new favor to a competitor's
+sales path: it is the machine-readable form of the carriage contract's
+existing owner-sales clause, and the upgrade path from an
+`inventorypartnerdomain` line they typically already publish.
+
+Two verified paths can legitimately overlap. In a revenue-share deal the
+host's agent and the owner's agent may both offer avails on the same property
+and collection; in an inventory-split deal they sell disjoint avails.
+Verification implies neither exclusivity nor disjointness — buyers dedup at
+delivery and measurement, as with any multi-path supply. A host that wants the
+split machine-readable can tag its retained avails with `placement_tags`.
+
+Multiple parties with sales rights do not require a new concurrency primitive.
+The host publishes one `authorized_agents[]` entry per sales path and narrows
+each entry to the relevant collection. A technology provider does not become a
+rights-holder merely by operating the path. If it supplies software behind the
+owner's endpoint, the path may remain `direct`; if it operates the sales
+endpoint on the owner's behalf, the host names that endpoint and marks the path
+`delegated`.
+
+Syndication chains with an aggregator in the middle (owner → playout/ad-tech
+aggregator → host, common for FAST outside the owner's home market) collapse
+to the same shape: the host attests each terminal sales path directly. When
+the aggregator holds the sales rights for its inventory share, the host
+authorizes the aggregator's agent — `delegated`, narrowed to the owner's
+collection (the bulk-grant selector fits here, since the host may know the
+owner only through the aggregator). There is no transitive attestation: a host
+entry naming the aggregator does not authorize agents the aggregator engages
+downstream; each selling endpoint the buyer can transact with needs its own
+host entry. The aggregator, holding both contracts, is the natural broker of
+the collection selector values.
+
+Internal allocation terms such as revenue shares, buyback rights, and backfill
+priority are not discovery or authorization data. Each seller applies those
+terms when constructing and pricing its products; buyers see the resulting
+offer, not how the participating parties divide the proceeds.
 
 ## The installment object
 
@@ -828,7 +1013,7 @@ AdCP does not predict content safety for unknown future installments. A buyer wh
 
 ## Distribution identifiers
 
-Each collection's `distribution` array maps it to specific publisher platforms with platform-specific identifiers. This enables cross-seller matching: when two different sellers both offer products for the same collection, a buyer agent can match them via shared identifiers.
+Each collection's `distribution` array maps it to specific publisher platforms using host `property_ids`, platform identifiers, or both. Identifiers enable cross-seller matching: when two different sellers both offer products for the same collection, a buyer agent can match them via shared identifiers.
 
 ### Cross-seller matching
 
@@ -840,7 +1025,7 @@ Platform-independent identifiers are the most reliable for deduplication:
 | `gracenote_id` | `EP012345678` | Industry standard for TV metadata |
 | `eidr_id` | `10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C` | ISO 10528 for audiovisual content |
 
-Shows SHOULD include at least one platform-independent identifier when available.
+Collections SHOULD include at least one platform-independent identifier when available.
 
 ### Platform-specific identifiers
 
@@ -882,7 +1067,7 @@ Shows SHOULD include at least one platform-independent identifier when available
 
 </CodeGroup>
 
-Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
+Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_channel_handle`, `youtube_channel_url`, `youtube_playlist_id`, `amazon_title_id`, `platform_channel_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`. For YouTube channels, `youtube_channel_id` is the preferred canonical identifier; handles and URLs are aliases for discovery and matching when the channel ID is not yet resolved.
 
 ## Ad inventory
 
@@ -921,6 +1106,34 @@ Products with multiple collections default to bundles — the buyer gets all lis
 |---|---|
 | `false` (default) | Bundle — buyer gets all collections |
 | `true` | Buyer can select specific collections in the media buy |
+
+Selection travels in `targeting_overlay.collection_selection`, mirroring
+`placement_selection`: `mode: "selected"` names the complete required set as
+domain-qualified selectors with explicit `collection_ids` (the domain-only
+bulk-grant form is authorization scoping, not selection), and
+`mode: "default"` accepts the product's full bundle. Buyers who manage
+selection through lists keep using `collection_list` /
+`collection_list_exclude` refs.
+
+```json
+"targeting_overlay": {
+  "collection_selection": {
+    "mode": "selected",
+    "collections": [{
+      "publisher_domain": "channel-owner.example",
+      "collection_ids": ["retro_news"]
+    }]
+  }
+}
+```
+
+On package readback, `collection_selection` is also the audit surface: sellers
+MUST echo the committed collection selection there as concrete selectors —
+including the materialized result of any `collection_list` composition — so a
+buyer can verify what content programming a package runs against without
+re-resolving mutable lists or re-fetching the product catalog. For a channel
+buy this is the readback of the one axis that makes the product distinct: the
+channel itself.
 
 ## Multi-collection bundles
 

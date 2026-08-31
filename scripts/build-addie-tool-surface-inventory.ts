@@ -398,34 +398,36 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     }));
 
     if (surface.source === 'dm') {
-      const certificationSets = selectSlackToolSets({
-        routerSelectedSets: ['admin'],
-        routerAvailable: true,
-        source: surface.source,
-        isAdmin: surface.isAdmin,
-        hasActiveCertification: true,
-      });
-      const certificationAllowed = new Set(toolSets.getToolsForSets(
-        certificationSets,
-        surface.isAdmin,
-        surface.isPublic,
-      ));
-      profiles.push(profile({
-        id: `slack_bolt:${surface.audience}:certification_session`,
-        runtime: 'slack_bolt',
-        audience: surface.audience,
-        route: 'certification_session',
-        selectedToolSets: certificationSets,
-        allowedToolNames: [...certificationAllowed],
-        globalTools,
-        requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
-        providerToolCount: 1,
-        conditionalMaximums: [
-          'active_certification_overrides_router_admin_and_fallback',
-          'google_docs_configured',
-          'nonstreaming_web_search',
-        ],
-      }));
+      for (const activeCertificationKind of ['learning', 'assessment', 'mixed'] as const) {
+        const certificationSets = selectSlackToolSets({
+          routerSelectedSets: ['admin'],
+          routerAvailable: true,
+          source: surface.source,
+          isAdmin: surface.isAdmin,
+          activeCertificationKind,
+        });
+        const certificationAllowed = new Set(toolSets.getToolsForSets(
+          certificationSets,
+          surface.isAdmin,
+          surface.isPublic,
+        ));
+        profiles.push(profile({
+          id: `slack_bolt:${surface.audience}:certification_${activeCertificationKind}_session`,
+          runtime: 'slack_bolt',
+          audience: surface.audience,
+          route: `certification_${activeCertificationKind}_session`,
+          selectedToolSets: certificationSets,
+          allowedToolNames: [...certificationAllowed],
+          globalTools,
+          requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+          providerToolCount: 1,
+          conditionalMaximums: [
+            'active_certification_overrides_router_admin_and_fallback',
+            'google_docs_configured',
+            'nonstreaming_web_search',
+          ],
+        }));
+      }
     }
   }
 
@@ -853,31 +855,55 @@ function surfaceMaximums(profiles: Profile[]): Record<string, SurfaceMaximum> {
   return Object.fromEntries(Object.entries(result).sort(([left], [right]) => left.localeCompare(right)));
 }
 
-const CERTIFICATION_WIRE_REQUIREMENTS = [
-  'start_certification_module',
-  'complete_certification_module',
-  'check_credentials',
-  'checkpoint_teaching_progress',
-  'get_build_phase_instructions',
-  'save_learner_feedback',
-  'set_my_name',
-  'find_membership_products',
-  'call_adcp_task',
-] as const;
+const CERTIFICATION_WIRE_REQUIREMENTS = {
+  certification_overview: [
+    'list_certification_tracks',
+    'get_certification_module',
+    'get_learner_progress',
+    'check_credentials',
+    'set_my_name',
+  ],
+  certification_learning: [
+    'start_certification_module',
+    'complete_certification_module',
+    'get_learner_progress',
+    'check_credentials',
+    'checkpoint_teaching_progress',
+    'get_build_phase_instructions',
+    'save_learner_feedback',
+    'set_my_name',
+    'find_membership_products',
+    'call_adcp_task',
+  ],
+  certification_assessment: [
+    'get_learner_progress',
+    'test_out_modules',
+    'start_certification_exam',
+    'complete_certification_exam',
+    'check_credentials',
+    'checkpoint_teaching_progress',
+    'set_my_name',
+    'find_membership_products',
+    'call_adcp_task',
+  ],
+} as const;
 
 function assertCertificationWireContract(profiles: Profile[]): void {
-  const certificationProfiles = profiles.filter((entry) =>
-    entry.selected_tool_sets?.includes('certification'));
-  if (certificationProfiles.length === 0) {
-    throw new Error('Addie tool inventory has no certification profiles');
+  const errors: string[] = [];
+  for (const [setName, requirements] of Object.entries(CERTIFICATION_WIRE_REQUIREMENTS)) {
+    const certificationProfiles = profiles.filter((entry) =>
+      entry.selected_tool_sets?.includes(setName));
+    if (certificationProfiles.length === 0) {
+      errors.push(`Addie tool inventory has no ${setName} profiles`);
+      continue;
+    }
+    for (const entry of certificationProfiles) {
+      const available = new Set(entry.ordered_tool_names);
+      for (const name of requirements) {
+        if (!available.has(name)) errors.push(`${entry.id} is missing ${name}`);
+      }
+    }
   }
-
-  const errors = certificationProfiles.flatMap((entry) => {
-    const available = new Set(entry.ordered_tool_names);
-    return CERTIFICATION_WIRE_REQUIREMENTS
-      .filter((name) => !available.has(name))
-      .map((name) => `${entry.id} is missing ${name}`);
-  });
   if (errors.length > 0) {
     throw new Error(`Certification wire contract failed:\n- ${errors.join('\n- ')}`);
   }

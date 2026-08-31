@@ -65,7 +65,11 @@
           }
         },
         "required": ["type", "value"],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "not": {
+          "required": ["type"],
+          "properties": { "type": { "const": "platform_channel_id" } }
+        }
       },
       "minItems": 1
     },

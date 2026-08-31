@@ -116,6 +116,25 @@ export async function clearMembershipCheckoutAttempt(
   );
 }
 
+/**
+ * Check that a completed Stripe session is still the server-side checkout
+ * generation for this organization. Do not apply the 24-hour intake TTL here:
+ * webhook delivery can be delayed after a valid completion, while a newer
+ * checkout or an explicit admin unlink replaces/deletes this exact session.
+ */
+export async function isExpectedMembershipCheckoutSession(
+  organizationId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const result = await query(
+    `SELECT 1 FROM membership_checkout_attempts
+     WHERE organization_id = $1 AND stripe_session_id = $2
+     LIMIT 1`,
+    [organizationId, sessionId],
+  );
+  return result.rows.length > 0;
+}
+
 /** Clear only failures that prove Stripe did not create a Checkout session. */
 export function isDefinitiveCheckoutFailure(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;

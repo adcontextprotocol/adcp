@@ -348,6 +348,47 @@ describe('runtime XSS regressions', () => {
       .toBe('https://acme.example/');
   });
 
+  it('keeps the member name authoritative while using brand content as fallback', () => {
+    const source = readPublicFile('member-card.js');
+    const renderMemberCard = new Function(
+      `${source}\nreturn renderMemberCard;`,
+    )() as (member: Record<string, unknown>) => string;
+    const html = renderMemberCard({
+      display_name: 'Acme Member',
+      slug: 'acme-member',
+      offerings: [],
+      credentials: [],
+      markets: [],
+      data_providers: [],
+      resolved_brand: {
+        name: 'Stale Enrichment Name',
+        tagline: 'Origin-published tagline',
+        description: 'Origin-published description',
+      },
+    });
+    const dom = new JSDOM(`<body>${html}</body>`);
+
+    expect(dom.window.document.querySelector('.member-name')?.textContent).toBe('Acme Member');
+    expect(dom.window.document.querySelector('.member-tagline')?.textContent)
+      .toBe('Origin-published tagline');
+    expect(dom.window.document.querySelector('.member-description')?.textContent)
+      .toBe('Origin-published description');
+
+    const memberAuthoredHtml = renderMemberCard({
+      display_name: 'Acme Member',
+      description: 'Member-authored description',
+      slug: 'acme-member',
+      offerings: [],
+      credentials: [],
+      markets: [],
+      data_providers: [],
+      resolved_brand: { description: 'Origin-published description' },
+    });
+    const memberAuthoredDom = new JSDOM(`<body>${memberAuthoredHtml}</body>`);
+    expect(memberAuthoredDom.window.document.querySelector('.member-description')?.textContent)
+      .toBe('Member-authored description');
+  });
+
   it('filters unsafe legacy profile URLs from the member detail view', () => {
     const membersSource = readPublicFile('members.html');
     const memberCardSource = readPublicFile('member-card.js');
@@ -392,6 +433,25 @@ describe('runtime XSS regressions', () => {
     }, [], [], null);
 
     expect(dom.window.document.querySelector('.detail-social')).toBeNull();
+
+    renderMemberDetail({
+      display_name: 'Origin Brand',
+      resolved_brand: {
+        tagline: 'Origin-published tagline',
+        description: 'Origin-published description',
+      },
+      offerings: [],
+      markets: [],
+      agents: [],
+      publishers: [],
+      data_providers: [],
+      tags: [],
+    }, [], [], null);
+
+    expect(dom.window.document.querySelector('.detail-title .tagline')?.textContent)
+      .toBe('Origin-published tagline');
+    expect(dom.window.document.querySelector('.detail-description')?.textContent)
+      .toBe('Origin-published description');
   });
 
   it('filters unsafe legacy profile URLs from the community person view', () => {
