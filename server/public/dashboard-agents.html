@@ -3296,6 +3296,32 @@
       swapAgentCard(agentUrl);
     }
 
+    async function pollAgentRefresh(statusUrl, retryAfterSeconds = 5) {
+      const deadline = Date.now() + 16 * 60 * 1000;
+      let delaySeconds = Math.max(1, Number(retryAfterSeconds) || 5);
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+        const response = await fetch(statusUrl, { credentials: 'include' });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 429) {
+          delaySeconds = Math.max(
+            1,
+            Number(response.headers.get('Retry-After'))
+              || Number(data.retry_after)
+              || Number(data.retryAfter)
+              || 5,
+          );
+          continue;
+        }
+        if (!response.ok) {
+          return { status: 'failed', error: data.error || `Status check failed (HTTP ${response.status})` };
+        }
+        if (data.status === 'succeeded' || data.status === 'failed') return data;
+        delaySeconds = Math.max(1, Number(response.headers.get('Retry-After')) || 5);
+      }
+      return { status: 'running' };
+    }
+
     // Recheck registry snapshot for one agent. Re-probes capabilities + health,
     // negotiates against the agent's current supported_versions, and reruns
     // compliance without waiting for the periodic crawl. Successes flash and
@@ -3341,12 +3367,37 @@
         const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`, {
           method: 'POST',
           credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Prefer': 'respond-async' },
           body: JSON.stringify({ organization_id: pageState.orgId }),
         });
-        const data = await res.json().catch(() => ({}));
+        let data = await res.json().catch(() => ({}));
+        let effectiveStatus = res.status;
 
-        if (res.status === 200) {
+        if (res.status === 202 && data.status_url) {
+          const progress = renderFlash({
+            severity: 'warning',
+            text: 'Refresh accepted — running compliance checks…',
+          });
+          const operation = await pollAgentRefresh(
+            data.status_url,
+            res.headers.get('Retry-After'),
+          );
+          progress?.remove();
+          if (operation.status === 'succeeded') {
+            effectiveStatus = 200;
+            data = operation.result || {};
+          } else if (operation.status === 'failed') {
+            effectiveStatus = 500;
+            data = { error: operation.error?.message || operation.error || 'Refresh failed' };
+          } else {
+            effectiveStatus = 202;
+            data = {
+              error: 'Refresh is still running. You can reload this page later to see the updated verdict.',
+            };
+          }
+        }
+
+        if (effectiveStatus === 200) {
           // The refresh response is written before it returns. Re-fetch and
           // replace this card so a previous-version verdict does not linger
           // until the operator reloads the entire dashboard.
@@ -3360,17 +3411,19 @@
             text: buildAgentRefreshSummary(data),
           });
           if (retestSucceeded && flash) setTimeout(() => flash.remove(), 8000);
-        } else if (res.status === 429) {
+        } else if (effectiveStatus === 202) {
+          renderFlash({ severity: 'warning', text: data.error });
+        } else if (effectiveStatus === 429) {
           renderFlash({
             severity: 'warning',
             text: `Rate limited — try again in ${data.retry_after || 60}s`,
           });
-        } else if (res.status === 502) {
+        } else if (effectiveStatus === 502) {
           renderFlash({ severity: 'error', text: data.error || 'Probe failed' });
         } else {
           renderFlash({
             severity: 'error',
-            text: data.error || `Recheck failed (HTTP ${res.status})`,
+            text: data.error || `Recheck failed (HTTP ${effectiveStatus})`,
           });
         }
       } catch (err) {

@@ -1,0 +1,73 @@
+---
+title: get_principal
+description: "Read the authenticated caller's connection configuration, version, and destination setup states."
+"og:title": "AdCP — get_principal"
+---
+
+`get_principal` returns the authenticated caller's current durable connection configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations.
+
+The read is side-effect free. It never issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
+
+{/* Using latest because this experimental schema is not yet released. Update after release. */}
+**Request schema:** [`/schemas/latest/protocol/get-principal-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-principal-request.json)
+
+{/* Using latest because this experimental schema is not yet released. Update after release. */}
+**Response schema:** [`/schemas/latest/protocol/get-principal-response.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-principal-response.json)
+
+## When to call
+
+Call it whenever you need current state rather than a change:
+
+- **Bootstrap the concurrency fence.** Read `configuration_version` before a guarded [`sync_principal`](/docs/protocol/sync_principal) replacement instead of writing blind.
+- **Recover after local-state loss.** A restarted service reads `principal_id`, `configuration_version`, every `destination_ref`, and each destination's setup state before deciding what to sync.
+- **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready`. Polling never disturbs the version fence.
+- **Audit generations.** Superseded generations appear in each destination's `prior_destination_refs`; revoked destinations appear in `retired_destinations`. Both remain resolvable for existing authorized account bindings and retained reporting history.
+
+Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `adcp.principal` with `read_task: "get_principal"`. Sellers advertising `principal` implement both the sync and read tasks.
+
+## Identity
+
+Identity resolution is identical to [`sync_principal`](/docs/protocol/sync_principal): the seller resolves the stable authenticated principal from transport and ignores every request-body field for identity and authorization. The request body carries no parameters beyond the protocol envelope.
+
+## Results
+
+| `result.kind` | Meaning |
+|---|---|
+| `current` | The caller has a persisted connection. Returns `principal_id`, `configuration_version`, and complete credential-free configuration state. |
+| `unconfigured` | The authenticated caller has no persisted connection with this agent. |
+| `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
+
+A caller with no connection and a caller probing coordinates owned by someone else receive indistinguishable results: configuration state is visible only to its owning principal.
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "kind": "current",
+    "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+    "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+    "configuration": {
+      "notification_configs": [],
+      "reporting_destinations": [
+        {
+          "destination_id": "analytics-warehouse",
+          "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+          "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
+          "state": "ready",
+          "configuration": {
+            "pattern": "warehouse_materialization",
+            "destination_id": "analytics-warehouse",
+            "active": true,
+            "provider": { "domain": "data-warehouse.example" },
+            "transport": "bigquery",
+            "location": "pinnacle-analytics.adcp_reporting",
+            "accepted_verification_profiles": ["native_commit", "canonical_digest"]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Seller-driven setup-state transitions observed through this task — a destination moving from `validating` to `ready`, a refreshed `setup.expires_at` — do not advance `configuration_version`. Only successful configuration mutations through [`sync_principal`](/docs/protocol/sync_principal) or [`sync_agent_notification_configs`](/docs/protocol/sync_agent_notification_configs) advance it.

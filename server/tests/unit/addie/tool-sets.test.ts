@@ -5,10 +5,14 @@ import {
   ADMIN_DOMAIN_TOOL_SETS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
+  CERTIFICATION_ASSESSMENT_TOOLS,
+  CERTIFICATION_LEARNING_TOOLS,
+  CERTIFICATION_OVERVIEW_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   LEGACY_ADMIN_GROUP_TOOLS,
   LEGACY_ADMIN_TOOLS,
   LEGACY_AGENT_TESTING_TOOLS,
+  LEGACY_CERTIFICATION_TOOLS,
   LEGACY_MEMBER_TOOLS,
   LEGACY_PUBLISHING_TOOLS,
   MEMBER_PROFILE_TOOLS,
@@ -106,24 +110,49 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_review**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_promotion**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **publishing**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **certification_overview**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **certification_learning**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **certification_assessment**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **certification**');
     });
   });
 
   describe('certification workflow', () => {
-    it('keeps every instructed checkpoint, build, feedback, and credential-recovery tool on the routed surface', () => {
-      const tools = getToolsForSets(['certification'], false, false);
+    it('keeps overview, learning, and assessment workflows bounded', () => {
+      expect(CERTIFICATION_OVERVIEW_TOOLS).toHaveLength(5);
+      expect(CERTIFICATION_LEARNING_TOOLS).toHaveLength(10);
+      expect(CERTIFICATION_ASSESSMENT_TOOLS).toHaveLength(9);
+      expect(CERTIFICATION_OVERVIEW_TOOLS).toContain('list_certification_tracks');
+      expect(CERTIFICATION_OVERVIEW_TOOLS).not.toContain('start_certification_module');
+      expect(CERTIFICATION_LEARNING_TOOLS).toContain('get_build_phase_instructions');
+      expect(CERTIFICATION_LEARNING_TOOLS).not.toContain('start_certification_exam');
+      expect(CERTIFICATION_ASSESSMENT_TOOLS).toContain('start_certification_exam');
+      expect(CERTIFICATION_ASSESSMENT_TOOLS).not.toContain('complete_certification_module');
+    });
 
-      expect(tools).toEqual(expect.arrayContaining([
-        'start_certification_module',
-        'complete_certification_module',
-        'check_credentials',
-        'checkpoint_teaching_progress',
-        'get_build_phase_instructions',
-        'save_learner_feedback',
-        'set_my_name',
-        'find_membership_products',
-        'call_adcp_task',
-      ]));
+    it('preserves completion prerequisites and recovery pairs on each mutating workflow', () => {
+      for (const name of ['certification_learning', 'certification_assessment']) {
+        const tools = getToolsForSets([name], false, false);
+        expect(tools).toEqual(expect.arrayContaining([
+          'get_learner_progress',
+          'check_credentials',
+          'checkpoint_teaching_progress',
+          'set_my_name',
+          'find_membership_products',
+          'call_adcp_task',
+        ]));
+      }
+    });
+
+    it('keeps the exact mixed workflow callable only as a compatibility shim', () => {
+      expect(LEGACY_CERTIFICATION_TOOLS).toHaveLength(15);
+      expect(new Set(LEGACY_CERTIFICATION_TOOLS).size).toBe(15);
+      expect(TOOL_SETS.certification.tools).toEqual(LEGACY_CERTIFICATION_TOOLS);
+      expect(TOOL_SETS.certification.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('certification')).toBe(false);
+      expect(getValidToolSetNames(false).has('certification_overview')).toBe(true);
+      expect(getValidToolSetNames(false).has('certification_learning')).toBe(true);
+      expect(getValidToolSetNames(false).has('certification_assessment')).toBe(true);
     });
   });
 
@@ -297,6 +326,9 @@ describe('getToolsForSets', () => {
       ['publishing_author', 6],
       ['publishing_review', 4],
       ['publishing_promotion', 2],
+      ['certification_overview', 5],
+      ['certification_learning', 10],
+      ['certification_assessment', 9],
       ['github', 4],
       ['illustrations', 1],
       ['knowledge', 3],

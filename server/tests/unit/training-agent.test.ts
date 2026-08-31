@@ -17783,6 +17783,46 @@ describe('proposal lifecycle', () => {
     return finalized.proposal as Record<string, unknown>;
   }
 
+  it('isolates anonymous proposal state by trusted chat principal', async () => {
+    const principalA: TrainingContext = { mode: 'training', principal: 'anonymous-chat:thread-a' };
+    const principalB: TrainingContext = { mode: 'training', principal: 'anonymous-chat:thread-b' };
+    const requested = await executeTrainingAgentTool('request_proposals', {
+      idempotency_key: 'anonymous-thread-a-request-0001',
+      brand: { domain: 'anonymous-isolation.example' },
+      brief: 'Plan a social engagement display campaign',
+    }, principalA);
+    expect(requested.success, requested.error).toBe(true);
+    const proposal = (requested.data?.proposals as Array<Record<string, unknown>>)[0];
+
+    const crossPrincipal = await executeTrainingAgentTool('refine_proposals', {
+      idempotency_key: 'anonymous-thread-b-refine-0001',
+      refinements: [{
+        proposal_id: proposal.proposal_id,
+        action: 'revise',
+        ask: 'Change a proposal from another anonymous chat.',
+      }],
+    }, principalB);
+    expect(crossPrincipal.success, crossPrincipal.error).toBe(true);
+    expect((crossPrincipal.data?.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+      source_proposal_id: proposal.proposal_id,
+      outcome: 'unable',
+    });
+
+    const samePrincipal = await executeTrainingAgentTool('refine_proposals', {
+      idempotency_key: 'anonymous-thread-a-refine-0001',
+      refinements: [{
+        proposal_id: proposal.proposal_id,
+        action: 'revise',
+        ask: 'Prefer social inventory while preserving the budget.',
+      }],
+    }, principalA);
+    expect(samePrincipal.success, samePrincipal.error).toBe(true);
+    expect((samePrincipal.data?.results as Array<Record<string, unknown>>)[0]).toMatchObject({
+      source_proposal_id: proposal.proposal_id,
+      outcome: 'partial',
+    });
+  });
+
   it('returns structured INVALID_REQUEST when canonical root constraints reject a discovery-valid call', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'request_proposals', {

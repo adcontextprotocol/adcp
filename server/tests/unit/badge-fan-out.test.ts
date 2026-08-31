@@ -394,4 +394,23 @@ describe('runBadgeFanOut', () => {
     expect((db.upsertBadge as ReturnType<typeof vi.fn>).mock.calls.map(call => call[0].adcp_version))
       .toEqual([...SUPPORTED_BADGE_VERSIONS]);
   });
+
+  it('surfaces per-version persistence failures to durable refresh callers', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [{ workos_organization_id: 'org_member' }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] } as never);
+    const db = makeDb({
+      latestStatuses: [status('sales_broadcast_tv', 'passing')],
+    });
+    vi.mocked(db.upsertBadge).mockRejectedValueOnce(new Error('simulated badge persistence failure'));
+
+    await expect(runBadgeFanOut({
+      complianceDb: db,
+      agentUrl: 'https://example.com/mcp',
+      declaredSpecialisms: ['sales-broadcast-tv'],
+      adcpVersions: ['3.0'],
+      throwOnFailure: true,
+    })).rejects.toMatchObject({
+      code: 'badge_update_failed',
+      message: 'Badge state could not be updated',
+    });
+  });
 });

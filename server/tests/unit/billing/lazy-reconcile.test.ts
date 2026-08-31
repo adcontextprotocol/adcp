@@ -378,6 +378,22 @@ describe('attemptStripeReconciliation', () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);  // only the SELECT, no UPDATE
   });
 
+  it('returns stripe_error when a legacy subscription product cannot be classified', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [fakeOrg()] });
+    mockCustomersRetrieve.mockResolvedValueOnce(
+      fakeCustomerWithSubs([
+        fakeMembershipSub({ lookup_key: null, product: 'prod_unavailable' }),
+      ]),
+    );
+    mockProductsRetrieve.mockRejectedValueOnce(new Error('Stripe product read timed out'));
+
+    const result = await attemptStripeReconciliation('org_x', makeDeps());
+
+    expect(result).toEqual({ healed: false, reason: 'stripe_error' });
+    expect(mockProductsRetrieve).toHaveBeenCalledWith('prod_unavailable');
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+  });
+
   it('returns org_not_found when the org id does not exist', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 

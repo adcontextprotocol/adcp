@@ -479,6 +479,16 @@
       "pullRequestNo": 6211,
       "comment_id": 5182835349,
       "comment_url": "https://github.com/adcontextprotocol/adcp/pull/6211#issuecomment-5182835349"
+    },
+    {
+      "name": "sujanchalla0510",
+      "id": 13685385,
+      "created_at": "2026-08-30T18:06:40Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 7092,
+      "comment_id": 5470378325,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/7092#issuecomment-5470378325"
     }
   ]
 }

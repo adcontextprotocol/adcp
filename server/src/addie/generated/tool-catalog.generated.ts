@@ -51,7 +51,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
 - **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact
 - **collaboration** — send_member_dm
-- **certification** — list_certification_tracks, get_certification_module, start_certification_module, complete_certification_module, get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, check_credentials, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, find_membership_products, call_adcp_task
+- **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name
+- **certification_learning** — start_certification_module, complete_certification_module, get_learner_progress, checkpoint_teaching_progress, get_build_phase_instructions, save_learner_feedback, set_my_name, check_credentials, find_membership_products, call_adcp_task
+- **certification_assessment** — get_learner_progress, test_out_modules, start_certification_exam, complete_certification_exam, checkpoint_teaching_progress, set_my_name, check_credentials, find_membership_products, call_adcp_task
 
 ### Always available
 

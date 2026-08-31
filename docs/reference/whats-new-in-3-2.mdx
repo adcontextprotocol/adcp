@@ -1,7 +1,7 @@
 ---
 title: What's new in AdCP 3.2
 sidebarTitle: What's new in 3.2
-description: "Adopter overview of AdCP 3.2: compact media buying, targeting-aware discovery, canonical creative workflows, stronger security, portable evidence, and operational reconciliation."
+description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle: discover, propose, negotiate, reserve, accept, and operate—with compact tools and accountable state."
 "og:title": "AdCP — What's New in 3.2"
 ---
 
@@ -9,23 +9,44 @@ description: "Adopter overview of AdCP 3.2: compact media buying, targeting-awar
 
 <Warning>
 **3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed beta.6, so use the
-signed beta.9 artifact directly unless your SDK explicitly names beta.9.
-Python higher-level helpers remain partial, and Go exact support is still
-pending. See the
-[3.2 beta program](/docs/reference/3-2-beta) before testing.
+`@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed beta.9. Python
+higher-level helpers remain partial, and Go exact support is still pending. See
+the [3.2 beta program](/docs/reference/3-2-beta) before testing.
 </Warning>
 
-AdCP 3.2 makes the protocol easier to implement as a set of explicit agent
-operations. It separates product listing, proposal negotiation, purchase, and
-operational control; makes targeting and creative capabilities discoverable;
-and strengthens the evidence and security contracts that autonomous execution
-depends on.
+AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
+software can safely operate. A buyer can move from a brief to seller-authored
+plans, negotiate typed terms, reserve inventory, accept one exact snapshot,
+and operate the resulting campaign without asking either agent to infer which
+kind of change is happening.
+
+That is the release's central upgrade: conversational on the outside,
+explicit and accountable on the inside. Targeting and creative capabilities
+are discoverable, commercial terms are immutable and digestible, retries are
+safe, and operational changes no longer rewrite the agreement they came from.
 
 Existing 3.1 integrations can remain pinned to `"3.1"`. The broad 3.x
 `get_products`, `create_media_buy`, and `update_media_buy` facades remain
 available for compatibility. New integrations should prefer the compact 3.2
 tools after capability discovery.
+
+<CardGroup cols={3}>
+  <Card
+    title="Try the lifecycle"
+    icon="messages"
+    href="https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining."
+  >
+    Ask Addie to run a real proposal conversation. No membership or setup is
+    required.
+  </Card>
+  <Card title="Build it" icon="code" href="/docs/building/by-layer/L4/choose-your-sdk">
+    Choose an SDK that explicitly embeds the current 3.2 protocol checkpoint.
+  </Card>
+  <Card title="Adopt it" icon="route" href="/docs/reference/migration/3-1-to-3-2">
+    Add compact lifecycle tools incrementally while keeping 3.1 integrations
+    pinned and working.
+  </Card>
+</CardGroup>
 
 ## The 3.2 feature set
 
@@ -47,6 +68,25 @@ Sellers advertise the subset they support through
 `media_buy.lifecycle_tools`. Its absence tells callers to use the compatibility
 facades. See [Proposal negotiation](/docs/media-buy/product-discovery/proposal-negotiation)
 for the end-to-end draft → refine → finalize → accept flow.
+
+This is more than a naming cleanup. Each boundary has a distinct business
+meaning:
+
+| Boundary | What becomes true |
+| --- | --- |
+| `request_proposals` | The seller has authored non-binding plan snapshots from the brief. |
+| `refine_proposals` with `revise` | A new immutable snapshot records changed terms without rewriting history. |
+| `refine_proposals` with `finalize` | The exact terms are committed and inventory is held until `expires_at`. |
+| `accept_proposal` | The held snapshot becomes an accepted MediaBuy. |
+| `control_media_buy` | Delivery changes inside the accepted envelope, guarded by the current revision. |
+
+Because the seller advertises an explicit subset of lifecycle tools, teams can
+adopt the model incrementally. A sales agent can delegate proposal planning to
+an internal specialist while keeping one public endpoint and one execution
+identity. A client can add proposal exploration before it adds purchasing.
+Cross-agent transfer of a committed hold is deliberately not implied: the
+agent that accepts a proposal must be able to authenticate its buyer binding,
+resolve the immutable snapshot, and consume its inventory hold atomically.
 
 ### Targeting that survives discovery and execution
 
@@ -76,6 +116,28 @@ terms use `control_media_buy`.
 This split gives buyers one recovery rule: follow the accepted terms and current
 revision for control; request a new immutable commercial snapshot for anything
 that changes those terms.
+
+#### Where the commercial contract ends in 3.2
+
+`accept_proposal` creates or changes an executable MediaBuy under one exact
+commercial snapshot. It does not by itself standardize payment rails, invoice
+settlement, foreign-exchange authority, delivery disputes, credits, or
+makegoods. Those remain account, contract, or platform integrations unless the
+participants advertise and use a relevant AdCP capability.
+
+The [3.3 commercial-completion workstream](https://github.com/adcontextprotocol/adcp/issues/7064)
+is defining the smallest portable post-acceptance lifecycle backed by adopter
+requirements. That boundary is deliberate: 3.2 makes acceptance precise
+without claiming to replace every financial or legal system behind a seller.
+
+#### Cross-channel architecture, capability-specific depth
+
+The lifecycle applies across digital and offline channels, but implementation
+and reconciliation depth varies by channel. A seller's advertised products,
+formats, reporting capabilities, and lifecycle tools remain the source of
+truth. The [cross-channel maturity workstream](https://github.com/adcontextprotocol/adcp/issues/7065)
+will publish the channel-by-lifecycle matrix and recruit contributors for print,
+broadcast, OOH, and place-based audio gaps.
 
 ### Programmed channels have first-class identity and carriage
 
@@ -134,6 +196,12 @@ unpadded Base64URL override to RFC 8941 padded standard Base64. Parser selection
 comes from the trusted endpoint/profile. Webhook v1 keeps its separately routed
 legacy Base64URL encoding throughout 3.x.
 
+The [3.3 production security profile](https://github.com/adcontextprotocol/adcp/issues/7066)
+will evaluate a stronger capability-declared production floor—including signed
+spend commits, least privilege, external-reference protections, audit, and
+anomaly limits—without silently breaking baseline 3.x compatibility. Mandatory
+signing across spend-committing operations remains a 4.0 floor.
+
 3.2 also grades OAuth discovery consistency, tightens signed-response verifier
 errors, and requires integer `error.retry_after` values from 3.2 producers.
 
@@ -191,8 +259,8 @@ for the remaining runner and coverage gaps.
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed beta.6 tarball, name the exact supported bundle, and feed accepted protocol corrections into a later beta. |
-| A compliance operator | Test beta.6 from its signed assets, or keep an exact beta.5 SDK pairing; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
+| An SDK maintainer | Generate from the signed beta.9 tarball, name the exact supported bundle, and feed accepted protocol corrections into the RC. |
+| A compliance operator | Test beta.9 from its signed assets or an SDK that explicitly lists beta.9, such as TypeScript SDK 14 beta.22 or Python SDK 8 beta.10; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
 
 ## Start here
 

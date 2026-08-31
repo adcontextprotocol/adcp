@@ -15,8 +15,8 @@ before GA.
 </Warning>
 
 The 3.2 beta cycle started with a protocol-first checkpoint. Beta.9 is the
-current protocol checkpoint. No SDK release names exact beta.9 support yet: the
-current TypeScript and Python SDK betas consume the signed beta.6 bundle:
+current protocol checkpoint. TypeScript SDK `14.0.0-beta.22` and Python SDK
+`8.0.0b10` consume the signed beta.9 bundle:
 
 | Checkpoint | Purpose | Who should test |
 |---|---|---|
@@ -26,16 +26,16 @@ current TypeScript and Python SDK betas consume the signed beta.6 bundle:
 | `3.2.0-beta.3` | Third integration-correction checkpoint | Pinned adopters comparing beta.2 and beta.3 behavior |
 | `3.2.0-beta.4` | Fourth integration checkpoint | Pinned adopters comparing beta.3 and beta.4 behavior |
 | `3.2.0-beta.5` | Previous SDK-backed protocol checkpoint | Pinned adopters comparing beta.5 and beta.6 behavior |
-| `3.2.0-beta.6` | Current TypeScript SDK-backed protocol checkpoint for reporting, CTV, canonical display, and request-signing integration | Buyer and seller teams running end-to-end TypeScript SDK integrations |
+| `3.2.0-beta.6` | Previous SDK-backed protocol checkpoint for reporting, CTV, canonical display, and request-signing integration | Pinned adopters comparing beta.6 with later checkpoints |
 | `3.2.0-beta.7` | Previous protocol checkpoint for audience activation and external sources, creative delivery and tracker execution, measured-channel reporting, and expanded conformance coverage | Pinned adopters comparing beta.7 and beta.8 behavior |
 | `3.2.0-beta.8` | Previous protocol checkpoint for metric-container subsumption conformance and corrected versioned documentation snapshots | Pinned adopters comparing beta.8 and beta.9 behavior |
-| `3.2.0-beta.9` | Current protocol checkpoint for the draft account change feed, inventory-list receipts, inventory delivery identity, seller policy and change rights, and broader conformance coverage | Raw-wire adopters, code-generator maintainers, SDK maintainers, and agent teams validating the signed beta.9 artifact |
-| SDK wave | `@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed `3.2.0-beta.6`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+| `3.2.0-beta.9` | Current protocol checkpoint for the draft account change feed, inventory-list receipts, inventory delivery identity, seller policy and change rights, and broader conformance coverage | SDK-backed, raw-wire, code-generation, and integration testing |
+| SDK wave | `@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed `3.2.0-beta.9`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
 
 Earlier betas remain useful as pinned implementation checkpoints. For
-SDK-backed TypeScript testing, pair SDK beta.13 with protocol beta.6. Pair
-Python beta.9 with protocol beta.6. Test beta.9 from its signed artifact with
-raw-wire or code-generation workflows. Do not combine a newer wire pin with an
+SDK-backed TypeScript testing, pair SDK beta.22 with protocol beta.9. Pair
+Python beta.10 with protocol beta.9. You can also test beta.9 from its signed
+artifact with raw-wire or code-generation workflows. Do not combine a newer wire pin with an
 SDK generated from an older bundle unless the SDK maintainer documents forward
 compatibility.
 
@@ -58,21 +58,21 @@ a stable `"3.2"` pin must not silently negotiate to a beta.
 
 ## Use matched SDK betas
 
-The TypeScript SDK has exact beta.6 support. The npm
+The TypeScript SDK has exact beta.9 support. The npm
 `latest` tag remains on SDK 13, so opt into the preview explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.13
+npm install @adcp/sdk@14.0.0-beta.22
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
-lifecycle, the beta.6 schemas and compliance assets, version-aware request
+lifecycle, the beta.9 schemas and compliance assets, version-aware request
 signing, governance plan-adjustment reporting, and agent notification
 configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
 See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
 matrix and install guidance.
 
-Python `adcp==8.0.0b9` carries beta.6 schemas and generated types. Its
+Python `adcp==8.0.0b10` carries beta.9 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
@@ -127,7 +127,7 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-The TypeScript and Python rows name exact beta.6 support with different
+The TypeScript and Python rows name exact beta.9 support with different
 higher-layer coverage. Neither implies support
 for another checkpoint. Treat generated 3.2 types and validators in every other
 SDK as unavailable until its row names an exact package and protocol checkpoint.
@@ -141,9 +141,9 @@ in place.
 
 ## Current beta.9 checkpoint
 
-Protocol beta.1 through beta.9 are published. No SDK release names exact beta.9
-support yet. TypeScript SDK beta.13 and Python SDK beta.9 embed the exact beta.6
-bundle. Before treating a test result as beta.9 protocol evidence, confirm that:
+Protocol beta.1 through beta.9 are published. TypeScript SDK beta.22 and Python
+SDK beta.10 embed the exact beta.9 bundle. Before treating a test result as
+beta.9 protocol evidence, confirm that:
 
 - the test uses the signed beta.9 artifact directly;
 - both peers advertise `"3.2-beta.9"` before calls use that pin;
@@ -162,6 +162,20 @@ The current SDK pairings do not make future beta ordinals compatible by default.
 Retain the exact protocol bundle, SDK package versions, capability responses,
 redacted requests/responses, task IDs, proposal and MediaBuy revisions,
 creative IDs, warnings, and delivery readbacks for each run.
+
+Evidence claims should name their boundary. Schema validation, a storyboard
+pass, sandbox interoperability, independent interoperability, a production
+transaction, and reconciled production delivery are different claims. None
+implies the next.
+
+Participants are not expected to publish spend, pricing, campaigns, clients,
+or confidential counterparties. A network or interchange that observes AdCP
+transactions can, with participant consent, attest to the exact version,
+successful task set, environment, channel, lifecycle stage, and observation
+window without exposing those commercial details. The
+[production-evidence workstream](https://github.com/adcontextprotocol/adcp/issues/7068)
+is piloting that model and an implementation matrix that can accept evidence
+from multiple independent issuers.
 
 ### Buyer and seller lifecycle
 

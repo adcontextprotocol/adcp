@@ -1,7 +1,7 @@
 /**
  * API Call Tracker
  *
- * Tracks all Anthropic API calls for performance metrics.
+ * Tracks model-provider API calls for performance metrics.
  * This captures both chat messages and background tasks (router, insight extraction, etc.)
  */
 

@@ -7835,6 +7835,13 @@ paths:
                 $ref: "#/components/schemas/Error"
         "429":
           description: Rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
           content:
             application/json:
               schema:
@@ -12148,6 +12155,15 @@ paths:
           description: URL-encoded agent URL
           name: encodedUrl
           in: path
+        - schema:
+            type: string
+            enum:
+              - respond-async
+            description: Return the durable refresh operation immediately instead of waiting up to 90 seconds for a legacy synchronous result.
+          required: false
+          description: Return the durable refresh operation immediately instead of waiting up to 90 seconds for a legacy synchronous result.
+          name: Prefer
+          in: header
       requestBody:
         content:
           application/json:
@@ -12159,7 +12175,7 @@ paths:
                   description: Selected organization ID. The caller must own the agent in this organization before its credentials are used.
       responses:
         "200":
-          description: Snapshot refreshed
+          description: Snapshot refreshed inside the bounded 90-second compatibility window
           content:
             application/json:
               schema:
@@ -12187,6 +12203,18 @@ paths:
                     type: string
                   error:
                     type: string
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                    description: Present when this response recovered a recently completed operation.
+                  test_session_id:
+                    type: string
+                    description: Stable test-session identity, present on recovered responses.
+                  status_url:
+                    type: string
+                    description: Durable operation URL, present on recovered responses.
+                  coalesced:
+                    type: boolean
                   compliance:
                     type: object
                     properties:
@@ -12228,11 +12256,15 @@ paths:
                       notices_count:
                         type: integer
                         description: Number of run-summary notices emitted by this run.
+                      auth_available:
+                        type: boolean
+                        description: True when the verifier resolved saved credentials for the compliance run.
                       error:
                         type: string
                         description: Reason compliance didn't run when `ran` is false.
                     required:
                       - ran
+                      - auth_available
                     description: Compliance re-run summary. The capability/health portion of the response is independent of this block — a failed compliance run still returns the rest of the snapshot.
                 required:
                   - online
@@ -12243,6 +12275,57 @@ paths:
                   - oauth_required
                   - checked_at
                   - compliance
+        "202":
+          description: Refresh accepted and observable through the durable status resource
+          headers:
+            Location:
+              schema:
+                type: string
+                description: Relative URL of the durable refresh operation
+              required: true
+              description: Relative URL of the durable refresh operation
+            Retry-After:
+              schema:
+                type: string
+                description: Recommended polling interval in seconds
+              required: true
+              description: Recommended polling interval in seconds
+            Preference-Applied:
+              schema:
+                type: string
+                description: Present as respond-async when requested
+              required: false
+              description: Present as respond-async when requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                  test_session_id:
+                    type: string
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                  coalesced:
+                    type: boolean
+                    description: True when the same credential context already had an active refresh.
+                  status_url:
+                    type: string
+                  requested_at:
+                    type: string
+                    format: date-time
+                required:
+                  - refresh_operation_id
+                  - test_session_id
+                  - status
+                  - coalesced
+                  - status_url
+                  - requested_at
         "400":
           description: Invalid agent URL
           content:
@@ -12262,7 +12345,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Monitoring paused for this agent
+          description: Monitoring paused, or another credential context is already refreshing this agent
           content:
             application/json:
               schema:
@@ -12282,8 +12365,165 @@ paths:
                 required:
                   - error
                   - retry_after
+        "500":
+          description: Refresh failed after durable execution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "502":
           description: Probe failed (timeout, DNS, OAuth wall, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Durable refresh queue unavailable or at capacity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/refreshes/{operationId}:
+    get:
+      operationId: getAgentRefreshOperation
+      summary: Get agent refresh status
+      description: Returns the durable lifecycle and, after success, the same snapshot result as the synchronous refresh response. The selected owner organization or a current registry administrator may read the operation. Poll no more frequently than the Retry-After value.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            format: uuid
+          required: true
+          name: operationId
+          in: path
+      responses:
+        "200":
+          description: Durable refresh lifecycle
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Present while queued or running
+              required: false
+              description: Present while queued or running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refresh_operation_id:
+                    type: string
+                    format: uuid
+                  test_session_id:
+                    type: string
+                  agent_url:
+                    type: string
+                    format: uri
+                  status:
+                    type: string
+                    enum:
+                      - queued
+                      - running
+                      - succeeded
+                      - failed
+                  attempts:
+                    type: integer
+                  requested_at:
+                    type: string
+                    format: date-time
+                  started_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  completed_at:
+                    type:
+                      - string
+                      - "null"
+                    format: date-time
+                  result:
+                    type:
+                      - object
+                      - "null"
+                    additionalProperties: {}
+                  error:
+                    type:
+                      - object
+                      - "null"
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                    required:
+                      - code
+                      - message
+                required:
+                  - refresh_operation_id
+                  - test_session_id
+                  - agent_url
+                  - status
+                  - attempts
+                  - requested_at
+                  - started_at
+                  - completed_at
+                  - result
+                  - error
+        "400":
+          description: Invalid agent URL or operation ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Operation not found or not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Refresh status polling rate limit exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: string
+                description: Seconds to wait before retrying
+              required: true
+              description: Seconds to wait before retrying
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  retry_after:
+                    type: integer
+                  retryAfter:
+                    type: integer
+                required:
+                  - error
+        "503":
+          description: Refresh status temporarily unavailable
           content:
             application/json:
               schema:

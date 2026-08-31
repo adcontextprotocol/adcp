@@ -19,7 +19,8 @@ import {
   type ComplianceTargetSelection,
 } from '../services/compliance-testing.js';
 import { ComplianceDatabase, type LifecycleStage } from '../../db/compliance-db.js';
-import { query } from '../../db/client.js';
+import { query, withDatabaseDeadline } from '../../db/client.js';
+import { ComplianceRefreshRequestsDatabase } from '../../db/compliance-refresh-requests-db.js';
 import { notifyComplianceChange, notifyVerificationChange } from '../../notifications/compliance.js';
 import { notifySystemError } from '../error-notifier.js';
 import { logger as baseLogger } from '../../logger.js';
@@ -27,6 +28,12 @@ import { logOutboundRequest } from '../../db/outbound-log-db.js';
 import { AAO_UA_COMPLIANCE } from '../../config/user-agents.js';
 import { revokeUnsupportedPublicBadges, runBadgeFanOut } from '../../services/badge-issuance.js';
 import { adaptAuthForSdk } from '../../services/sdk-auth-adapter.js';
+import { getVerificationProfileShadowRollout } from '../../db/system-settings-db.js';
+import {
+  pruneVerificationProfileShadowAssessments,
+  recordVerificationProfileShadowAssessment,
+} from '../../db/verification-profile-shadow-db.js';
+import { deriveVerificationProfileShadowAssessment } from '../../services/verification-profile-shadow.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -34,6 +41,7 @@ import {
 
 const logger = baseLogger.child({ module: 'compliance-heartbeat' });
 const complianceDb = new ComplianceDatabase();
+const complianceRefreshDb = new ComplianceRefreshRequestsDatabase();
 const fallbackComplianceTarget = hostedComplianceTarget();
 
 interface HeartbeatOptions {
@@ -47,6 +55,22 @@ interface HeartbeatResult {
   skipped: number;
 }
 
+type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadowAssessment>[0];
+
+async function pruneShadowLedgerBestEffort(): Promise<void> {
+  try {
+    const pruned = await pruneVerificationProfileShadowAssessments();
+    if (pruned > 0) {
+      logger.info({ pruned }, 'Pruned expired verification profile shadow assessments');
+    }
+  } catch (pruneError) {
+    logger.error(
+      { pruneError },
+      'Verification profile shadow retention cleanup failed without affecting public compliance',
+    );
+  }
+}
+
 export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
@@ -54,10 +78,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   const agentsDue = await complianceDb.getAgentsDueForCheck(limit);
 
   if (agentsDue.length === 0) {
+    await pruneShadowLedgerBestEffort();
     return result;
   }
 
   logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
+  const batchStartedAt = Date.now();
+  const pendingShadowAssessments: PendingShadowAssessment[] = [];
 
   // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
   // Agents are processed serially, so the lock must outlive the worst-case batch
@@ -82,7 +109,24 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   );
 
   for (const agent of agentsDue) {
+    const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
+    if (!executionFence) {
+      await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+      result.skipped++;
+      logger.debug(
+        { agentUrl: agent.agent_url },
+        'Compliance heartbeat skipped because another full suite is running',
+      );
+      continue;
+    }
     const startTime = Date.now();
+    const assertExecutionFence = () => {
+      if (!executionFence.isValid()) {
+        throw Object.assign(new Error('Compliance heartbeat execution fence was lost'), {
+          code: 'execution_fence_lost',
+        });
+      }
+    };
     let runTarget = fallbackComplianceTarget;
     let runTargetSelection: ComplianceTargetSelection = {
       target: fallbackComplianceTarget,
@@ -93,11 +137,20 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       const auth = await complianceDb.resolveOwnerAuth(agent.agent_url);
       const sdkAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `heartbeat:${agent.agent_url}` });
 
-      const complyOptions: ComplyOptions = {
+      // adcp#6632 / adcp-client#2639 — distribute coverage across
+      // budget-limited runs: rotate the storyboard starting point by the
+      // persisted per-agent run count, so consecutive `timeout_ms`-truncated
+      // heartbeats stop re-grading the same prefix while tail tracks
+      // (canonical-formats, package-selector) are never reached. The SDK
+      // applies the offset modulo the runnable count and ignores the option
+      // when it predates 2639 — safe across SDK versions.
+      const storyboardStartOffset = await complianceDb.countComplianceRuns(agent.agent_url);
+      const complyOptions: ComplyOptions & { storyboard_start_offset?: number } = {
         test_session_id: `heartbeat-${Date.now()}`,
         timeout_ms: HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
         auth: sdkAuth,
         userAgent: AAO_UA_COMPLIANCE,
+        storyboard_start_offset: storyboardStartOffset,
       };
       const seededSupportedVersions = await complianceDb.getRecentSupportedVersions(agent.agent_url);
 
@@ -118,7 +171,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         continue;
       }
       runTarget = runTargetSelection.target;
+      assertExecutionFence();
       const complianceResult = await comply(agent.agent_url, complyOptions, runTarget);
+      assertExecutionFence();
       if (!storedComplianceTargetMatchesObservedProfile(runTargetSelection, complianceResult.agent_profile)) {
         logger.warn(
           {
@@ -148,7 +203,9 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         'heartbeat',
       );
       dbInput.dry_run = false;
+      assertExecutionFence();
       const { run, statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
+      assertExecutionFence();
 
       result.checked++;
       if (dbInput.overall_status === 'passing') {
@@ -188,6 +245,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       if (declaredSpecialisms.length > 0 && badgeEligibleAdcpVersions.length > 0) {
         try {
+          assertExecutionFence();
           const badgeResult = await runBadgeFanOut({
             complianceDb,
             agentUrl: agent.agent_url,
@@ -196,6 +254,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             adcpVersions: badgeEligibleAdcpVersions,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
           });
+          assertExecutionFence();
 
           if (badgeResult.issued.length > 0 || badgeResult.revoked.length > 0) {
             try {
@@ -217,11 +276,13 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         }
       } else {
         try {
+          assertExecutionFence();
           const badgeResult = await revokeUnsupportedPublicBadges({
             complianceDb,
             agentUrl: agent.agent_url,
             supportedVersions: complianceResult.agent_profile?.adcp_supported_versions ?? runTargetSelection.supportedVersions,
           });
+          assertExecutionFence();
           if (badgeResult.revoked.length > 0) {
             await notifyVerificationChange({
               agentUrl: agent.agent_url,
@@ -233,8 +294,40 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           logger.error({ badgeError, agentUrl: agent.agent_url }, 'Unsupported public badge revocation failed');
         }
       }
+
+      // Derivation is pure and queued only after every public status,
+      // notification, and badge action for this agent has completed. Database
+      // reads/writes are deferred until the entire public batch is finished.
+      try {
+        pendingShadowAssessments.push({
+          sourceRunId: run.id,
+          agentUrl: agent.agent_url,
+          lifecycleStage: agent.lifecycle_stage as LifecycleStage,
+          adcpVersion: dbInput.adcp_version,
+          assessment: deriveVerificationProfileShadowAssessment(
+            complianceResult,
+            agent.lifecycle_stage as LifecycleStage,
+            dbInput.overall_status,
+          ),
+        });
+      } catch (shadowError) {
+        logger.error(
+          { shadowError, agentUrl: agent.agent_url, sourceRunId: run.id },
+          'Verification profile shadow derivation failed without affecting public compliance',
+        );
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'execution_fence_lost') {
+        logger.warn(
+          { agentUrl: agent.agent_url },
+          'Compliance heartbeat stopped after losing the shared execution fence',
+        );
+        await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+        result.skipped++;
+        continue;
+      }
 
       // Errors before a compatible target is selected are infrastructure or
       // discovery failures, not evidence that the agent failed compliance.
@@ -309,6 +402,10 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
       // Record failure so stale passing data doesn't persist
       try {
+        // Recheck the fence before writing: comply() may have thrown while a
+        // concurrent owner refresh invalidated the lock. Without this guard the
+        // stale heartbeat failure would race with and overwrite the fresher result.
+        assertExecutionFence();
         const badgeEligibleAdcpVersions = [...badgeEligibleVersionsForTargetSelection(runTargetSelection)];
         await complianceDb.recordComplianceRun({
           agent_url: agent.agent_url,
@@ -329,6 +426,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         });
 
         if (badgeEligibleAdcpVersions.length > 0) {
+          assertExecutionFence();
           const eligibleBadgeVersions = new Set(badgeEligibleAdcpVersions);
           const badgeMetadata = await complianceDb.getRegistryMetadata(agent.agent_url);
           const expectedBadgeGeneration = badgeMetadata?.badge_requalification_generation ?? '0';
@@ -362,6 +460,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
             }
           }
         } else if (runTargetSelection.confirmed) {
+          assertExecutionFence();
           const badgeResult = await revokeUnsupportedPublicBadges({
             complianceDb,
             agentUrl: agent.agent_url,
@@ -380,6 +479,20 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           }
         }
       } catch (recordError) {
+        // Fence loss during failure recording must be handled here directly:
+        // we are already inside catch (error), so re-throwing would escape the
+        // entire try/catch/finally and reject runComplianceHeartbeatJob() instead
+        // of continuing to the next agent. Defer and skip, matching the outer
+        // fence-loss handler's behavior.
+        if (recordError && typeof recordError === 'object' && 'code' in recordError && recordError.code === 'execution_fence_lost') {
+          logger.warn(
+            { agentUrl: agent.agent_url },
+            'Compliance heartbeat stopped after losing the shared execution fence (during failure recording)',
+          );
+          await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
+          result.skipped++;
+          continue;
+        }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
       }
 
@@ -392,8 +505,94 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       } else {
         result.skipped++;
       }
+    } finally {
+      await executionFence.release();
     }
   }
+
+  // Shadow persistence is deliberately outside the public heartbeat loop.
+  // Re-check the audited switch with a short deadline before every write so a
+  // disable or automatic expiry takes effect within an already-running batch.
+  const publicProcessingDurationMs = Date.now() - batchStartedAt;
+  const shadowFlushStartedAt = Date.now();
+  const shadowStats = {
+    candidates: pendingShadowAssessments.length,
+    attempted: 0,
+    recorded: 0,
+    disabled: 0,
+    errors: 0,
+    setting_errors: 0,
+    total_write_latency_ms: 0,
+    max_write_latency_ms: 0,
+  };
+  for (const pending of pendingShadowAssessments) {
+    let enabled = false;
+    try {
+      enabled = (await withDatabaseDeadline(
+        Date.now() + 500,
+        () => getVerificationProfileShadowRollout(),
+        // Expiry is an audited compare-and-set write when the 72-hour window
+        // elapses, so this bounded operation cannot use a read-only transaction.
+        { readOnly: false },
+      )).enabled;
+    } catch (settingError) {
+      shadowStats.setting_errors++;
+      shadowStats.errors++;
+      logger.error(
+        { settingError, agentUrl: pending.agentUrl },
+        'Verification profile shadow setting could not be read; collection remains disabled',
+      );
+      continue;
+    }
+    if (!enabled) {
+      shadowStats.disabled++;
+      continue;
+    }
+
+    shadowStats.attempted++;
+    const writeStartedAt = Date.now();
+    try {
+      const recorded = await recordVerificationProfileShadowAssessment(pending);
+      if (!recorded) {
+        shadowStats.disabled++;
+        continue;
+      }
+      shadowStats.recorded++;
+      logger.info(
+        {
+          agentUrl: pending.agentUrl,
+          sourceRunId: pending.sourceRunId,
+          policyVersion: pending.assessment.policy_version,
+          publicStatus: pending.assessment.current_public_status,
+          specStatus: pending.assessment.proposed_spec_status,
+          sandboxStatus: pending.assessment.proposed_sandbox_status,
+          controllerGapPhases: pending.assessment.controller_gap_phase_count,
+        },
+        'Recorded observation-only verification profile shadow assessment',
+      );
+    } catch (shadowError) {
+      shadowStats.errors++;
+      logger.error(
+        { shadowError, agentUrl: pending.agentUrl, sourceRunId: pending.sourceRunId },
+        'Verification profile shadow assessment failed without affecting public compliance',
+      );
+    } finally {
+      const writeLatencyMs = Date.now() - writeStartedAt;
+      shadowStats.total_write_latency_ms += writeLatencyMs;
+      shadowStats.max_write_latency_ms = Math.max(shadowStats.max_write_latency_ms, writeLatencyMs);
+    }
+  }
+  if (pendingShadowAssessments.length > 0) {
+    logger.info(
+      {
+        publicProcessingDurationMs,
+        shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
+        shadow: shadowStats,
+      },
+      'Compliance heartbeat shadow flush completed after public processing',
+    );
+  }
+  await pruneShadowLedgerBestEffort();
 
   return result;
 }

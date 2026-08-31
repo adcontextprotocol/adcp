@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/protocol/get-principal-request.json",
+  "title": "Get Principal Request",
+  "x-status": "experimental",
+  "description": "Read the authenticated principal's current standing configuration with this AdCP agent: the same caller-scoped state that sync_principal replaces, plus retained superseded and revoked destination generations. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body fields. The read is side-effect free: it never issues identifiers, sends proof challenges, or advances the configuration version. Use it to bootstrap expected_configuration_version before a guarded sync, to reconcile after local-state loss, and to observe destination setup-state transitions such as action_required becoming ready. Prefer sync_principal only when changing state; prefer this task for every read.",
+  "x-tool-summary": "Read caller-scoped connection configuration, version, and destination setup states for this agent connection.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          { "required": ["buyer_agent_url"] },
+          { "required": ["agent_url"] },
+          { "required": ["principal_id"] },
+          { "required": ["connection_id"] }
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "x-adcp-validation": {
+    "stable_principal": "Resolve the same server-side stable authenticated principal as sync_principal and reject NO_AUTH, anonymous, or unstable caller identities. Any unmodeled request-body field MUST be ignored for identity and authorization.",
+    "principal_isolation": "Return only the caller's own connection state. A caller with no persisted connection receives the unconfigured result, indistinguishable in shape and timing from a caller whose configuration another principal owns.",
+    "read_only": "This task MUST NOT mutate state, issue durable identifiers, send endpoint proof challenges, or advance configuration_version. Seller-side setup-state transitions observed here (for example validating to ready) do not advance the version; only successful configuration mutations do."
+  },
+  "examples": [
+    {
+      "description": "Read current connection configuration",
+      "data": {}
+    }
+  ]
+}

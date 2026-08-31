@@ -177,6 +177,7 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
 
   beforeEach(async () => {
     await pool.query('DELETE FROM registry_audit_log WHERE workos_organization_id = $1', [TEST_ORG_ID]);
+    await pool.query('DELETE FROM membership_checkout_attempts WHERE organization_id = $1', [TEST_ORG_ID]);
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, stripe_customer_id, is_personal, created_at, updated_at)
        VALUES ($1, $2, NULL, false, NOW(), NOW())
@@ -416,6 +417,84 @@ describe('POST /api/admin/stripe-customers/:customerId/link + /unlink', () => {
   });
 
   describe('unlink', () => {
+    it('invalidates the recorded checkout generation atomically with the local unlink', async () => {
+      await pool.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+        ['cus_link_test_multi', TEST_ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO membership_checkout_attempts (
+           organization_id, payload_fingerprint, idempotency_key,
+           initiated_by_user_id, stripe_session_id, stripe_session_url, expires_at
+         ) VALUES ($1, 'unlink-test', 'unlink-test-key', $2, 'cs_old',
+                   'https://checkout.stripe.test/cs_old', NOW() + INTERVAL '24 hours')`,
+        [TEST_ORG_ID, ADMIN_USER_ID],
+      );
+
+      await request(app)
+        .post('/api/admin/stripe-customers/cus_link_test_multi/unlink')
+        .expect(200);
+
+      const attempts = await pool.query(
+        `SELECT 1 FROM membership_checkout_attempts WHERE organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(attempts.rows).toHaveLength(0);
+    });
+
+    it('preserves a checkout generation when the customer link changes during unlink', async () => {
+      await pool.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+        ['cus_link_test_multi', TEST_ORG_ID],
+      );
+      await pool.query(
+        `INSERT INTO membership_checkout_attempts (
+           organization_id, payload_fingerprint, idempotency_key,
+           initiated_by_user_id, stripe_session_id, stripe_session_url, expires_at
+         ) VALUES ($1, 'replace-race', 'replace-race-key', $2, 'cs_newer',
+                   'https://checkout.stripe.test/cs_newer', NOW() + INTERVAL '24 hours')`,
+        [TEST_ORG_ID, ADMIN_USER_ID],
+      );
+      let releaseMetadataClear!: () => void;
+      let signalMetadataClear!: () => void;
+      const metadataClearStarted = new Promise<void>((resolve) => {
+        signalMetadataClear = resolve;
+      });
+      const holdMetadataClear = new Promise<void>((resolve) => {
+        releaseMetadataClear = resolve;
+      });
+      mocks.mockCustomersUpdate.mockImplementationOnce(async () => {
+        signalMetadataClear();
+        await holdMetadataClear;
+        return {};
+      });
+
+      const unlinkPromise = request(app)
+        .post('/api/admin/stripe-customers/cus_link_test_multi/unlink')
+        .then((response) => response);
+      await metadataClearStarted;
+      await pool.query(
+        `UPDATE organizations SET stripe_customer_id = $1 WHERE workos_organization_id = $2`,
+        ['cus_replacement_won_race', TEST_ORG_ID],
+      );
+      releaseMetadataClear();
+
+      const response = await unlinkPromise;
+      expect(response.status).toBe(409);
+      const state = await pool.query<{ stripe_customer_id: string; stripe_session_id: string }>(
+        `SELECT o.stripe_customer_id, a.stripe_session_id
+           FROM organizations o
+           JOIN membership_checkout_attempts a
+             ON a.organization_id = o.workos_organization_id
+          WHERE o.workos_organization_id = $1`,
+        [TEST_ORG_ID],
+      );
+      expect(state.rows[0]).toEqual({
+        stripe_customer_id: 'cus_replacement_won_race',
+        stripe_session_id: 'cs_newer',
+      });
+    });
+
     it('clears all subscription_* columns (not just stripe_customer_id)', async () => {
       // Pre-populate the org with active subscription state, as if a prior
       // link succeeded.

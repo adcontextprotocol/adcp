@@ -17,6 +17,7 @@ import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp
 import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
+import type { ComplianceRefreshQueue } from "./services/compliance-refresh-queue.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
@@ -37,14 +38,17 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
+import { attemptStripeReconciliation } from "./billing/lazy-reconcile.js";
+import { isExpectedMembershipCheckoutSession } from "./billing/membership-checkout-attempt.js";
+import { withOrgIntakeLock } from "./billing/org-intake-lock.js";
 import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
-import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
+import { OrganizationDatabase, StripeCustomerConflictError, getUserSeatType, buildSubscriptionUpdate, MEMBERSHIP_TIER_COLUMNS, resolveMembershipTier, resolveMembershipTierForSubscriptionWrite, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier, type MembershipTierRow } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
-import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
+import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
 import { BrandManager } from "./brand-manager.js";
@@ -1221,8 +1225,11 @@ export class HTTPServer {
   private app: express.Application;
   private server: Server | null = null;
   private isWorker: boolean = false;
+  private complianceRefreshQueue: ComplianceRefreshQueue | null = null;
+  private refreshOnlyBackground = false;
 
   private startWorkerCrawlers(): void {
+    this.complianceRefreshQueue?.start();
     // Drain durable explicit publisher recrawl requests first. Admission is
     // persisted by the web process before it returns 202; the worker claims
     // requests with expiring leases so deploys and crashes cannot lose work.
@@ -1275,7 +1282,12 @@ export class HTTPServer {
   private agentProfilesDb: AgentInventoryProfilesDatabase;
   private registryRequestsDb = registryRequestsDb;
 
-  constructor() {
+  constructor(private readonly options: {
+    backgroundServices?: 'auto' | 'refresh-only';
+    refreshLegacyWaitMs?: number;
+    refreshPollIntervalMs?: number;
+    refreshQueueIntervalMs?: number;
+  } = {}) {
     this.app = express();
     this.agentService = new AgentService();
     this.validator = new AgentValidator();
@@ -1841,7 +1853,11 @@ export class HTTPServer {
     this.app.use('/api', createInvitesRouter());
 
     // Mount public Registry API routes (brands, properties, agents, search, validation)
-    const { router: registryApiRouter, v1AgentsRouter } = createRegistryApiRouters({
+    const {
+      router: registryApiRouter,
+      v1AgentsRouter,
+      complianceRefreshQueue,
+    } = createRegistryApiRouters({
       brandManager: this.brandManager,
       brandDb: this.brandDb,
       propertyDb: this.propertyDb,
@@ -1854,7 +1870,11 @@ export class HTTPServer {
       profilesDb: this.agentProfilesDb,
       requireAuth,
       optionalAuth,
+      refreshLegacyWaitMs: this.options.refreshLegacyWaitMs,
+      refreshPollIntervalMs: this.options.refreshPollIntervalMs,
+      refreshQueueIntervalMs: this.options.refreshQueueIntervalMs,
     });
+    this.complianceRefreshQueue = complianceRefreshQueue;
     this.app.use('/api', registryApiRouter);
     // adcp#4924: spec defines the AAO directory inverse-lookup path as
     // /v1/agents/{url}/publishers (docs/aao/directory-api.mdx). Mount the
@@ -5741,13 +5761,33 @@ export class HTTPServer {
             }
 
             if (customerId && workosOrgId) {
+              const stripeClient = stripe;
+              await withOrgIntakeLock(workosOrgId, async () => {
+              const org = await orgDb.getOrganization(workosOrgId);
+              // A Checkout session is immutable and can be replayed long after
+              // an operator explicitly unlinks its customer. A session may
+              // mutate billing state only when it is still the server-recorded
+              // checkout generation, or when its exact customer is already
+              // linked (the buyer-agent payment-link flow). The same per-org
+              // lock wraps admin unlink, closing the check/mutation race.
+              const expectedMembershipCheckout = session.mode !== 'subscription'
+                || org?.stripe_customer_id === customerId
+                || await isExpectedMembershipCheckoutSession(workosOrgId, session.id);
+              if (!expectedMembershipCheckout) {
+                logger.warn(
+                  { customerId, workosOrgId, checkoutSessionId: session.id },
+                  'Ignoring unrecognized or invalidated membership checkout completion',
+                );
+                return;
+              }
+
               // Ensure the Stripe customer has org metadata so that subsequent
               // subscription and invoice webhooks can find the org. Do this
               // before linking the customer locally; otherwise an external
               // Stripe metadata failure can create a DB→Stripe invariant split.
               let customerMetadataReady = false;
               try {
-                const customerRaw = await stripe.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
+                const customerRaw = await stripeClient.customers.retrieve(customerId) as Stripe.Customer | Stripe.DeletedCustomer;
                 if ('deleted' in customerRaw && customerRaw.deleted) {
                   logger.warn({ customerId, workosOrgId }, 'Stripe customer was deleted, cannot update metadata');
                 } else {
@@ -5759,7 +5799,7 @@ export class HTTPServer {
                     );
                   } else {
                     if (!stampedOrgId) {
-                      await stripe.customers.update(customerId, {
+                      await stripeClient.customers.update(customerId, {
                         metadata: { workos_organization_id: workosOrgId },
                       });
                       logger.info({ customerId, workosOrgId }, 'Added workos_organization_id metadata to Stripe customer');
@@ -5777,15 +5817,67 @@ export class HTTPServer {
               // customerEmail instead of customerId, causing Stripe to create
               // a new customer. Only link after the metadata pointer is in
               // place so the bidirectional invariant remains true.
-              const org = await orgDb.getOrganization(workosOrgId);
+              let linkedCustomerReady = org?.stripe_customer_id === customerId;
               if (org && !org.stripe_customer_id && customerMetadataReady) {
                 try {
                   await orgDb.setStripeCustomerId(workosOrgId, customerId);
+                  linkedCustomerReady = true;
                   logger.info({ workosOrgId, customerId }, 'Linked Stripe customer to org from checkout.session.completed');
                 } catch (err) {
-                  logger.warn({ err, workosOrgId, customerId }, 'Could not link Stripe customer to org from checkout (possible conflict)');
+                  let isLinkConflict = err instanceof StripeCustomerConflictError;
+                  if (!isLinkConflict) {
+                    // setStripeCustomerId also uses a generic error when a
+                    // concurrent request linked the target org to a different
+                    // customer. Re-read to distinguish that safe conflict from
+                    // a transient DB failure that Stripe should retry.
+                    const currentOrg = await orgDb.getOrganization(workosOrgId);
+                    isLinkConflict = Boolean(
+                      currentOrg?.stripe_customer_id
+                      && currentOrg.stripe_customer_id !== customerId,
+                    );
+                  }
+                  if (!isLinkConflict) throw err;
+                  logger.warn(
+                    { err, workosOrgId, customerId },
+                    'Could not link Stripe customer to org from checkout due to a link conflict',
+                  );
                 }
               }
+
+              // Subscription events can arrive before checkout completion or
+              // occasionally miss delivery altogether. Once checkout has
+              // established the metadata-verified customer↔org link, use the
+              // existing guarded reconciliation path as an independent,
+              // idempotent recovery signal. Its updated_at compare-and-swap
+              // prevents this from overwriting a concurrent subscription
+              // webhook, and its membership-product filter prevents ancillary
+              // Stripe products from granting entitlement.
+              if (
+                session.mode === 'subscription' &&
+                org &&
+                customerMetadataReady &&
+                linkedCustomerReady
+              ) {
+                const reconciliation = await attemptStripeReconciliation(workosOrgId, {
+                  pool,
+                  stripe: stripeClient,
+                  logger,
+                });
+                if (reconciliation.healed) {
+                  invalidateMemberContextCache();
+                  logger.info(
+                    { workosOrgId, customerId, source: 'checkout.session.completed' },
+                    'Reconciled subscription state after checkout completion',
+                  );
+                } else if (reconciliation.reason === 'stripe_error') {
+                  // The checkout event is the independent recovery signal for
+                  // a missed subscription event. Do not acknowledge a
+                  // transient Stripe read failure or this backup path is lost
+                  // too; a 5xx asks Stripe to retry the idempotent handler.
+                  throw new Error('Transient Stripe failure during checkout subscription reconciliation');
+                }
+              }
+              });
             }
             break;
           }
@@ -9656,11 +9748,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
           if (brandPrimaryDomain) {
             const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
-            if (brand?.brand_manifest) {
+            if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
               profile.resolved_brand = resolveBrandFromJson(
                 brandPrimaryDomain,
-                brand.brand_manifest as Record<string, unknown>,
-                brand.domain_verified ?? false
+                brand!.brand_manifest as Record<string, unknown>,
+                brand!.domain_verified ?? false
               );
             }
           }
@@ -9700,11 +9792,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
           if (brandPrimaryDomain) {
             const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
-            if (brand?.brand_manifest) {
+            if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
               profile.resolved_brand = resolveBrandFromJson(
                 brandPrimaryDomain,
-                brand.brand_manifest as Record<string, unknown>,
-                brand.domain_verified ?? false
+                brand!.brand_manifest as Record<string, unknown>,
+                brand!.domain_verified ?? false
               );
             }
           }
@@ -9809,17 +9901,17 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           logger.debug({ err }, 'Failed to load content for member profile');
         }
 
-        // Resolve brand data from registry if linked. Skip orphaned brands —
-        // the manifest is preserved server-side for adoption-at-claim-time
-        // but must not surface on the public member-profile endpoint.
+        // Resolve only authoritative brand data. Unclaimed enriched/community
+        // rows are registry hints, not permission to override a member's
+        // public identity.
         const brandPrimaryDomain = await getBrandPrimaryDomain(profile.workos_organization_id);
         if (brandPrimaryDomain) {
           const brand = await this.brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
-          if (brand?.brand_manifest && !brand.manifest_orphaned) {
+          if (canSurfaceBrandForMember(brand, profile.workos_organization_id)) {
             profile.resolved_brand = resolveBrandFromJson(
               brandPrimaryDomain,
-              brand.brand_manifest as Record<string, unknown>,
-              brand.domain_verified ?? false
+              brand!.brand_manifest as Record<string, unknown>,
+              brand!.domain_verified ?? false
             );
           }
         }
@@ -10381,11 +10473,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // Scheduled jobs and crawlers only run on the worker process.
     // processRole is resolved once in logger.ts from FLY_PROCESS_GROUP;
     // locally it defaults to 'worker' so dev runs everything.
-    this.isWorker = processRole !== 'web';
+    this.refreshOnlyBackground = this.options.backgroundServices === 'refresh-only';
+    this.isWorker = this.refreshOnlyBackground || processRole !== 'web';
     const isWorker = this.isWorker;
     logger.info({ isWorker }, 'Process role resolved');
 
-    if (isWorker) {
+    if (this.refreshOnlyBackground) {
+      this.complianceRefreshQueue?.start();
+      logger.info('Refresh-only background services started');
+    } else if (isWorker) {
       this.startWorkerCrawlers();
 
       // Register and start all scheduled jobs
@@ -10420,7 +10516,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       }, 'AdCP Registry HTTP server running');
 
       // Periodic background tasks only run on the worker process
-      if (isWorker) {
+      if (isWorker && !this.refreshOnlyBackground) {
         // Start seat request reminder scheduler
         if (workos) {
           import('./scheduled/seat-request-reminders.js').then(({ startSeatRequestReminders }) => {
@@ -10480,22 +10576,27 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
 
     // Only stop background services that were started on this machine
     if (this.isWorker) {
-      // Stop every crawler scheduler before awaiting other drains. In-flight
-      // durable work remains protected by its expiring database lease.
-      await this.crawler.stopPeriodicCrawlers();
-      jobScheduler.stopAll();
+      if (this.refreshOnlyBackground) {
+        this.complianceRefreshQueue?.stop();
+      } else {
+        // Stop every crawler scheduler before awaiting other drains. In-flight
+        // durable work remains protected by its expiring database lease.
+        this.complianceRefreshQueue?.stop();
+        await this.crawler.stopPeriodicCrawlers();
+        jobScheduler.stopAll();
 
-      import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
-        stopSeatRequestReminders();
-      }).catch(() => {});
+        import('./scheduled/seat-request-reminders.js').then(({ stopSeatRequestReminders }) => {
+          stopSeatRequestReminders();
+        }).catch(() => {});
 
-      import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
-        stopAutoProvisionDigest();
-      }).catch(() => {});
+        import('./scheduled/auto-provision-digest.js').then(({ stopAutoProvisionDigest }) => {
+          stopAutoProvisionDigest();
+        }).catch(() => {});
 
-      import('./luma/sync.js').then(({ stopLumaSync }) => {
-        stopLumaSync();
-      }).catch(() => {});
+        import('./luma/sync.js').then(({ stopLumaSync }) => {
+          stopLumaSync();
+        }).catch(() => {});
+      }
     }
 
     // Drain tracked background work before closing connections

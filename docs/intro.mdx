@@ -16,9 +16,25 @@ The problem isn't her people. It's that every channel speaks a different languag
 
 AdCP is that standard. One protocol. Every platform. Every step of the campaign.
 
+AdCP's goal is to become the enterprise coordination protocol for a
+trillion-dollar global advertising economy. That requires more than a small
+demo API: identity, authorization, immutable commercial state, safe retries,
+auditable decisions, version negotiation, and recovery when distributed
+systems fail. The protocol keeps those guarantees open and portable, while
+maintained [SDKs](/docs/building/by-layer/L4/choose-your-sdk) absorb most of the
+implementation burden for production teams.
+
 ## More than activation
 
 AdCP coordinates the full campaign lifecycle — from brief intake through measurement — not just activation. It works across every transaction model: direct deals, sponsorships, broadcast, and out-of-home, not only programmatic exchange. Most global ad spend flows through non-programmatic channels, and AdCP is designed for all of them.
+
+One architecture does not mean every channel or commercial function has equal
+implementation depth today. AdCP standardizes the capabilities a participant
+actually advertises. Payment rails, legal agreements, settlement, disputes,
+credits, and makegoods remain account or platform integrations unless the
+relevant AdCP contract is explicitly present. The public [roadmap](/docs/reference/roadmap)
+shows the gaps where implementations and domain contributors are actively
+needed.
 
 This page follows Alex's team through the entire workflow — from finding new partners to measuring results. Each section shows the human problem, the protocol solution, and the tasks that make it work. By the end, you'll understand every domain AdCP covers and how they connect.
 
