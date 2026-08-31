@@ -274,9 +274,12 @@ test('coordinated_placements inline menu covers every non-recursive canonical fo
   const expectedKinds = fs.readdirSync(path.join(schemasDir, 'formats/canonical'))
     .filter(filename => filename.endsWith('.json'))
     .map(filename => path.basename(filename, '.json'))
-    .filter(kind => kind !== '_base' && kind !== 'coordinated_placements')
+    // audio_vast is intentionally deferred until the new standalone schema is
+    // published; the downstream SDK directly dereferences this promoted menu.
+    .filter(kind => kind !== '_base' && kind !== 'coordinated_placements' && kind !== 'audio_vast')
     .sort();
 
+  assert.equal(inlineKinds.includes('audio_vast'), false, 'unpublished audio_vast must not enter the direct-dereference menu');
   assert.deepEqual(inlineKinds, expectedKinds);
 });
 
@@ -347,12 +350,15 @@ test('coordinated_placements inline format menu tracks the canonical roster', ()
   const expected = fs.readdirSync(canonicalDir)
     .filter(name => name.endsWith('.json') && !name.startsWith('_'))
     .map(name => name.replace(/\.json$/, ''))
-    .filter(kind => kind !== 'coordinated_placements')
+    // audio_vast is intentionally deferred until the new standalone schema is
+    // published; the downstream SDK directly dereferences this promoted menu.
+    .filter(kind => kind !== 'coordinated_placements' && kind !== 'audio_vast')
     .sort();
 
+  assert.equal(menuKinds.includes('audio_vast'), false, 'unpublished audio_vast must not enter the direct-dereference menu');
   assert.deepEqual(
     menuKinds,
     expected,
-    'inline format menu must list every canonical except coordinated_placements (custom has no canonical schema file); update the oneOf when adding a canonical'
+    'inline format menu must list every embeddable canonical except coordinated_placements (custom has no canonical schema file); update the oneOf when adding a canonical'
   );
 });

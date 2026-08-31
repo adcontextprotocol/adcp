@@ -140,7 +140,7 @@
           "representation_destination": {
             "properties": {
               "format_option": {
-                "properties": { "format_kind": { "const": "video_vast" } },
+                "properties": { "format_kind": { "enum": ["video_vast", "audio_vast"] } },
                 "required": ["format_kind"]
               }
             },
