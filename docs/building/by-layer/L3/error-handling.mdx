@@ -125,18 +125,42 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 ### Error Object Fields
 
-These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
+These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/latest/core/error.json) schema. `buyer_reason` is part of the unreleased development schema and is not present in the released 3.1 bundle.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `code` | string | Yes | Machine-readable error code from the [standard vocabulary](#standard-error-codes) or a seller-specific code |
 | `message` | string | Yes | Human-readable error description |
-| `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal` |
+| `buyer_reason` | object | No | Buyer-actionable `{ code, message }` classification. `code` comes from the open [buyer reason vocabulary](#buyer-actionable-reasons); `message` must be safe to show across the buyer trust boundary. |
+| `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal`. Senders MUST populate it on every 3.1+ error; when `buyer_reason` is present it classifies that reason, not an upstream wrapper. |
 | `retry_after` | number | No | Seconds to wait before retrying. AdCP 3.2 producers emit whole seconds from 1 through 3600; consumers continue accepting legacy fractional values. |
 | `field` | string | No | Field path in JSONPath-lite format (e.g., `packages[0].targeting`). When `issues` is present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., `/packages/0/targeting` → `packages[0].targeting`). Will be deprecated in a future major version. |
 | `issues` | array | No | Structured list of validation failures. Each entry carries `pointer` (RFC 6901), `message`, `keyword` (JSON Schema keyword that rejected — `required` / `type` / `format` / etc.), and optionally `schema_id`, `schemaPath`, `discriminator`. See [Validator-internals fields](#validator-internals-fields-on-issues) for the `schema_id` / `schemaPath` / `discriminator` semantics, the production-emit rules, and the resolution path for `schema_id`. |
 | `suggestion` | string | No | Suggested fix for the error |
 | `details` | object | No | Additional context-specific information. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers; new consumers SHOULD prefer the top-level `issues` field. |
+
+### Buyer-actionable reasons
+
+Use `buyer_reason` when the top-level error is too coarse for a buyer agent to route safely. For example, a seller can retain the coarse [`CREATIVE_REJECTED`](/docs/building/verification/compliance-catalog#error-code-creative-rejected) class while identifying that the buyer must replace a mismatched creative:
+
+```json
+{
+  "code": "CREATIVE_REJECTED",
+  "message": "The creative could not be accepted.",
+  "recovery": "correctable",
+  "buyer_reason": {
+    "code": "CREATIVE_SIZE_MISMATCH",
+    "message": "The creative dimensions (300x250) do not match any accepted size on the selected packages (640x480)."
+  }
+}
+```
+
+{/* Using latest because the buyer-reason creative codes have not been published in a numbered release yet. */}
+`buyer_reason.code` reuses the comprehensive standard vocabulary in [`error-code.json`](https://adcontextprotocol.org/schemas/latest/enums/error-code.json), including request, authorization, account, policy, governance, commercial, inventory, and creative failure classes. [`CREATIVE_SIZE_MISMATCH`](/docs/building/verification/compliance-catalog#error-code-creative-size-mismatch), [`CREATIVE_MISSING_CLICK_URL`](/docs/building/verification/compliance-catalog#error-code-creative-missing-click-url), and [`CREATIVE_VALIDATION_FAILED_GENERIC`](/docs/building/verification/compliance-catalog#error-code-creative-validation-failed-generic) cover the motivating creative-validation gaps. The wire field remains an open string: receivers MUST accept unknown codes, use `buyer_reason.message` for human-facing context, and route recovery from the enclosing `error.recovery`. Seller-specific extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. This permits later codes and platform-specific extensions without making older receivers reject the error object.
+
+`buyer_reason.message` MUST be buyer-safe. It MUST NOT contain vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details. Producers compose it from buyer-visible request and catalog data; they do not copy raw downstream error text. Buyer clients may display the message, but MUST treat it as untrusted producer text and MUST NOT use the free text for control flow.
+
+When `buyer_reason` is present, `error.recovery` MUST reflect the buyer's required action and MUST match the buyer reason's `enumMetadata.recovery` classification when that code is registered. If both `error.code` and `buyer_reason.code` are registered, their standard recovery classifications MUST agree with each other and with `error.recovery`; sellers MUST choose the closest compatible top-level class instead of retaining a conflicting upstream transport wrapper. This keeps legacy consumers that ignore `buyer_reason` on the same recovery path. If one rejection contains independently actionable failures from different reason classes, sellers MUST emit separate error objects—each with its own `buyer_reason`—or omit `buyer_reason`; a single reason must not misrepresent a multi-issue rejection. Related `issues[]` entries may remain grouped when they share the same buyer reason.
 
 ### Validator-internals fields on `issues`
 

@@ -103,7 +103,7 @@ Three endpoints answer different questions about who is in the registry. They sp
 
 **`GET /api/registry/agents`** — use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
 
-**`GET /api/registry/operator?domain=X`** — use this when you have one entity in hand and want its agent footprint.
+**`GET /api/registry/operator?domain=X`** — use this when you have one entity in hand and want its agent footprint. `agents[]` is visibility-filtered, while `agent_visibility_summary` reports the registered `public` and `members_only` counts regardless of caller authorization or `scope`. Use the summary to distinguish an organization with no discoverable registrations from one whose members-only agents are hidden. Private registrations are excluded so their existence remains visible only to the profile owner.
 
 **`GET /api/registry/publisher?domain=X`** — use this when you have one publisher in hand and want its inventory and delegations.
 

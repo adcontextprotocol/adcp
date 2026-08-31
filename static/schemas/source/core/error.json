@@ -15,6 +15,25 @@
       "type": "string",
       "description": "Human-readable error message"
     },
+    "buyer_reason": {
+      "type": "object",
+      "description": "Optional buyer-actionable classification of the failure. Use this when the enclosing error code or message is too coarse or contains producer-internal context that must not cross the buyer trust boundary. `code` reuses the comprehensive standard vocabulary and recovery classifications published in `enums/error-code.json`, including policy, governance, account, commercial, inventory, and creative failures. The wire field remains open for forward compatibility. `message` MUST be safe to show to the buyer and MUST NOT contain vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details. When present, the enclosing `error.recovery` MUST classify the buyer-actionable reason. If both the enclosing code and buyer reason are registered, their standard recovery classifications MUST agree with each other and with `error.recovery`; sellers MUST choose the closest compatible enclosing code rather than retain a conflicting upstream transport wrapper. One buyer_reason classifies one error object. If a rejection contains independently actionable failures from different classes, sellers MUST emit separate error objects or omit buyer_reason rather than select a misleading single class.",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Machine-readable buyer-actionable reason from the standard `enums/error-code.json` vocabulary or a producer-specific extension. Extensions MUST follow the standard `X_{VENDOR}_{CODE}` naming rule. The wire field is open for forward compatibility. Receivers MUST accept unknown values and use the enclosing `error.recovery` plus this object's `message` as the fallback."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Buyer-safe explanation of the actionable failure. MUST NOT expose vendor identifiers, ad-server type names, internal object names, internal IDs, stack traces, or other producer-private implementation details."
+        }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": true
+    },
     "field": {
       "type": "string",
       "description": "Field path associated with the error in JSONPath-lite format (e.g., 'packages[0].targeting'). When `issues[]` is also present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., '/packages/0/targeting' → 'packages[0].targeting') so pre-3.1 consumers reading `field` only get deterministic behavior. Will be deprecated in a future major version in favor of `issues[].pointer`."
@@ -87,7 +106,7 @@
     "recovery": {
       "type": "string",
       "enum": ["transient", "correctable", "terminal"],
-      "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). Senders SHOULD populate `recovery` on every error from 3.1 onward — it is the normative carrier of recovery semantics across version skew. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known codes; `error.recovery` on the wire is authoritative."
+      "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found). Senders MUST populate `recovery` on every error from 3.1 onward — it is the normative carrier of recovery semantics across version skew. When `buyer_reason` is present, `recovery` MUST classify that buyer-actionable reason. If the enclosing code and buyer reason are both registered, their standard recovery classifications MUST agree with each other and with this field. A receiver that does not recognize `error.code` (a newer code, or a platform-specific code) MUST still be able to classify the error from `recovery`. The `enumMetadata.recovery` block in `enums/error-code.json` is the documentary mirror for known top-level and buyer-reason codes; `error.recovery` on the wire is authoritative."
     },
     "source": {
       "type": "string",

@@ -1093,10 +1093,21 @@ const OperatorAgentSchema = z.object({
   authorized_by: z.array(AgentAuthorizationSummarySchema),
 });
 
+const AgentVisibilitySummarySchema = z.object({
+  public: z.number().int().nonnegative().openapi({
+    description: "Number of registered public agents, regardless of the caller's scope filter.",
+  }),
+  members_only: z.number().int().nonnegative().openapi({
+    description:
+      "Number of registered members-only agents, regardless of caller authorization or scope. Private registrations are excluded so their existence remains visible only to the profile owner.",
+  }),
+});
+
 export const OperatorLookupResultSchema = z
   .object({
     domain: z.string().openapi({ example: "pubmatic.com" }),
     member: MemberRefSchema.nullable(),
+    agent_visibility_summary: AgentVisibilitySummarySchema,
     agents: z.array(OperatorAgentSchema),
   })
   .openapi("OperatorLookupResult");

@@ -46,6 +46,14 @@ function sanitizeDomain(raw: string | undefined): string | null {
   return DOMAIN_REGEX.test(cleaned) ? cleaned : null;
 }
 
+function summarizeAgentVisibility(agents: ReadonlyArray<{ visibility?: string }> | null | undefined) {
+  const registered = agents ?? [];
+  return {
+    public: registered.filter((agent) => agent.visibility === 'public').length,
+    members_only: registered.filter((agent) => agent.visibility === 'members_only').length,
+  };
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -58,7 +66,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "list_members",
     description:
-      "List AdCP member organizations visible to the caller. Public-directory members are always returned. Callers whose organization has API-access tier (Professional or higher) also see organizations that opted out of the public directory but have agents marked 'members_only'. Each agent row includes a 'visibility' field only for API-access callers; unauth callers always see 'public' and the field is omitted for brevity.",
+      "List AdCP member organizations visible to the caller. Public-directory members are always returned. Callers whose organization has API-access tier (Professional or higher) also see organizations that opted out of the public directory but have agents marked 'members_only'. Each result includes public/members-only registration counts; private registrations are excluded. Each agent row includes a 'visibility' field only for API-access callers; unauth callers always see 'public' and the field is omitted for brevity.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -88,7 +96,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: "get_member",
-    description: "Get detailed information about a specific AdCP member by slug",
+    description: "Get detailed information about a specific AdCP member by slug, including public/members-only registration counts. Private registrations are excluded.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -687,6 +695,7 @@ export class MCPToolHandler {
           headquarters: m.headquarters,
           markets: m.markets,
           profile_visibility: m.is_public ? 'public' : 'members_only',
+          agent_visibility_summary: summarizeAgentVisibility(m.agents),
           agents: m.agents
             .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
             .map((a) => ({
@@ -775,6 +784,7 @@ export class MCPToolHandler {
           markets: member.markets,
           tags: member.tags,
           profile_visibility: member.is_public ? 'public' : 'members_only',
+          agent_visibility_summary: summarizeAgentVisibility(member.agents),
           agents: member.agents
             .filter((a) => a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only'))
             .map((a) => ({

@@ -110,6 +110,7 @@ function adcpErrorResponse(error) {
     code: error.code,
     message: error.message,
     recovery: error.recovery,
+    ...(error.buyer_reason != null && { buyer_reason: error.buyer_reason }),
     ...(error.retry_after != null && { retry_after: error.retry_after }),
     ...(error.field != null && { field: error.field }),
     ...(error.suggestion != null && { suggestion: error.suggestion }),
@@ -654,7 +655,7 @@ When a seller agent calls upstream services (APIs, databases, other agents), ups
 - **Pass through** the AdCP error unchanged if the upstream is already AdCP-conformant, or
 - **Translate** the error into a valid AdCP error if the upstream uses a different format
 
-Intermediaries MUST NOT strip `recovery`, `retry_after`, or `details` from errors they pass through. An intermediary MAY aggregate errors from multiple upstream sellers into an `errors` array, with each error preserving its original `code` and `recovery`.
+Intermediaries MUST NOT strip `buyer_reason`, `recovery`, `retry_after`, or `details` from errors they pass through. An intermediary MAY aggregate errors from multiple upstream sellers into an `errors` array, with each error preserving its original `code`, `buyer_reason`, and `recovery`.
 
 ```javascript
 // Seller-side: translate upstream errors for the buyer

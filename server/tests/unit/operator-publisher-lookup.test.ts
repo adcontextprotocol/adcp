@@ -9,6 +9,7 @@ describe('OperatorLookupResult schema', () => {
     const data = {
       domain: 'pubmatic.com',
       member: { slug: 'pubmatic', display_name: 'PubMatic' },
+      agent_visibility_summary: { public: 1, members_only: 0 },
       agents: [
         {
           url: 'https://sales.pubmatic.com/mcp',
@@ -40,6 +41,7 @@ describe('OperatorLookupResult schema', () => {
   it('validates a public founding-member profile with tier (Scope3 shape)', () => {
     const data = {
       domain: 'scope3.com',
+      agent_visibility_summary: { public: 0, members_only: 0 },
       member: {
         slug: 'scope3',
         display_name: 'Scope3',
@@ -61,6 +63,7 @@ describe('OperatorLookupResult schema', () => {
   it('validates a public non-founding profile with tier', () => {
     const data = {
       domain: 'example.com',
+      agent_visibility_summary: { public: 0, members_only: 0 },
       member: {
         slug: 'example',
         display_name: 'Example Co',
@@ -81,6 +84,7 @@ describe('OperatorLookupResult schema', () => {
   it('validates a public profile without a resolvable tier (founding flag still present)', () => {
     const data = {
       domain: 'newco.example',
+      agent_visibility_summary: { public: 0, members_only: 0 },
       member: {
         slug: 'newco',
         display_name: 'NewCo',
@@ -101,6 +105,7 @@ describe('OperatorLookupResult schema', () => {
     const data = {
       domain: 'private.example',
       member: { slug: 'private', display_name: 'Private Co' },
+      agent_visibility_summary: { public: 0, members_only: 0 },
       agents: [],
     };
     const result = OperatorLookupResultSchema.safeParse(data);
@@ -116,6 +121,7 @@ describe('OperatorLookupResult schema', () => {
     const data = {
       domain: 'unknown.com',
       member: null,
+      agent_visibility_summary: { public: 0, members_only: 0 },
       agents: [],
     };
 
