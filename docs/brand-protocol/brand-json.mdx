@@ -26,6 +26,8 @@ https://example.com/.well-known/brand.json
 
 Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions.
 
+For every domain-derived well-known fetch in the resolution algorithm, resolvers MUST follow HTTP redirects only between the originally requested hostname and its exact `www` counterpart, on HTTPS at the original port. For example, `example.com` may redirect to `www.example.com` and back; `brand-assets.example.com` MUST be refused even though it shares the same registrable domain. Resolvers MUST re-apply [SSRF controls](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) on every hop and stop after 3 redirects. Any other hostname requires an explicit [`authoritative_location`](#1-authoritative-location-redirect). This permits ordinary apex ↔ `www` hosting normalization without trusting other delegated or dangling sibling subdomains. Operators that use this convention remain responsible for keeping the exact `www` name under the same administrative control as the original hostname.
+
 ## Variants
 
 The brand.json file supports five variants:
@@ -55,6 +57,8 @@ Use this when:
 - Brand.json is hosted centrally (e.g., by a service provider)
 - CDN distribution is needed
 - Managed brand services
+
+Resolvers MUST fetch the exact HTTPS `authoritative_location` URL and MUST NOT follow an HTTP redirect from it. A service may publish a CDN URL directly, but that URL must return the document with a `200` response; any canonical-host or versioned-path redirect must be resolved before publication.
 
 Optional fields (shared with House Redirect — see [Redirect ergonomics](#redirect-ergonomics)):
 - `redirect_reason`: structured signal for cache handling (`acquisition`, `rebrand`, `regional`, `legacy`, `consolidation`, `other`)
@@ -1253,14 +1257,14 @@ To resolve a domain to a canonical brand:
 
 1. Fetch `https://{domain}/.well-known/brand.json`.
 2. Check variant:
-   - **authoritative_location**: fetch from that URL, continue from step 2.
+   - **authoritative_location**: fetch that exact HTTPS URL with zero HTTP redirects, then continue from step 2.
    - **house** (string): fetch from house domain, continue from step 2.
    - **brand_agent**: return agent URL — the agent is authoritative.
    - **House Portfolio** (`house` object + `brands[]` and/or `brand_refs[]`): for an inline child, find the brand whose `properties[]` or `id` matches the query; for a pointer child, follow `brand_refs[].domain` and resolve once — the followed document MUST be a Brand Canonical Document, never another House Portfolio.
    - **Brand Canonical Document** (`id` + `names` at top level): the document is the brand. If `house_domain` is present, fetch the house's `brand.json` to verify reciprocation in its `brand_refs[]` (mutual assertion). When the house side is itself a [House Redirect](#2-house-redirect), follow the redirect chain on the house side before comparing. Read corporate-level fields (e.g., `data_subject_contestation`) from the house if not present on the brand; for compliance fields, resolve **strictest-of** house and brand (see [Mutual-assertion trust model](#mutual-assertion-trust-model)).
 3. Return canonical brand information.
 
-Maximum redirect depth: 3 hops. The brand → house lookup is single-hop (no recursive parent walks). See [Mutual-assertion trust model](#mutual-assertion-trust-model) for trust semantics.
+Maximum document redirect depth: 3 hops. This budget counts `authoritative_location` and House Redirect variants; it is separate from the initial well-known HTTP redirect limit in [File location](#file-location). Each explicit `authoritative_location` fetch has an HTTP redirect limit of zero. The brand → house lookup is single-hop (no recursive parent walks). See [Mutual-assertion trust model](#mutual-assertion-trust-model) for trust semantics.
 
 ## Complete examples
 

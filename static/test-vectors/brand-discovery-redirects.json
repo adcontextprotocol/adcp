@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "name": "brand.json discovery redirect handling",
+  "specification": "https://adcontextprotocol.org/docs/brand-protocol/brand-json#file-location",
+  "description": "Cross-SDK conformance vectors for brand.json HTTP redirects. A domain-derived /.well-known/brand.json fetch may follow only HTTPS redirects between the original hostname and its exact www counterpart, on the original port, anchored on the original request and capped at 3 hops. Sibling hosts are refused even when they share an eTLD+1. An explicit authoritative_location URL permits zero HTTP redirects. Every followed hop remains subject to SSRF validation. The expected result is normative; reason is advisory.",
+  "vectors": [
+    {
+      "id": "well-known-apex-to-www-followed",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.example.com/.well-known/brand.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://www.example.com/.well-known/brand.json" }
+    },
+    {
+      "id": "well-known-www-to-apex-followed",
+      "target": "well_known",
+      "origin_url": "https://www.example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://example.com/.well-known/brand.json" }
+      ],
+      "expected": { "result": "resolved", "final_url": "https://example.com/.well-known/brand.json" }
+    },
+    {
+      "id": "well-known-sibling-subdomain-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://brand-assets.example.com/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "outside_original_host_www_pair" }
+    },
+    {
+      "id": "well-known-same-then-sibling-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.example.com/.well-known/brand.json" },
+        { "status": 302, "location": "https://brand-assets.example.com/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "outside_original_host_www_pair" }
+    },
+    {
+      "id": "well-known-cross-domain-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://attacker.example/.well-known/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "outside_original_host_www_pair" }
+    },
+    {
+      "id": "well-known-https-downgrade-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 302, "location": "http://www.example.com/.well-known/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "scheme_downgrade" }
+    },
+    {
+      "id": "well-known-port-change-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://www.example.com:8443/.well-known/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "port_change" }
+    },
+    {
+      "id": "well-known-hop-cap-exceeded-refused",
+      "target": "well_known",
+      "origin_url": "https://example.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.example.com/.well-known/brand.json" },
+        { "status": 301, "location": "https://example.com/.well-known/brand.json" },
+        { "status": 301, "location": "https://www.example.com/.well-known/brand.json" },
+        { "status": 301, "location": "https://example.com/.well-known/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "too_many_redirects" }
+    },
+    {
+      "id": "well-known-public-suffix-counterpart-refused",
+      "target": "well_known",
+      "origin_url": "https://www.com/.well-known/brand.json",
+      "redirect_chain": [
+        { "status": 302, "location": "https://com/.well-known/brand.json" }
+      ],
+      "expected": { "result": "refused", "reason": "public_suffix_is_not_counterpart" }
+    },
+    {
+      "id": "authoritative-location-any-redirect-refused",
+      "target": "authoritative_location",
+      "origin_url": "https://cdn.example/brands/example.json",
+      "redirect_chain": [
+        { "status": 301, "location": "https://www.cdn.example/brands/example.json" }
+      ],
+      "expected": { "result": "refused", "reason": "redirect_on_authoritative_location" }
+    }
+  ]
+}

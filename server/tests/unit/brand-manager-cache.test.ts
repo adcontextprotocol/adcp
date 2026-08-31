@@ -76,7 +76,11 @@ describe('BrandManager caching', () => {
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
       expect(mockedSafeFetch).toHaveBeenCalledWith(
         'https://acme.com/.well-known/brand.json',
-        expect.objectContaining({ maxResponseBytes: 256 * 1024 }),
+        expect.objectContaining({
+          maxResponseBytes: 256 * 1024,
+          maxRedirects: 3,
+          redirectHostPolicy: 'original-host-and-www',
+        }),
       );
 
       // Second call - should use cache
@@ -104,6 +108,35 @@ describe('BrandManager caching', () => {
       const result2 = await manager.validateDomain('missing.com');
       expect(result2.valid).toBe(false);
       expect(mockedSafeFetch).toHaveBeenCalledTimes(1); // Still 1
+    });
+
+    it('accepts a portfolio attributed to the validated www redirect target', async () => {
+      const portfolio = {
+        $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
+        version: '1.0',
+        house: {
+          domain: 'www.example.com',
+          name: 'Example House',
+        },
+        brands: [{
+          id: 'example',
+          names: [{ en: 'Example' }],
+          keller_type: 'master',
+        }],
+      };
+      mockedSafeFetch.mockResolvedValueOnce({
+        status: 200,
+        data: Buffer.from(JSON.stringify(portfolio)),
+        url: 'https://www.example.com/.well-known/brand.json',
+      });
+
+      const result = await manager.resolveBrand('example.com');
+
+      expect(result).toMatchObject({
+        canonical_id: 'example',
+        house_domain: 'www.example.com',
+        relationship_trust: 'inline',
+      });
     });
 
     it('bypasses cache with skipCache option', async () => {
@@ -871,7 +904,7 @@ describe('BrandManager caching', () => {
         pointer.authoritative_location,
         expect.objectContaining({
           maxResponseBytes: 256 * 1024,
-          sameSiteRedirectsOnly: true,
+          maxRedirects: 0,
         }),
       );
     });
@@ -900,8 +933,24 @@ describe('BrandManager caching', () => {
         'https://cdn.example/custom/brand.json',
         expect.objectContaining({
           maxResponseBytes: 256 * 1024,
-          sameSiteRedirectsOnly: true,
+          maxRedirects: 0,
         })
+      );
+    });
+
+    it('refuses an HTTP redirect from authoritative_location', async () => {
+      const pointer = {
+        authoritative_location: 'https://cdn.example/custom/brand.json',
+      };
+      mockedSafeFetch
+        .mockResolvedValueOnce({ status: 200, data: Buffer.from(JSON.stringify(pointer)) })
+        .mockResolvedValueOnce({ status: 302, data: Buffer.alloc(0) });
+
+      expect(await manager.resolveBrand('origin.example')).toBeNull();
+      expect(mockedSafeFetch).toHaveBeenNthCalledWith(
+        2,
+        pointer.authoritative_location,
+        expect.objectContaining({ maxRedirects: 0 }),
       );
     });
 

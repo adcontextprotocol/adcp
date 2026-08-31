@@ -450,6 +450,10 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
  */
 const DEFAULT_MAX_REQUEST_BYTES = 64 * 1024;
 
+export type RedirectHostPolicy =
+  | 'same-registrable-domain'
+  | 'original-host-and-www';
+
 export async function safeFetch(
   url: string,
   options?: {
@@ -460,16 +464,13 @@ export async function safeFetch(
     maxRequestBytes?: number;
     signal?: AbortSignal;
     /**
-     * Restrict redirect-following to the originally-requested registrable
-     * domain (eTLD+1), HTTPS only. Cross-registrable-domain or scheme-downgrade
-     * hops throw instead of being followed. Used for the `/.well-known/adagents.json`
-     * discovery fetch, where standard apex→www hosting redirects MUST resolve but a
-     * cross-domain hop is an unscoped delegation signal that MUST be refused — see
-     * docs/governance/property/managed-networks#why-not-http-redirects. The
-     * comparison is anchored on the original request URL at every hop, not the
-     * previous hop, so a same→cross two-hop chain cannot escape it.
+     * Optional hostname boundary for redirect-following. Both policies require
+     * HTTPS and anchor every hop on the original request URL:
+     * - `same-registrable-domain` permits hosts within the original eTLD+1.
+     * - `original-host-and-www` permits only the original hostname and its
+     *   exact `www` counterpart, on the original port.
      */
-    sameSiteRedirectsOnly?: boolean;
+    redirectHostPolicy?: RedirectHostPolicy;
   },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
@@ -481,12 +482,20 @@ export async function safeFetch(
   const body = options?.body;
   const maxRequestBytes = options?.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
   const signal = options?.signal;
-  const sameSiteRedirectsOnly = options?.sameSiteRedirectsOnly ?? false;
-  // Same-site mode preserves HTTPS across the whole chain, including hop 0 —
-  // assert it up front so the invariant holds regardless of caller discipline.
-  if (sameSiteRedirectsOnly && parsedUrl.protocol !== 'https:') {
+  const redirectHostPolicy = options?.redirectHostPolicy;
+  if (
+    redirectHostPolicy !== undefined &&
+    redirectHostPolicy !== 'same-registrable-domain' &&
+    redirectHostPolicy !== 'original-host-and-www'
+  ) {
+    throw new Error(`Unsupported redirect host policy: ${String(redirectHostPolicy)}`);
+  }
+  const restrictRedirectHosts = redirectHostPolicy !== undefined;
+  // Restricted redirect modes preserve HTTPS across the whole chain,
+  // including hop 0. Assert it up front regardless of caller discipline.
+  if (restrictRedirectHosts && parsedUrl.protocol !== 'https:') {
     throw new Error(
-      `sameSiteRedirectsOnly requires an HTTPS origin, got ${parsedUrl.protocol}//${parsedUrl.hostname}`,
+      `Restricted redirects require an HTTPS origin, got ${parsedUrl.protocol}//${parsedUrl.host}`,
     );
   }
   // Anchor the same-site check on the ORIGINAL request domain, never the
@@ -495,8 +504,24 @@ export async function safeFetch(
   // herokuapp.com, …) is the registrant boundary; without it two unrelated
   // tenants on shared hosting collapse to one registrable domain and a
   // cross-tenant redirect would be wrongly trusted.
-  const originRegistrableDomain = sameSiteRedirectsOnly
+  const originRegistrableDomain = redirectHostPolicy === 'same-registrable-domain'
     ? getDomain(parsedUrl.hostname, { allowPrivateDomains: true })
+    : null;
+  // The pair is derived once from the ORIGINAL request. A redirect cannot
+  // widen the set by adding or removing `www` from an intermediate hostname.
+  const originHostname = parsedUrl.hostname;
+  const hostnameWithoutWww = originHostname.startsWith('www.')
+    ? originHostname.slice('www.'.length)
+    : null;
+  // Strip `www` only when the remainder is itself a registrable hostname.
+  // `www.com`, for example, is a registrable domain whose counterpart is
+  // `www.www.com`; trusting the public suffix `com` would be catastrophic.
+  const apexWwwCounterpart = hostnameWithoutWww &&
+    getDomain(hostnameWithoutWww, { allowPrivateDomains: true })
+    ? hostnameWithoutWww
+    : `www.${originHostname}`;
+  const originalHostAndWwwHostnames = redirectHostPolicy === 'original-host-and-www'
+    ? new Set([originHostname, apexWwwCounterpart])
     : null;
   const dispatcher = buildSsrfSafeDispatcher();
 
@@ -541,13 +566,15 @@ export async function safeFetch(
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
     const redirectUrl = await validateRedirectTarget(location, currentUrl);
-    if (sameSiteRedirectsOnly) {
+    if (restrictRedirectHosts) {
       // HTTPS-preserving: refuse any downgrade away from HTTPS.
       if (redirectUrl.protocol !== 'https:') {
         throw new Error(
-          `Refused non-HTTPS redirect on same-site fetch: ${currentUrl.hostname} -> ${redirectUrl.protocol}//${redirectUrl.hostname}`,
+          `Refused non-HTTPS redirect on restricted fetch: ${currentUrl.host} -> ${redirectUrl.protocol}//${redirectUrl.host}`,
         );
       }
+    }
+    if (redirectHostPolicy === 'same-registrable-domain') {
       // Same registrable domain (eTLD+1), anchored on the ORIGINAL request.
       const targetRegistrableDomain = getDomain(redirectUrl.hostname, { allowPrivateDomains: true });
       if (!originRegistrableDomain || targetRegistrableDomain !== originRegistrableDomain) {
@@ -555,6 +582,14 @@ export async function safeFetch(
           `Refused cross-registrable-domain redirect: ${currentUrl.hostname} -> ${redirectUrl.hostname}`,
         );
       }
+    }
+    if (
+      redirectHostPolicy === 'original-host-and-www' &&
+      (!originalHostAndWwwHostnames?.has(redirectUrl.hostname) || redirectUrl.port !== parsedUrl.port)
+    ) {
+      throw new Error(
+        `Refused redirect outside original host/www pair: ${currentUrl.host} -> ${redirectUrl.host}`,
+      );
     }
     // Per RFC 7231 §6.4.4 a 303 ALWAYS rewrites to GET; for 301/302 most
     // clients also rewrite for non-idempotent verbs even though the spec
@@ -632,7 +667,7 @@ export async function safeFetchAxiosLike(
     timeoutMs?: number;
     maxResponseBytes?: number;
     maxRedirects?: number;
-    sameSiteRedirectsOnly?: boolean;
+    redirectHostPolicy?: RedirectHostPolicy;
   },
 ): Promise<SafeFetchAxiosLike> {
   const controller = new AbortController();
@@ -645,7 +680,7 @@ export async function safeFetchAxiosLike(
       headers: options?.headers,
       body: options?.body,
       maxRedirects: options?.maxRedirects,
-      sameSiteRedirectsOnly: options?.sameSiteRedirectsOnly,
+      redirectHostPolicy: options?.redirectHostPolicy,
       signal: controller.signal,
     });
 

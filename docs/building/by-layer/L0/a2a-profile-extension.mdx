@@ -116,6 +116,14 @@ The invocation object has exactly two members:
 
 `parameters` is not an alias for `input` in this profile. A client that activates v3 and sends `parameters`, omits `input`, or sends more than one invocation DataPart is non-conformant. The agent MUST reject the invocation rather than choose among ambiguous inputs.
 
+### JSON number interoperability
+
+A2A 1.0 models `Part.data` as `google.protobuf.Value`. Its numeric arm is an IEEE 754 double, so an integer-valued JSON number can reserialize with a decimal point (`3` → `3.0`). AdCP treats those forms as the same JSON numeric value: both satisfy a JSON Schema `integer` type because they have no fractional value. This lexical change does not violate the [context echo contract](/docs/building/by-layer/L2/context-sessions#normative-echo-contract) and does not make an otherwise valid integer-typed task field invalid.
+
+That equivalence does not permit numeric rounding. Before A2A encoding, a sender MUST reject an integer-valued JSON number outside `[-9007199254740991, 9007199254740991]`; it MUST NOT round, truncate, or transmit that value through a DataPart number. A receiver MUST reject a decoded integer-valued DataPart number outside that range. A receiver with access to the raw JSON binding MUST also reject an out-of-range integer token before protobuf decoding. Schema authors MUST use a string representation for exact integer identifiers or counters that can exceed the range, and callers MUST use strings for such values in opaque `context`.
+
+Applications that require exact decimal digits beyond binary64 precision MUST likewise use a schema-defined string representation; callers carrying such decimals in opaque `context` MUST encode them as strings. Within the supported numeric domain, receivers and verifiers MUST compare the post-A2A decoded numeric values rather than their serialized spelling. `3` and `3.0` therefore match, while a value changed by binary64 rounding does not.
+
 The Message MAY also contain TextParts solely for display, accessibility, or
 logging. Senders SHOULD omit them by default. An SDK MAY synthesize a short
 label from the structured invocation, but the text MUST NOT introduce any
@@ -300,6 +308,8 @@ Machine-readable advertisement, activation, invocation, Submitted mapping, and p
 
 - [A2A 1.0 specification](https://a2a-protocol.org/latest/specification/)
 - [A2A extensions](https://a2a-protocol.org/latest/topics/extensions/)
+- [Protocol Buffers `Value`](https://protobuf.dev/reference/protobuf/google.protobuf/#value)
+- [JSON Schema numeric types](https://json-schema.org/understanding-json-schema/reference/numeric)
 - [A2A Guide](/docs/building/by-layer/L0/a2a-guide)
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)
 - [Calling an AdCP agent](/docs/protocol/calling-an-agent)
