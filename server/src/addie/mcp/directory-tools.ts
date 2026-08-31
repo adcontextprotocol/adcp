@@ -38,6 +38,14 @@ function safeAgentType(value: unknown): AgentType {
   return isValidAgentType(value) ? value : 'unknown';
 }
 
+function summarizeAgentVisibility(agents: ReadonlyArray<{ visibility?: string }> | null | undefined) {
+  const registered = agents ?? [];
+  return {
+    public: registered.filter((agent) => agent.visibility === 'public').length,
+    members_only: registered.filter((agent) => agent.visibility === 'members_only').length,
+  };
+}
+
 /** Accept either a raw identifier or one copied verbatim from a fenced tool result. */
 function unwrapToolIdentifier(value: string): string {
   if (value.startsWith(UNTRUSTED_OPEN_TAG) && value.endsWith(UNTRUSTED_CLOSE_TAG)) {
@@ -52,8 +60,8 @@ function unwrapToolIdentifier(value: string): string {
 export const DIRECTORY_TOOLS: AddieTool[] = [
   {
     name: 'list_members',
-    description: 'List AgenticAdvertising.org member organizations visible to the caller. Public directory members are always returned; callers on an API-access tier also see organizations with members_only agents. Can filter by offerings, markets, or search term. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.',
-    usage_hints: 'Use when asked about AgenticAdvertising.org members, member organizations, who is in the directory, or companies that offer specific services. Preserve the visibility_scope qualification when reporting agent adoption.',
+    description: 'List visible AgenticAdvertising.org member organizations. Public profiles are always returned; API-tier callers also see organizations with members_only agents. Filter by offerings, markets, or search. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.',
+    usage_hints: 'Use when asked about AgenticAdvertising.org members, member organizations, who is in the directory, or companies that offer specific services. Use agent_visibility_summary for registration counts and preserve visibility_scope when describing visible agent details.',
     input_schema: {
       type: 'object',
       properties: {
@@ -83,8 +91,8 @@ export const DIRECTORY_TOOLS: AddieTool[] = [
   },
   {
     name: 'get_member',
-    description: 'Get detailed information about a specific AgenticAdvertising.org member by slug, including agents visible to the caller. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.',
-    usage_hints: 'Use when asked for details about a specific member organization. Preserve the visibility_scope qualification when reporting agent adoption.',
+    description: 'Get an AgenticAdvertising.org member by slug. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.',
+    usage_hints: 'Use when asked for details about a specific member organization. Use agent_visibility_summary for registration counts and preserve visibility_scope when describing visible agent details.',
     input_schema: {
       type: 'object',
       properties: {
@@ -219,6 +227,7 @@ export function createDirectoryToolHandlers(
       markets: wrapList(m.markets, 100),
       website: wrapOptional(m.contact_website, 2_000),
       profile_visibility: m.is_public ? 'public' : 'members_only',
+      agent_visibility_summary: summarizeAgentVisibility(m.agents),
       agents: m.agents
         .filter((a) =>
           a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only')
@@ -303,6 +312,7 @@ export function createDirectoryToolHandlers(
       } : null,
       logo: wrapOptional(resolvedBrand?.logo_url, 2_000),
       profile_visibility: member.is_public ? 'public' : 'members_only',
+      agent_visibility_summary: summarizeAgentVisibility(member.agents),
       agents: member.agents
         .filter((a) =>
           a.visibility === 'public' || (viewerHasApiAccess && a.visibility === 'members_only')

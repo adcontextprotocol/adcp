@@ -1741,7 +1741,10 @@ registry.registerPath({
     "**Response shape is auth-aware.** Anonymous callers see only `public` agents. " +
     "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
     "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
-    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.\n\n" +
+    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility. " +
+    "`agent_visibility_summary` always reports public and members-only registration counts, independent " +
+    "of caller authorization and `scope`, so `agents: []` is not ambiguous with no discoverable registrations. " +
+    "Private registrations are excluded so their existence remains visible only to the profile owner.\n\n" +
     "**`scope` bucket filter.** Callers can opt INTO a single visibility bucket (or the full " +
     "union) regardless of what their auth would otherwise unlock — useful for picker UIs that " +
     "want exactly one slice (e.g. anonymous-equivalent, members-only catalog, owner's private " +
@@ -9481,7 +9484,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       const allowPrivate = scopeAllowsPrivate && isProfileOwner;
 
       const displayName = profile?.display_name || domain;
-      const agentConfigs = (profile?.agents || []).filter(a => {
+      const storedAgentConfigs = profile?.agents || [];
+      const agentVisibilitySummary = {
+        public: storedAgentConfigs.filter(a => a.visibility === 'public').length,
+        members_only: storedAgentConfigs.filter(a => a.visibility === 'members_only').length,
+      };
+      const agentConfigs = storedAgentConfigs.filter(a => {
         if (allowPublic && a.visibility === 'public') return true;
         if (allowMembersOnly && a.visibility === 'members_only') return true;
         if (allowPrivate && a.visibility === 'private') return true;
@@ -9523,7 +9531,12 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
         })
       );
 
-      res.json({ domain, member, agents });
+      res.json({
+        domain,
+        member,
+        agent_visibility_summary: agentVisibilitySummary,
+        agents,
+      });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Operator lookup failed");
       res.status(500).json({ error: "Operator lookup failed" });

@@ -70,7 +70,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 9322,
+      "wire_schema_bytes": 9196,
       "tool_reference_bytes": 8739,
       "tool_reference_sha256": "17de051f111c86435a495e00a4a41e9fad886fc14b68726e56d6c1e30d3e41e8",
       "overridden_tool_count": 0,
@@ -92,7 +92,7 @@
         "get_recent_news"
       ],
       "ordered_tool_names_sha256": "55fe1d742f1975bd4461e73e00beac211c7fccb9fdd82e72e73964d81441d9c0",
-      "wire_schema_sha256": "06cfa2efa9cbcd61ba0d7bb1f558d9572896990594c641ff5b4e568da58e53d5"
+      "wire_schema_sha256": "b957bec348aef0ec96d8c6d3d286b85f89ddec537374760cdb80f4b68780dbbc"
     },
     {
       "id": "legacy_slack:admin_dm:maximum",
@@ -110,7 +110,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 172453,
+      "wire_schema_bytes": 172327,
       "tool_reference_bytes": 29454,
       "tool_reference_sha256": "cac43c995c30c1eeaad6ceb36b75204ae5fc7c73ade42f3e009201778d593644",
       "overridden_tool_count": 7,
@@ -337,7 +337,7 @@
         "list_orphaned_brands"
       ],
       "ordered_tool_names_sha256": "cc78806188aa3b7be55bba733abc1ecbf7b2eea9f83ae6068e5b97ef694eb072",
-      "wire_schema_sha256": "7f0f431006d9a31e143ac605aaf507b24aab9704704d0f01d909753ce372363c"
+      "wire_schema_sha256": "8d636c4512a5a13ee8a75bc6c64363212b2a50065c48cee1f4a775fef39a212b"
     },
     {
       "id": "legacy_slack:admin_mention:maximum",
@@ -355,7 +355,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 168972,
+      "wire_schema_bytes": 168846,
       "tool_reference_bytes": 28498,
       "tool_reference_sha256": "71cebccd5787e129ac216dedbc2b0db75fa5f1b96e3defb53f9f5b35cbef6c0b",
       "overridden_tool_count": 7,
@@ -577,7 +577,7 @@
         "list_orphaned_brands"
       ],
       "ordered_tool_names_sha256": "1d769dca5f53c7baee0102ce9e49384e23c11d51e1e44d65913124563c08e97c",
-      "wire_schema_sha256": "f842d7ea5f345eccea5c8e7f5dc579741328abfa9225ccfadff1a06b1d18665f"
+      "wire_schema_sha256": "2802b8b4d53ed364f2666b8c6fb39188e1097d486bf7e9a942f458a929cda2a3"
     },
     {
       "id": "legacy_slack:member_dm:maximum",
@@ -595,7 +595,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 120816,
+      "wire_schema_bytes": 120690,
       "tool_reference_bytes": 26267,
       "tool_reference_sha256": "235008eb65863d7e8d2724696c40ec3a5df17db4dc83e177b537b1cebc596a2c",
       "overridden_tool_count": 7,
@@ -742,7 +742,7 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "88484816c567cdded948a50c26649b061d39509263be69448049497bd93edc30",
-      "wire_schema_sha256": "093095107c35ffb8c36d795559e31911907ad1df368492cdfa7b02dc09deb3a7"
+      "wire_schema_sha256": "007f09dbaf5d07d0a3681e568eb8060fc3e149d17deeecc7c031ab5426f63edb"
     },
     {
       "id": "legacy_slack:member_mention:maximum",
@@ -760,7 +760,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 117335,
+      "wire_schema_bytes": 117209,
       "tool_reference_bytes": 25311,
       "tool_reference_sha256": "e5da0b3fa4b90b4596e82cae0a75c06d9d78c10540fc9fd79802593b05ba7316",
       "overridden_tool_count": 7,
@@ -902,7 +902,7 @@
         "list_committee_co_leaders"
       ],
       "ordered_tool_names_sha256": "93d3ff44c928cde4c4b5e99b42fc7711177e21c39c2f1ce6e4c49d966d7fa241",
-      "wire_schema_sha256": "6423221976a7387d3efef453f2248d75bcd5ee5611f60434c1068899ad8a290f"
+      "wire_schema_sha256": "b59763ff737c756f78babffe9754e7b57b7f17733bc6f0b899c607214fbec6b1"
     },
     {
       "id": "mcp_chat:anonymous:exact",
@@ -918,7 +918,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 9322,
+      "wire_schema_bytes": 9196,
       "tool_reference_bytes": 8739,
       "tool_reference_sha256": "17de051f111c86435a495e00a4a41e9fad886fc14b68726e56d6c1e30d3e41e8",
       "overridden_tool_count": 0,
@@ -940,7 +940,7 @@
         "search_members"
       ],
       "ordered_tool_names_sha256": "95e567567b8e6b741f211f7589ee4898e87663abc5530869514da64ac1d52daa",
-      "wire_schema_sha256": "d2a2bfc0ed3a6802a1128813651cda137e9e5fae85dff441afa59ef363b2c239"
+      "wire_schema_sha256": "18f44c84558a0be64099749dc46db7e6acdbf01c544135daaaa056b281a9c28b"
     },
     {
       "id": "official_docs_replay:read_only:exact",
@@ -986,7 +986,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 191322,
+      "wire_schema_bytes": 191196,
       "tool_reference_bytes": 36899,
       "tool_reference_sha256": "4d85d0e784e0295f7cc74671cd0568e3fe1e24b75a8fd05f767ca3499042eb72",
       "overridden_tool_count": 11,
@@ -1238,7 +1238,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "9f0fc2d5113bf561f9f02333f0a7380ce7f469bcd21d9b3d189fb8d5a5d060dc",
-      "wire_schema_sha256": "30a21755f0ef89c0a09901dbcbf65aaa2fa769a8f32a68d5fd5da031bed5ac38"
+      "wire_schema_sha256": "1183aee77283324e1e26541130afcda42e4aebbe37acc6962b37944dab93325e"
     },
     {
       "id": "slack_bolt_reaction:member:maximum",
@@ -1256,7 +1256,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 139685,
+      "wire_schema_bytes": 139559,
       "tool_reference_bytes": 33712,
       "tool_reference_sha256": "6ee05dba65bc4830d025ebd3586da59ac8af956e868b0b814e3f939c7663dfe2",
       "overridden_tool_count": 11,
@@ -1428,7 +1428,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "11c9ae418da5fbf94790dbfd97ba9c85c9242d9ae04191500b464efa3f96c176",
-      "wire_schema_sha256": "89a37d53053136b38d5a5a8c67d55b23762d9c126dcce6b59ee4e076c38c8523"
+      "wire_schema_sha256": "6c2c653ba52f325528e7148d9270a95f244290bfbb86602d7a8ed56a1abc8e12"
     },
     {
       "id": "slack_bolt_reaction:public_channel_admin:maximum",
@@ -1446,7 +1446,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 188049,
+      "wire_schema_bytes": 187923,
       "tool_reference_bytes": 36027,
       "tool_reference_sha256": "2dbd9d893a4536d4792a270a124b7ae174c786bf4c19b189b357d1694e8f2a52",
       "overridden_tool_count": 11,
@@ -1693,7 +1693,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "8c332ea390464f2c2f9faa37a47db4400c297989a06322db5c41b9d90fefe1b5",
-      "wire_schema_sha256": "baee37367cb36307f1fd0e6e60e67c5b927c92e8ca0a15e41e8ce09d494ffdc2"
+      "wire_schema_sha256": "e2ef0034e2b212664b15db3d0561c6c0c2ac81afd6947e87bdcc9746845bda88"
     },
     {
       "id": "slack_bolt_reaction:public_channel:maximum",
@@ -1711,7 +1711,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 136412,
+      "wire_schema_bytes": 136286,
       "tool_reference_bytes": 32840,
       "tool_reference_sha256": "eb9ccd84de97e436a912b419461c5252de63a0d1c3cc62e9ecdf2421ee56d48c",
       "overridden_tool_count": 11,
@@ -1878,7 +1878,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "a528cd7d63da0a6afc6244759698a662573e25962408eeae0b0506f18b8e31ac",
-      "wire_schema_sha256": "899a98a5f382015371f9204dab59c4d83d3b39a6108b70e59bf6b3a8d436a005"
+      "wire_schema_sha256": "be244e269e5c8af761d749b4453eb01a5bc3bb71f2be83a985934e65833f4271"
     },
     {
       "id": "slack_bolt:admin_dm:adcp_operations",
@@ -2497,7 +2497,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -2725,7 +2725,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:admin_dm:billing",
@@ -3426,7 +3426,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 13639,
+      "wire_schema_bytes": 13513,
       "tool_reference_bytes": 5580,
       "tool_reference_sha256": "29a669bfb37bc88dc1aecebf074be62e70978d962a1b4dd0437d8b4f1346651e",
       "overridden_tool_count": 6,
@@ -3451,7 +3451,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "25c1f9978d0573d877a8e432bd242a86694a7e99262c9a734dad89f630869c1f",
-      "wire_schema_sha256": "c741be8ffa6ffb46b11d60752eab660af5eb6b6701b3e8cb9a9bc9cd87362dbe"
+      "wire_schema_sha256": "4af1f176db8ac43c91da7ed1b68deef6563099a628ffb45b19b2f84426e03158"
     },
     {
       "id": "slack_bolt:admin_dm:events",
@@ -4860,7 +4860,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -5088,7 +5088,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:admin_working_group:billing",
@@ -5588,7 +5588,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 13639,
+      "wire_schema_bytes": 13513,
       "tool_reference_bytes": 5580,
       "tool_reference_sha256": "29a669bfb37bc88dc1aecebf074be62e70978d962a1b4dd0437d8b4f1346651e",
       "overridden_tool_count": 6,
@@ -5613,7 +5613,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "25c1f9978d0573d877a8e432bd242a86694a7e99262c9a734dad89f630869c1f",
-      "wire_schema_sha256": "c741be8ffa6ffb46b11d60752eab660af5eb6b6701b3e8cb9a9bc9cd87362dbe"
+      "wire_schema_sha256": "4af1f176db8ac43c91da7ed1b68deef6563099a628ffb45b19b2f84426e03158"
     },
     {
       "id": "slack_bolt:admin_working_group:events",
@@ -6483,7 +6483,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 131695,
+      "wire_schema_bytes": 131569,
       "tool_reference_bytes": 31686,
       "tool_reference_sha256": "e9533cb0c85caf13cfbe0b4527d8227a22315c15175fe8861d6d6bddef6c61d1",
       "overridden_tool_count": 11,
@@ -6645,7 +6645,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "35bc37d9deefc093c2736a2f4e519058fad2dc3255ef1a7de65d2fd8114e90d8",
-      "wire_schema_sha256": "fe5d17519ab39518156a4c6b1a7133d865aade62f6d6752b4db1b98e96b59c75"
+      "wire_schema_sha256": "03975b259175aea4e90618b0ff8300bd839a0063078fe8b6daf450aa68b50fe5"
     },
     {
       "id": "slack_bolt:member_dm:brand_registry",
@@ -7271,7 +7271,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11345,
+      "wire_schema_bytes": 11219,
       "tool_reference_bytes": 5512,
       "tool_reference_sha256": "0b27517d22f7b3c5759799a6212704c300d9305cbf3ce274eb59b34503a7af46",
       "overridden_tool_count": 6,
@@ -7294,7 +7294,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "97ec1ef023c2c045e6ff9614dc365e15696c179245749d864937a2a076dcd3e3",
-      "wire_schema_sha256": "83adea36da11e4bd039464856221765450b1a259c0b89f4f69ddb0a417c3e121"
+      "wire_schema_sha256": "57edc4ef8f45a76531fd38f9ec098906c89e3aed1fa15c41ce2016ed8a8c5e98"
     },
     {
       "id": "slack_bolt:member_dm:events",
@@ -8639,7 +8639,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -8867,7 +8867,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:private_channel_admin:billing",
@@ -9367,7 +9367,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 13639,
+      "wire_schema_bytes": 13513,
       "tool_reference_bytes": 5580,
       "tool_reference_sha256": "29a669bfb37bc88dc1aecebf074be62e70978d962a1b4dd0437d8b4f1346651e",
       "overridden_tool_count": 6,
@@ -9392,7 +9392,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "25c1f9978d0573d877a8e432bd242a86694a7e99262c9a734dad89f630869c1f",
-      "wire_schema_sha256": "c741be8ffa6ffb46b11d60752eab660af5eb6b6701b3e8cb9a9bc9cd87362dbe"
+      "wire_schema_sha256": "4af1f176db8ac43c91da7ed1b68deef6563099a628ffb45b19b2f84426e03158"
     },
     {
       "id": "slack_bolt:private_channel_admin:events",
@@ -10262,7 +10262,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 131695,
+      "wire_schema_bytes": 131569,
       "tool_reference_bytes": 31686,
       "tool_reference_sha256": "e9533cb0c85caf13cfbe0b4527d8227a22315c15175fe8861d6d6bddef6c61d1",
       "overridden_tool_count": 11,
@@ -10424,7 +10424,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "35bc37d9deefc093c2736a2f4e519058fad2dc3255ef1a7de65d2fd8114e90d8",
-      "wire_schema_sha256": "fe5d17519ab39518156a4c6b1a7133d865aade62f6d6752b4db1b98e96b59c75"
+      "wire_schema_sha256": "03975b259175aea4e90618b0ff8300bd839a0063078fe8b6daf450aa68b50fe5"
     },
     {
       "id": "slack_bolt:private_channel_member:brand_registry",
@@ -10855,7 +10855,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 11345,
+      "wire_schema_bytes": 11219,
       "tool_reference_bytes": 5512,
       "tool_reference_sha256": "0b27517d22f7b3c5759799a6212704c300d9305cbf3ce274eb59b34503a7af46",
       "overridden_tool_count": 6,
@@ -10878,7 +10878,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "97ec1ef023c2c045e6ff9614dc365e15696c179245749d864937a2a076dcd3e3",
-      "wire_schema_sha256": "83adea36da11e4bd039464856221765450b1a259c0b89f4f69ddb0a417c3e121"
+      "wire_schema_sha256": "57edc4ef8f45a76531fd38f9ec098906c89e3aed1fa15c41ce2016ed8a8c5e98"
     },
     {
       "id": "slack_bolt:private_channel_member:events",
@@ -12096,7 +12096,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 162898,
+      "wire_schema_bytes": 162772,
       "tool_reference_bytes": 34424,
       "tool_reference_sha256": "c15f58c47dc616b30383e60ed79fa189073f64985ac3c7451c6926b4ff108cdc",
       "overridden_tool_count": 11,
@@ -12309,7 +12309,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "9b06113b5f1ee13e46106296d0148df02da0827a6b5430477aca4ba369667521",
-      "wire_schema_sha256": "e459a005d035e4177b95df880aa5b3e89ce6e7201d0779fc90cb123def5bc6d8"
+      "wire_schema_sha256": "1f3b52443140414d6f6de50ccf2f31437b04b3096aed48895ba4a9d39db0bd14"
     },
     {
       "id": "slack_bolt:public_channel_admin:billing",
@@ -12788,7 +12788,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 13166,
+      "wire_schema_bytes": 13040,
       "tool_reference_bytes": 5562,
       "tool_reference_sha256": "62bde6679084582dc13691668b4c289e5725563837c9d6f0a0ef1df1c8be629d",
       "overridden_tool_count": 6,
@@ -12812,7 +12812,7 @@
         "resolve_escalation"
       ],
       "ordered_tool_names_sha256": "3513264a0d68aa2e5a7d5af5adb1301894548d6cc71dd2366182bb3ca4597d10",
-      "wire_schema_sha256": "defe00b9157394c4d3215c3a1c8a4e38ba0a597e8549faabf2d2556f97599c97"
+      "wire_schema_sha256": "38e333f86720411277eff2638a899fdb044615ceb33e0902cd8b2501b4754b9b"
     },
     {
       "id": "slack_bolt:public_channel_admin:events",
@@ -13659,7 +13659,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 128422,
+      "wire_schema_bytes": 128296,
       "tool_reference_bytes": 30814,
       "tool_reference_sha256": "a6f20183b2961fa920e87cb796313e367a940755533f81f62fac7e0cd112975b",
       "overridden_tool_count": 11,
@@ -13816,7 +13816,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "57f0ef7a602f90ab6060dc9e8d6315a975f1b693244e2beb790ee8f9666e1748",
-      "wire_schema_sha256": "8e1c050b3244f98e4d246290d9bbdbc4a0801882e5dac760cb7b6f9347aba3ec"
+      "wire_schema_sha256": "9e90e097d7d9a933ab2374e66f4f14b6ec96ca03f162dd2b391066645ac56cc4"
     },
     {
       "id": "slack_bolt:public_channel_member:brand_registry",
@@ -14238,7 +14238,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 10872,
+      "wire_schema_bytes": 10746,
       "tool_reference_bytes": 5494,
       "tool_reference_sha256": "a943007716af7c639ff2e08be0946b19c337dc67025b762efa7cb2c1136599a9",
       "overridden_tool_count": 6,
@@ -14260,7 +14260,7 @@
         "capture_learning"
       ],
       "ordered_tool_names_sha256": "34859b0cb6da0a3f68c3a296f21400a2ea1c5608b194941cb69dcf6c02dd96ed",
-      "wire_schema_sha256": "626e2591a294435bf968dd7e49fe5aa161f776b1605c97ade4ef71f2a1cbfc1d"
+      "wire_schema_sha256": "8785ef7308fc42f43f36b84ea685a12423bc1c40c5554f2574b4f1890de06a9d"
     },
     {
       "id": "slack_bolt:public_channel_member:events",
@@ -14911,7 +14911,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -15139,7 +15139,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:system_channel_admin:billing:all_valid_sets_maximum",
@@ -15198,7 +15198,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -15426,7 +15426,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:system_channel_admin:error:all_valid_sets_maximum",
@@ -15485,7 +15485,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -15713,7 +15713,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:system_channel_admin:escalation:all_valid_sets_maximum",
@@ -15772,7 +15772,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -16000,7 +16000,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "slack_bolt:system_channel_admin:prospect:all_valid_sets_maximum",
@@ -16059,7 +16059,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 173278,
+      "wire_schema_bytes": 173152,
       "tool_reference_bytes": 35523,
       "tool_reference_sha256": "8598afbf76a4a27823c8a4bad19c99d5d6e2d3b0b03863c913f87d3f2de6c37f",
       "overridden_tool_count": 11,
@@ -16287,7 +16287,7 @@
         "save_learner_feedback"
       ],
       "ordered_tool_names_sha256": "27a7d7e5296f9045a67135f020b62b19f7347667f26cb67889a2f4cfb5c6cbca",
-      "wire_schema_sha256": "1836f98a28d85aaf6f31a904d5d0ade0deeeb4bb88c10f10a1a95a942730c075"
+      "wire_schema_sha256": "88547db5ffdaa56e12dfebbd9c4624aff88a293a20812e475bd06e3157198b43"
     },
     {
       "id": "tavus_voice:admin:maximum",
@@ -16302,7 +16302,7 @@
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 163690,
+      "wire_schema_bytes": 163564,
       "tool_reference_bytes": 27371,
       "tool_reference_sha256": "b3eb8619dd1b797ebcfcb838b673744d98aee2effeac33858e2ace5e4d154780",
       "overridden_tool_count": 0,
@@ -16528,7 +16528,7 @@
         "get_moltbook_feed"
       ],
       "ordered_tool_names_sha256": "ee026b5c5493eecf66980d8bc45d13bca576838fd1e56d46a225d8c0a8fc735a",
-      "wire_schema_sha256": "5975b1ea35c67d155fbc42ee8e804c1abfb36eee127fa776ad58e77caf364a0e"
+      "wire_schema_sha256": "e0250902f2dfefc845775f38cce7e7c872ffb656af4413b662f4b15f871f4edb"
     },
     {
       "id": "tavus_voice:baseline:exact",
@@ -16542,7 +16542,7 @@
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 12383,
+      "wire_schema_bytes": 12257,
       "tool_reference_bytes": 12351,
       "tool_reference_sha256": "322e373acb9777f073c3fbb6a5143d80fc6d4c008e31bfef676ef872e71f8ed7",
       "overridden_tool_count": 0,
@@ -16570,7 +16570,7 @@
         "upload_brand_logo"
       ],
       "ordered_tool_names_sha256": "72bc532442ca60dc3c96c2dd609e1852772974b5046f570a005504eb921401fc",
-      "wire_schema_sha256": "f68dd4690a41961241e950142f8eba5c8188efb5d5e38b60ca77352d54c58f4c"
+      "wire_schema_sha256": "a3e0e5a9ac3fda316323d7eed7f792e4ac29fa9f4be452febebc2c78966a3d96"
     },
     {
       "id": "tavus_voice:committee_leader:maximum",
@@ -16585,7 +16585,7 @@
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 106023,
+      "wire_schema_bytes": 105897,
       "tool_reference_bytes": 23804,
       "tool_reference_sha256": "18312c2e01b9f274b4bc5a995bdead97303f628cb356a2e42bc6869775d28e90",
       "overridden_tool_count": 0,
@@ -16726,7 +16726,7 @@
         "get_moltbook_feed"
       ],
       "ordered_tool_names_sha256": "1014ec0f38456600ea98be64558e693f91e59d9f0c9a9802743152bb36a42710",
-      "wire_schema_sha256": "3dc39d6788aeeacf3afb6a9055319f3d5759ae1a2690f458eda7c2a1bfe97d64"
+      "wire_schema_sha256": "647fd9dc64eb674d752d7658532f66b2ed2a6d676d1163c359448014cb66c686"
     },
     {
       "id": "tavus_voice:member:maximum",
@@ -16740,7 +16740,7 @@
       "maximum_provider_tool_names": [],
       "maximum_provider_tool_wire_bytes": 2,
       "maximum_provider_tool_wire_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "wire_schema_bytes": 95906,
+      "wire_schema_bytes": 95780,
       "tool_reference_bytes": 22783,
       "tool_reference_sha256": "d03865614eec2af9b35985b97fc40b010249ead959c9987896dfd6beadac77a4",
       "overridden_tool_count": 0,
@@ -16870,7 +16870,7 @@
         "get_moltbook_feed"
       ],
       "ordered_tool_names_sha256": "777fd9afbfea06766211ff5d208c0e612bbfdc08756213f9ea1501efdf9dd33b",
-      "wire_schema_sha256": "b12aed9b1c985aeaeef9a7cdc59b04b1f0683467171351d213ce70f10cce31f8"
+      "wire_schema_sha256": "79ab26d706e2f3e0781273da8a97e22e9c849150c65a5012c9b90f2e6cf405f8"
     },
     {
       "id": "web_chat:anonymous:maximum",
@@ -16886,7 +16886,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 9322,
+      "wire_schema_bytes": 9196,
       "tool_reference_bytes": 8739,
       "tool_reference_sha256": "17de051f111c86435a495e00a4a41e9fad886fc14b68726e56d6c1e30d3e41e8",
       "overridden_tool_count": 0,
@@ -16908,7 +16908,7 @@
         "get_recent_news"
       ],
       "ordered_tool_names_sha256": "55fe1d742f1975bd4461e73e00beac211c7fccb9fdd82e72e73964d81441d9c0",
-      "wire_schema_sha256": "06cfa2efa9cbcd61ba0d7bb1f558d9572896990594c641ff5b4e568da58e53d5"
+      "wire_schema_sha256": "b957bec348aef0ec96d8c6d3d286b85f89ddec537374760cdb80f4b68780dbbc"
     },
     {
       "id": "web_chat:authenticated_admin:maximum",
@@ -16926,7 +16926,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 177151,
+      "wire_schema_bytes": 177025,
       "tool_reference_bytes": 34609,
       "tool_reference_sha256": "fa48989aef894481de0c29c1aebe752cbcb83b42923ddae38034416bc073ee04",
       "overridden_tool_count": 8,
@@ -17167,7 +17167,7 @@
         "get_moltbook_feed"
       ],
       "ordered_tool_names_sha256": "60c1bf349d4a8bc228804867d449a574dee4951878ba6176c7c9a1eb14821e0c",
-      "wire_schema_sha256": "c7939bf78dae2bd96cc63a9f9af0e44c40931355a079c3f4d403ff4f6bf0a0e0"
+      "wire_schema_sha256": "42b6953e132f97483461fcd37818c7608d5b124cc9cad296efb10261fa87639d"
     },
     {
       "id": "web_chat:authenticated_member:maximum",
@@ -17185,7 +17185,7 @@
       ],
       "maximum_provider_tool_wire_bytes": 52,
       "maximum_provider_tool_wire_sha256": "41862a9288a9f94aa80bd76a6d113c5217ffb3b495e3b96e9ab3db014d52b275",
-      "wire_schema_bytes": 125514,
+      "wire_schema_bytes": 125388,
       "tool_reference_bytes": 31422,
       "tool_reference_sha256": "340375580b028483f17bf013ffa2a4b31bd09a1b749e031567dbdd9496ae8ec9",
       "overridden_tool_count": 8,
@@ -17346,7 +17346,7 @@
         "get_moltbook_feed"
       ],
       "ordered_tool_names_sha256": "ba3b0ba34ca3982d006f0b9e069c3d411d4b2ecb543039b6099d6ed9135b8aca",
-      "wire_schema_sha256": "5f51e8e80e54d5ab22f59fec710148cc4a2ec2108ac6f32c16a9745945ca3091"
+      "wire_schema_sha256": "ff6eaf3d3afeaa64f4226997799afa7fd3551e4df31f0d60cdb8d32836811a71"
     }
   ],
   "baseline": {
@@ -17386,9 +17386,9 @@
       "maximum_slack_member_tools": 6,
       "maximum_slack_admin_tools": 3,
       "maximum_slack_public_tools": -4,
-      "maximum_slack_member_schema_bytes": 7533,
-      "maximum_slack_admin_schema_bytes": 7158,
-      "maximum_slack_public_schema_bytes": 2781,
+      "maximum_slack_member_schema_bytes": 7407,
+      "maximum_slack_admin_schema_bytes": 7032,
+      "maximum_slack_public_schema_bytes": 2655,
       "legacy_slack_member_tools": -83,
       "web_anonymous_tools": 0,
       "web_authenticated_admin_tools": -3
@@ -17575,11 +17575,11 @@
       }
     },
     "profile_ids_sha256": "c39e780422ddd3eef3eb989d6e08ef38e274948018d819c40867a4bd88c4534e",
-    "profile_contract_sha256": "d9fded880a5f85d5a0f66fecbe7635d27f9a99a8541cb517b4ee16fdbdec3936",
+    "profile_contract_sha256": "da532a56e0dd34c300cd245cfbca97611509f575debedeeea235538e583042f9",
     "status": "within_budget"
   },
   "profile_contract": {
     "profile_ids_sha256": "c39e780422ddd3eef3eb989d6e08ef38e274948018d819c40867a4bd88c4534e",
-    "profile_contract_sha256": "d9fded880a5f85d5a0f66fecbe7635d27f9a99a8541cb517b4ee16fdbdec3936"
+    "profile_contract_sha256": "da532a56e0dd34c300cd245cfbca97611509f575debedeeea235538e583042f9"
   }
 }
