@@ -134,7 +134,7 @@ describe('safeFetch redirects', () => {
   });
 });
 
-describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', () => {
+describe('safeFetch same-registrable-domain redirects (adagents /.well-known discovery)', () => {
   beforeEach(() => {
     fetchMock.mockReset();
     agentMock.mockClear();
@@ -158,7 +158,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
       }));
 
     const response = await safeFetch(wellKnown('ladepeche.fr'), {
-      sameSiteRedirectsOnly: true,
+      redirectHostPolicy: 'same-registrable-domain',
       maxRedirects: 3,
       signal: AbortSignal.timeout(2_000),
     });
@@ -176,7 +176,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     await expect(
       safeFetch(wellKnown('ladepeche.fr'), {
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         maxRedirects: 3,
         signal: AbortSignal.timeout(2_000),
       }),
@@ -197,7 +197,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     await expect(
       safeFetch(wellKnown('pub.example'), {
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         maxRedirects: 3,
         signal: AbortSignal.timeout(2_000),
       }),
@@ -212,7 +212,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     await expect(
       safeFetch(wellKnown('pub.example'), {
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         maxRedirects: 3,
         signal: AbortSignal.timeout(2_000),
       }),
@@ -227,7 +227,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     await expect(
       safeFetch(wellKnown('victim.github.io'), {
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         maxRedirects: 3,
         signal: AbortSignal.timeout(2_000),
       }),
@@ -247,7 +247,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
       }));
 
     const response = await safeFetch(wellKnown('victim.github.io'), {
-      sameSiteRedirectsOnly: true,
+      redirectHostPolicy: 'same-registrable-domain',
       maxRedirects: 3,
       signal: AbortSignal.timeout(2_000),
     });
@@ -268,7 +268,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
       }));
 
     const response = await safeFetch(wellKnown('example.co.uk'), {
-      sameSiteRedirectsOnly: true,
+      redirectHostPolicy: 'same-registrable-domain',
       maxRedirects: 3,
       signal: AbortSignal.timeout(2_000),
     });
@@ -285,7 +285,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     await expect(
       safeFetch(wellKnown('example.co.uk'), {
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         maxRedirects: 3,
         signal: AbortSignal.timeout(2_000),
       }),
@@ -300,7 +300,7 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
       .mockResolvedValueOnce(new Response('', { status: 301, headers: { Location: wellKnown('e.pub.example') } }));
 
     const response = await safeFetch(wellKnown('a.pub.example'), {
-      sameSiteRedirectsOnly: true,
+      redirectHostPolicy: 'same-registrable-domain',
       maxRedirects: 3,
       signal: AbortSignal.timeout(2_000),
     });
@@ -328,5 +328,174 @@ describe('safeFetch sameSiteRedirectsOnly (adagents /.well-known discovery)', ()
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('safeFetch original-host-and-www redirects (brand.json discovery)', () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+    agentMock.mockClear();
+    resolve4Mock.mockClear();
+    resolve6Mock.mockClear();
+    resolve4Mock.mockResolvedValue(['93.184.216.34']);
+    resolve6Mock.mockResolvedValue([]);
+  });
+
+  const wellKnown = (host: string) => `https://${host}/.well-known/brand.json`;
+
+  it('rejects an unsupported redirect policy before dialing', async () => {
+    await expect(
+      safeFetch(wellKnown('example.com'), {
+        redirectHostPolicy: 'unsupported' as 'original-host-and-www',
+        maxRedirects: 3,
+      }),
+    ).rejects.toThrow(/Unsupported redirect host policy/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('follows the exact apex to www pair', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', {
+        status: 301,
+        headers: { Location: wellKnown('www.example.com') },
+      }))
+      .mockResolvedValueOnce(new Response('{"id":"example"}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const response = await safeFetch(wellKnown('example.com'), {
+      redirectHostPolicy: 'original-host-and-www',
+      maxRedirects: 3,
+      signal: AbortSignal.timeout(2_000),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(wellKnown('www.example.com'));
+  });
+
+  it('follows the exact www to apex pair', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', {
+        status: 301,
+        headers: { Location: wellKnown('example.com') },
+      }))
+      .mockResolvedValueOnce(new Response('{"id":"example"}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+
+    const response = await safeFetch(wellKnown('www.example.com'), {
+      redirectHostPolicy: 'original-host-and-www',
+      maxRedirects: 3,
+      signal: AbortSignal.timeout(2_000),
+    });
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe(wellKnown('example.com'));
+  });
+
+  it('refuses a sibling subdomain even within the same registrable domain', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', {
+      status: 302,
+      headers: { Location: wellKnown('brand-assets.example.com') },
+    }));
+
+    await expect(
+      safeFetch(wellKnown('example.com'), {
+        redirectHostPolicy: 'original-host-and-www',
+        maxRedirects: 3,
+        signal: AbortSignal.timeout(2_000),
+      }),
+    ).rejects.toThrow(/outside original host\/www pair/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('anchors the pair on the original hostname across multiple hops', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', {
+        status: 301,
+        headers: { Location: wellKnown('www.example.com') },
+      }))
+      .mockResolvedValueOnce(new Response('', {
+        status: 302,
+        headers: { Location: wellKnown('www.brand-assets.example.com') },
+      }));
+
+    await expect(
+      safeFetch(wellKnown('example.com'), {
+        redirectHostPolicy: 'original-host-and-www',
+        maxRedirects: 3,
+        signal: AbortSignal.timeout(2_000),
+      }),
+    ).rejects.toThrow(/outside original host\/www pair/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a port change on an otherwise allowed hostname', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', {
+      status: 302,
+      headers: { Location: 'https://www.example.com:8443/.well-known/brand.json' },
+    }));
+
+    await expect(
+      safeFetch(wellKnown('example.com'), {
+        redirectHostPolicy: 'original-host-and-www',
+        maxRedirects: 3,
+        signal: AbortSignal.timeout(2_000),
+      }),
+    ).rejects.toThrow(/outside original host\/www pair/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a scheme downgrade on an otherwise allowed hostname', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', {
+      status: 302,
+      headers: { Location: 'http://www.example.com/.well-known/brand.json' },
+    }));
+
+    await expect(
+      safeFetch(wellKnown('example.com'), {
+        redirectHostPolicy: 'original-host-and-www',
+        maxRedirects: 3,
+        signal: AbortSignal.timeout(2_000),
+      }),
+    ).rejects.toThrow(/non-HTTPS redirect/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not resolve when the three-hop cap is exceeded', async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('', { status: 301, headers: { Location: wellKnown('www.example.com') } }))
+      .mockResolvedValueOnce(new Response('', { status: 301, headers: { Location: wellKnown('example.com') } }))
+      .mockResolvedValueOnce(new Response('', { status: 301, headers: { Location: wellKnown('www.example.com') } }))
+      .mockResolvedValueOnce(new Response('', { status: 301, headers: { Location: wellKnown('example.com') } }));
+
+    const response = await safeFetch(wellKnown('example.com'), {
+      redirectHostPolicy: 'original-host-and-www',
+      maxRedirects: 3,
+      signal: AbortSignal.timeout(2_000),
+    });
+
+    expect(response.status).toBe(301);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('never strips www to a public suffix', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('', {
+      status: 302,
+      headers: { Location: 'https://com/.well-known/brand.json' },
+    }));
+
+    await expect(
+      safeFetch(wellKnown('www.com'), {
+        redirectHostPolicy: 'original-host-and-www',
+        maxRedirects: 3,
+        signal: AbortSignal.timeout(2_000),
+      }),
+    ).rejects.toThrow(/outside original host\/www pair/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

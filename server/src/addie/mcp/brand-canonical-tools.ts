@@ -358,17 +358,19 @@ export interface AddBrandRefResult {
 const BRAND_JSON_MAX_BYTES = 256 * 1024;
 const BRAND_JSON_TIMEOUT_MS = 10_000;
 
-async function fetchBrandJson(
-  domain: string,
+async function fetchBrandJsonUrl(
+  url: string,
+  maxRedirects: number,
+  redirectHostPolicy?: 'original-host-and-www',
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
-  const url = `https://${domain}/.well-known/brand.json`;
   try {
     const response = await safeFetchAxiosLike(url, {
       headers: {
         Accept: 'application/json',
         'User-Agent': AAO_UA_VALIDATOR,
       },
-      maxRedirects: 3,
+      maxRedirects,
+      redirectHostPolicy,
       timeoutMs: BRAND_JSON_TIMEOUT_MS,
       maxResponseBytes: BRAND_JSON_MAX_BYTES,
     });
@@ -390,6 +392,22 @@ async function fetchBrandJson(
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: `Failed to fetch ${url}: ${message}` };
   }
+}
+
+async function fetchBrandJson(
+  domain: string,
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
+  return fetchBrandJsonUrl(
+    `https://${domain}/.well-known/brand.json`,
+    3,
+    'original-host-and-www',
+  );
+}
+
+async function fetchAuthoritativeBrandJson(
+  url: string,
+): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
+  return fetchBrandJsonUrl(url, 0);
 }
 
 export async function addToBrandRefs(args: AddBrandRefArgs): Promise<AddBrandRefResult> {
@@ -546,7 +564,8 @@ async function resolveHousePortfolio(
   | { ok: false; chain: string[]; error: string }
 > {
   const chain: string[] = [];
-  let current = startingDomain;
+  let currentDomain = startingDomain;
+  let currentUrl: string | null = null;
   let hops = 0;
 
   // Loop fetches one document per iteration. `hops` counts how many
@@ -554,8 +573,10 @@ async function resolveHousePortfolio(
   // before the *next* fetch becomes the (MAX_REDIRECTS+1)-th hop and we
   // must reject.
   while (true) {
-    chain.push(current);
-    const fetched = await fetchBrandJson(current);
+    if (chain.at(-1) !== currentDomain) chain.push(currentDomain);
+    const fetched = currentUrl
+      ? await fetchAuthoritativeBrandJson(currentUrl)
+      : await fetchBrandJson(currentDomain);
     if (!fetched.ok) {
       return { ok: false, chain, error: fetched.error };
     }
@@ -564,24 +585,29 @@ async function resolveHousePortfolio(
     // House Portfolio — `house` is an object. Terminal document; the
     // hop count never includes this fetch.
     if (data.house && typeof data.house === 'object' && !Array.isArray(data.house)) {
-      return { ok: true, portfolio: data, chain, finalDomain: current };
+      return { ok: true, portfolio: data, chain, finalDomain: currentDomain };
     }
 
     // Determine the next hop (authoritative_location or House Redirect).
-    let next: string | null = null;
+    let nextDomain = currentDomain;
+    let nextUrl: string | null = null;
     if (typeof data.authoritative_location === 'string') {
       try {
-        next = new URL(data.authoritative_location).hostname.toLowerCase();
+        const parsed = new URL(data.authoritative_location);
+        if (parsed.protocol !== 'https:') {
+          return { ok: false, chain, error: 'authoritative_location must use HTTPS' };
+        }
+        nextUrl = parsed.toString();
       } catch {
         return { ok: false, chain, error: 'authoritative_location is not a valid URL' };
       }
     } else if (typeof data.house === 'string') {
-      next = normalizeDomain(data.house);
+      nextDomain = normalizeDomain(data.house);
     } else {
       return {
         ok: false,
         chain,
-        error: `Document at ${current} is not a House Portfolio or House Redirect`,
+        error: `Document at ${currentUrl ?? currentDomain} is not a House Portfolio or House Redirect`,
       };
     }
 
@@ -589,7 +615,8 @@ async function resolveHousePortfolio(
       return { ok: false, chain, error: 'Exceeded 3-hop redirect limit' };
     }
     hops += 1;
-    current = next;
+    currentDomain = nextDomain;
+    currentUrl = nextUrl;
   }
 }
 

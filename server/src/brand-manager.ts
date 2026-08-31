@@ -37,6 +37,7 @@ export interface BrandValidationResult {
   warnings: BrandValidationWarning[];
   domain: string;
   url: string;
+  final_url?: string;
   status_code?: number;
   raw_data?: unknown;
   variant?: BrandJsonVariant;
@@ -126,6 +127,11 @@ export type BrandJson =
 const LEGACY_BRAND_SCHEMA = 'https://schemas.adcontextprotocol.org/brand/v1/brand.json';
 const CURRENT_BRAND_SCHEMA = 'https://adcontextprotocol.org/schemas/v3/brand.json';
 const BRAND_JSON_MAX_RESPONSE_BYTES = 256 * 1024;
+// Initial /.well-known/brand.json discovery permits only HTTPS redirects
+// between the originally requested hostname and its exact www counterpart,
+// with SSRF validation repeated per hop. Keep this HTTP budget separate from
+// brand.json's own document-redirect depth.
+const BRAND_WELL_KNOWN_MAX_REDIRECTS = 3;
 const BRAND_CACHE_MAX_ENTRIES = 200;
 const BRAND_FAILED_CACHE_MAX_ENTRIES = 1000;
 /**
@@ -475,7 +481,8 @@ export class BrandManager {
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
         maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
-        sameSiteRedirectsOnly: true,
+        maxRedirects: BRAND_WELL_KNOWN_MAX_REDIRECTS,
+        redirectHostPolicy: 'original-host-and-www',
         headers: {
           Accept: 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,
@@ -513,7 +520,16 @@ export class BrandManager {
         return result;
       }
 
-      await this.validateBrandData(brandData, normalizedDomain, result);
+      const fetchedFrom = response.url || url;
+      result.final_url = fetchedFrom;
+      const finalDiscoveryHostname = new URL(fetchedFrom).hostname;
+      await this.validateBrandData(
+        brandData,
+        normalizedDomain,
+        result,
+        fetchedFrom,
+        finalDiscoveryHostname,
+      );
     } catch (error) {
       const classified = classifySafeFetchError(error, normalizedDomain);
       result.errors.push({ ...classified, severity: 'error' });
@@ -539,7 +555,8 @@ export class BrandManager {
     brandData: unknown,
     attributedDomain: string,
     result: BrandValidationResult,
-    fetchedFrom?: string
+    fetchedFrom?: string,
+    finalDiscoveryHostname?: string,
   ): Promise<void> {
     const normalized = this.normalizeLegacyBrandJson(brandData, attributedDomain);
     brandData = normalized.data;
@@ -560,7 +577,9 @@ export class BrandManager {
     result.variant = variant || undefined;
     if (schemaValidation.valid && variant === 'house_portfolio') {
       const houseDomain = (brandData as HousePortfolioVariant).house.domain.toLowerCase();
-      if (houseDomain !== attributedDomain.toLowerCase()) {
+      const attributedHostnames = new Set([attributedDomain.toLowerCase()]);
+      if (finalDiscoveryHostname) attributedHostnames.add(finalDiscoveryHostname.toLowerCase());
+      if (!attributedHostnames.has(houseDomain)) {
         result.errors.push({
           field: 'house.domain',
           message: 'House Portfolio house.domain must match the TLS-attributed domain',
@@ -617,7 +636,7 @@ export class BrandManager {
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
         maxResponseBytes: BRAND_JSON_MAX_RESPONSE_BYTES,
-        sameSiteRedirectsOnly: true,
+        maxRedirects: 0,
         headers: { Accept: 'application/json', 'User-Agent': AAO_UA_VALIDATOR },
       });
       result.status_code = response.status;
@@ -1113,6 +1132,7 @@ export class BrandManager {
     let currentDomain = normalizedDomain;
     let currentUrl: string | undefined;
     let redirectCount = 0;
+    const requestedDomainHostnames = new Set([normalizedDomain]);
     // Set once a House Redirect moves resolution to another domain. From that
     // point the document we are reading belongs to the house, not to the
     // requested domain, so it may only answer for a domain it names.
@@ -1123,6 +1143,10 @@ export class BrandManager {
         ? await this.validateBrandJsonUrl(currentUrl, currentDomain)
         : await this.validateDomain(currentDomain, { skipCache });
       this.recordAttempt(diagnostics, validationResult);
+
+      if (!currentUrl && currentDomain === normalizedDomain && validationResult.final_url) {
+        requestedDomainHostnames.add(new URL(validationResult.final_url).hostname.toLowerCase());
+      }
 
       if (!validationResult.valid || !validationResult.raw_data) {
         if (!skipCache) this.resolutionCache.set(cacheKey, null);
@@ -1227,10 +1251,14 @@ export class BrandManager {
             return pointed;
           }
 
-          // The house's own master brand answers only for the house domain.
-          // Reached through a redirect from another domain, returning it would
-          // let any domain adopt the house's identity unreciprocated.
-          if (normalizedDomain === portfolioData.house.domain.toLowerCase()) {
+          // The house's own master brand answers only for the requested house
+          // domain or the exact apex/www alias reached by the validated initial
+          // HTTP discovery fetch. A House Redirect does not gain this allowance:
+          // otherwise any leaf could adopt the house identity unreciprocated.
+          if (
+            !redirectedHouseDomain &&
+            requestedDomainHostnames.has(portfolioData.house.domain.toLowerCase())
+          ) {
             // Return the master brand if there is one
             const masterBrand = brands.find((b) => b.keller_type === 'master');
             if (masterBrand) {

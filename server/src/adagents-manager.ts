@@ -304,7 +304,7 @@ export class AdAgentsManager {
       const response = await safeFetchAxiosLike(url, {
         timeoutMs: 10000,
         maxRedirects: ADAGENTS_WELL_KNOWN_MAX_REDIRECTS,
-        sameSiteRedirectsOnly: true,
+        redirectHostPolicy: 'same-registrable-domain',
         headers: {
           'Accept': 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,

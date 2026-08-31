@@ -91,6 +91,8 @@ https://example.com/.well-known/adagents.json
 
 Following [RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615) well-known URI conventions, this location ensures consistent discoverability across publishers.
 
+Validators MUST follow HTTP redirects from this initial well-known URL only when every hop remains HTTPS and within the originally requested domain's registrable domain (eTLD+1). They MUST re-apply [SSRF controls](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) on every hop, include the Public Suffix List private section when finding the registrable domain, and stop after 3 redirects. Validators MUST refuse cross-registrable-domain redirects. See [Managed networks — Why not HTTP redirects?](/docs/governance/property/managed-networks#why-not-http-redirects) for the canonical policy and delegation rationale.
+
 <Note>
 If the publisher origin canonicalizes hostnames with HTTP redirects, deploy the file at the final resolved URL too. For example, if `https://example.com/.well-known/adagents.json` redirects to `https://www.example.com/.well-known/adagents.json`, the `www` URL must serve the JSON file with a `200` response.
 
@@ -467,6 +469,8 @@ Validators fetch `authoritative_location` server-side — CORS response headers 
 **Redirect at the authoritative URL**
 
 Validators reject any HTTP redirect on the `authoritative_location` URL. The URL must resolve directly to the JSON file with a `200` response — no `301`, `302`, or other redirect chain. If your CDN or hosting redirects the URL (HTTP→HTTPS canonicalization, `www` redirect, versioned-path redirect), update `authoritative_location` to point to the final destination URL directly.
+
+This refusal applies to the `authoritative_location` dereference, not the initial `/.well-known/adagents.json` discovery fetch. The initial fetch follows only the bounded same-registrable-domain redirects defined in [File location](#file-location).
 
 **Wrong Content-Type**
 
