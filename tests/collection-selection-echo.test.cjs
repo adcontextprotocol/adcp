@@ -71,6 +71,12 @@ test('collection selection rejects unknown modes and empty selected sets', async
     false,
     'selected mode requires a non-empty set',
   );
+  const duplicate = { publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] };
+  assert.equal(
+    validate({ collection_selection: { mode: 'selected', collections: [duplicate, { ...duplicate }] } }),
+    false,
+    'exact-duplicate selectors are rejected at schema level, mirroring placement_refs',
+  );
 });
 
 test('resolved collection-list rows can carry the domain-qualified identity', async () => {

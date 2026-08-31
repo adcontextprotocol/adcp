@@ -25,7 +25,8 @@
               { "required": ["collection_ids"] }
             ]
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
