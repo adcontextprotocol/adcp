@@ -294,6 +294,8 @@ The [`sales-dooh` storyboard](/compliance/latest/specialisms/sales-dooh/index.ya
 3. When supported, the buyer preflights a placement-compatible creative against the product; the required flow syncs it and creates a sandbox media buy using the returned product, pricing option, and bid.
 4. Deterministically injected play and placement activity reconciles to the purchased package through `plays` and `dooh_metrics`.
 
+The current storyboard exercises the visual (screen) path: the product declares `format_kind: "image"`, creative sync confirms a screen-compatible format, and delivery reconciliation checks screen-specific `dooh_metrics` fields. Audio-only DOOH is documented above but is not yet covered by this conformance storyboard.
+
 Generic media-buy storyboards continue to test lifecycle and error semantics. The DOOH specialism does not require vendor attention measurement, clicks, conversions, browser pixels, or persistent audience identifiers.
 
 See [Canonical formats](/docs/creative/canonical-formats), [Accessibility](/docs/creative/accessibility), and [Media products](/docs/media-buy/product-discovery/media-products).
