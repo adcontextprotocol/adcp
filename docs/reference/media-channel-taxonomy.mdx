@@ -100,7 +100,7 @@ Consider retail media: when a buyer allocates budget to "retail media," they're 
 All of these are `retail_media` channel, but the property types vary (`website`, `mobile_app`, `dooh`).
 
 <Note>
-Some names like `dooh`, `podcast`, `radio`, and `streaming_audio` appear as both a channel and a property type. The channel describes the **buying context** (how budget is allocated); the property type describes the **technical surface** (where the ad renders). For example, an in-store retail screen is `retail_media` channel / `dooh` property type, while a standalone digital billboard is `dooh` channel / `dooh` property type.
+Some names like `dooh`, `podcast`, `radio`, and `streaming_audio` appear as both a channel and a property type. The channel describes the **buying context** (how budget is allocated); the property type describes the **technical surface and its operator**. For example, the same venue-operated audio estate can declare `supported_channels: ["dooh", "streaming_audio", "retail_media"]`, while each product narrows `channels` to the buying context in which that product is sold.
 </Note>
 
 ### Multi-Channel Properties
@@ -112,6 +112,7 @@ Properties can align with multiple channels. Examples:
 | YouTube | `olv`, `social`, `ctv` | Different buying contexts on same platform |
 | ESPN App | `olv`, `display` | Supports video and display inventory |
 | Amazon | `retail_media`, `search`, `display` | Multiple ad products |
+| Venue audio network | `dooh`, `streaming_audio`, `retail_media` | One operated endpoint estate sold through different budget lines |
 
 ### When to Use Each
 
@@ -125,7 +126,7 @@ Properties can align with multiple channels. Examples:
 - Technical ad serving decisions
 - Platform-specific targeting
 
-For audio inventory, execution and distribution details that sit below channel and property type belong on product or placement metadata. Use [`audio_distribution_types`](/docs/media-buy/product-discovery/media-products#audio-distribution-types) to distinguish music streaming services, FM/AM broadcast, podcasts, catch-up radio, web radio, video-game audio, and text-to-speech without renaming buyer-facing channels or `adagents.json` property types.
+For audio inventory, execution and distribution details that sit below channel and property type belong on product or placement metadata. Use [`audio_distribution_types`](/docs/media-buy/product-discovery/media-products#audio-distribution-types) to distinguish music streaming services, FM/AM broadcast, podcasts, catch-up radio, web radio, video-game audio, and text-to-speech without renaming buyer-facing channels or `adagents.json` property types. The field describes the feed, not who operates the endpoint; a venue-operated audio player uses the `dooh` property type even when its property supports more than one buyer-facing channel.
 
 ## Media Channels
 
@@ -144,7 +145,7 @@ The following 20 channels MUST be supported. Implementations MAY extend with add
 | `radio` | Traditional AM/FM radio broadcast |
 | `streaming_audio` | Digital audio streaming services |
 | `podcast` | Podcast advertising |
-| `dooh` | Digital out-of-home screens |
+| `dooh` | Digital out-of-home buying context, including venue-operated screens and audio players |
 | `ooh` | Classic out-of-home (billboards, transit) |
 | `print` | Newspapers, magazines, print publications |
 | `cinema` | Movie theater advertising |
@@ -318,7 +319,7 @@ Podcast advertising, including host-read and dynamically inserted ads.
 
 #### `dooh`
 
-Digital out-of-home advertising on electronic screens in public spaces.
+Buyer-facing allocation category for digital out-of-home inventory. A property offered in this channel can contain venue-operated visual, audio-only, or multimodal endpoints; the canonical creative format determines the medium.
 
 **Includes**:
 - Digital billboards
@@ -327,12 +328,15 @@ Digital out-of-home advertising on electronic screens in public spaces.
 - Gas station screens
 - Elevator screens
 - Stadium/venue digital signage
+- Venue-operated audio players in taverns, stores, gyms, hotels, and other managed venues
 
 **Excludes**:
 - Static billboards (use `ooh`)
 - Cinema screens (use `cinema`)
+- Audio products sold only through a personal-streaming budget line (use `streaming_audio`)
+- Terrestrial radio broadcasts (use `radio`)
 
-**Typical Formats**: display, video
+**Typical Formats**: display, video, audio
 
 #### `ooh`
 
@@ -525,7 +529,7 @@ Property types describe addressable inventory surfaces with verifiable ownership
 | `mobile_app` | Native mobile applications | `display`, `olv`, `social`, `gaming` |
 | `ctv_app` | Connected TV applications | `ctv` |
 | `desktop_app` | Desktop applications (Electron, native) | `streaming_audio`, `gaming` |
-| `dooh` | Digital out-of-home screen networks | `dooh` |
+| `dooh` | Venue-operated digital endpoint networks | `dooh`, `streaming_audio`, `retail_media` |
 | `podcast` | Podcast feeds and episodes | `podcast` |
 | `radio` | Radio station properties | `radio` |
 | `linear_tv` | Linear television stations and networks | `linear_tv` |

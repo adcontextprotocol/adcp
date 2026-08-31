@@ -19,7 +19,7 @@
     "ProductDoohPlacementAttributes": {
       "title": "Product DOOH Placement Attributes",
       "type": "object",
-      "description": "DOOH inventory facts describing the screen and scheduled loop, not creative acceptance. For kind: publisher_ref, product-level slot_duration_seconds and loop_duration_seconds override publisher defaults; omitted values inherit. Repeated screen_resolution and motion values MUST equal publisher facts.",
+      "description": "DOOH inventory facts describing an installed surface and its scheduled loop, not creative acceptance. For kind: publisher_ref, product-level slot_duration_seconds and loop_duration_seconds override publisher defaults; omitted values inherit. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. Repeated screen_resolution and motion values MUST equal publisher facts.",
       "properties": {
         "slot_duration_seconds": {
           "type": "integer",
@@ -34,7 +34,7 @@
         "screen_resolution": { "$ref": "#/definitions/ProductDoohScreenResolution" },
         "motion": {
           "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Physical motion capability of the DOOH screen, not an accepted-format declaration."
+          "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
         }
       },
       "x-adcp-validation": {
@@ -153,7 +153,7 @@
     },
     "identifiers": {
       "type": "array",
-      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH screen/venue IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
+      "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH venue and installed-endpoint IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
       "items": {
         "type": "object",
         "properties": {
