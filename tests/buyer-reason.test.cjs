@@ -62,3 +62,21 @@ test('core error requires a complete buyer reason', () => {
     buyer_reason: { code: 'CREATIVE_MISSING_CLICK_URL' },
   }), false);
 });
+
+test('core error requires recovery only when buyer reason is present', () => {
+  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+
+  assert.equal(validate({
+    code: 'CREATIVE_REJECTED',
+    message: 'The creative could not be accepted.',
+  }), true, JSON.stringify(validate.errors));
+
+  assert.equal(validate({
+    code: 'CREATIVE_REJECTED',
+    message: 'The creative could not be accepted.',
+    buyer_reason: {
+      code: 'CREATIVE_SIZE_MISMATCH',
+      message: 'The creative dimensions do not match an accepted size.',
+    },
+  }), false);
+});
