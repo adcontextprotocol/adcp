@@ -739,7 +739,7 @@ const {
 // unmapped_macros: []
 // dropped_consent_macros: []   (no consent macro was dropped)
 // frozen_consent_macros: []    (no consent macro was supplied as a fixed value)
-// suspect_native_values: []    (no value entry looks like a native token)
+// suspect_native_values: []    (no value entry contains native-token syntax)
 ```
 
 Behavior:
@@ -761,9 +761,10 @@ Behavior:
   ship a consent-degraded pixel.
 - **Already-minted parameters pass through untouched** — `pkg_id=123456` (no macro) is
   left exactly as-is.
-- **`suspect_native_values`** flags any `value` entry shaped like a native token
-  (`%%…%%`, `{{…}}`, `${…}`, `[UPPER_SNAKE]`) — almost always a mapping that should have
-  used the `native` arm.
+- **`suspect_native_values`** flags any `value` entry containing native-token syntax
+  (`%%…%%`, `{{…}}`, `${…}`, `[UPPER_SNAKE]`), including syntax surrounded by literal
+  prefixes or suffixes. The `value` arm would percent-encode that syntax so it could not
+  expand at impression time; use the `native` arm for the complete value.
 - Only query-parameter **values** are translated; a macro in a key position is left
   untouched. The path and fragment also pass through byte-for-byte.
 - Substitution is single-pass. Macro-shaped text inside a substituted `value` is data,
