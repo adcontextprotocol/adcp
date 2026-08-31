@@ -31,16 +31,8 @@
       "description": "Retained superseded generation references for this destination_id, newest first, still resolvable for existing authorized account bindings and retained reporting history. Enumerable only by the owning principal. Suspension and revocation of the destination apply to these generations too."
     },
     "state": {
-      "type": "string",
-      "enum": [
-        "validating",
-        "ready",
-        "action_required",
-        "inactive",
-        "rejected"
-      ],
-      "description": "Validation and setup state. Only ready destinations may be selected by a new account-level delivery configuration. ready is pattern-specific: file_transfer requires proven caller control of the normalized location plus a successful seller write-and-read-back probe; warehouse_materialization requires seller-verified create/commit access to the normalized locator; dataset_share requires completed recipient-side acceptance plus provider-observed recipient readability. inactive means the caller suspended the destination (active false): the seller stops initiating new deliveries to every generation within its advertised suspension interval.",
-      "title": "ReportingDestinationSetupState"
+      "$ref": "/schemas/enums/reporting-destination-setup-state.json",
+      "description": "Validation and setup state; see the enum for the per-pattern ready definition."
     },
     "configuration": {
       "$ref": "/schemas/core/agent-reporting-destination.json",

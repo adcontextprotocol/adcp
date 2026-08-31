@@ -11,13 +11,7 @@
       "maxLength": 512
     },
     "cloud": {
-      "type": "string",
-      "enum": [
-        "aws",
-        "azure",
-        "gcp"
-      ],
-      "title": "DeliveryRecipientCloud"
+      "$ref": "/schemas/enums/delivery-recipient-cloud.json"
     },
     "region": {
       "type": "string",

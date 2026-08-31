@@ -202,7 +202,7 @@ describe('sync_principal contract', () => {
     assert.match(rules.suspension_and_revocation, /revokes/);
 
     const state = readSchema('/schemas/core/agent-reporting-destination-state.json');
-    assert.match(state.properties.state.description, /recipient readability/);
+    assert.match(readSchema('/schemas/enums/reporting-destination-setup-state.json').description, /recipient readability/);
   });
 
   it('uses caller destination_id as a semantic uniqueness key', () => {
