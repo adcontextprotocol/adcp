@@ -1,12 +1,12 @@
 ---
 title: Digital Out-of-Home
-description: "Canonical image, hosted-video, and audio contracts for digital inventory installed in physical venues."
+description: "Canonical image, hosted-video, and audio contracts for venue-operated digital endpoints."
 "og:title": "AdCP — Digital Out-of-Home"
 ---
 
-In AdCP, DOOH is digital advertising inventory delivered through a device installed in a physical out-of-home venue. The device can be a screen, an audio player, or another installed digital surface. The canonical format declares the creative medium: visual placements use `image` or `video_hosted`, while audio-only placements use `audio_hosted` or `audio_daast`.
+In AdCP, a DOOH property is digital advertising inventory delivered through a venue-operated endpoint rather than a user-operated personal device. The endpoint can be a screen, an audio player, or another installed digital surface. This is an endpoint-operator distinction, not a pure location test: a hotel-operated television can be DOOH even inside a guest room, while a listener-owned phone remains a personal streaming endpoint even inside a tavern. The canonical format declares the creative medium: visual placements use `image` or `video_hosted`, while audio-only placements use `audio_hosted` or `audio_daast`.
 
-Venue, installed-device identity, loop position, scheduling, and audience currency are inventory facts rather than creative format IDs. This delivery-context definition intentionally includes audio-only venue inventory even where another industry taxonomy uses DOOH only for screens or groups in-store audio under retail media. Streaming delivered to a listener's own device remains `streaming_audio`, and terrestrial broadcast remains `radio`.
+Endpoint operator, venue, installed-device identity, loop position, scheduling, and audience currency are inventory facts rather than creative format IDs. Channels remain buyer-facing allocation vocabulary, so one property may support `dooh`, `streaming_audio`, `retail_media`, or another channel when it is sold in those buying contexts. Terrestrial broadcast remains `radio`.
 
 ```json
 {
@@ -125,9 +125,9 @@ Set a placement to `targetable` only when the buyer can select it through the pr
 
 `dooh_placement_attributes` describes physical inventory and scheduling facts. It does not declare creative eligibility: in the example, the screen is capable of full motion but this product accepts only the image declared in `format_options`. All placement attributes are optional. Audio-only placements can declare slot and loop duration while omitting the screen-specific `screen_resolution` and `motion` fields. Optional `identifiers` attach public venue, installed-endpoint, or taxonomy identities when they exist; they do not require a seller to manufacture a persistent device identifier.
 
-## Audio-only DOOH in physical venues
+## Audio-only DOOH on venue-operated endpoints
 
-An installed audio player in a tavern, grocery store, convenience store, gym, or similar venue is a DOOH property in AdCP. When sold as place-based out-of-home media, the product also uses the `dooh` channel to preserve that buying context; a retailer can instead sell the same property under `retail_media`. In both cases, `format_options` declares the accepted audio contract. Do not relabel the property as `streaming_audio` merely because the player receives its programming over an internet stream.
+An operator-controlled audio player in a tavern, grocery store, convenience store, gym, hotel, or similar venue is a DOOH property in AdCP. Its `supported_channels` may include every buying context in which that inventory is offered. A place-based out-of-home product narrows to the `dooh` channel; other products over the same property can narrow to `streaming_audio` or `retail_media`. In every case, `format_options` declares the accepted audio contract. Receiving programming over an internet stream does not make a venue-operated endpoint a listener-owned streaming property.
 
 The venue-network owner publishes the property, placement, and seller authorization in its own namespace—for example, the following file is hosted at `https://harbor-audio.example/.well-known/adagents.json`:
 
@@ -142,7 +142,7 @@ The venue-network owner publishes the property, placement, and seller authorizat
       { "type": "venue_id", "value": "harbor:STP-12345" },
       { "type": "openooh_venue_type", "value": "openooh-1.1:804" }
     ],
-    "supported_channels": ["dooh"]
+    "supported_channels": ["dooh", "streaming_audio"]
   }],
   "placements": [{
     "placement_id": "harbor_tavern_12345_audio",
@@ -233,7 +233,7 @@ The seller then references that publisher-owned inventory during product discove
 }
 ```
 
-`audio_distribution_types` remains optional and describes the underlying audio feed when an existing value such as `music_streaming_service` or `web_radio` applies. It does not identify the installed venue context; `dooh` already does that. A sales agent representing several venue-network owners keeps each owner's `publisher_domain`, property catalog, and authorization distinct rather than inventing a network pseudo-publisher.
+`audio_distribution_types` remains optional and describes the underlying audio feed when an existing value such as `music_streaming_service` or `web_radio` applies. It does not identify the endpoint operator or buying context; property type and channels do those jobs. A sales agent representing several venue-network owners keeps each owner's `publisher_domain`, property catalog, and authorization distinct rather than inventing a network pseudo-publisher.
 
 Proof-of-play reporting uses `plays` for the raw playout count and `impressions` for the modeled audience after applying the venue-attendance multiplier. `dooh_metrics.venue_breakdown` can carry the same figures by venue; screen-only fields such as `screens_used` and `screen_time_seconds` are omitted for audio-only placements:
 

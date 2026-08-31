@@ -179,7 +179,7 @@ test('audio-only DOOH example preserves venue context and canonical audio semant
   );
 
   assert.equal(adagents.properties[0].property_type, 'dooh');
-  assert.deepEqual(adagents.properties[0].supported_channels, ['dooh']);
+  assert.deepEqual(adagents.properties[0].supported_channels, ['dooh', 'streaming_audio']);
   assert.equal(adagents.placements[0].format_options[0].format_kind, 'audio_hosted');
   assert.equal(adagents.placements[0].dooh_placement_attributes.screen_resolution, undefined);
   assert.equal(adagents.placements[0].dooh_placement_attributes.motion, undefined);

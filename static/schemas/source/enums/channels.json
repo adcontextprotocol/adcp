@@ -36,7 +36,7 @@
     "radio": "Traditional AM/FM radio broadcast",
     "streaming_audio": "Digital audio streaming services (Spotify, Pandora, etc.)",
     "podcast": "Podcast advertising (host-read or dynamically inserted)",
-    "dooh": "Digital out-of-home inventory delivered through devices installed in physical venues, including screens and audio players",
+    "dooh": "Digital out-of-home buying context, including inventory on venue-operated screens and audio players",
     "ooh": "Classic out-of-home (physical billboards, transit, etc.)",
     "print": "Newspapers, magazines, and other print publications",
     "cinema": "Movie theater advertising",
