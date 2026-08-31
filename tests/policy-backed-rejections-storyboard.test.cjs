@@ -19,6 +19,7 @@ const FIXTURE_PATH = path.join(
   '..',
   'static/test-assets/acme-outdoor/policy-backed-auto-redirect-http.js',
 );
+const MINTIGNORE_PATH = path.join(__dirname, '..', '.mintignore');
 
 function loadStoryboard() {
   return yaml.load(fs.readFileSync(STORYBOARD_PATH, 'utf8'));
@@ -73,6 +74,11 @@ test('fixture gates applicability on an isolated two-policy product and canonica
   const fixtureSource = fs.readFileSync(FIXTURE_PATH, 'utf8');
   assert.match(fixtureSource, /window\.location\.assign\(/);
   assert.match(fixtureSource, /fetch\('http:\/\//);
+});
+
+test('executable fixture is excluded from Mintlify global custom scripts', () => {
+  const mintignore = fs.readFileSync(MINTIGNORE_PATH, 'utf8');
+  assert.match(mintignore, /^static\/test-assets\/\*\*\/\*\.js$/m);
 });
 
 test('conformance requires exactly two separate policy-backed rejection entries', () => {
