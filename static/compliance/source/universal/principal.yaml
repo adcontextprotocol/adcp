@@ -20,7 +20,7 @@ narrative: |
   mutation, keep dry-run free of persistence, access grants, and endpoint
   challenges, and give applied state a consistent read/replay story: an
   applied sync, its idempotent replay, and a subsequent read all describe the
-  same connection, version, and destination generation.
+  same principal record, version, and destination generation.
 
   The applied phases use a deliberately suspended (`active: false`) file
   destination so the lifecycle is exercised without an outbound ownership
@@ -50,7 +50,7 @@ prerequisites:
 
 phases:
   - id: capability_declaration
-    title: "Advertise the connection configuration surface"
+    title: "Advertise the principal configuration surface"
     narrative: |
       Tool presence and the capability document agree on the task name and
       supported sections. Buyers do not infer configuration support merely
@@ -115,7 +115,7 @@ phases:
         negative_path: payload_well_formed
         expected: |
           Reject before persistence or destination probing with HTTP 401 or
-          403 and do not return connection or configuration state.
+          403 and do not return principal or configuration state.
 
         sample_request:
           idempotency_key: "$generate:uuid_v4#principal_no_auth"
@@ -140,6 +140,9 @@ phases:
 
   - id: dry_run_destination
     title: "Validate reusable destination without side effects"
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
     narrative: |
       An inactive destination exercises schema and capability matching without
       requiring an outbound ownership challenge. dry_run additionally forbids
@@ -155,7 +158,7 @@ phases:
         stateful: false
         expected: |
           Return a validated result with dry_run true and the would-be action.
-          No connection or destination reference, destination grant,
+          No principal or destination reference, destination grant,
           persistence, or ownership challenge occurs.
 
         sample_request:
@@ -194,10 +197,13 @@ phases:
   - id: applied_lifecycle
     title: "Apply, read back, and idempotently replay a destination"
     depends_on: ["dry_run_destination"]
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
     narrative: |
       A suspended destination applies without an ownership challenge. The
       applied response, a get_principal read, and an exact
-      idempotent replay must all describe the same connection, configuration
+      idempotent replay must all describe the same principal record, configuration
       version, and immutable destination generation, and the replay must not
       advance the version.
 
@@ -217,7 +223,7 @@ phases:
           - name: principal_destination_ref
             path: "result.configuration.reporting_destinations[0].destination_ref"
         expected: |
-          Persist the section and return the applied connection state: a
+          Persist the section and return the applied principal state: a
           principal_id, an opaque configuration_version, and one suspended
           destination carrying a seller-issued destination_ref with state
           inactive.
@@ -251,7 +257,10 @@ phases:
             description: "Applied responses assert dry_run false"
           - check: field_present
             path: "result.principal_id"
-            description: "Applied responses carry the seller-issued connection handle"
+            description: "Applied responses carry the seller-issued principal handle"
+          - check: field_present
+            path: "result.principal_kind"
+            description: "Applied responses carry the seller-resolved party kind"
           - check: field_present
             path: "result.configuration_version"
             description: "Applied responses carry the opaque configuration version"
@@ -290,11 +299,11 @@ phases:
           - check: field_value
             path: "result.kind"
             value: "current"
-            description: "The caller's persisted connection is readable"
+            description: "The caller's persisted principal record is readable"
           - check: field_equals_context
             path: "result.principal_id"
             context_key: "principal_record_id"
-            description: "Read returns the same connection the sync created"
+            description: "Read returns the same principal record the sync created"
           - check: field_equals_context
             path: "result.configuration_version"
             context_key: "principal_version"
@@ -344,7 +353,7 @@ phases:
           - check: field_equals_context
             path: "result.principal_id"
             context_key: "principal_record_id"
-            description: "Replay reports the original connection"
+            description: "Replay reports the original principal record"
           - check: field_equals_context
             path: "result.configuration_version"
             context_key: "principal_version"
@@ -357,6 +366,9 @@ phases:
   - id: clear_section
     title: "Clear the section and observe revocation in readback"
     depends_on: ["applied_lifecycle"]
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "reporting_destinations"
     narrative: |
       Submitting an empty reporting_destinations array revokes every
       destination in the section. The applied response reports cleared and a
@@ -407,7 +419,7 @@ phases:
         stateful: true
         expected: |
           Return kind current with zero current reporting destinations. The
-          connection itself persists.
+          principal record itself persists.
 
         sample_request:
           context:
@@ -419,12 +431,91 @@ phases:
           - check: field_value
             path: "result.kind"
             value: "current"
-            description: "The connection persists after the section is cleared"
+            description: "The principal record persists after the section is cleared"
           - check: field_equals_context
             path: "result.principal_id"
             context_key: "principal_record_id"
-            description: "Clearing a section does not recreate the connection"
+            description: "Clearing a section does not recreate the principal record"
           - check: array_length
             path: "result.configuration.reporting_destinations"
             value: 0
             description: "Readback confirms the section is empty"
+
+  - id: declarations_lifecycle
+    title: "Declare consumption facts and read the accepted intersection"
+    requires_capability:
+      path: "adcp.principal.supported_sections"
+      contains: "declarations"
+    narrative: |
+      The declarations section is the buyer-declared half of capability
+      negotiation: bounded consumption facts replaced wholesale, with a
+      seller-computed accepted intersection that governs asynchronous payload
+      versions and webhook signing. The declared set echoes verbatim and the
+      intersection is present on both the applied response and a later read.
+
+    steps:
+      - id: apply_declarations
+        title: "Replace the declared consumption facts"
+        task: sync_principal
+        schema_ref: "protocol/sync-principal-request.json"
+        response_schema_ref: "protocol/sync-principal-response.json"
+        doc_ref: "/protocol/sync_principal"
+        stateful: true
+        expected: |
+          Apply the declarations section, echo the declared set verbatim, and
+          return the seller-computed accepted intersection.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#principal_declarations"
+          configuration:
+            declarations:
+              async_adcp_versions: ["3.2"]
+              webhook_signing_algorithms: ["ed25519", "ecdsa-p256-sha256"]
+          context:
+            correlation_id: "principal--declarations"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "applied"
+            description: "Declarations replacement is a persisted mutation"
+          - check: field_value
+            path: "result.configuration.declarations.declared.async_adcp_versions[0]"
+            value: "3.2"
+            description: "The declared set echoes verbatim"
+          - check: field_present
+            path: "result.configuration.declarations.accepted"
+            description: "The seller returns its computed accepted intersection"
+
+      - id: read_declarations
+        title: "Read the declarations back without mutation"
+        task: get_principal
+        schema_ref: "protocol/get-principal-request.json"
+        response_schema_ref: "protocol/get-principal-response.json"
+        doc_ref: "/protocol/get_principal"
+        depends_on: ["apply_declarations"]
+        stateful: true
+        expected: |
+          Return kind current with the same declared set and an accepted
+          intersection. Reading advances nothing.
+
+        sample_request:
+          context:
+            correlation_id: "principal--read_declarations"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-principal-response.json"
+          - check: field_value
+            path: "result.kind"
+            value: "current"
+            description: "The caller's persisted principal record is readable"
+          - check: field_value
+            path: "result.configuration.declarations.declared.async_adcp_versions[0]"
+            value: "3.2"
+            description: "Readback preserves the declared set"
+          - check: field_present
+            path: "result.configuration.declarations.accepted"
+            description: "The accepted intersection is readable"

@@ -22,6 +22,10 @@
       "maxItems": 64,
       "description": "Current reusable reporting destination bindings and setup states. destination_id and destination_ref values MUST each be unique within this caller-scoped array; superseded generations of a current destination appear in its prior_destination_refs."
     },
+    "declarations": {
+      "$ref": "/schemas/core/principal-declarations-state.json",
+      "description": "Declared consumption facts and the seller-computed accepted intersection. Present when and only when the seller supports the declarations section."
+    },
     "retired_destinations": {
       "type": "array",
       "items": {

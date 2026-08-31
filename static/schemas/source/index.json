@@ -774,6 +774,18 @@
           "$ref": "/schemas/core/principal-state.json",
           "description": "Credential-free caller-scoped connection configuration returned by sync_principal"
         },
+        "principal-declarations": {
+          "$ref": "/schemas/core/principal-declarations.json",
+          "description": "Buyer-declared consumption facts for asynchronous payload versioning and webhook verification"
+        },
+        "principal-declarations-state": {
+          "$ref": "/schemas/core/principal-declarations-state.json",
+          "description": "Declared consumption facts with the seller-computed accepted intersection"
+        },
+        "principal-changed-webhook": {
+          "$ref": "/schemas/core/principal-changed-webhook.json",
+          "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
+        },
         "agent-reporting-destination": {
           "$ref": "/schemas/core/agent-reporting-destination.json",
           "description": "Reusable caller-scoped reporting destination configuration"
