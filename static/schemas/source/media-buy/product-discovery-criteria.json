@@ -12,6 +12,11 @@
       "minItems": 1,
       "uniqueItems": true
     },
+    "product_ids_exclusive": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, product_ids is the complete composable product universe for this request rather than a candidate hint: every proposal purchase, and every product echoed alongside proposals, MUST reference a listed product_id. A seller that cannot satisfy the brief within the universe returns the rejected outcome (request_proposals) or a partial/unable result with reason constraint_unsatisfiable (refine_proposals); it never returns off-universe products or purchases. Requires product_ids. Sellers that do not declare media_buy.supports_exclusive_product_ids in get_adcp_capabilities MUST NOT silently ignore this flag — they reject the request at task level with UNSUPPORTED_FEATURE."
+    },
     "offer_filters": {
       "$ref": "/schemas/core/product-offer-filters.json",
       "description": "Hard commercial and product-characteristic filters. Every returned product MUST satisfy them. These fields do not become package delivery targeting."
@@ -43,5 +48,6 @@
     "ext": { "type": "object", "additionalProperties": true }
   },
   "minProperties": 1,
+  "dependencies": { "product_ids_exclusive": ["product_ids"] },
   "additionalProperties": false
 }

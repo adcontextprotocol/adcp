@@ -21,7 +21,7 @@
     "uninterpreted": "The seller could not interpret some or all of the free-text ask.",
     "alternatives_unavailable": "The seller produced fewer distinct draft alternatives than requested.",
     "source_unavailable": "The source proposal was not found, visible, or eligible for revision by this caller.",
-    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap.",
+    "hold_unavailable": "The seller declined or failed to reserve inventory for this finalize, whether from sell-through since drafting or from hold policy such as a concurrent-hold cap. Only valid under inventory_hold semantics; a seller declaring hold_semantics terms_only in get_adcp_capabilities MUST NOT return it.",
     "batch_aborted": "This entry failed only because a sibling entry in the all-or-none finalize batch failed; the entry itself was otherwise eligible."
   }
 }

@@ -49,6 +49,14 @@ testable: true
 
 Put machine-representable requirements in `criteria`: `offer_filters` select commercial offers, `targeting_overlay` supplies concrete delivery constraints that must be reflected in pricing and forecasts, and `required_overlay_support` identifies dimensions the buyer must be able to choose later. Keep goals, semantic audience meaning, and requirements without a structured AdCP field in `brief`.
 
+## Binding the product universe with product_ids_exclusive
+
+By default `criteria.product_ids` is a candidate hint: the seller may compose over other products it deems fit. Setting `criteria.product_ids_exclusive: true` makes the listed products the **complete composable universe** for the request — every purchase in every returned proposal, and every product echoed alongside the proposals, MUST reference a listed `product_id`. A brief the seller cannot satisfy within the universe returns the `rejected` outcome (or `constraint_unsatisfiable` on a later `refine_proposals` revision); the seller never widens the universe on its own.
+
+This is the contract for **delegated composition**: a requesting platform that owns the sellable catalog asks an external agent to supply only the composition judgment, and grounding becomes enforceable by construction — the requester verifies returned products are a subset of what it sent.
+
+Sellers declaring `media_buy.supports_exclusive_product_ids` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) accept the flag. Sellers that do not declare it MUST NOT silently ignore it — they reject the request at task level with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), so a buyer never mistakes unconstrained composition for a bounded one.
+
 ## Reverse forecasting with outcome_target
 
 A proposal request is a solve over three coupled variables — time window, budget, and outcome. The buyer fixes what they know and the seller solves for the rest. Fixing dates and budget yields a delivery forecast; fixing the outcome inverts the question: "I need 10,000 clicks — what does my budget need to be?"

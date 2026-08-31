@@ -20,7 +20,7 @@
     "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
     "results": {
       "type": "array",
-      "description": "Ordered results. If any result is finalized, every result MUST be finalized; a finalize batch either creates every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
+      "description": "Ordered results. If any result is finalized, every result MUST be finalized; under inventory_hold semantics a finalize batch either creates every requested hold or none, and under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics) it commits every requested proposal's terms or none, with no inventory hold placed. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
       "minItems": 1,
       "items": {
         "type": "object",
