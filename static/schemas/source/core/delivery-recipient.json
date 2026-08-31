@@ -12,7 +12,12 @@
     },
     "cloud": {
       "type": "string",
-      "enum": ["aws", "azure", "gcp"]
+      "enum": [
+        "aws",
+        "azure",
+        "gcp"
+      ],
+      "title": "DeliveryRecipientCloud"
     },
     "region": {
       "type": "string",
@@ -20,10 +25,16 @@
       "maxLength": 128
     }
   },
-  "required": ["identity"],
+  "required": [
+    "identity"
+  ],
   "dependencies": {
-    "cloud": ["region"],
-    "region": ["cloud"]
+    "cloud": [
+      "region"
+    ],
+    "region": [
+      "cloud"
+    ]
   },
   "additionalProperties": false
 }
