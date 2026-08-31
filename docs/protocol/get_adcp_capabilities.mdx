@@ -583,14 +583,18 @@ data model**. Presence requires `media_buy.reporting_delivery` in top-level
 
 | Tier | Advertised by | Contains | Required? |
 |---|---|---|---|
-| **Core** | `supported: true` | Obligations, revisions, materializations, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method` and canonicalization. | **Yes** — the only required tier |
+| **Core** | `supported: true` | Obligations, revisions, the five health states, and [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status) — delivered over transports sellers already have (`get_media_buy_delivery`, the existing `reporting_webhook`). Core offerings omit `method`, destinations, materializations, and canonicalization. | **Yes** — the only required tier |
 | **Managed delivery** | `managed_delivery: true` | Offerings whose `method` names `file_transfer`, `dataset_share`, or `warehouse_materialization`, plus exact-resource retention and authorization-revocation bounds. | No |
 | **Reconciled billing** | `reconciled_billing: true` | `receipt_task` ([`sync_reporting_receipts`](/docs/media-buy/task-reference/sync_reporting_receipts)), `consumer_receipt` reconciliation, and the canonical-digest contract in offering profiles. | No |
 
-The `reporting.delivery_ready` doorbell (`readiness_notification`) is **optional in
-every tier** — a polling-only seller that repairs through `get_reporting_status`
-is fully Core-conformant, and a supported RFC 9421 `webhook_signing` profile is
-required only when the seller actually emits reporting webhooks.
+A polling-only seller that repairs through `get_reporting_status` is fully
+Core-conformant. A supported RFC 9421 `webhook_signing` profile is required only
+when the seller declares either reporting notification.
+
+Two optional doorbells: `status_notification` (`reporting.status_changed`) is
+tier-independent invalidation for health transitions in either direction —
+valid for Core, since it names no destination — and `readiness_notification`
+(`reporting.delivery_ready`) is managed-delivery-only positive readiness.
 
 `offerings[]` are atomic—not a cross-product—and each binds one feed purpose,
 content-addressed reporting profile/schema, schedule, and supported finality;

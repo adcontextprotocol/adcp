@@ -99,7 +99,10 @@
           "media_buy": {
             "properties": {
               "reporting_delivery": {
-                "required": ["readiness_notification"]
+                "anyOf": [
+                  { "required": ["readiness_notification"] },
+                  { "required": ["status_notification"] }
+                ]
               }
             },
             "required": ["reporting_delivery"]

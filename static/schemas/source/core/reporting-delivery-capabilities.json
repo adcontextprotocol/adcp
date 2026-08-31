@@ -3,37 +3,224 @@
   "$id": "/schemas/core/reporting-delivery-capabilities.json",
   "title": "Reporting Delivery Capabilities",
   "x-status": "experimental",
-  "description": "Managed reporting status and durable delivery support, advertised in three tiers over one data model. Core (supported: true) is the required tier: obligations, revisions, materializations, the five health states, and get_reporting_status over transports sellers already have — polling get_media_buy_delivery and the existing reporting_webhook. managed_delivery adds file/dataset-share/warehouse delivery. reconciled_billing adds canonical digests and consumer receipts. Each offerings entry is an atomic supported combination; buyers MUST NOT construct an unsupported cross-product. Presence requires media_buy.reporting_delivery in experimental_features; RFC 9421 webhook signing is required only when readiness_notification is declared. Polling get_media_buy_delivery remains the compatibility baseline when this block is absent.",
+  "description": "Managed reporting status and durable delivery support, advertised in three tiers over one data model. Core (supported: true) is the required tier: obligations, revisions, the five health states, and get_reporting_status over transports sellers already have — polling get_media_buy_delivery and the existing reporting_webhook, with no destination or materialization machinery. managed_delivery adds file/dataset-share/warehouse delivery and materializations. reconciled_billing adds canonical digests and consumer receipts. Each offerings entry is an atomic supported combination; buyers MUST NOT construct an unsupported cross-product. Presence requires media_buy.reporting_delivery in experimental_features; RFC 9421 webhook signing is required only when readiness_notification or status_notification is declared. Polling get_media_buy_delivery remains the compatibility baseline when this block is absent.",
   "type": "object",
   "properties": {
-    "supported": { "type": "boolean", "const": true },
-    "managed_delivery": { "type": "boolean", "default": false, "description": "Tier flag: this seller supports managed file, dataset-share, or warehouse delivery. Offerings whose method names a delivery pattern require this tier. When false or absent, every offering is API-delivered and Core-only." },
-    "reconciled_billing": { "type": "boolean", "default": false, "description": "Tier flag: this seller supports canonical-digest verification and authenticated consumer receipts through receipt_task. Offerings with reconciliation_mode consumer_receipt and billing-grade canonicalization require this tier." },
-    "configuration_task": { "type": "string", "const": "sync_accounts" },
-    "status_task": { "type": "string", "const": "get_reporting_status" },
-    "receipt_task": { "type": "string", "const": "sync_reporting_receipts", "description": "Required when reconciled_billing is true: the task consumers call to submit and read back authenticated receipts." },
-    "readiness_notification": { "type": "string", "const": "reporting.delivery_ready", "description": "Optional push doorbell in every tier. A polling-only seller that omits this field and repairs through status_task is fully Core-conformant." },
-    "offerings": { "type": "array", "items": { "$ref": "/schemas/core/reporting-delivery-offering.json" }, "minItems": 1, "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique." },
-    "automated_recovery_window_seconds": { "type": "integer", "minimum": 0, "description": "Maximum late interval during which a due obligation may remain delayed while automated recovery continues before action_required." },
-    "status_retention_days": { "type": "integer", "minimum": 1, "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable." },
-    "resource_retention_days": { "type": "integer", "minimum": 1, "description": "Minimum period after publication for which at least one verified exact materialization remains readable to every still-authorized intended consumer." },
-    "supports_webhook_activity": { "type": "boolean", "default": false },
-    "authorization_revocation_seconds": { "type": "integer", "minimum": 0, "description": "Maximum delay after caller/account authorization ends before seller-controlled transport access, provider grants, and write credentials are revoked. It cannot revoke a buyer's access to data already written into a buyer-owned destination." }
+    "supported": {
+      "type": "boolean",
+      "const": true
+    },
+    "managed_delivery": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tier flag: this seller supports managed file, dataset-share, or warehouse delivery. Offerings whose method names a delivery pattern require this tier. When false or absent, every offering is API-delivered and Core-only."
+    },
+    "reconciled_billing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Tier flag: this seller supports canonical-digest verification and authenticated consumer receipts through receipt_task. Offerings with reconciliation_mode consumer_receipt and billing-grade canonicalization require this tier."
+    },
+    "configuration_task": {
+      "type": "string",
+      "const": "sync_accounts"
+    },
+    "status_task": {
+      "type": "string",
+      "const": "get_reporting_status"
+    },
+    "receipt_task": {
+      "type": "string",
+      "const": "sync_reporting_receipts",
+      "description": "Required when reconciled_billing is true: the task consumers call to submit and read back authenticated receipts."
+    },
+    "readiness_notification": {
+      "type": "string",
+      "const": "reporting.delivery_ready",
+      "description": "Optional managed-delivery-only positive-readiness doorbell. It names a materialization at a destination, so Core sellers MUST omit it."
+    },
+    "status_notification": {
+      "type": "string",
+      "const": "reporting.status_changed",
+      "description": "Optional tier-independent invalidation doorbell for health transitions in either direction, including clock-driven waiting-to-delayed and delayed-to-action_required. Valid for Core: it names no destination. Polling status_task remains the authoritative recovery path whether or not this is offered."
+    },
+    "offerings": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/reporting-delivery-offering.json"
+      },
+      "minItems": 1,
+      "description": "Atomic supported feed/profile/schedule/finality/method combinations. offering_id values MUST be unique."
+    },
+    "automated_recovery_window_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum late interval during which a due obligation may remain delayed while automated recovery continues before action_required."
+    },
+    "status_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum period for which obligation, revision, and materialization metadata remain queryable."
+    },
+    "resource_retention_days": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum period after publication for which at least one verified exact materialization remains readable to every still-authorized intended consumer."
+    },
+    "supports_webhook_activity": {
+      "type": "boolean",
+      "default": false
+    },
+    "authorization_revocation_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum delay after caller/account authorization ends before seller-controlled transport access, provider grants, and write credentials are revoked. It cannot revoke a buyer's access to data already written into a buyer-owned destination."
+    }
   },
-  "required": ["supported", "configuration_task", "status_task", "offerings", "automated_recovery_window_seconds", "status_retention_days"],
+  "required": [
+    "supported",
+    "configuration_task",
+    "status_task",
+    "offerings",
+    "automated_recovery_window_seconds",
+    "status_retention_days"
+  ],
   "allOf": [
     {
-      "if": { "properties": { "managed_delivery": { "const": true } }, "required": ["managed_delivery"] },
-      "then": { "required": ["resource_retention_days", "authorization_revocation_seconds"] }
+      "if": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      },
+      "then": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "required": [
+                "method"
+              ]
+            }
+          }
+        },
+        "required": [
+          "resource_retention_days",
+          "authorization_revocation_seconds"
+        ]
+      }
     },
     {
-      "if": { "properties": { "reconciled_billing": { "const": true } }, "required": ["reconciled_billing"] },
-      "then": { "required": ["receipt_task"] }
+      "if": {
+        "properties": {
+          "reconciled_billing": {
+            "const": true
+          }
+        },
+        "required": [
+          "reconciled_billing"
+        ]
+      },
+      "then": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "properties": {
+                "reconciliation_mode": {
+                  "const": "consumer_receipt"
+                }
+              },
+              "required": [
+                "reconciliation_mode"
+              ]
+            }
+          }
+        },
+        "required": [
+          "receipt_task"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "required": [
+                "method"
+              ]
+            }
+          }
+        },
+        "required": [
+          "offerings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "offerings": {
+            "contains": {
+              "properties": {
+                "reconciliation_mode": {
+                  "const": "consumer_receipt"
+                }
+              },
+              "required": [
+                "reconciliation_mode"
+              ]
+            }
+          }
+        },
+        "required": [
+          "offerings"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciled_billing": {
+            "const": true
+          }
+        },
+        "required": [
+          "reconciled_billing"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "readiness_notification"
+        ]
+      },
+      "then": {
+        "properties": {
+          "managed_delivery": {
+            "const": true
+          }
+        },
+        "required": [
+          "managed_delivery"
+        ]
+      }
     }
   ],
   "x-adcp-validation": {
     "unique_offerings": "offering_id values MUST be unique. Each installed configuration MUST exactly match one offering's feed, report_definition_id, reporting profile, schedule, requested finality, reconciliation mode, pattern, transport, orchestration, destination mode, and every applicable provider, access_mode, format, producer_identity, and reader-compatibility constraint.",
-    "tier_boundaries": "Core is the only required tier and MUST be implementable with no destination, manifest, canonicalization, or receipt code: an offering without method is delivered through existing get_media_buy_delivery and reporting_webhook transports. An offering whose method names file_transfer, dataset_share, or warehouse_materialization is valid only when managed_delivery is true. An offering with reconciliation_mode consumer_receipt, and any billing-purpose offering requiring canonical digests, is valid only when reconciled_billing is true. readiness_notification is optional in every tier; a polling-only seller passes Core conformance.",
+    "tier_boundaries": "Core is the only required tier and MUST be implementable with no destination, materialization, manifest, canonicalization, or receipt code: an offering without method is delivered through existing get_media_buy_delivery and reporting_webhook transports. An offering whose method names file_transfer, dataset_share, or warehouse_materialization is valid only when managed_delivery is true. An offering with reconciliation_mode consumer_receipt, and any billing-purpose offering requiring canonical digests, is valid only when reconciled_billing is true. readiness_notification requires managed_delivery; status_notification is the optional Core-compatible invalidation. A polling-only seller passes Core conformance.",
     "product_applicability": "This seller-wide catalog declares possible atomic combinations, not universal applicability to every product. Product.reporting_capabilities.reporting_delivery_offering_ids declares product/package eligibility; sync_accounts validation applies account-specific constraints; reporting obligations freeze effective media-buy coverage."
   },
   "additionalProperties": false

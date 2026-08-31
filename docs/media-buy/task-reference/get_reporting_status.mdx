@@ -116,7 +116,7 @@ explicit so adding a filter never silently changes the response type.
 | `waiting` | No obligation in this active scope is due yet. |
 | `delayed` | At least one obligation is late but still inside automatic recovery. |
 | `action_required` | An SLA or retry boundary was crossed; `issues[]` supplies the human action. |
-| `complete` | This scope is closed, fully covered by retained ledger history, and every obligation over its configured covered denominator has the required finality and a verified readable materialization. Obligations configured for consumer reconciliation also have an accepted receipt for the current revision. This delivery state does not replace the separate `coverage.status` claim. |
+| `complete` | This scope is closed, fully covered by retained ledger history, and every obligation over its configured covered denominator has the required finality and an authoritative readable revision — for Core (API-delivered) obligations that means published and retained per `status_retention_days`; managed-delivery obligations additionally require a verified readable materialization. Obligations configured for consumer reconciliation also have an accepted receipt for the current revision. This delivery state does not replace the separate `coverage.status` claim. |
 
 Aggregate precedence is `action_required` before `delayed` before `healthy`.
 `waiting` applies only when nothing is due. `complete` requires
@@ -188,10 +188,21 @@ across pages.
 
 ## Readiness and recovery
 
-The push doorbell is **optional in every tier**: a polling-only seller that
-answers `get_reporting_status` truthfully is fully Core-conformant, and buyers
-MUST treat polling as the authoritative recovery path regardless of whether
-the doorbell is offered.
+Push is **optional in every tier**: a polling-only seller that answers
+`get_reporting_status` truthfully is fully Core-conformant, and buyers MUST
+treat polling as the authoritative recovery path regardless of what is
+offered. Two doorbells exist, with different tiers and directions:
+
+- **`reporting.status_changed`** (any tier, including Core) — invalidation
+  for health transitions in *either* direction, including clock-driven
+  `waiting → delayed` and `delayed → action_required` transitions that no
+  positive signal would ever announce, and recovery back to `healthy`/
+  `complete`. Payload carries identifiers, the new health, and stable
+  `issue_ids` matching `issues[].issue_id`, so consumers can project AdCP
+  reporting issues into durable work items.
+- **`reporting.delivery_ready`** (managed-delivery tier only) — positive
+  readiness for one materialization at a destination. Core configurations
+  never fire it.
 
 When offered (advertised via `readiness_notification`),
 `reporting.delivery_ready` is an account-anchored doorbell registered through

@@ -93,6 +93,22 @@
     {
       "if": { "properties": { "feed_purpose": { "const": "billing" } }, "required": ["feed_purpose"] },
       "then": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } } }
+    },
+    {
+      "if": { "properties": { "reconciliation_mode": { "const": "consumer_receipt" } }, "required": ["reconciliation_mode"] },
+      "then": {
+        "properties": {
+          "reporting_profile": {
+            "required": [
+              "canonicalization_id",
+              "canonicalization_contract_version",
+              "canonicalization_media_type",
+              "canonicalization_uri",
+              "canonicalization_sha256"
+            ]
+          }
+        }
+      }
     }
   ],
   "x-adcp-validation": {
