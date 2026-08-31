@@ -240,6 +240,7 @@ describe('Registry reader baseline — public endpoints', () => {
       expect(res.body).toMatchObject({
         domain: PUB_A,
         member: null,
+        agent_visibility_summary: { public: 0, members_only: 0 },
         agents: [],
       });
     });
@@ -1307,6 +1308,7 @@ describe('Registry reader baseline — public endpoints', () => {
         `/api/registry/operator?domain=${encodeURIComponent(SCOPE_DOMAIN)}${qs}`,
       );
       expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
       return (res.body.agents as Array<{ url: string }>).map(a => a.url).sort();
     }
 

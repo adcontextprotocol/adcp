@@ -966,6 +966,20 @@ components:
             is_founding_member:
               type: boolean
               description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
+        agent_visibility_summary:
+          type: object
+          properties:
+            public:
+              type: integer
+              minimum: 0
+              description: Number of registered public agents, regardless of the caller's scope filter.
+            members_only:
+              type: integer
+              minimum: 0
+              description: Number of registered members-only agents, regardless of caller authorization or scope. Private registrations are excluded so their existence remains visible only to the profile owner.
+          required:
+            - public
+            - members_only
         agents:
           type: array
           items:
@@ -1012,6 +1026,7 @@ components:
       required:
         - domain
         - member
+        - agent_visibility_summary
         - agents
     PublisherLookupResult:
       type: object
@@ -7585,7 +7600,7 @@ paths:
       description: |-
         Given a domain, returns the agents this entity operates and which publishers trust them.
 
-        **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility.
+        **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility. `agent_visibility_summary` always reports public and members-only registration counts, independent of caller authorization and `scope`, so `agents: []` is not ambiguous with no discoverable registrations. Private registrations are excluded so their existence remains visible only to the profile owner.
 
         **`scope` bucket filter.** Callers can opt INTO a single visibility bucket (or the full union) regardless of what their auth would otherwise unlock — useful for picker UIs that want exactly one slice (e.g. anonymous-equivalent, members-only catalog, owner's private drafts). `scope` only narrows; it never escalates (e.g. `scope=member` on an explorer or anonymous caller silently returns public only).
 
