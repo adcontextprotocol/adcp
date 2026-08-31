@@ -31,8 +31,7 @@
               "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
             },
             "principal_kind": {
-              "type": "string",
-              "enum": ["buyer_agent", "operator"],
+              "$ref": "/schemas/enums/principal-kind.json",
               "description": "Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
             },
             "configuration_version": {

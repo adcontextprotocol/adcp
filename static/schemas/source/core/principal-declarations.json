@@ -30,10 +30,7 @@
     "experimental_features": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 128,
-        "pattern": "^[a-z][a-z0-9_.-]*$"
+        "$ref": "/schemas/core/experimental-feature-id.json"
       },
       "minItems": 1,
       "maxItems": 32,

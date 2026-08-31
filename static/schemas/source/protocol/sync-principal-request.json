@@ -53,11 +53,7 @@
       "description": "Optional optimistic-concurrency fence returned by a previous successful sync. When present and stale, the seller rejects the whole request without mutation. Compare only for equality."
     },
     "expected_principal_kind": {
-      "type": "string",
-      "enum": [
-        "buyer_agent",
-        "operator"
-      ],
+      "$ref": "/schemas/enums/principal-kind.json",
       "description": "Optional assertion fence, not identity input: the caller states which party kind it believes it is authenticating as. When present and different from the seller-resolved principal_kind, the seller rejects the whole request with CONFLICT before mutation. The field never influences resolution."
     },
     "configuration": {

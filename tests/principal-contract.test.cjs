@@ -56,6 +56,20 @@ const shareDestination = {
 };
 
 describe('sync_principal contract', () => {
+  it('reuses shared codegen types for principal kind and experimental feature ids', () => {
+    const declarations = readSchema('/schemas/core/principal-declarations.json');
+    const capabilities = readSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+    const getResponse = readSchema('/schemas/protocol/get-principal-response.json');
+    const syncRequest = readSchema('/schemas/protocol/sync-principal-request.json');
+    const syncResponse = readSchema('/schemas/protocol/sync-principal-response.json');
+
+    assert.equal(declarations.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
+    assert.equal(capabilities.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
+    assert.equal(getResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(syncRequest.properties.expected_principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(syncResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+  });
+
   let validateRequest;
   let validateResponse;
   let validateDestination;
