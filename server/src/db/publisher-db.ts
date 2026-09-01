@@ -1,6 +1,6 @@
 import { getClient, query } from './client.js';
 import { uuidv7 } from './uuid.js';
-import { CollectionCatalogDatabase, type CollectionProjectionEvent } from './collection-catalog-db.js';
+import { CollectionCatalogDatabase, loadCarriageHostManifests, type CollectionProjectionEvent } from './collection-catalog-db.js';
 import type { CatalogEventsDatabase, WriteEventInput } from './catalog-events-db.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
@@ -638,6 +638,7 @@ export class PublisherDatabase {
       for (const property of domainProperties) {
         await this.upsertCommunityCatalogProperty(client, platform, domain, property, input.catalogUrl);
       }
+      const communityCarriageHostManifests = await loadCarriageHostManifests(client, domainCollections);
       for (const collection of domainCollections) {
         const event = await this.collectionCatalog.projectCollection(client, {
           publisherDomain: domain,
@@ -647,6 +648,7 @@ export class PublisherDatabase {
           source: 'contributed',
           adagentsUrl: input.catalogUrl ?? null,
           createdBy: communityCatalogCreatedBy(platform),
+          hostManifests: communityCarriageHostManifests,
         });
         if (event) communityCollectionEvents.push(event);
       }
@@ -1353,6 +1355,7 @@ export class PublisherDatabase {
           adagentsCreatedBy(domain),
         ),
       );
+      const carriageHostManifests = await loadCarriageHostManifests(client, collections);
       for (let i = 0; i < collections.length; i += 1) {
         const collection = collections[i];
         const savepoint = `collection_${i}`;
@@ -1366,6 +1369,7 @@ export class PublisherDatabase {
             source: 'authoritative',
             adagentsUrl: `https://${domain}/.well-known/adagents.json`,
             createdBy: adagentsCreatedBy(domain),
+            hostManifests: carriageHostManifests,
           });
           if (event) collectionEvents.push(event);
           await client.query(`RELEASE SAVEPOINT ${savepoint}`);

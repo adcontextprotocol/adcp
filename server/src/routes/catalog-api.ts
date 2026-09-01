@@ -9,7 +9,7 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { CatalogDatabase, type ResolveMode, type Provenance } from '../db/catalog-db.js';
-import { CollectionCatalogDatabase } from '../db/collection-catalog-db.js';
+import { CollectionCatalogDatabase, loadCarriageHostManifests } from '../db/collection-catalog-db.js';
 import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { CatalogDisputesDatabase, type DisputeType } from '../db/catalog-disputes-db.js';
 import { getClient } from '../db/client.js';
@@ -58,7 +58,7 @@ const CommunityCollectionUpsertSchema = z.object({
   collection_id: z.string().min(1).optional(),
   name: z.string().min(1).max(500),
   kind: z.enum(COLLECTION_KIND_VALUES).optional(),
-  distribution: z.array(CollectionDistributionSchema).min(1),
+  distribution: z.array(CollectionDistributionSchema).min(1).max(100),
 }).passthrough();
 
 const ProvenanceSchema = z.object({
@@ -389,6 +389,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
             source: 'contributed',
             adagentsUrl: null,
             createdBy: actor,
+            hostManifests: await loadCarriageHostManifests(client, [collection]),
           });
           if (event) {
             await catalogEventsDb.writeEvent(

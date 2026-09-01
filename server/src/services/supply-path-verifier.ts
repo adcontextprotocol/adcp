@@ -27,6 +27,7 @@
  */
 
 import { canonicalizePublisherDomain } from './publisher-domain.js';
+import { entryPropertyScope } from './carriage-confirmation.js';
 import { canonicalizeAgentUrl, type AdagentsManifest, type AdagentsAuthorizedAgent } from '../db/publisher-db.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -151,77 +152,6 @@ function hostPropertyIds(manifest: AdagentsManifest): Set<string> {
     if (typeof id === 'string' && id.length > 0) ids.add(id);
   }
   return ids;
-}
-
-function hostPropertyIdsByTag(manifest: AdagentsManifest): Map<string, Set<string>> {
-  const byTag = new Map<string, Set<string>>();
-  for (const property of Array.isArray(manifest.properties) ? manifest.properties : []) {
-    const record = property as { property_id?: unknown; tags?: unknown } | null;
-    if (typeof record?.property_id !== 'string') continue;
-    for (const tag of Array.isArray(record.tags) ? record.tags : []) {
-      if (typeof tag !== 'string') continue;
-      const set = byTag.get(tag) ?? new Set<string>();
-      set.add(record.property_id);
-      byTag.set(tag, set);
-    }
-  }
-  return byTag;
-}
-
-/** Property IDs (host-local) that an authorized_agents entry can reach. null = publisher-wide. */
-function entryPropertyScope(
-  entry: AdagentsAuthorizedAgent,
-  hostDomain: string,
-  hostManifest: AdagentsManifest,
-): Set<string> | null {
-  switch (entry.authorization_type) {
-    case 'property_ids':
-      return new Set((entry.property_ids ?? []).filter((id): id is string => typeof id === 'string'));
-    case 'property_tags': {
-      const byTag = hostPropertyIdsByTag(hostManifest);
-      const ids = new Set<string>();
-      for (const tag of entry.property_tags ?? []) {
-        for (const id of byTag.get(tag) ?? []) ids.add(id);
-      }
-      return ids;
-    }
-    case 'inline_properties': {
-      const ids = new Set<string>();
-      for (const property of entry.properties ?? []) {
-        const id = (property as { property_id?: unknown } | null)?.property_id;
-        if (typeof id === 'string') ids.add(id);
-      }
-      return ids;
-    }
-    case 'publisher_properties': {
-      const ids = new Set<string>();
-      let coversAll = false;
-      for (const selector of entry.publisher_properties ?? []) {
-        const singular = typeof selector?.publisher_domain === 'string'
-          ? canonicalizePublisherDomain(selector.publisher_domain)
-          : null;
-        const inPlural = Array.isArray(selector?.publisher_domains)
-          && selector.publisher_domains.some(
-            (domain) => typeof domain === 'string' && canonicalizePublisherDomain(domain) === hostDomain,
-          );
-        if (singular !== hostDomain && !inPlural) continue;
-        if (selector.selection_type === 'all') coversAll = true;
-        for (const id of selector.property_ids ?? []) {
-          if (typeof id === 'string') ids.add(id);
-        }
-        if (selector.selection_type === 'by_tag') {
-          const byTag = hostPropertyIdsByTag(hostManifest);
-          for (const tag of selector.property_tags ?? []) {
-            for (const id of byTag.get(tag) ?? []) ids.add(id);
-          }
-        }
-      }
-      return coversAll ? null : ids;
-    }
-    default:
-      // No authorization_type = publisher-wide.
-      return null;
-  }
 }
 
 /** Does the entry's collections constraint cover (ownerDomain, collectionId)? */
