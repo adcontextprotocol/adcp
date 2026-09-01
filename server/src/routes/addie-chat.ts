@@ -21,6 +21,7 @@ import { classifyLocalModelExecution } from "../addie/model-providers/model-prov
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
 import {
+  MAX_INPUT_LENGTH,
   sanitizeInput,
   validateOutput,
 } from "../addie/security.js";
@@ -153,7 +154,6 @@ const ADDIE_ANONYMOUS_OWNER_COOKIE = 'addie-anonymous-owner';
 const ADDIE_ANONYMOUS_OWNER_AUDIENCE = 'addie-web-thread-owner';
 const SI_ANONYMOUS_SESSION_AUDIENCE = 'si-session-owner';
 const ANONYMOUS_OWNER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_CHAT_MESSAGE_CHARS = 4_000;
 export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
   "I hit a response delivery issue before I could finish. Please try again in a moment.";
 
@@ -1000,8 +1000,8 @@ export function createAddieChatRouter(options?: {
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
       }
-      if (message.length > MAX_CHAT_MESSAGE_CHARS) {
-        return res.status(413).json({ error: `Message exceeds ${MAX_CHAT_MESSAGE_CHARS} characters` });
+      if (message.length > MAX_INPUT_LENGTH) {
+        return res.status(413).json({ error: `Message exceeds ${MAX_INPUT_LENGTH} characters` });
       }
       const attachmentSummary = summarizeAttachmentsForMessage(attachments);
       const messageForStorage = message.trim()
@@ -1379,8 +1379,8 @@ export function createAddieChatRouter(options?: {
       if (typeof message !== "string" || (!message.trim() && attachments.length === 0)) {
         return res.status(400).json({ error: "Message is required" });
       }
-      if (message.length > MAX_CHAT_MESSAGE_CHARS) {
-        return res.status(413).json({ error: `Message exceeds ${MAX_CHAT_MESSAGE_CHARS} characters` });
+      if (message.length > MAX_INPUT_LENGTH) {
+        return res.status(413).json({ error: `Message exceeds ${MAX_INPUT_LENGTH} characters` });
       }
       const attachmentSummary = summarizeAttachmentsForMessage(attachments);
       const messageForStorage = message.trim()

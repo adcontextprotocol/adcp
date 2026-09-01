@@ -80,6 +80,7 @@ import {
   createAddieChatRouter,
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
+import { MAX_INPUT_LENGTH } from '../../src/addie/security.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
 describe('prepareRequestWithMemberTools organization selection', () => {
@@ -222,11 +223,26 @@ describe('mounted Addie web-thread ownership', () => {
   });
 
   it.each(['/api/addie/chat', '/api/addie/chat/stream'])('rejects oversized messages before thread access on %s', async (path) => {
-    await request(app()).post(path).send({ message: 'x'.repeat(4_001) }).expect(413);
+    await request(app()).post(path).send({ message: 'x'.repeat(MAX_INPUT_LENGTH + 1) }).expect(413);
     expect(threadMocks.getThreadByExternalId).not.toHaveBeenCalled();
     expect(threadMocks.getOrCreateThread).not.toHaveBeenCalled();
     expect(threadMocks.addMessage).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['JSON', '/api/addie/chat', chatClient.processMessage],
+    ['streaming', '/api/addie/chat/stream', chatClient.processMessageStream],
+  ])(
+    'accepts the incident-sized message unchanged on the %s route',
+    async (_label, path, processMessage) => {
+      const message = 'D'.repeat(10_329);
+      processMessage.mockClear();
+
+      await request(app()).post(path).send({ message }).expect(200);
+
+      expect(processMessage.mock.calls[0]?.[0]).toBe(message);
+    },
+  );
 
   it('issues an HttpOnly owner capability cookie when an anonymous POST creates a thread', async () => {
     const response = await request(app())

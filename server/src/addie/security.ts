@@ -15,7 +15,10 @@ import { PERSONA_COLLAPSE_PATTERNS } from './response-postprocess.js';
 
 export const MAX_OUTPUT_LENGTH = 10_000;
 export const OUTPUT_TRUNCATION_SUFFIX = '… Reply “continue” for the rest.';
+export const MAX_INPUT_LENGTH = 32_000;
+export const INPUT_TRUNCATION_SUFFIX = '... [truncated]';
 const OUTPUT_TRUNCATION_SEPARATOR = '\n\n';
+const MIN_SENTENCE_BOUNDARY_RETENTION_RATIO = 0.8;
 
 const SENTENCE_ENDINGS = new Set(['.', '!', '?', '。', '！', '？']);
 const SENTENCE_CLOSERS = new Set(['"', "'", '”', '’', ')', ']', '}', '*', '_', '~', '`']);
@@ -222,9 +225,38 @@ function findSafeOutputBoundary(text: string, maxLength: number): number {
     lastSentenceBoundary = pendingSentenceBoundary;
   }
 
-  return lastSentenceBoundary >= 0
-    ? lastSentenceBoundary
-    : lastWhitespaceBoundary;
+  // Prefer a sentence boundary when it preserves most of the available
+  // response. Long lists and deck-style outlines often contain one opening
+  // sentence followed by thousands of punctuation-light characters; blindly
+  // preferring that first sentence collapsed otherwise useful 10k responses
+  // to a few hundred characters. Whitespace boundaries are recorded only
+  // while Markdown is neutral, so choosing the later one remains safe.
+  const minimumUsefulSentenceBoundary = Math.floor(
+    limit * MIN_SENTENCE_BOUNDARY_RETENTION_RATIO,
+  );
+  // When the provider itself stopped early, `text` ends at the truncation
+  // point and may contain an incomplete final sentence. Preserve the original
+  // contract of retreating to the last complete sentence in that case. The
+  // retention fallback is only for locally capped responses where more text
+  // exists beyond `limit`.
+  if (limit === text.length && lastSentenceBoundary >= 0) {
+    return lastSentenceBoundary;
+  }
+  if (lastSentenceBoundary >= minimumUsefulSentenceBoundary) {
+    return lastSentenceBoundary;
+  }
+  return Math.max(lastSentenceBoundary, lastWhitespaceBoundary);
+}
+
+function truncateAtGraphemeBoundary(text: string, maxLength: number): string {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  let boundary = 0;
+  for (const part of segmenter.segment(text)) {
+    const end = part.index + part.segment.length;
+    if (end > maxLength) break;
+    boundary = end;
+  }
+  return text.slice(0, boundary);
 }
 
 /**
@@ -326,10 +358,14 @@ export function sanitizeInput(text: string): SanitizationResult {
     .replace(/\[user\]/gi, '[us er]')
     .replace(/\[assistant\]/gi, '[assis tant]');
 
-  // Limit message length to prevent context stuffing
-  const MAX_LENGTH = 4000;
-  if (sanitized.length > MAX_LENGTH) {
-    sanitized = sanitized.substring(0, MAX_LENGTH) + '... [truncated]';
+  // Bound context stuffing while preserving ordinary long-form work such as
+  // deck outlines and implementation reviews. The previous 4k-character cap
+  // silently discarded most of legitimate 8–10k inputs. Reserve suffix space
+  // and cut on a grapheme boundary so the delivered prompt stays within the
+  // hard bound without splitting Unicode sequences.
+  if (sanitized.length > MAX_INPUT_LENGTH) {
+    const contentBudget = MAX_INPUT_LENGTH - INPUT_TRUNCATION_SUFFIX.length;
+    sanitized = `${truncateAtGraphemeBoundary(sanitized, contentBudget)}${INPUT_TRUNCATION_SUFFIX}`;
     if (!flagged) {
       flagged = true;
       reason = 'Message truncated due to excessive length';
