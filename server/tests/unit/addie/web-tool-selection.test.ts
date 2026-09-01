@@ -61,12 +61,15 @@ describe('authenticated web Addie tool routing', () => {
       'search_docs',
       'create_payment_link',
     ]);
-    expect(router.route).toHaveBeenCalledWith(expect.objectContaining({
-      source: 'dm',
-      isThread: true,
-      isAAOAdmin: false,
-      threadMessages: ['User: Earlier request'],
-    }));
+    expect(router.route).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'dm',
+        isThread: true,
+        isAAOAdmin: false,
+        threadMessages: ['User: Earlier request'],
+      }),
+      { failureMode: 'throw' },
+    );
   });
 
   it('allows an authorized admin domain but rejects it for a member', async () => {
@@ -146,6 +149,36 @@ describe('authenticated web Addie tool routing', () => {
     ]) {
       expect(selected.allowedToolNames).not.toContain(mutation);
     }
+  });
+
+  it('forces router outages into the safe fallback instead of accepting a returned fallback plan', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockImplementation(async (_context, options) => {
+        // This is deliberately a single, otherwise-authorized admin domain:
+        // without failureMode: throw it would evade a set-count guard.
+        if (options?.failureMode !== 'throw') {
+          return {
+            action: 'respond' as const,
+            tool_sets: ['admin_prospects'],
+            confidence: 'high' as const,
+            reason: 'internal router fallback',
+            decision_method: 'llm' as const,
+          };
+        }
+        throw new Error('provider outage');
+      }),
+    };
+
+    const selected = await select(router, true);
+
+    expect(router.route).toHaveBeenCalledWith(expect.any(Object), { failureMode: 'throw' });
+    expect(selected.selectedToolSets).toEqual([
+      'knowledge',
+      'community_research',
+      'schema_reference',
+    ]);
+    expect(selected.allowedToolNames).not.toContain('add_prospect');
   });
 
   it('never returns a definition or handler without its counterpart', async () => {

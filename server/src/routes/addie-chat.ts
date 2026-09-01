@@ -355,7 +355,8 @@ export async function selectRoutedWebTools(input: {
       threadMessages: input.threadMessages,
     };
     try {
-      plan = input.router.quickMatch(routingContext) ?? await input.router.route(routingContext);
+      plan = input.router.quickMatch(routingContext)
+        ?? await input.router.route(routingContext, { failureMode: 'throw' });
     } catch (error) {
       routerAvailable = false;
       logger.warn({ error, threadId: input.threadId }, 'Addie Chat: Router unavailable; using safe read-only fallback');
