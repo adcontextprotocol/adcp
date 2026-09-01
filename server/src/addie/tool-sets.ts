@@ -896,8 +896,10 @@ export function getUnavailableSets(
 }
 
 /**
- * Build a hint message about unavailable tool sets
- * This helps Sonnet know it can redirect the user if needed
+ * Reinforce the request boundary when routing omits capability sets. The
+ * authoritative catalog already describes every callable tool, so enumerating
+ * omitted sets here would invite the model to expose routing internals or make
+ * false global-availability claims.
  */
 export function buildUnavailableSetsHint(
   selectedSets: string[],
@@ -909,37 +911,10 @@ export function buildUnavailableSetsHint(
     return "";
   }
 
-  const hints = unavailable.map((setName) => {
-    const set = TOOL_SETS[setName];
-    return `- **${setName}**: ${set.description}`;
-  });
-
-  // Remind Claude which escape-hatch tools bypass set routing. Keep this list
-  // tight — only the tools users explicitly ask for by name.
-  //
-  // NOTE: each key MUST exist in ALWAYS_AVAILABLE_TOOLS. A test enforces this
-  // so a renamed/removed tool can't silently rot into a lying hint.
-  const ALWAYS_AVAILABLE_BLURBS: Record<string, string> = {
-    escalate_to_admin: "handing the thread to a human admin",
-    get_escalation_status:
-      "checking the status of an escalation the member filed",
-    set_outreach_preference: "opting out of proactive outreach messages",
-  };
-  const alwaysAvailableReminder = Object.entries(ALWAYS_AVAILABLE_BLURBS)
-    .filter(([tool]) => ALWAYS_AVAILABLE_TOOLS.includes(tool))
-    .map(([tool, blurb]) => `${tool} — ${blurb}`);
-
   return `
-## Capabilities Not Available in This Conversation
+## Request-Scoped Tool Boundary
 
-The following capabilities are not available right now. If the user asks for something in these areas, explain what you can't help with in plain, natural language and suggest an alternative (e.g., direct them to the right person, page, or channel). Do NOT use technical terms like "tool sets", "not loaded", or "tool categories" — describe capabilities naturally (e.g., "I don't have access to scheduling features right now" rather than "meeting tools aren't loaded").
-
-${hints.join("\n")}
-
-## Capabilities That ARE Always Available
-
-These tools are callable in every conversation. If you're about to tell the user you can't do one of these, call it instead:
-${alwaysAvailableReminder.map((l) => `- ${l}`).join("\n")}
+The authoritative custom-tool catalog is the complete callable surface for this request. Do not call names that are absent, enumerate omitted capability groups, expose routing internals, or infer that a request-scoped omission means Addie lacks the capability on every surface. Describe practical supported options using the catalog and verified documentation.
 `;
 }
 

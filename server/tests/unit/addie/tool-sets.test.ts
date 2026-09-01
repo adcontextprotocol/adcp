@@ -482,31 +482,24 @@ describe('buildUnavailableSetsHint', () => {
     expect(buildUnavailableSetsHint(allSets, true)).toBe('');
   });
 
-  it('lists an always-available escape-hatch section when sets are unavailable', () => {
+  it('reinforces the request-scoped catalog when sets are omitted', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
-    expect(hint).toContain('Always Available');
-    expect(hint).toContain('escalate_to_admin');
+    expect(hint).toContain('Request-Scoped Tool Boundary');
+    expect(hint).toContain('authoritative custom-tool catalog');
   });
 
-  it('describes GitHub issue filing only in the GitHub domain', () => {
+  it('does not enumerate omitted domains or expose per-conversation unavailability', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
-    const contentSection = hint.match(/- \*\*content\*\*:[^\n]*/)?.[0] ?? '';
-    expect(contentSection).not.toMatch(/github issue/i);
-    expect(hint).toMatch(/- \*\*github\*\*:.*GitHub issue/i);
+    expect(hint).not.toContain('**github**');
+    expect(hint).not.toContain('Capabilities Not Available in This Conversation');
+    expect(hint).not.toContain('not available right now');
+    expect(hint).not.toContain('I don\'t have access');
   });
 
-  it('never advertises tools that are not actually in ALWAYS_AVAILABLE_TOOLS (drift guard)', () => {
+  it('does not duplicate callable tool names outside the authoritative catalog', () => {
     const hint = buildUnavailableSetsHint(['knowledge'], false);
-    // Extract tool names from the "Always Available" section: lines of the
-    // form `- <tool_name> — blurb`.
-    const section = hint.split('## Capabilities That ARE Always Available')[1] ?? '';
-    const advertised = [...section.matchAll(/^- (\w+) — /gm)].map((m) => m[1]);
-    expect(advertised.length).toBeGreaterThan(0);
-    for (const tool of advertised) {
-      expect(
-        ALWAYS_AVAILABLE_TOOLS,
-        `Hint advertised "${tool}" as always-available but it is not in ALWAYS_AVAILABLE_TOOLS`,
-      ).toContain(tool);
-    }
+    expect(hint).not.toContain('escalate_to_admin');
+    expect(hint).not.toContain('get_escalation_status');
+    expect(hint).not.toContain('set_outreach_preference');
   });
 });

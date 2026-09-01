@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(68);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(68);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(69);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(69);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
@@ -157,7 +157,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(67);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(68);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -216,6 +216,20 @@ describe('strict router eval', () => {
 
     expect(identifierCase.expected).toMatchObject({ action: 'respond', toolSets: ['knowledge'] });
     expect(dateCase.expected).toMatchObject({ action: 'respond', toolSets: [] });
+  });
+
+  it('treats Addie deployment capabilities as documented facts', () => {
+    const capabilityCase = SYNTHETIC_ROUTER_CORPUS.find(
+      (item) => item.id === 'addie-mcp-capability',
+    )!;
+
+    expect(capabilityCase.context.message).toBe('does addie exist as mcp or am i hallucinating?');
+    expect(capabilityCase.expected).toMatchObject({
+      action: 'respond',
+      toolSets: ['knowledge'],
+      confidence: 'high',
+      requiresDepth: false,
+    });
   });
 
   it('accepts exact plans and rejects fallback-shaped, unauthorized, or extra-field output', () => {

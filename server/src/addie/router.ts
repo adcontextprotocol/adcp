@@ -171,9 +171,9 @@ export const ROUTING_RULES = {
         "what kinds of things",
         "your capabilities",
       ],
-      tools: [], // No tools needed - respond from system prompt knowledge
+      tools: ["search_docs"],
       description:
-        "Questions about what Addie can help with - respond with capability overview",
+        "Questions about Addie's current capabilities, tools, integrations, or deployment surfaces - verify against documentation",
     },
     adcp_protocol: {
       patterns: [
@@ -712,6 +712,7 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_validation"]
+- Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge
 - Open or unsettled multi-stakeholder governance questions → ["knowledge", "community_research"] to distinguish documented rules from current discussion
 - Current date or time from the trusted request context → respond with []. Never ignore a direct date/time question
 - General questions needing no tools → []

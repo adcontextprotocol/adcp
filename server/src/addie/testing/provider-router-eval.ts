@@ -116,6 +116,7 @@ export const SYNTHETIC_ROUTER_CORPUS: ReadonlyArray<RouterEvalCase> = Object.fre
   { id: 'protocol-schema', context: dm('Which field carries the media buy identifier in AdCP 3.2?'), expected: { action: 'respond', toolSets: ['knowledge', 'schema_reference'], confidence: 'high', requiresDepth: false } },
   { id: 'protocol-identifier-concept', context: dm('What do the official docs say about package identifiers?'), expected: { action: 'respond', toolSets: ['knowledge'], confidence: 'high', requiresDepth: false } },
   { id: 'protocol-text-overview', context: dm('Give a detailed overview of the protocol.'), expected: { action: 'respond', toolSets: ['knowledge'], confidence: 'high', requiresDepth: true } },
+  { id: 'addie-mcp-capability', context: dm('does addie exist as mcp or am i hallucinating?'), expected: { action: 'respond', toolSets: ['knowledge'], confidence: 'high', requiresDepth: false } },
   { id: 'current-utc-date', context: dm('What is the current UTC date?'), expected: { action: 'respond', toolSets: [], confidence: 'high', requiresDepth: false } },
   { id: 'schema-validation', context: dm('Validate this JSON against the AdCP media-buy schema and compare it with version 3.1.'), expected: { action: 'respond', toolSets: ['schema_reference'], confidence: 'high', requiresDepth: false } },
   { id: 'community-research', context: dm('Search recent Slack discussions and industry resources about community meetup formats.'), expected: { action: 'respond', toolSets: ['community_research'], confidence: 'high', requiresDepth: false } },
