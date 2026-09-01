@@ -157,6 +157,35 @@ describe('sync_principal contract', () => {
     assert.match(rules.account_authority, /independently authorize the account-scoped feed binding/);
   });
 
+  it('keys signed Agent principals by the verified canonical Agent URL, not credentials or domain', () => {
+    const syncRequest = readSchema('/schemas/protocol/sync-principal-request.json');
+    const getRequest = readSchema('/schemas/protocol/get-principal-request.json');
+    const brand = readSchema('/schemas/brand.json');
+    const security = fs.readFileSync(
+      path.join(__dirname, '..', 'docs', 'building', 'by-layer', 'L1', 'security.mdx'),
+      'utf8',
+    );
+    const canonicalization = fs.readFileSync(
+      path.join(__dirname, '..', 'docs', 'reference', 'url-canonicalization.mdx'),
+      'utf8',
+    );
+
+    const syncRule = syncRequest['x-adcp-validation'].signed_agent_identity;
+    const getRule = getRequest['x-adcp-validation'].signed_agent_identity;
+    const agentUrlDescription = brand.definitions.brand_agent_entry.properties.url.description;
+
+    assert.match(syncRule, /canonical form of the exactly matched agents\[\]\.url/);
+    assert.match(syncRule, /Distinct canonical Agent URLs remain distinct principals/);
+    assert.match(syncRule, /Key rotation preserves the principal/);
+    assert.match(syncRule, /MUST fail closed/);
+    assert.match(getRule, /same canonical Agent URL preserves the principal/);
+    assert.match(agentUrlDescription, /stable Agent identity input for principal mapping/);
+    assert.match(security, /\*\*Canonical signed-Agent identity\.\*\*/);
+    assert.match(security, /canonicalizeAdcpUrl\(e\.url\) === canonicalAgentUrl/);
+    assert.doesNotMatch(security, /Find the entry in `agents\[\]` whose `url` \*\*byte-equals\*\* `A`/);
+    assert.match(canonicalization, /\| Signed-Agent identity \|/);
+  });
+
   it('keeps every destination variant atomic and rejects secret-shaped schema fields', () => {
     for (const destination of [fileDestination, warehouseDestination, shareDestination]) {
       assert.equal(validateDestination(destination), true, JSON.stringify(validateDestination.errors));
