@@ -4,6 +4,20 @@
   "title": "Get AdCP Capabilities Response",
   "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
+  "definitions": {
+    "CapabilityReportingDeliveryMethod": {
+      "title": "Capability Reporting Delivery Method",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": ["webhook", "offline"]
+    },
+    "BudgetCappingTimezoneBasis": {
+      "title": "Budget Capping Timezone Basis",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": ["account", "fixed"]
+    }
+  },
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
@@ -156,6 +170,53 @@
               }
             },
             "required": ["principal"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.reporting_delivery" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": {
+                "anyOf": [
+                  { "required": ["readiness_notification"] },
+                  { "required": ["status_notification"] }
+                ]
+              }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "required": ["webhook_signing"],
+        "properties": {
+          "webhook_signing": {
+            "properties": {
+              "supported": { "const": true }
+            },
+            "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
           }
         }
       }
@@ -1228,8 +1289,7 @@
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
           "items": {
-            "type": "string",
-            "enum": ["webhook", "offline"]
+            "$ref": "#/definitions/CapabilityReportingDeliveryMethod"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1256,6 +1316,11 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "reporting_delivery": {
+          "$ref": "/schemas/core/reporting-delivery-capabilities.json",
+          "x-status": "experimental",
+          "description": "Managed reporting status and durable delivery capability. Presence requires media_buy.reporting_delivery in experimental_features. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface."
         },
         "supports_proposals": {
           "type": "boolean",
@@ -1916,8 +1981,7 @@
               "uniqueItems": true
             },
             "timezone_basis": {
-              "type": "string",
-              "enum": ["account", "fixed"],
+              "$ref": "#/definitions/BudgetCappingTimezoneBasis",
               "description": "Source of the default cap-day boundary. account uses the selected Account.timezone and therefore supports different boundaries for different accounts. fixed uses fixed_timezone for every media buy regardless of account timezone."
             },
             "fixed_timezone": {

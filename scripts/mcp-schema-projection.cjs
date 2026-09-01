@@ -836,6 +836,95 @@ function stripModelContextAnnotations(schema) {
   return stripped;
 }
 
+const MODEL_CONTEXT_INLINE_MARKER = 'x-adcp-model-context-inline';
+
+/**
+ * Inline root definitions that exist only to give SDK generators a stable
+ * type name. The canonical and structural projections retain the named ref;
+ * the prompt-only model-context projection does not need that codegen
+ * indirection and pays a material size cost when it is repeated per tool.
+ *
+ * Draft-07 validation siblings on $ref are rejected before this pass, so any
+ * siblings here are annotations and can safely override the definition's
+ * annotations. Nested definitions are supported because compact bundling
+ * places referenced source-schema definitions beneath external dictionary
+ * entries such as #/$defs/external:core~1foo.json/$defs/NamedType.
+ */
+function inlineMarkedModelContextDefinitions(schema) {
+  const inlined = clone(schema);
+  const marked = new Map();
+  const pointerSegment = value => value.replace(/~/g, '~0').replace(/\//g, '~1');
+
+  function collect(node, pointer = '') {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      node.forEach((value, index) => collect(value, `${pointer}/${index}`));
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      const childPointer = `${pointer}/${pointerSegment(key)}`;
+      if (key === '$defs' && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const [name, definition] of Object.entries(value)) {
+          const definitionPointer = `${childPointer}/${pointerSegment(name)}`;
+          if (
+            definition
+            && typeof definition === 'object'
+            && !Array.isArray(definition)
+            && definition[MODEL_CONTEXT_INLINE_MARKER] === true
+          ) {
+            marked.set(`#${definitionPointer}`, definition);
+          }
+          collect(definition, definitionPointer);
+        }
+      } else {
+        collect(value, childPointer);
+      }
+    }
+  }
+
+  collect(inlined);
+  if (marked.size === 0) return inlined;
+
+  function visit(node, resolving = new Set()) {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(value => visit(value, resolving));
+
+    if (typeof node.$ref === 'string' && marked.has(node.$ref)) {
+      if (resolving.has(node.$ref)) {
+        throw new Error(`Circular ${MODEL_CONTEXT_INLINE_MARKER} reference ${node.$ref}`);
+      }
+      const definition = marked.get(node.$ref);
+      const { [MODEL_CONTEXT_INLINE_MARKER]: _marker, ...shape } = definition;
+      const { $ref: _ref, ...annotations } = node;
+      const nextResolving = new Set(resolving);
+      nextResolving.add(node.$ref);
+      return visit({ ...clone(shape), ...clone(annotations) }, nextResolving);
+    }
+
+    const result = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$defs' && value && typeof value === 'object' && !Array.isArray(value)) {
+        const retained = Object.fromEntries(
+          Object.entries(value)
+            .filter(([, definition]) => !(
+              definition
+              && typeof definition === 'object'
+              && !Array.isArray(definition)
+              && definition[MODEL_CONTEXT_INLINE_MARKER] === true
+            ))
+            .map(([name, definition]) => [name, visit(definition, resolving)])
+        );
+        if (Object.keys(retained).length > 0) result[key] = retained;
+      } else {
+        result[key] = visit(value, resolving);
+      }
+    }
+    return result;
+  }
+
+  return visit(inlined);
+}
+
 /**
  * Remove root $defs that became unreachable when projection removed fields or
  * root-only validation branches. Canonical schemas retain the complete graph.
@@ -910,6 +999,7 @@ function projectSourceSchema(
   }
   if (annotationMode === 'structural') projected = stripPresentationAnnotations(projected);
   else if (annotationMode === 'model-context') {
+    projected = inlineMarkedModelContextDefinitions(projected);
     projected = pruneUnusedRootDefinitions(stripModelContextAnnotations(projected));
   }
   else if (annotationMode !== 'full') throw new Error(`Unknown annotation mode ${JSON.stringify(annotationMode)}`);
@@ -1177,6 +1267,7 @@ module.exports = {
   compactDraft07Schema,
   enforceSchemaBounds,
   generateMcpSchemaProjection,
+  inlineMarkedModelContextDefinitions,
   measureSchema,
   projectMcpDiscoveryInputSchema,
   projectDraft07Node,

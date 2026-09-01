@@ -184,6 +184,15 @@
                 },
                 "maxItems": 16
               },
+              "reporting_delivery_configs": {
+                "type": "array",
+                "x-status": "experimental",
+                "description": "Resolved caller-owned durable reporting delivery configurations after declarative replacement. Each item echoes desired state and reports validation/setup state plus the seller-issued destination_ref when resolved. A setup action may direct an authenticated user to complete a provider grant or Open Sharing activation, but MUST NOT carry credentials or a bearer URL.",
+                "items": {
+                  "$ref": "/schemas/core/reporting-delivery-config-state.json"
+                },
+                "maxItems": 16
+              },
               "authorization": {
                 "$ref": "/schemas/core/account-authorization.json",
                 "description": "Optional. The caller's scope grant against this account after the sync operation. Vendor agents of any type (media-buy, signals, governance, creative, brand) that support scope introspection SHOULD populate this so callers can preempt RBAC errors rather than discovering scope by trial and error. Media-buy sales agents claiming the `attestation_verifier` standard scope MUST populate it. Present on `created`, `updated`, and `unchanged` results; omitted on `failed` results (where the account did not reach a usable state). Absence means the vendor agent does not advertise introspectable scope — callers MUST NOT infer access from absence."

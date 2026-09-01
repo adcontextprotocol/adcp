@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/sync-reporting-receipts-request.json",
+  "title": "Sync Reporting Receipts Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Record a consumer's independently verified reporting totals and destination evidence in the seller ledger.",
+  "description": "Submit durable authenticated consumer reconciliation results for reporting materializations. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal.",
+  "type": "object",
+  "allOf": [
+    { "$ref": "/schemas/core/version-envelope.json" }
+  ],
+  "properties": {
+    "adcp_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_version" },
+    "adcp_major_version": { "$ref": "/schemas/core/version-envelope.json#/properties/adcp_major_version" },
+    "account": { "$ref": "/schemas/core/canonical-account-ref.json" },
+    "idempotency_key": { "type": "string", "minLength": 16, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{16,255}$", "description": "Client-generated batch key. Exact retries reuse the key and body." },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          { "$ref": "/schemas/core/reporting-receipt.json" },
+          { "not": { "required": ["received_at"] } }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": { "$ref": "/schemas/core/context.json" },
+    "ext": { "$ref": "/schemas/core/ext.json" }
+  },
+  "required": ["account", "idempotency_key", "receipts"],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_receipt_id values MUST be unique within the batch. Every referenced obligation, revision, and materialization MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
+    "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
+  },
+  "additionalProperties": true
+}

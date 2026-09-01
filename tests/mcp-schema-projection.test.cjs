@@ -29,6 +29,7 @@ const {
   buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
+  inlineMarkedModelContextDefinitions,
   measureSchema,
   projectDraft07Node,
   projectMcpDiscoveryInputSchema,
@@ -52,9 +53,11 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // collection-selection echo contract) adds one shared inventory-selection
 // graph (~0.7 KiB per targeting-bearing request schema) to media-buy tasks;
 // concurrent schema slimming absorbed it, so the 400 KiB media-buy ceiling
-// holds (~394 KiB measured post-merge).
+// held at ~394 KiB. Reporting Core adds two compact operational inputs to the
+// same profile; keep their combined increase bounded by a 410 KiB ceiling
+// (~407 KiB measured with the principal configuration surface).
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 400,
+  'media-buy': 410,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -280,6 +283,58 @@ test('model-context pruning removes only unreachable root definitions', () => {
     },
   });
   assert.deepEqual(source.$defs.Removed, { type: 'integer' });
+});
+
+test('model-context presentation inlines only definitions marked as codegen indirection', () => {
+  const source = {
+    type: 'object',
+    properties: {
+      named: {
+        $ref: '#/$defs/Named',
+        description: 'Field-specific guidance.',
+      },
+      retained: { $ref: '#/$defs/Retained' },
+      nested: { $ref: '#/$defs/External/$defs/NestedNamed' },
+    },
+    $defs: {
+      Named: {
+        title: 'Stable SDK Type',
+        type: 'string',
+        minLength: 1,
+        'x-adcp-model-context-inline': true,
+      },
+      Retained: { type: 'object', properties: { value: { type: 'string' } } },
+      External: {
+        type: 'object',
+        $defs: {
+          NestedNamed: {
+            type: 'string',
+            maxLength: 8,
+            'x-adcp-model-context-inline': true,
+          },
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(inlineMarkedModelContextDefinitions(source), {
+    type: 'object',
+    properties: {
+      named: {
+        title: 'Stable SDK Type',
+        type: 'string',
+        minLength: 1,
+        description: 'Field-specific guidance.',
+      },
+      retained: { $ref: '#/$defs/Retained' },
+      nested: { type: 'string', maxLength: 8 },
+    },
+    $defs: {
+      Retained: { type: 'object', properties: { value: { type: 'string' } } },
+      External: { type: 'object' },
+    },
+  });
+  assert.ok(source.$defs.Named['x-adcp-model-context-inline']);
 });
 
 test('draft-07 projection converts dialect-specific keywords without tightening', () => {

@@ -7,4 +7,5 @@
 # have a built-in BOM-strip attribute; rely on editor defaults and review
 # to keep them clean.
 static/compliance/source/test-vectors/plan-hash/** text eol=lf
+static/compliance/source/test-vectors/reporting-reconciliation/** text eol=lf
 static/test-vectors/** text eol=lf
