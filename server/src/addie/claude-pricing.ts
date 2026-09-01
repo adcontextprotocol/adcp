@@ -99,5 +99,19 @@ export function hasKnownClaudePricing(model: string): boolean {
   return Object.prototype.hasOwnProperty.call(PRICING_PER_MILLION_TOKENS, model);
 }
 
+/**
+ * Resolve a dated Anthropic response identifier to its reviewed canonical
+ * model family. Anthropic returns dated revisions such as
+ * `claude-sonnet-4-6-20260801`; each is priced at its explicit canonical
+ * model's reviewed rate, while unrelated/unknown families still use the
+ * legacy conservative fallback in `costUsdMicros`.
+ */
+export function resolveKnownClaudePricingModel(model: string): string | null {
+  if (hasKnownClaudePricing(model)) return model;
+  return Object.keys(PRICING_PER_MILLION_TOKENS)
+    .filter((knownModel) => new RegExp(`^${knownModel}-\\d{8}$`).test(model))
+    .sort((a, b) => b.length - a.length)[0] ?? null;
+}
+
 /** Backwards-compatible test helper. */
 export const __hasKnownPricing = hasKnownClaudePricing;

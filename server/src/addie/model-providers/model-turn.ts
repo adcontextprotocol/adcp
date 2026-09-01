@@ -34,6 +34,13 @@ export interface AcceptedModelTurn extends InspectedModelTurn {
   discardedRecoveryToolCalls: boolean;
 }
 
+/** Complete normalized usage grouped by the exact provider/model that produced it. */
+export interface AccountedModelUsage {
+  provider: ModelProviderId;
+  model: string;
+  usage: ModelUsage;
+}
+
 /** Append one canonical assistant continuation and any custom-tool results. */
 export function appendModelTurnContinuation(
   messages: ModelMessage[],
@@ -175,6 +182,7 @@ export class ModelTurnLoopState {
   readonly emptyResponseRecovery = new EmptyResponseRecoveryState();
   private readonly budget: ModelLoopBudget;
   private accumulatedUsage: ModelUsage = { inputTokens: 0, outputTokens: 0 };
+  private readonly usageByProviderModel = new Map<ModelProviderId, Map<string, ModelUsage>>();
   private awaitingResponse = false;
   private continuationProvider: ModelProviderId | null = null;
 
@@ -196,6 +204,21 @@ export class ModelTurnLoopState {
 
   get usage(): ModelUsage {
     return { ...this.accumulatedUsage };
+  }
+
+  /**
+   * Exact provider/model usage buckets for cost accounting. Same-identity
+   * turns stay aggregated to preserve established rounding behavior; a model
+   * change is never priced as though it were the previous model.
+   */
+  get accountedUsage(): AccountedModelUsage[] {
+    return [...this.usageByProviderModel.entries()].flatMap(([provider, byModel]) => (
+      [...byModel.entries()].map(([model, usage]) => ({
+        provider,
+        model,
+        usage: { ...usage },
+      }))
+    ));
   }
 
   /**
@@ -260,6 +283,12 @@ export class ModelTurnLoopState {
     }
     if (options.countUsage !== false) {
       this.accumulatedUsage = addModelUsage(this.accumulatedUsage, acceptedResponse.usage);
+      const byModel = this.usageByProviderModel.get(acceptedResponse.provider) ?? new Map<string, ModelUsage>();
+      byModel.set(
+        acceptedResponse.model,
+        addModelUsage(byModel.get(acceptedResponse.model) ?? { inputTokens: 0, outputTokens: 0 }, acceptedResponse.usage),
+      );
+      this.usageByProviderModel.set(acceptedResponse.provider, byModel);
     }
     this.awaitingResponse = false;
     return Object.freeze({

@@ -172,8 +172,11 @@ describe('Addie provider delivery runtime', () => {
     });
     expect(mocks.recordCost).toHaveBeenCalledWith(
       'fallback-user',
-      AddieModelConfig.chat,
-      expect.objectContaining({ input_tokens: 12, output_tokens: 4 }),
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: AddieModelConfig.chat,
+        usage: expect.objectContaining({ inputTokens: 12, outputTokens: 4 }),
+      }),
     );
   });
 

@@ -674,7 +674,7 @@ describe('Addie empty-response fallback (#4430)', () => {
     expect(mocks.notifySystemError).not.toHaveBeenCalled();
   });
 
-  it('charges aggregate initial-recovery usage once per streaming and non-streaming interaction', async () => {
+  it('charges initial-recovery usage by exact provider/model identity', async () => {
     mocks.createMessage
       .mockResolvedValueOnce(emptyEndTurn)
       .mockResolvedValueOnce(recoveredEndTurn);
@@ -699,18 +699,42 @@ describe('Addie empty-response fallback (#4430)', () => {
       // Consume the complete response so terminal billing runs.
     }
 
-    expect(mocks.recordCost).toHaveBeenCalledTimes(2);
+    expect(mocks.recordCost).toHaveBeenCalledTimes(4);
     expect(mocks.recordCost).toHaveBeenNthCalledWith(
       1,
       'user-nonstream',
-      'claude-sonnet-5',
-      expect.objectContaining({ input_tokens: 22, output_tokens: 6 }),
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6-20260801',
+        usage: expect.objectContaining({ inputTokens: 10, outputTokens: 0 }),
+      }),
     );
     expect(mocks.recordCost).toHaveBeenNthCalledWith(
       2,
+      'user-nonstream',
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-20260801',
+        usage: expect.objectContaining({ inputTokens: 12, outputTokens: 6 }),
+      }),
+    );
+    expect(mocks.recordCost).toHaveBeenNthCalledWith(
+      3,
       'user-stream',
-      'claude-sonnet-5',
-      expect.objectContaining({ input_tokens: 22, output_tokens: 6 }),
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'claude-sonnet-4-6-20260801',
+        usage: expect.objectContaining({ inputTokens: 10, outputTokens: 0 }),
+      }),
+    );
+    expect(mocks.recordCost).toHaveBeenNthCalledWith(
+      4,
+      'user-stream',
+      expect.objectContaining({
+        provider: 'anthropic',
+        model: 'claude-sonnet-5-20260801',
+        usage: expect.objectContaining({ inputTokens: 12, outputTokens: 6 }),
+      }),
     );
   });
 
