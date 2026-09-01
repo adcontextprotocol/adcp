@@ -108,6 +108,7 @@ const complianceOptions = {
   ...(process.env.ADCP_COMPLIANCE_DIR && { complianceDir: process.env.ADCP_COMPLIANCE_DIR }),
   ...(process.env.ADCP_SCHEMA_ROOT && { schemaRoot: process.env.ADCP_SCHEMA_ROOT }),
 };
+const candidateVersionMode = process.env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE === '1';
 const releasedComplianceVersion = complianceOptions.complianceDir
   ? loadComplianceIndex(complianceOptions).adcp_version
   : undefined;
@@ -117,6 +118,19 @@ const isCurrentSourceRun = releasedComplianceVersion === undefined
     && resolve(complianceOptions.complianceDir) === resolve('dist/compliance/latest')
   );
 const isThreeZeroCompatRun = releasedComplianceVersion !== undefined && /^3\.0\.\d+$/.test(releasedComplianceVersion);
+if (candidateVersionMode) {
+  const packageVersion = JSON.parse(readFileSync(resolve('package.json'), 'utf8')).version as unknown;
+  if (!isCurrentSourceRun || releasedComplianceVersion === undefined) {
+    throw new Error(
+      'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the generated dist/compliance/latest bundle',
+    );
+  }
+  if (typeof packageVersion !== 'string' || packageVersion !== releasedComplianceVersion) {
+    throw new Error(
+      'ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=1 requires the compliance bundle version to match package.json',
+    );
+  }
+}
 // Released compliance artifacts carry a patch version, while the frozen 3.0
 // wire contract negotiates the stable `3.0` selector. Keep the exact artifact
 // version for schema selection and override only the request envelope. Source
@@ -653,7 +667,15 @@ async function selectStoryboardsForTenant(
     specialisms: profile.specialisms ?? [],
     major_versions: profile.adcp_major_versions,
     supported_versions: profile.adcp_supported_versions,
-  }, complianceOptions);
+  }, {
+    ...complianceOptions,
+    // Version Packages builds the next exact schema/compliance bundle before
+    // the training agent's published SDK can advertise it. Keep ordinary
+    // local and hosted runs strict; release-candidate validation opts in to a
+    // resolver-scoped same-line alias while execution continues to speak the
+    // training agent's real wire version.
+    ...(candidateVersionMode && { hostedStableLineAlias: TRAINING_AGENT_CURRENT_ADCP_VERSION }),
+  });
   const inDeclaredScope = new Set(resolved.storyboards.map(sb => sb.id));
   const versionExcluded = new Set(resolved.not_applicable.map(entry => entry.storyboard_id));
   const selectedCorpus = everything.filter(matchesExplicitSelection);

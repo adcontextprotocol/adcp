@@ -132,6 +132,9 @@ jobs:
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
           printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
+          # This is a disposable candidate checkout: align the SDK's AdCP
+          # metadata without bumping its own package release number.
+          npm --prefix sdk run sync-version -- --force
 
           python3 -m http.server 8765 --directory "${RUNNER_TEMP}/protocol-host" > "${RUNNER_TEMP}/protocol-http.log" 2>&1 &
           server_pid=$!

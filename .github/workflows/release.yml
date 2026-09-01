@@ -56,6 +56,11 @@ jobs:
       - name: Verify current storyboard coverage
         if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x')
         run: npm run test:storyboards
+        env:
+          # A committed Version Packages bundle can lead the training agent's
+          # published SDK by one candidate. The runner keeps this relaxation
+          # scoped to a generated bundle matching package.json.
+          ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: '1'
 
       - name: Verify 3.0 storyboard compatibility
         if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
