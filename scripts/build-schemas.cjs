@@ -2684,6 +2684,8 @@ module.exports = {
   discoverTools,
   buildTaskResultResolution,
   validateManifestToolRelationships,
+  collectVendorMetricExamples,
+  lintVendorMetricSemanticUniqueness,
 };
 
 if (require.main === module) {
