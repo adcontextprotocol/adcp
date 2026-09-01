@@ -132,12 +132,13 @@ import * as relationshipDb from '../db/relationship-db.js';
 import { loadRelationshipContext, formatContextForPrompt } from './services/relationship-context.js';
 import * as personEvents from '../db/person-events-db.js';
 import type { RequestTools } from './claude-client.js';
-import type {
-  AssistantThreadStartedEvent,
-  AppMentionEvent,
-  AssistantMessageEvent,
-  CreateAddieInteractionLog,
-  SuggestedPrompt,
+import {
+  toInteractionModelUsage,
+  type AssistantThreadStartedEvent,
+  type AppMentionEvent,
+  type AssistantMessageEvent,
+  type CreateAddieInteractionLog,
+  type SuggestedPrompt,
 } from './types.js';
 
 /**
@@ -756,6 +757,7 @@ export async function handleAssistantMessage(
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,
@@ -940,6 +942,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     tools_used: response.tools_used,
     model: AddieModelConfig.chat,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     flagged,
     flag_reason: flagReason || undefined,

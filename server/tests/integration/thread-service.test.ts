@@ -355,6 +355,8 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         'addie_interactions_local_response_reason_values',
         'addie_interactions_provider_execution_atomic',
         'addie_interactions_provider_fallback_consistent',
+        'addie_interactions_usage_nonnegative',
+        'addie_interactions_usage_atomic',
       ];
       const result = await pool.query<{ conname: string; convalidated: boolean }>(
         `SELECT conname, convalidated
@@ -507,6 +509,12 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
           model_resolution: 'fallback',
           fallback_reason: 'primary_unavailable',
         },
+        usage: {
+          inputTokens: 12,
+          outputTokens: 4,
+          cacheWriteTokens: 3,
+          cacheReadTokens: 2,
+        },
         latency_ms: 10,
         flagged: false,
       });
@@ -527,6 +535,7 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
           requested_model: 'claude-sonnet-5',
           reason: 'provider_error',
         },
+        usage: null,
         latency_ms: 5,
         flagged: true,
       });
@@ -550,6 +559,10 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
           model_resolution: 'fallback',
           fallback_reason: 'primary_unavailable',
         },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+        },
         latency_ms: 7,
         flagged: false,
       });
@@ -564,12 +577,19 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         model_resolution: 'fallback',
         fallback_reason: 'primary_unavailable',
       });
+      expect(interactions.find((row) => row.id === 'provider-provenance-provider')?.usage).toEqual({
+        inputTokens: 12,
+        outputTokens: 4,
+        cacheWriteTokens: 3,
+        cacheReadTokens: 2,
+      });
       expect(interactions.find((row) => row.id === 'provider-provenance-local')?.model_execution).toEqual({
         source: 'local',
         requested_provider: 'anthropic',
         requested_model: 'claude-sonnet-5',
         reason: 'provider_error',
       });
+      expect(interactions.find((row) => row.id === 'provider-provenance-local')?.usage).toBeNull();
       expect(interactions.find((row) => row.id === 'provider-provenance-model-fallback')?.model_execution).toEqual({
         source: 'provider',
         requested_provider: 'anthropic',
@@ -579,6 +599,57 @@ describe.skipIf(!process.env.DATABASE_URL)('ThreadService Integration Tests', ()
         model_resolution: 'fallback',
         fallback_reason: 'primary_unavailable',
       });
+      expect(interactions.find((row) => row.id === 'provider-provenance-model-fallback')?.usage).toEqual({
+        inputTokens: 0,
+        outputTokens: 0,
+      });
+
+      await expect(addieDb.logInteraction({
+        id: 'provider-provenance-missing-usage',
+        timestamp: new Date(),
+        event_type: 'dm',
+        channel_id: 'D_TEST',
+        user_id: userId,
+        input_text: 'question',
+        input_sanitized: 'question',
+        output_text: 'answer',
+        tools_used: [],
+        model: 'claude-sonnet-5',
+        model_execution: {
+          source: 'provider',
+          requested_provider: 'anthropic',
+          requested_model: 'claude-sonnet-5',
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          model_resolution: 'exact',
+          fallback_reason: null,
+        },
+        usage: null,
+        latency_ms: 1,
+        flagged: false,
+      })).rejects.toThrow('Provider interaction requires normalized usage');
+
+      await expect(pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms, tokens_input
+         ) VALUES (
+           'provider-provenance-partial-usage', 'dm', 'D_TEST', $1, 'q', 'q',
+           'a', 'claude-sonnet-5', 1, 1
+         )`,
+        [userId],
+      )).rejects.toThrow();
+
+      await expect(pool.query(
+        `INSERT INTO addie_interactions (
+           id, event_type, channel_id, user_id, input_text, input_sanitized,
+           output_text, model, latency_ms, tokens_input, tokens_output
+         ) VALUES (
+           'provider-provenance-negative-usage', 'dm', 'D_TEST', $1, 'q', 'q',
+           'a', 'claude-sonnet-5', 1, -1, 0
+         )`,
+        [userId],
+      )).rejects.toThrow();
 
       await expect(pool.query(
         `INSERT INTO addie_interactions (
