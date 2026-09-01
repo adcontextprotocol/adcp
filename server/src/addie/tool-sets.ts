@@ -64,6 +64,12 @@ export const SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS = [
 ] as const;
 
 /**
+ * Direct chat may combine a primary and a closely related follow-up domain,
+ * but never receives an unbounded router-selected union.
+ */
+export const MAX_DIRECT_ROUTED_TOOL_SET_COUNT = 2;
+
+/**
  * Tools excluded from ALWAYS_AVAILABLE in public channels
  * to prevent enrollment pitching where it doesn't belong
  */
@@ -674,6 +680,19 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 export function getToolsInSet(setName: string): string[] {
   const set = TOOL_SETS[setName];
   return set ? set.tools : [];
+}
+
+/**
+ * The explicit read-only surface available when a direct-chat router result
+ * cannot be trusted. This deliberately excludes the normal "always" tools:
+ * several of those write user preferences, create escalations, or resolve
+ * admin work and are appropriate only after a valid route has been selected.
+ */
+export function getSafeReadOnlyFallbackTools(): string[] {
+  return Array.from(new Set([
+    ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS.flatMap(getToolsInSet),
+    'web_search',
+  ]));
 }
 
 /**

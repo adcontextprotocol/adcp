@@ -99,6 +99,12 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
   return selected;
 }
 
+/**
+ * Delivery-neutral name for the bounded direct-interaction selection policy.
+ * Slack retains its established export while web chat shares the exact policy.
+ */
+export const selectRoutedToolSets = selectSlackToolSets;
+
 /** Normalize Slack conversation privacy, including DM shapes that omit is_private. */
 export function resolveSlackChannelPrivacy(channel: {
   is_im?: boolean;

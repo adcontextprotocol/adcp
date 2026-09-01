@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "11ade6dfd79fbd345386fd20b109f09910974aca106672821f732f3e16e68e64",
-  "profile_contract_sha256": "dbaf9ab25e087710b422226201e2a7c2401832cbd8b1621dd44902ba7c143e0f",
+  "profile_ids_sha256": "24b1ae25ef363383f47a58d0d87b5703669ca2bfeb6140ddc69058562ea0f3ef",
+  "profile_contract_sha256": "20d6a28e6134a976f436d427b9b3074fc6245e51321b9eb84e1e7e7ed3fd61cb",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -45,7 +45,7 @@
     "maximum_slack_public_schema_bytes": 164359,
     "legacy_slack_member_tools": 138,
     "web_anonymous_tools": 13,
-    "web_authenticated_admin_tools": 232
+    "web_authenticated_admin_tools": 39
   },
   "surface_maximums": {
     "email_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
@@ -72,7 +72,7 @@
     "tavus_voice:committee_leader": { "custom_tool_count": 132, "wire_schema_bytes": 106023, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "tavus_voice:member": { "custom_tool_count": 121, "wire_schema_bytes": 95906, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "web_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "web_chat:authenticated_admin": { "custom_tool_count": 232, "wire_schema_bytes": 177151, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "web_chat:authenticated_member": { "custom_tool_count": 152, "wire_schema_bytes": 125514, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 }
+    "web_chat:authenticated_admin": { "custom_tool_count": 39, "wire_schema_bytes": 39768, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "web_chat:authenticated_member": { "custom_tool_count": 37, "wire_schema_bytes": 37474, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 }
   }
 }

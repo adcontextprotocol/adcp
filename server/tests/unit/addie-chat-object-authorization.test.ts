@@ -119,6 +119,7 @@ vi.mock('../../src/addie/mcp/property-tools.js', () => ({
 vi.mock('../../src/addie/mcp/si-host-tools.js', () => ({
   SI_HOST_TOOLS: [],
   createSiHostToolHandlers: () => new Map(),
+  hasCachedSiSession: () => false,
 }));
 
 vi.mock('../../src/addie/mcp/adcp-tools.js', () => ({
@@ -261,7 +262,7 @@ function successfulModelResponse(text = 'Allowed response') {
 
 function mountChatRouter() {
   const timeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockImplementation((() => 0) as typeof setTimeout);
-  const { apiRouter } = createAddieChatRouter();
+  const { apiRouter } = createAddieChatRouter({ router: null });
   timeoutSpy.mockRestore();
 
   const app = express();
