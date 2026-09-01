@@ -123,6 +123,7 @@ describe('Addie router prompt policy', () => {
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
     expect(adminPrompt).toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
+    expect(memberPrompt).toContain('whether Addie exists as an MCP tool');
   });
 
   it('keeps direct mentions inside Addie\'s domain boundary', () => {

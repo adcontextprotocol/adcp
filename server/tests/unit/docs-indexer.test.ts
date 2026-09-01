@@ -101,6 +101,14 @@ describe('docs-indexer', () => {
   });
 
   describe('get_doc ID resolution', () => {
+    it('finds Addie\'s documented MCP interface from a natural-language capability question', () => {
+      const results = searchDocs('does Addie exist as MCP', { limit: 5 });
+      const connectionGuide = results.find((result) => result.id === 'doc:aao/connect-addie');
+
+      expect(connectionGuide).toBeDefined();
+      expect(connectionGuide?.content).toContain('chat_with_addie');
+    });
+
     it('finds doc by canonical ID with prefix', () => {
       const doc = getDocById('doc:3.1:media-buy/advanced-topics/targeting');
       expect(doc).not.toBeNull();

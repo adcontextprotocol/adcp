@@ -550,6 +550,37 @@ export function createAddieToolExecutor(
     const operationalExecution = options.executionMode === 'production';
     const registered = registry.get(call.name);
     if (!registered?.handler) {
+      const definitionPresent = Boolean(registered?.definition);
+      const invariantEvent = definitionPresent
+        ? 'addie_declared_tool_missing_handler'
+        : 'addie_undeclared_tool_call';
+      const invariantMessage = definitionPresent
+        ? 'Addie: Declared request tool is missing an executable handler'
+        : 'Addie: Model requested a tool outside the executable request surface';
+      const invariantContext = {
+        event: invariantEvent,
+        toolName: call.name,
+        definitionPresent,
+        executableToolCount: registry.size,
+        executionMode: options.executionMode,
+      };
+      if (operationalExecution) {
+        logger.error(invariantContext, invariantMessage);
+      } else {
+        logger.debug(invariantContext, invariantMessage);
+      }
+      if (operationalExecution) {
+        notifyToolError({
+          // Keep provider/model-controlled tool names out of Slack rendering
+          // and use a stable key so arbitrary names cannot bypass throttling.
+          toolName: invariantEvent,
+          errorMessage: invariantMessage,
+          slackUserId: options.notificationContext?.slackUserId,
+          userDisplayName: options.notificationContext?.userDisplayName,
+          threadId: options.notificationContext?.threadId,
+          threw: false,
+        });
+      }
       const normalized = observeNormalizedToolResult(
         call.name,
         normalizeToolError(call.name, new Error(`Unknown tool "${call.name}"`), { expected: false }),

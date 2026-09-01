@@ -95,6 +95,56 @@ describe('createAddieToolExecutor', () => {
     });
   });
 
+  it('alerts when the model requests a tool outside the executable request surface', async () => {
+    const handler = vi.fn();
+    const execute = createAddieToolExecutor([tool], new Map([['lookup', handler]]), {
+      executionMode: 'production',
+      notificationContext: { threadId: 'thread_undeclared' },
+    });
+    const untrustedToolName = '<@U123>\nsearch_docs';
+
+    const result = await execute({ ...call(), name: untrustedToolName }, 1);
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.result).toMatchObject({ isError: true, toolName: untrustedToolName });
+    expect(result.execution).toMatchObject({
+      tool_name: untrustedToolName,
+      is_error: true,
+      normalized_result: { status: 'error' },
+    });
+    expect(notifyToolError).toHaveBeenCalledWith({
+      toolName: 'addie_undeclared_tool_call',
+      errorMessage: 'Addie: Model requested a tool outside the executable request surface',
+      threadId: 'thread_undeclared',
+      threw: false,
+    });
+    expect(JSON.stringify(notifyToolError.mock.calls)).not.toContain(untrustedToolName);
+  });
+
+  it('reports a declared tool with no executable handler as a distinct invariant', async () => {
+    const execute = createAddieToolExecutor([tool], new Map(), {
+      executionMode: 'production',
+    });
+
+    await execute(call(), 1);
+
+    expect(notifyToolError).toHaveBeenCalledWith({
+      toolName: 'addie_declared_tool_missing_handler',
+      errorMessage: 'Addie: Declared request tool is missing an executable handler',
+      threw: false,
+    });
+  });
+
+  it('does not send operational alerts for undeclared calls in isolated execution', async () => {
+    const execute = createAddieToolExecutor([tool], new Map(), {
+      executionMode: 'evaluation',
+    });
+
+    await execute(call(), 1);
+
+    expect(notifyToolError).not.toHaveBeenCalled();
+  });
+
   it('preserves handler-level coercion for recoverable schema drift', async () => {
     const tolerantTool: AddieTool = {
       ...tool,

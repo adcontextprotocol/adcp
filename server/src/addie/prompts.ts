@@ -579,9 +579,7 @@ export interface AddieToolReferenceScope {
 
 const TOOL_CATALOG_HEADER = `## Authoritative custom-tool catalog (request-scoped)
 
-This catalog is the source of truth for custom tools available on this request. Do not invent tools, promise capability you cannot verify, or claim that an unavailable tool is loaded.
-
-Full descriptions live in \`docs/aao/addie-tools.mdx\` — use \`search_docs\` with "addie tools" or \`get_doc\` on that page when you need usage detail.`;
+This catalog is the source of truth for custom tools available on this request. Tool names mentioned elsewhere in policy or examples are not callable unless they appear here. Do not invent tools, call an unlisted tool, promise capability you cannot verify, or claim that an unavailable tool is loaded.`;
 
 function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
   const registered = new Set<string>(ADDIE_TOOL_NAMES);
@@ -592,7 +590,16 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
       .filter(set => set.routerVisible !== false && set.tools.some(name => available.has(name)))
       .map(set => set.name);
   const displayed = new Set<string>();
-  const lines = [TOOL_CATALOG_HEADER, '', '### Capability sets', ''];
+  const catalogGuidance = available.has('search_docs') && available.has('get_doc')
+    ? 'Full descriptions live in `docs/aao/addie-tools.mdx` — use `search_docs` with "addie tools" or `get_doc` on that page when you need usage detail.'
+    : '';
+  const lines = [
+    TOOL_CATALOG_HEADER,
+    ...(catalogGuidance ? ['', catalogGuidance] : []),
+    '',
+    '### Capability sets',
+    '',
+  ];
 
   for (const name of selectedNames) {
     const set = TOOL_SETS[name];

@@ -75,6 +75,20 @@ describe('formatMemberContextForPrompt', () => {
     expect(result).toBeNull();
   });
 
+  it('defers anonymous web tool names to the request-scoped catalog', () => {
+    const context: MemberContext = {
+      is_mapped: false,
+      is_member: false,
+      slack_linked: false,
+    };
+
+    const result = formatMemberContextForPrompt(context, 'web');
+    expect(result).toContain('authoritative request-scoped catalog');
+    expect(result).toContain('Use only the tool names shown there');
+    expect(result).not.toContain('`get_schema`');
+    expect(result).not.toContain('everything in ALWAYS_AVAILABLE');
+  });
+
   it('should include user name from workos_user', () => {
     const context: MemberContext = {
       is_mapped: true,
