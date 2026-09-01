@@ -2,7 +2,27 @@
  * Types for Addie - AAO's Community Agent
  */
 
-import type { ModelExecution } from './model-providers/model-provider.js';
+import type { ModelExecution, ModelUsage } from './model-providers/model-provider.js';
+
+/** Translate the stable delivery response shape back to canonical model usage. */
+export function toInteractionModelUsage(usage: {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+} | undefined): ModelUsage | null {
+  if (!usage) return null;
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    ...(usage.cache_creation_input_tokens !== undefined && {
+      cacheWriteTokens: usage.cache_creation_input_tokens,
+    }),
+    ...(usage.cache_read_input_tokens !== undefined && {
+      cacheReadTokens: usage.cache_read_input_tokens,
+    }),
+  };
+}
 
 /**
  * Slack Assistant thread started event
@@ -82,6 +102,8 @@ export interface AddieInteractionLog {
   tools_used: string[];
   model: string;
   model_execution?: ModelExecution;
+  /** Null means no provider usage was available; zero is a measured value. */
+  usage: ModelUsage | null;
   latency_ms: number;
   delivery_status?: 'delivered' | 'failed';
   flagged: boolean;

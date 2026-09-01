@@ -157,7 +157,7 @@ const STREAM_SOFT_CAP = (() => {
 const STREAM_CONTINUATION_TAIL = '\n\n_(continued in next message ↓)_';
 const STREAM_CONTINUATION_HEAD = '_(continued from above ↑)_\n\n';
 import type { RequestTools } from './claude-client.js';
-import type { SuggestedPrompt } from './types.js';
+import { toInteractionModelUsage, type SuggestedPrompt } from './types.js';
 import { DatabaseThreadContextStore } from './thread-context-store.js';
 import { getThreadService, type ThreadContext } from './thread-service.js';
 import {
@@ -2295,6 +2295,7 @@ async function handleUserMessage({
         requested_model: dmEffectiveModel,
         reason: 'stream_interrupted',
       },
+      usage: null,
       latency_ms: Date.now() - startTime,
       flagged: true,
       flag_reason: `stream_interrupted:${streamInterruptCategory}`,
@@ -2400,6 +2401,7 @@ async function handleUserMessage({
     tools_used: response.tools_used,
     model: dmEffectiveModel,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -2800,6 +2802,7 @@ async function handleAppMention({
     tools_used: response.tools_used,
     model: mentionEffectiveModel,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,
@@ -4136,6 +4139,7 @@ async function handleDirectMessage(
     tools_used: response.tools_used,
     model: directMessageEffectiveModel,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     delivery_status: delivery.delivered ? 'delivered' : 'failed',
     flagged: userMessageFlagged || assistantFlagged || !delivery.delivered,
@@ -4516,6 +4520,7 @@ async function handleActiveThreadReply({
     tools_used: response.tools_used,
     model: activeThreadEffectiveModel,
     model_execution: response.model_execution,
+    usage: toInteractionModelUsage(response.usage),
     latency_ms: Date.now() - startTime,
     flagged: userMessageFlagged || assistantFlagged,
     flag_reason: [inputValidation.reason, flagReason].filter(Boolean).join('; ') || undefined,

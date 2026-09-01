@@ -25,6 +25,10 @@ interface AddieInteractionRow {
   provider_model_resolution: 'exact' | 'provider_canonicalized' | 'fallback' | null;
   provider_fallback_reason: string | null;
   local_response_reason: string | null;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  tokens_cache_creation: number | null;
+  tokens_cache_read: number | null;
   latency_ms: number;
   flagged: boolean;
   flag_reason: string | null;
@@ -996,14 +1000,18 @@ export class AddieDatabase {
    * Log an interaction
    */
   async logInteraction(log: CreateAddieInteractionLog, knowledgeIds?: number[]): Promise<void> {
+    if (log.model_execution.source === 'provider' && log.usage === null) {
+      throw new Error('Provider interaction requires normalized usage');
+    }
     await query(
       `INSERT INTO addie_interactions (
         id, event_type, channel_id, thread_ts, user_id,
         input_text, input_sanitized, output_text,
         tools_used, knowledge_ids, model, model_execution_source, requested_model_provider, requested_model,
         model_provider, provider_model, provider_model_resolution, provider_fallback_reason, local_response_reason,
+        tokens_input, tokens_output, tokens_cache_creation, tokens_cache_read,
         latency_ms, flagged, flag_reason
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`,
       [
         log.id,
         log.event_type,
@@ -1024,6 +1032,10 @@ export class AddieDatabase {
         log.model_execution?.source === 'provider' ? log.model_execution.model_resolution : null,
         log.model_execution?.source === 'provider' ? log.model_execution.fallback_reason : null,
         log.model_execution?.source === 'local' ? log.model_execution.reason : null,
+        log.usage?.inputTokens ?? null,
+        log.usage?.outputTokens ?? null,
+        log.usage?.cacheWriteTokens ?? null,
+        log.usage?.cacheReadTokens ?? null,
         log.latency_ms,
         log.flagged,
         log.flag_reason || null,
@@ -1115,6 +1127,18 @@ export class AddieDatabase {
                 reason: row.local_response_reason as Extract<NonNullable<AddieInteractionLog['model_execution']>, { source: 'local' }>['reason'],
               }
             : undefined,
+      usage: row.tokens_input !== null && row.tokens_output !== null
+        ? {
+            inputTokens: row.tokens_input,
+            outputTokens: row.tokens_output,
+            ...(row.tokens_cache_creation !== null && {
+              cacheWriteTokens: row.tokens_cache_creation,
+            }),
+            ...(row.tokens_cache_read !== null && {
+              cacheReadTokens: row.tokens_cache_read,
+            }),
+          }
+        : null,
       latency_ms: row.latency_ms,
       flagged: row.flagged,
       flag_reason: row.flag_reason ?? undefined,

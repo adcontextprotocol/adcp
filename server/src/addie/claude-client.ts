@@ -640,7 +640,7 @@ export interface AddieResponse {
     total_tool_execution_ms: number;
     iterations: number;
   };
-  /** Token usage from Claude API */
+  /** Provider-normalized token and cache usage for this delivered turn. */
   usage?: {
     input_tokens: number;
     output_tokens: number;

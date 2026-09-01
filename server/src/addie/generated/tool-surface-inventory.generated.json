@@ -12,13 +12,13 @@
     "note": "Directional consolidation target; current exact baselines remain the enforced no-growth ceilings."
   },
   "registration_source_sha256": {
-    "server/src/addie/claude-client.ts": "fd6d1e1562c8249760bf741d21751520b332e600ec1f592d84c9162b805bf5c7",
+    "server/src/addie/claude-client.ts": "bf5cb67c4758273aea1674b88e1b8b765724d90d807ba1ab587892b9a72e03a9",
     "server/src/addie/prompts.ts": "27be3d63dfaa3c0335f1ec2213c0ee81369e705f056a341f9bc25fd8800191e9",
     "server/src/addie/tool-wire-shape.ts": "4c5bcb95c32164b153c0f9d36648ea9f885e1df05e9796fdd71684c56162a81e",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
-    "server/src/addie/bolt-app.ts": "60baa3c324eeb2600187b38bdf8dbda46dcade25eb68bf65a2c0a643c67b7a1b",
-    "server/src/addie/handler.ts": "cf9d66b7b2700cefd2811d2d9c627ea2683c556e6c3afd36ecc99cac12aa5407",
+    "server/src/addie/bolt-app.ts": "03eb87d6def523062bbdd790fa82a20314a9fb2d5d03672149e9d80820e15b8e",
+    "server/src/addie/handler.ts": "9df4a97138442abf71faf66b53d40ff433b2ac4580e2cebb899cdfe40bd67a84",
     "server/src/routes/addie-chat.ts": "7f5045189cb2cdff22a5e61cb4a0eeba1adcaf5828d97fce0f4024fcad6161f7",
     "server/src/routes/tavus.ts": "640e818f0ecd4da6c72f310b7582f7bc1f2c00fd77dbe0dc521f53459e31003f",
     "server/src/addie/email-conversation-handler.ts": "091feb8569d9d254351c2c37b11747e34d3e5f6777bc362e5de750c05568a4a5",
