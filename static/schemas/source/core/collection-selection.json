@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/collection-selection.json",
   "title": "Collection Selection",
-  "description": "Complete purchased collection set within a product. Mode selected names the complete required set (partial selection requires product collection_targeting_allowed: true; exactly restating the full bundle is an inherent match); mode default accepts the product's full bundle. Package readback MUST echo the committed selection here as concrete selectors, materializing any collection_list composition. Sellers reject unknown, duplicate, or partially applicable selectors rather than silently changing the selection.",
+  "description": "Complete purchased collection set within a product. Mode selected names the complete required set (partial selection requires product collection_targeting_allowed: true; exactly restating the full bundle is an inherent match); mode default accepts the product's full bundle. Package readback MUST echo the committed selection here as concrete selectors, materializing any collection_list composition; a purchase made with mode default therefore reads back as mode selected naming the product's complete bundle. Rejection of a schema-valid selector that references an unknown collection_id or publisher_domain uses REFERENCE_NOT_FOUND per the error-code registry (INVALID_REQUEST applies only to schema-invalid shapes such as a selected-mode item omitting collection_ids). Sellers reject unknown, duplicate, or partially applicable selectors rather than silently changing the selection.",
   "type": "object",
   "discriminator": {
     "propertyName": "mode"
@@ -21,8 +21,14 @@
           "description": "Complete required collection set as domain-qualified selectors with explicit collection_ids; the domain-only bulk-grant form is authorization scoping, not selection. publisher_domain may be an external channel owner's domain.",
           "items": {
             "allOf": [
-              { "$ref": "/schemas/core/collection-selector.json" },
-              { "required": ["collection_ids"] }
+              {
+                "$ref": "/schemas/core/collection-selector.json"
+              },
+              {
+                "required": [
+                  "collection_ids"
+                ]
+              }
             ]
           },
           "minItems": 1,
@@ -32,7 +38,10 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["mode", "collections"],
+      "required": [
+        "mode",
+        "collections"
+      ],
       "additionalProperties": false
     },
     {
@@ -47,7 +56,9 @@
           "$ref": "/schemas/core/ext.json"
         }
       },
-      "required": ["mode"],
+      "required": [
+        "mode"
+      ],
       "additionalProperties": false
     }
   ]

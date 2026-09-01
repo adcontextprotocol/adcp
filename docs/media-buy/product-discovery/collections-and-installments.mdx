@@ -1131,7 +1131,10 @@ On package readback, `collection_selection` is also the audit surface: sellers
 MUST echo the committed collection selection there as concrete selectors —
 including the materialized result of any `collection_list` composition — so a
 buyer can verify what content programming a package runs against without
-re-resolving mutable lists or re-fetching the product catalog. For a channel
+re-resolving mutable lists or re-fetching the product catalog. A purchase made
+with `mode: "default"` therefore reads back as `mode: "selected"` naming the
+product's complete bundle; the `default` branch carries no selectors and
+cannot satisfy the echo. For a channel
 buy this is the readback of the one axis that makes the product distinct: the
 channel itself.
 
