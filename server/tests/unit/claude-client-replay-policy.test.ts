@@ -85,6 +85,7 @@ import type {
   ModelRespondOptions,
   NormalizedModelEvent,
   PreparedModelInvocation,
+  PreparedRequestDiagnosticComponents,
 } from '../../src/addie/model-providers/model-provider.js';
 
 const usage = { input_tokens: 3, output_tokens: 2 };
@@ -140,6 +141,7 @@ function invocationHmac(key: string, domain: string, value: string): string {
 function fakeProvider(
   id: ModelProviderId,
   responseText: string,
+  diagnosticComponents?: PreparedRequestDiagnosticComponents,
 ): ModelProvider & {
   prepare: ReturnType<typeof vi.fn<(request: ModelRequest) => PreparedModelInvocation>>;
   respond: ReturnType<typeof vi.fn<(
@@ -168,6 +170,7 @@ function fakeProvider(
       tools: request.tools,
       maxOutputTokens: request.maxOutputTokens,
     }),
+    ...(diagnosticComponents && { diagnosticComponents }),
   }));
   const respond = vi.fn((request: ModelRequest, options?: ModelRespondOptions) => (async function* () {
     const prepared = prepare(request);
@@ -454,6 +457,57 @@ describe('AddieClaudeClient isolated execution policy', () => {
       JSON.stringify((captured.tools as Array<Record<string, unknown>>)[0]),
     );
     expect(snapshots[0].tool_schemas[0].sha256).toBe(expectedFirstToolHash);
+  });
+
+  it('uses adapter-provided diagnostic components without provider-specific branching', () => {
+    const diagnosticComponents = {
+      systemBlocks: [{ vendorSystem: 'translated system' }],
+      toolSchemas: [{
+        name: 'translated_tool',
+        payload: { vendorTool: 'translated schema' },
+      }],
+      messagePayloads: [{ vendorMessage: 'translated message' }],
+    } satisfies PreparedRequestDiagnosticComponents;
+    const provider = fakeProvider('google', 'unused', diagnosticComponents);
+    const client = new AddieClaudeClient(
+      'unused',
+      'gemini-test',
+      undefined,
+      { provider },
+    );
+    const options = {
+      executionMode: 'shadow' as const,
+      disableServerTools: true,
+      invocationHashKey: 'neutral-diagnostic-key',
+      invocationHashDomain: 'neutral-diagnostic-domain:v1',
+    };
+
+    const prepared = client.prepareMessageInvocation(
+      'canonical message',
+      undefined,
+      undefined,
+      { systemPrompt: 'canonical system' },
+      options,
+    );
+
+    const expectedHash = (value: unknown) => invocationHmac(
+      options.invocationHashKey,
+      options.invocationHashDomain,
+      JSON.stringify(value),
+    );
+    expect(prepared.system_blocks).toEqual([{
+      index: 0,
+      sha256: expectedHash(diagnosticComponents.systemBlocks[0]),
+    }]);
+    expect(prepared.tool_schemas).toEqual([{
+      index: 0,
+      name: 'translated_tool',
+      sha256: expectedHash(diagnosticComponents.toolSchemas[0].payload),
+    }]);
+    expect(prepared.message_payloads).toEqual([{
+      index: 0,
+      sha256: expectedHash(diagnosticComponents.messagePayloads[0]),
+    }]);
   });
 
   it('prepares the exact first non-streaming snapshot without calling the SDK', async () => {

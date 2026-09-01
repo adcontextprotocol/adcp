@@ -600,6 +600,14 @@ export class AnthropicModelProvider implements ModelProvider {
       messages: toAnthropicMessages(request.messages),
       betas: ['web-search-2025-03-05'],
     } satisfies AnthropicRequest));
+    const diagnosticComponents = deepFreeze({
+      systemBlocks: providerRequest.system,
+      toolSchemas: providerRequest.tools.map((tool, index) => ({
+        name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
+        payload: tool,
+      })),
+      messagePayloads: providerRequest.messages,
+    });
 
     return {
       provider: 'anthropic',
@@ -607,6 +615,7 @@ export class AnthropicModelProvider implements ModelProvider {
       capabilities: this.capabilities,
       requestMetadata: request.requestMetadata,
       providerRequest,
+      diagnosticComponents,
     };
   }
 
