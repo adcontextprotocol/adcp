@@ -46,7 +46,9 @@ export function buildDecisionGates(summary: Summary): {
   const eligible = numeric(summary, 'eligible_agents');
   const assessed = numeric(summary, 'assessed_agents');
   const coverage = calculateCoveragePercent(eligible, assessed);
-  const stableTwoRuns = numeric(summary, 'agents_with_stable_two_or_more_runs');
+  const requiredWindowHours = numeric(summary, 'window_hours');
+  const observedWindowHours = numeric(summary, 'policy_observation_age_hours');
+  const stableTwoRuns = numeric(summary, 'agents_with_stable_two_or_more_decision_ready_runs');
   const stableRepeatCoverage = calculateCoveragePercent(eligible, stableTwoRuns);
   const flapping = numeric(summary, 'flapping_agents');
   const incompleteRuns = numeric(summary, 'incomplete_latest_runs');
@@ -55,6 +57,11 @@ export function buildDecisionGates(summary: Summary): {
   const unattributedFailures = numeric(summary, 'unattributed_failures');
 
   const gates = {
+    minimum_observation_window: {
+      pass: requiredWindowHours > 0 && observedWindowHours >= requiredWindowHours,
+      actual_hours: Math.round(observedWindowHours * 100) / 100,
+      minimum_hours: requiredWindowHours,
+    },
     coverage: { pass: eligible > 0 && coverage >= 95, actual_percent: coverage, minimum_percent: 95 },
     stable_repeat_observations: {
       pass: eligible > 0 && stableRepeatCoverage >= 95 && flapping === 0,
@@ -92,6 +99,9 @@ export function buildDecisionGates(summary: Summary): {
   if (numeric(summary, 'ambiguous_mixed_phases') > 0) {
     manualReviewReasons.push('ambiguous_mixed_controller_failure_phases');
   }
+  if (numeric(summary, 'evidence_drift_agents') > 0) {
+    manualReviewReasons.push('evidence_changed_between_runs');
+  }
   if (numeric(summary, 'failing_bundles') > 0 || numeric(summary, 'incomplete_bundles') > 0) {
     manualReviewReasons.push('candidate_nonpassing_bundles');
   }
@@ -115,8 +125,13 @@ function agentReasons(agent: Record<string, unknown>): {
   blocking_reasons: string[];
   review_reasons: string[];
 } {
+  if (agent.evaluated_at == null) {
+    return { blocking_reasons: ['not_assessed'], review_reasons: [] };
+  }
   const blocking: string[] = [];
-  if (numeric(agent, 'run_count') < 2) blocking.push('fewer_than_two_runs');
+  if (numeric(agent, 'decision_ready_run_count') < 2) {
+    blocking.push('fewer_than_two_decision_ready_runs');
+  }
   if (numeric(agent, 'transition_count') > 0) blocking.push('candidate_outcome_flapping');
   if (agent.run_complete !== true) blocking.push('latest_run_incomplete');
   if (agent.bundle_evidence_present !== true) blocking.push('bundle_evidence_missing');
@@ -131,6 +146,9 @@ function agentReasons(agent: Record<string, unknown>): {
   }
   if (numeric(agent, 'mixed_controller_failure_phase_count') > 0) {
     review.push('ambiguous_mixed_controller_failure_phases');
+  }
+  if (numeric(agent, 'evidence_transition_count') > 0) {
+    review.push('evidence_changed_between_runs');
   }
   if (numeric(agent, 'failing_bundle_count') > 0 || numeric(agent, 'incomplete_bundle_count') > 0) {
     review.push('candidate_nonpassing_bundles');
@@ -151,14 +169,18 @@ function agentReasons(agent: Record<string, unknown>): {
   return { blocking_reasons: blocking, review_reasons: review };
 }
 
-export async function runAudit(args: string[]): Promise<Record<string, unknown>> {
+export async function runAudit(
+  args: string[],
+  poolOverride?: Pick<ReturnType<typeof getPool>, 'query'>,
+): Promise<Record<string, unknown>> {
   const hours = parseHours(args);
   const includeAgents = args.includes('--include-agents');
-  const dbConfig = getDatabaseConfig();
-  if (!dbConfig) throw new Error('DATABASE_URL is required');
-
-  initializeDatabase(dbConfig);
-  const pool = getPool();
+  if (!poolOverride) {
+    const dbConfig = getDatabaseConfig();
+    if (!dbConfig) throw new Error('DATABASE_URL is required');
+    initializeDatabase(dbConfig);
+  }
+  const pool = poolOverride ?? getPool();
   const aggregate = await pool.query(
     `WITH known_agents AS (
        SELECT agent_url FROM discovered_agents
@@ -178,43 +200,88 @@ export async function runAudit(args: string[]): Promise<Record<string, unknown>>
          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
          AND COALESCE(m.monitoring_paused, FALSE) = FALSE
      ),
+     policy_history AS (
+       SELECT MIN(s.evaluated_at) AS observation_started_at
+       FROM verification_profile_shadow_assessments s
+       JOIN eligible e ON e.agent_url = s.agent_url
+         AND e.lifecycle_stage = s.lifecycle_stage
+       WHERE s.policy_version = $1
+     ),
      windowed AS (
        SELECT s.*,
               ROW_NUMBER() OVER (PARTITION BY s.agent_url ORDER BY s.evaluated_at DESC, s.id DESC) AS recency,
               jsonb_build_array(
                 s.adcp_version, s.proposed_spec_status, s.proposed_sandbox_status,
-                s.recommended_profile, s.run_complete, s.bundle_evidence_present,
+                s.recommended_profile
+              ) AS outcome_fingerprint,
+              jsonb_build_array(
+                s.run_complete, s.bundle_evidence_present,
                 s.failing_bundle_count, s.incomplete_bundle_count,
-                s.sandbox_unresolved_bundle_count, s.unattributed_failure_count
-              ) AS outcome_fingerprint
+                s.sandbox_unresolved_bundle_count, s.unattributed_failure_count,
+                s.selected_storyboard_count, s.applicable_phase_count,
+                s.controller_gap_phase_count, s.controller_gap_step_count,
+                s.controller_cascade_step_count, s.observed_failure_count,
+                s.sandbox_observable_failure_count, s.non_controller_gap_step_count,
+                s.controller_missing_storyboard_count, s.other_missing_storyboard_count,
+                s.mixed_controller_failure_phase_count
+              ) AS evidence_fingerprint,
+              (
+                s.run_complete
+                AND s.bundle_evidence_present
+                AND s.unattributed_failure_count = 0
+                AND (NOT s.sandbox_eligible OR s.sandbox_unresolved_bundle_count = 0)
+              ) AS decision_ready
        FROM verification_profile_shadow_assessments s
        JOIN eligible e ON e.agent_url = s.agent_url
          AND e.lifecycle_stage = s.lifecycle_stage
        WHERE s.policy_version = $1
          AND s.evaluated_at >= NOW() - make_interval(hours => $2)
      ),
-     ordered AS (
+     evidence_ordered AS (
+       SELECT w.*,
+              LAG(evidence_fingerprint) OVER (
+                PARTITION BY agent_url ORDER BY evaluated_at, id
+              ) AS previous_evidence_fingerprint
+       FROM windowed w
+     ),
+     decision_ready_ordered AS (
        SELECT w.*,
               LAG(outcome_fingerprint) OVER (
                 PARTITION BY agent_url ORDER BY evaluated_at, id
               ) AS previous_outcome_fingerprint
        FROM windowed w
+       WHERE decision_ready
      ),
      stability AS (
        SELECT agent_url,
               COUNT(*)::int AS run_count,
+              COUNT(DISTINCT evidence_fingerprint)::int AS evidence_variant_count,
+              COUNT(*) FILTER (
+                WHERE previous_evidence_fingerprint IS NOT NULL
+                  AND previous_evidence_fingerprint IS DISTINCT FROM evidence_fingerprint
+              )::int AS evidence_transition_count
+       FROM evidence_ordered
+       GROUP BY agent_url
+     ),
+     decision_ready_stability AS (
+       SELECT agent_url,
+              COUNT(*)::int AS decision_ready_run_count,
               COUNT(DISTINCT outcome_fingerprint)::int AS outcome_variant_count,
               COUNT(*) FILTER (
                 WHERE previous_outcome_fingerprint IS NOT NULL
                   AND previous_outcome_fingerprint IS DISTINCT FROM outcome_fingerprint
               )::int AS transition_count
-       FROM ordered
+       FROM decision_ready_ordered
        GROUP BY agent_url
      ),
      latest AS (
-       SELECT w.*, s.run_count, s.outcome_variant_count, s.transition_count
-       FROM ordered w
+       SELECT w.*, s.run_count, s.evidence_variant_count, s.evidence_transition_count,
+              COALESCE(d.decision_ready_run_count, 0) AS decision_ready_run_count,
+              COALESCE(d.outcome_variant_count, 0) AS outcome_variant_count,
+              COALESCE(d.transition_count, 0) AS transition_count
+       FROM evidence_ordered w
        JOIN stability s USING (agent_url)
+       LEFT JOIN decision_ready_stability d USING (agent_url)
        WHERE w.recency = 1
      ),
      badge_impact AS (
@@ -249,13 +316,23 @@ export async function runAudit(args: string[]): Promise<Record<string, unknown>>
      SELECT
        $1::text AS policy_version,
        $2::int AS window_hours,
+       ph.observation_started_at AS policy_observation_started_at,
+       COALESCE(
+         EXTRACT(EPOCH FROM (NOW() - ph.observation_started_at)) / 3600.0,
+         0
+       )::double precision AS policy_observation_age_hours,
        COUNT(e.agent_url)::int AS eligible_agents,
        COUNT(l.agent_url)::int AS assessed_agents,
        COUNT(*) FILTER (WHERE l.run_count >= 2)::int AS agents_with_two_or_more_runs,
-       COUNT(*) FILTER (WHERE l.run_count >= 2 AND l.outcome_variant_count = 1)::int
-         AS agents_with_stable_two_or_more_runs,
+       COUNT(*) FILTER (WHERE l.decision_ready_run_count >= 2)::int
+         AS agents_with_two_or_more_decision_ready_runs,
+       COUNT(*) FILTER (
+         WHERE l.decision_ready_run_count >= 2 AND l.outcome_variant_count = 1
+       )::int AS agents_with_stable_two_or_more_decision_ready_runs,
        COUNT(*) FILTER (WHERE l.transition_count > 0)::int AS flapping_agents,
        COALESCE(SUM(l.transition_count), 0)::int AS candidate_outcome_transitions,
+       COUNT(*) FILTER (WHERE l.evidence_transition_count > 0)::int AS evidence_drift_agents,
+       COALESCE(SUM(l.evidence_transition_count), 0)::int AS evidence_transitions,
        COUNT(*) FILTER (WHERE l.current_public_status = 'passing' AND l.proposed_spec_status <> 'passing')::int
          AS public_passing_not_spec_passing,
        COUNT(*) FILTER (WHERE l.current_public_status <> 'passing' AND l.proposed_sandbox_status = 'passing')::int
@@ -285,11 +362,13 @@ export async function runAudit(args: string[]): Promise<Record<string, unknown>>
        lb.carrying_multiple_modes AS legacy_badges_carrying_multiple_modes,
        lb.active_on_unmonitored_lifecycle AS legacy_badges_active_on_unmonitored_lifecycle
      FROM (SELECT 1) anchor
+     CROSS JOIN policy_history ph
      CROSS JOIN badge_impact bi
      CROSS JOIN legacy_badges lb
      LEFT JOIN eligible e ON TRUE
      LEFT JOIN latest l ON l.agent_url = e.agent_url
-     GROUP BY bi.active_badges_not_spec_passing, bi.active_badges_not_sandbox_passing,
+     GROUP BY ph.observation_started_at,
+              bi.active_badges_not_spec_passing, bi.active_badges_not_sandbox_passing,
               lb.active_or_degraded, lb.carrying_retired_live,
               lb.carrying_multiple_modes, lb.active_on_unmonitored_lifecycle`,
     [VERIFICATION_PROFILE_SHADOW_POLICY_VERSION, hours],
@@ -330,32 +409,66 @@ export async function runAudit(args: string[]): Promise<Record<string, unknown>>
                 ROW_NUMBER() OVER (PARTITION BY s.agent_url ORDER BY s.evaluated_at DESC, s.id DESC) AS recency,
                 jsonb_build_array(
                   s.adcp_version, s.proposed_spec_status, s.proposed_sandbox_status,
-                  s.recommended_profile, s.run_complete, s.bundle_evidence_present,
+                  s.recommended_profile
+                ) AS outcome_fingerprint,
+                jsonb_build_array(
+                  s.run_complete, s.bundle_evidence_present,
                   s.failing_bundle_count, s.incomplete_bundle_count,
-                  s.sandbox_unresolved_bundle_count, s.unattributed_failure_count
-                ) AS outcome_fingerprint
+                  s.sandbox_unresolved_bundle_count, s.unattributed_failure_count,
+                  s.selected_storyboard_count, s.applicable_phase_count,
+                  s.controller_gap_phase_count, s.controller_gap_step_count,
+                  s.controller_cascade_step_count, s.observed_failure_count,
+                  s.sandbox_observable_failure_count, s.non_controller_gap_step_count,
+                  s.controller_missing_storyboard_count, s.other_missing_storyboard_count,
+                  s.mixed_controller_failure_phase_count
+                ) AS evidence_fingerprint,
+                (
+                  s.run_complete
+                  AND s.bundle_evidence_present
+                  AND s.unattributed_failure_count = 0
+                  AND (NOT s.sandbox_eligible OR s.sandbox_unresolved_bundle_count = 0)
+                ) AS decision_ready
          FROM verification_profile_shadow_assessments s
          JOIN eligible e ON e.agent_url = s.agent_url
            AND e.lifecycle_stage = s.lifecycle_stage
          WHERE s.policy_version = $1
            AND s.evaluated_at >= NOW() - make_interval(hours => $2)
        ),
-       ordered AS (
+       evidence_ordered AS (
+         SELECT r.*,
+                LAG(evidence_fingerprint) OVER (
+                  PARTITION BY agent_url ORDER BY evaluated_at, id
+                ) AS previous_evidence_fingerprint
+         FROM ranked r
+       ),
+       decision_ready_ordered AS (
          SELECT r.*,
                 LAG(outcome_fingerprint) OVER (
                   PARTITION BY agent_url ORDER BY evaluated_at, id
                 ) AS previous_outcome_fingerprint
          FROM ranked r
+         WHERE decision_ready
        ),
        stability AS (
          SELECT agent_url,
                 COUNT(*)::int AS run_count,
+                COUNT(DISTINCT evidence_fingerprint)::int AS evidence_variant_count,
+                COUNT(*) FILTER (
+                  WHERE previous_evidence_fingerprint IS NOT NULL
+                    AND previous_evidence_fingerprint IS DISTINCT FROM evidence_fingerprint
+                )::int AS evidence_transition_count
+         FROM evidence_ordered
+         GROUP BY agent_url
+       ),
+       decision_ready_stability AS (
+         SELECT agent_url,
+                COUNT(*)::int AS decision_ready_run_count,
                 COUNT(DISTINCT outcome_fingerprint)::int AS outcome_variant_count,
                 COUNT(*) FILTER (
                   WHERE previous_outcome_fingerprint IS NOT NULL
                     AND previous_outcome_fingerprint IS DISTINCT FROM outcome_fingerprint
                 )::int AS transition_count
-         FROM ordered
+         FROM decision_ready_ordered
          GROUP BY agent_url
        )
        SELECT e.agent_url, e.lifecycle_stage, r.adcp_version, r.current_public_status,
@@ -364,14 +477,19 @@ export async function runAudit(args: string[]): Promise<Record<string, unknown>>
               r.run_complete, r.bundle_evidence_present, r.failing_bundle_count,
               r.incomplete_bundle_count, r.sandbox_unresolved_bundle_count,
               r.unattributed_failure_count,
-              s.run_count, s.outcome_variant_count, s.transition_count,
+              s.run_count,
+              COALESCE(d.decision_ready_run_count, 0) AS decision_ready_run_count,
+              COALESCE(d.outcome_variant_count, 0) AS outcome_variant_count,
+              COALESCE(d.transition_count, 0) AS transition_count,
+              s.evidence_variant_count, s.evidence_transition_count,
               r.controller_gap_phase_count,
               r.controller_missing_storyboard_count, r.other_missing_storyboard_count,
               r.mixed_controller_failure_phase_count, r.evaluated_at,
               COALESCE(badges.active_badges, '[]'::jsonb) AS active_badges
        FROM eligible e
-       LEFT JOIN ordered r ON r.agent_url = e.agent_url AND r.recency = 1
+       LEFT JOIN evidence_ordered r ON r.agent_url = e.agent_url AND r.recency = 1
        LEFT JOIN stability s ON s.agent_url = e.agent_url
+       LEFT JOIN decision_ready_stability d ON d.agent_url = e.agent_url
        LEFT JOIN LATERAL (
          SELECT jsonb_agg(
            jsonb_build_object(

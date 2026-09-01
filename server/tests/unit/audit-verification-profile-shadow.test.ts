@@ -34,13 +34,16 @@ describe('verification profile shadow audit', () => {
     const decision = buildDecisionGates({
       eligible_agents: 4,
       assessed_agents: 4,
-      agents_with_stable_two_or_more_runs: 3,
+      window_hours: 48,
+      policy_observation_age_hours: 48,
+      agents_with_stable_two_or_more_decision_ready_runs: 3,
       flapping_agents: 1,
       incomplete_latest_runs: 0,
       latest_runs_missing_bundle_evidence: 0,
       failing_bundles: 0,
       incomplete_bundles: 0,
       unattributed_failures: 2,
+      evidence_drift_agents: 1,
       public_passing_not_spec_passing: 1,
       active_badges_not_spec_passing: 1,
     });
@@ -53,6 +56,7 @@ describe('verification profile shadow audit', () => {
     expect(decision.manual_review_reasons).toEqual([
       'public_passing_not_spec_passing',
       'affected_active_or_degraded_badges',
+      'evidence_changed_between_runs',
     ]);
   });
 
@@ -60,7 +64,9 @@ describe('verification profile shadow audit', () => {
     const decision = buildDecisionGates({
       eligible_agents: 20,
       assessed_agents: 19,
-      agents_with_stable_two_or_more_runs: 19,
+      window_hours: 48,
+      policy_observation_age_hours: 49,
+      agents_with_stable_two_or_more_decision_ready_runs: 19,
       flapping_agents: 0,
     });
 
@@ -73,7 +79,9 @@ describe('verification profile shadow audit', () => {
     const decision = buildDecisionGates({
       eligible_agents: 1,
       assessed_agents: 1,
-      agents_with_stable_two_or_more_runs: 1,
+      window_hours: 48,
+      policy_observation_age_hours: 48,
+      agents_with_stable_two_or_more_decision_ready_runs: 1,
       flapping_agents: 0,
       incomplete_bundles: 4,
       sandbox_unresolved_bundles: 1,
@@ -88,7 +96,9 @@ describe('verification profile shadow audit', () => {
       rows: [{
         eligible_agents: 1,
         assessed_agents: 2,
-        agents_with_stable_two_or_more_runs: 1,
+        window_hours: 48,
+        policy_observation_age_hours: 48,
+        agents_with_stable_two_or_more_decision_ready_runs: 1,
         flapping_agents: 0,
       }],
     });
@@ -109,10 +119,13 @@ describe('verification profile shadow audit', () => {
       .mockResolvedValueOnce({
         rows: [{
           agent_url: 'https://seller.example.test/mcp',
+          evaluated_at: '2026-09-01T12:00:00.000Z',
           sandbox_eligible: true,
           run_count: 2,
+          decision_ready_run_count: 2,
           outcome_variant_count: 2,
           transition_count: 1,
+          evidence_transition_count: 1,
           run_complete: true,
           bundle_evidence_present: true,
           failing_bundle_count: 0,
@@ -129,11 +142,14 @@ describe('verification profile shadow audit', () => {
           }],
         }, {
           agent_url: 'https://testing.example.test/mcp',
+          evaluated_at: '2026-09-01T12:00:00.000Z',
           lifecycle_stage: 'testing',
           sandbox_eligible: false,
           run_count: 2,
+          decision_ready_run_count: 2,
           outcome_variant_count: 1,
           transition_count: 0,
+          evidence_transition_count: 0,
           run_complete: true,
           bundle_evidence_present: true,
           failing_bundle_count: 0,
@@ -168,6 +184,7 @@ describe('verification profile shadow audit', () => {
     expect(agents[0].blocking_reasons).toEqual(['candidate_outcome_flapping']);
     expect(agents[0].review_reasons).toEqual([
       'public_passing_not_spec_passing',
+      'evidence_changed_between_runs',
       'active_or_degraded_badge_affected',
     ]);
     expect(agents[0].active_badges).toEqual([
@@ -182,5 +199,63 @@ describe('verification profile shadow audit', () => {
         reason_flags: ['retired_live_mode', 'multiple_modes'],
       }),
     ]);
+    expect(poolQueryMock.mock.calls[0][0]).toContain('AS evidence_fingerprint');
+    expect(poolQueryMock.mock.calls[0][0]).toContain('AS evidence_transition_count');
+    expect(poolQueryMock.mock.calls[0][0]).toContain('AS decision_ready_run_count');
+  });
+
+  it('labels an eligible endpoint without a shadow row as unassessed only', async () => {
+    poolQueryMock
+      .mockResolvedValueOnce({ rows: [{ eligible_agents: 1, assessed_agents: 0 }] })
+      .mockResolvedValueOnce({
+        rows: [{
+          agent_url: 'https://unassessed.example.test/mcp',
+          lifecycle_stage: 'production',
+          evaluated_at: null,
+          run_count: null,
+          run_complete: null,
+          bundle_evidence_present: null,
+          active_badges: [],
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const report = await runAudit(['--include-agents']);
+    const agents = report.agents as Array<Record<string, unknown>>;
+
+    expect(agents[0].blocking_reasons).toEqual(['not_assessed']);
+    expect(agents[0].review_reasons).toEqual([]);
+  });
+
+  it('requires two decision-ready observations even when raw candidate outcomes match', () => {
+    const decision = buildDecisionGates({
+      eligible_agents: 1,
+      assessed_agents: 1,
+      window_hours: 48,
+      policy_observation_age_hours: 48,
+      agents_with_stable_two_or_more_decision_ready_runs: 0,
+      flapping_agents: 0,
+      incomplete_latest_runs: 0,
+      latest_runs_missing_bundle_evidence: 0,
+      sandbox_unresolved_bundles: 0,
+      unattributed_failures: 0,
+    });
+
+    expect(decision.gates.stable_repeat_observations.pass).toBe(false);
+    expect(decision.blocking_reasons).toContain('stable_repeat_observations');
+  });
+
+  it('refuses a decision before the current policy has observed for the requested window', () => {
+    const decision = buildDecisionGates({
+      window_hours: 48,
+      policy_observation_age_hours: 12,
+      eligible_agents: 1,
+      assessed_agents: 1,
+      agents_with_stable_two_or_more_decision_ready_runs: 1,
+      flapping_agents: 0,
+    });
+
+    expect(decision.gates.minimum_observation_window.pass).toBe(false);
+    expect(decision.blocking_reasons).toContain('minimum_observation_window');
   });
 });

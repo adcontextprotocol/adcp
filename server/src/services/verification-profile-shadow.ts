@@ -2,7 +2,7 @@ import type { ComplianceResult, Storyboard, TestStepResult } from '@adcp/sdk/tes
 import type { LifecycleStage, OverallRunStatus } from '../db/compliance-db.js';
 import { getStoryboardsForVersion } from './storyboards.js';
 
-export const VERIFICATION_PROFILE_SHADOW_POLICY_VERSION = 'verification-profiles-v1';
+export const VERIFICATION_PROFILE_SHADOW_POLICY_VERSION = 'verification-profiles-v2';
 
 export type ShadowCandidateStatus = 'passing' | 'partial' | 'failing';
 export type ShadowRecommendedProfile = 'spec' | 'sandbox' | null;
@@ -169,7 +169,6 @@ export function deriveVerificationProfileShadowAssessment(
   let controllerGapStepCount = 0;
   let controllerCascadeStepCount = 0;
   let observedFailureCount = 0;
-  let observedFailedStepCount = 0;
   let sandboxObservableFailureCount = 0;
   let nonControllerGapStepCount = 0;
   let mixedControllerFailurePhaseCount = 0;
@@ -190,7 +189,6 @@ export function deriveVerificationProfileShadowAssessment(
       const phaseFailedWithoutStep = phase.overall_passed === false && phaseFailures === 0 && !inferredControllerPhase;
       controllerGapStepCount += directGaps.length;
       controllerCascadeStepCount += cascades.length;
-      observedFailedStepCount += phaseFailures;
       observedFailureCount += phaseFailures + (phaseFailedWithoutStep ? 1 : 0);
       if (phaseFailedWithoutStep) unexplainedPhaseFailureCount++;
 
@@ -254,8 +252,18 @@ export function deriveVerificationProfileShadowAssessment(
   const sandboxIncompleteBundleCount = incompleteBundles.filter((bundle) =>
     !sandboxBundleCanProjectPassing(bundle.storyboard_ids ?? [])).length;
 
-  const detachedFailureCount = Math.max(0, (result.failures?.length ?? 0) - observedFailedStepCount);
-  const unattributedFailureCount = detachedFailureCount + unexplainedPhaseFailureCount;
+  const flatFailures = result.failures ?? [];
+  // The SDK's flat failure list may contain detached assertion failures in
+  // addition to ordinary failed steps. Those entries are still attributable
+  // when they carry their storyboard and step identity, so a count mismatch
+  // with the summarized track steps is not itself missing evidence. Keep every
+  // flat failure fail-closed for candidate grading below, and reserve the
+  // integrity metric for malformed entries or phase failures with no step.
+  const unattributedFlatFailureCount = flatFailures.filter((failure) =>
+    typeof failure.storyboard_id !== 'string' || failure.storyboard_id.trim().length === 0 ||
+    typeof failure.step_id !== 'string' || failure.step_id.trim().length === 0).length;
+  const unattributedFailureCount = unattributedFlatFailureCount + unexplainedPhaseFailureCount;
+  const hasFlatFailureEvidence = flatFailures.length > 0;
   const runComplete = result.completeness === 'complete';
   const currentPublicStatus = candidateStatus(publicOverallStatus);
   const controllerExplainsPublicGap = controllerGapPhaseCount > 0 || controllerOnlyMissing.size > 0;
@@ -263,7 +271,7 @@ export function deriveVerificationProfileShadowAssessment(
   let proposedSpecStatus: ShadowCandidateStatus;
   if (
     observedFailureCount > 0 ||
-    detachedFailureCount > 0 ||
+    hasFlatFailureEvidence ||
     failingBundles.length > 0 ||
     currentPublicStatus === 'failing'
   ) {
@@ -286,7 +294,7 @@ export function deriveVerificationProfileShadowAssessment(
   if (sandboxEligible) {
     if (
       sandboxObservableFailureCount > 0 ||
-      detachedFailureCount > 0 ||
+      hasFlatFailureEvidence ||
       sandboxFailingBundleCount > 0
     ) {
       proposedSandboxStatus = 'failing';

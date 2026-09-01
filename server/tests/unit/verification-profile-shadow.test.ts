@@ -83,6 +83,7 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment).toMatchObject({
+      policy_version: 'verification-profiles-v2',
       proposed_spec_status: 'partial',
       proposed_sandbox_status: 'partial',
       recommended_profile: null,
@@ -469,7 +470,7 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     expect(assessment.proposed_sandbox_status).toBe('partial');
   });
 
-  it('blocks detached failures not represented by track steps', () => {
+  it('blocks detached failures while treating their storyboard and step identity as attribution', () => {
     const result = resultWith([{
       scenario: 'media_buy_seller/observe',
       overall_passed: true,
@@ -482,6 +483,30 @@ describe('deriveVerificationProfileShadowAssessment', () => {
         step_title: 'Detached failure',
         task: 'get_products',
         error: 'failed outside the summarized track',
+        fix_command: 'storyboard run',
+      }],
+    });
+
+    const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
+
+    expect(assessment.unattributed_failure_count).toBe(0);
+    expect(assessment.proposed_spec_status).toBe('failing');
+    expect(assessment.proposed_sandbox_status).toBe('failing');
+  });
+
+  it('reports malformed flat failures as unattributed while remaining fail-closed', () => {
+    const result = resultWith([{
+      scenario: 'media_buy_seller/observe',
+      overall_passed: true,
+      steps: [passedStep],
+    }], {
+      failures: [{
+        track: 'media_buy',
+        storyboard_id: '',
+        step_id: '',
+        step_title: 'Malformed failure',
+        task: 'get_products',
+        error: 'missing evidence identity',
         fix_command: 'storyboard run',
       }],
     });

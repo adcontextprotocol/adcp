@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
+import { runAudit } from '../../src/scripts/audit-verification-profile-shadow.js';
 
 const TEST_SCHEMA = `verification_profile_shadow_migration_test_${process.pid}`;
 const MIGRATION = readFileSync(
@@ -30,6 +31,21 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
       );
       CREATE TABLE agent_compliance_runs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+      );
+      CREATE TABLE discovered_agents (agent_url TEXT PRIMARY KEY);
+      CREATE TABLE agent_registry_metadata (
+        agent_url TEXT PRIMARY KEY,
+        lifecycle_stage TEXT,
+        compliance_opt_out BOOLEAN DEFAULT FALSE,
+        monitoring_paused BOOLEAN DEFAULT FALSE
+      );
+      CREATE TABLE member_profiles (agents JSONB NOT NULL DEFAULT '[]'::jsonb);
+      CREATE TABLE agent_verification_badges (
+        agent_url TEXT NOT NULL,
+        role TEXT NOT NULL,
+        adcp_version TEXT NOT NULL,
+        status TEXT NOT NULL,
+        verification_modes TEXT[] NOT NULL
       );
     `);
     const run = await client.query<{ id: string }>(
@@ -175,5 +191,50 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
        WHERE evaluated_at >= NOW() - INTERVAL '90 days'`,
     );
     expect(recent.rows[0].count).toBe('1');
+  });
+
+  it('executes the audit SQL and excludes an incomplete row from decision-ready repeats', async () => {
+    await client.query(
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage)
+       VALUES ('https://audit.example.test/mcp', 'production')`,
+    );
+    const firstRun = await client.query<{ id: string }>(
+      'INSERT INTO agent_compliance_runs DEFAULT VALUES RETURNING id',
+    );
+    const secondRun = await client.query<{ id: string }>(
+      'INSERT INTO agent_compliance_runs DEFAULT VALUES RETURNING id',
+    );
+    await client.query(
+      `INSERT INTO verification_profile_shadow_assessments (
+         source_run_id, agent_url, lifecycle_stage, adcp_version, policy_version,
+         current_public_status, proposed_spec_status, proposed_sandbox_status,
+         sandbox_eligible, recommended_profile, run_complete,
+         bundle_evidence_present, failing_bundle_count,
+         incomplete_bundle_count, sandbox_unresolved_bundle_count,
+         unattributed_failure_count,
+         selected_storyboard_count, applicable_phase_count,
+         controller_gap_phase_count, controller_gap_step_count,
+         controller_cascade_step_count, observed_failure_count,
+         sandbox_observable_failure_count, non_controller_gap_step_count,
+         controller_missing_storyboard_count, other_missing_storyboard_count,
+         mixed_controller_failure_phase_count
+       ) VALUES
+       ($1, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v2',
+        'partial', 'partial', 'partial', TRUE, NULL, FALSE,
+        TRUE, 0, 1, 0, 0,
+        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+       ($2, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v2',
+        'partial', 'partial', 'partial', TRUE, NULL, TRUE,
+        TRUE, 0, 1, 0, 0,
+        10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
+      [firstRun.rows[0].id, secondRun.rows[0].id],
+    );
+
+    const report = await runAudit(['--hours=48'], client);
+
+    expect(report.assessed_agents).toBe(1);
+    expect(report.agents_with_two_or_more_runs).toBe(1);
+    expect(report.agents_with_two_or_more_decision_ready_runs).toBe(0);
+    expect(report.agents_with_stable_two_or_more_decision_ready_runs).toBe(0);
   });
 });
