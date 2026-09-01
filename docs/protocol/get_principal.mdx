@@ -1,12 +1,12 @@
 ---
 title: get_principal
-description: "Read the authenticated caller's principal configuration, version, and destination setup states."
+description: "Read the authenticated caller's seller-resolved identity, principal configuration, version, and destination setup states."
 "og:title": "AdCP — get_principal"
 ---
 
-`get_principal` returns the authenticated caller's current durable principal configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations.
+`get_principal` returns the authenticated caller's seller-resolved durable identity and current principal configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations. A recognized durable identity remains readable before the caller has standing configuration.
 
-The read is side-effect free. It never issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
+The read is side-effect free. It never creates a principal record, issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
 
 {/* Using latest because this experimental schema is not yet released. Update after release. */}
 **Request schema:** [`/schemas/latest/protocol/get-principal-request.json`](https://adcontextprotocol.org/schemas/latest/protocol/get-principal-request.json)
@@ -18,6 +18,7 @@ The read is side-effect free. It never issues identifiers, sends endpoint proof 
 
 Call it whenever you need current state rather than a change:
 
+- **Verify identity before configuration.** A `recognized` result exposes the seller-resolved `principal_kind` and existing `principal_id` before the first state-changing call.
 - **Bootstrap the concurrency fence.** Read `configuration_version` before a guarded [`sync_principal`](/docs/protocol/sync_principal) replacement instead of writing blind.
 - **Recover after local-state loss.** A restarted service reads `principal_id`, `configuration_version`, every `destination_ref`, and each destination's setup state before deciding what to sync.
 - **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready` — or subscribe to the `principal.changed` webhook and use this read as the repair path. Polling never disturbs the version fence.
@@ -32,15 +33,42 @@ Identity resolution is identical to [`sync_principal`](/docs/protocol/sync_princ
 
 For RFC 9421 signed callers, that stable identity is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry after publication and key verification. Rotation to another key authorized for the same canonical Agent URL preserves the principal; a domain, JWKS URI, or key never replaces the Agent URL as the subject.
 
+`principal_kind` is resolved from authorization state, but the response exposes it only with a durable principal record: in `current` and `recognized` results. `principal_id` identifies that same record in both arms. A read never creates the record or mints the identifier; stable authentication without a materialized durable record remains the exact kind-only `unconfigured` result.
+
 ## Results
 
 | `result.kind` | Meaning |
 |---|---|
-| `current` | The caller has a persisted principal record. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
-| `unconfigured` | The authenticated caller has no persisted principal record with this agent. |
+| `current` | The caller has standing configuration. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
+| `recognized` | The caller maps to an existing durable principal record but has no standing configuration. Returns `principal_id` and seller-resolved `principal_kind`, with no configuration or version. |
+| `unconfigured` | Stable authentication succeeded, but the caller has no durable principal record. Carries only `kind`. |
 | `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
-A caller with no principal record and a caller probing coordinates owned by someone else receive indistinguishable results: configuration state is visible only to its owning principal.
+The response reveals only the authenticated caller's identity and state. It never exposes whether another principal exists or has configuration, and `failed` results carry no identity facts.
+
+Before configuration, a registered buyer agent with a durable principal record receives:
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "kind": "recognized",
+    "principal_kind": "buyer_agent",
+    "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
+  }
+}
+```
+
+An authenticated caller with no durable record receives the existing result without an invented identifier or exposed party kind:
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "kind": "unconfigured"
+  }
+}
+```
 
 ```json
 {
