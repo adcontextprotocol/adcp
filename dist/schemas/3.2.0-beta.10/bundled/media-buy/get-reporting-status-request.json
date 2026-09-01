@@ -1,0 +1,465 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/bundled/media-buy/get-reporting-status-request.json",
+  "title": "Get Reporting Status Request",
+  "x-status": "experimental",
+  "x-tool-summary": "Check reporting health, enumerate expected periods and all retained revisions, or resolve one exact reporting revision.",
+  "description": "Authoritative caller/account-isolated reporting reliability read. The authenticated caller identity comes only from transport authentication, never request fields. summary answers the operational question for independently selected delivery configurations/feeds; periods returns a cursor-paginated obligation ledger; revision resolves one exact retained revision and its materializations/resources. Unknown, unauthorized, cross-caller, and cross-account identifiers MUST be indistinguishable. Sellers implementing this task MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "definitions": {
+    "ReportingStatusView": {
+      "title": "Reporting Status View",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "summary",
+        "periods",
+        "revision"
+      ],
+      "description": "Stable response-shape discriminator. SDK convenience methods may default this to summary, but the wire request is explicit."
+    }
+  },
+  "allOf": [
+    {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      },
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "summary"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "reporting_revision_id"
+              ]
+            },
+            {
+              "required": [
+                "pagination"
+              ]
+            },
+            {
+              "required": [
+                "health"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "periods"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "reporting_revision_id"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "view": {
+            "const": "revision"
+          }
+        },
+        "required": [
+          "view"
+        ]
+      },
+      "then": {
+        "required": [
+          "reporting_revision_id"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "media_buy_ids"
+              ]
+            },
+            {
+              "required": [
+                "delivery_config_ids"
+              ]
+            },
+            {
+              "required": [
+                "feed_purposes"
+              ]
+            },
+            {
+              "required": [
+                "period"
+              ]
+            },
+            {
+              "required": [
+                "health"
+              ]
+            },
+            {
+              "required": [
+                "finality"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-mutates-state": false,
+  "properties": {
+    "account": {
+      "title": "Canonical Account Reference",
+      "description": "Account whose caller-owned reporting status is queried.",
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "title": "Brand Key",
+              "description": "Stable brand identity used to resolve the canonical brand manifest, optionally qualified by the countries of a commercial advertiser entity. The manifest URL is derived from domain; callers do not send brand assets or per-call brand overrides. Countries do not target delivery.",
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                },
+                "brand_id": {
+                  "title": "Brand ID",
+                  "description": "Brand within a house-of-brands manifest. Omit for a single-brand domain.",
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+$",
+                  "x-entity": "advertiser_brand",
+                  "examples": [
+                    "tide",
+                    "cheerios",
+                    "air_jordan",
+                    "nike",
+                    "pampers"
+                  ],
+                  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/brand-id.json"
+                },
+                "countries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{2}$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "description": "Canonical set of ISO 3166-1 alpha-2 countries for this advertiser identity. Omit when the identity is global or the house does not split the brand geographically. Array order is not meaningful; producers MUST sort codes lexicographically before computing keys or signatures. This qualifies account and proposal identity and is not delivery targeting."
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false,
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "title": "Operator Unit",
+              "description": "Optional operator-owned business unit, agency seat, or platform account. Only id participates in identity; name is mutable display metadata.",
+              "x-entity": "operator_unit",
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                  "description": "Stable identifier assigned by the operator. Numeric platform IDs and durable slugs are both valid. Scoped by the enclosing operator domain."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "Human-readable seat or business-unit name, such as Nova EMEA. This label may change and is not part of the natural account key."
+                }
+              },
+              "required": [
+                "id"
+              ],
+              "additionalProperties": false,
+              "examples": [
+                {
+                  "id": "234284238",
+                  "name": "Nova EMEA"
+                },
+                {
+                  "id": "benelux-seat",
+                  "name": "Nova Benelux"
+                }
+              ],
+              "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "Immutable ISO 4217 transaction currency when the advertiser object is currency-bound. When present, this is part of the natural key and all media buys on the account use it. Omit for per-media-buy currency selection."
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Immutable account timezone. Include it in the natural key only for buyer-selected account_fixed provisioning."
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "examples": [
+        {
+          "account_id": "acc_nova_nl"
+        },
+        {
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "NL"
+            ]
+          },
+          "operator": "nova-athletics.example",
+          "operator_unit": {
+            "id": "234284238",
+            "name": "Nova EMEA"
+          },
+          "currency": "EUR",
+          "timezone": "Europe/Amsterdam"
+        }
+      ],
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/canonical-account-ref.json"
+    },
+    "view": {
+      "$ref": "#/definitions/ReportingStatusView"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "title": "Reporting Media Buy ID",
+        "x-adcp-model-context-inline": true,
+        "type": "string",
+        "minLength": 1,
+        "x-entity": "media_buy"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Omit for every accessible media buy in the account."
+    },
+    "delivery_config_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+        "x-entity": "reporting_delivery_config"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Use to reconcile billing, analytics, and pacing independently. Omit for every active caller-owned configuration."
+    },
+    "feed_purposes": {
+      "type": "array",
+      "items": {
+        "title": "Reporting Feed Purpose",
+        "x-adcp-model-context-inline": true,
+        "type": "string",
+        "enum": [
+          "pacing",
+          "analytics",
+          "billing"
+        ],
+        "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Optional summary/periods feed filter. The response echoes exact resolved configuration generations so this never creates an opaque aggregate."
+    },
+    "period": {
+      "type": "object",
+      "description": "Half-open summary/periods horizon. Omit for the seller's documented operational default horizon; the response always echoes the evaluated scope.",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "title": "Reporting Health",
+        "description": "Operational health for an explicitly echoed reporting scope. Aggregate precedence is action_required, delayed, then healthy. waiting applies only when no active obligation is due. complete applies only when the queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization.",
+        "type": "string",
+        "enum": [
+          "healthy",
+          "waiting",
+          "delayed",
+          "action_required",
+          "complete"
+        ],
+        "enumDescriptions": {
+          "healthy": "Due obligations in the queried active scope are current and automated delivery is working.",
+          "waiting": "No obligation in the queried active scope is due yet.",
+          "delayed": "At least one obligation is late, but remains within the seller's declared automated recovery path.",
+          "action_required": "A delivery, SLA, or retry boundary was crossed and at least one structured human action is supplied.",
+          "complete": "The queried scope is closed, retained coverage is complete, and every obligation has its configured required finality plus a verified readable materialization."
+        },
+        "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/reporting-health.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Periods-view result filter only; it never changes summary health."
+    },
+    "finality": {
+      "type": "array",
+      "items": {
+        "title": "Reporting Finality",
+        "description": "Finality of a reporting revision, aligned with the delivery-revision vocabulary proposed in #6122. Finality is independent of immutable revision identity: both snapshot and official revisions may be superseded by later revisions.",
+        "type": "string",
+        "enum": [
+          "snapshot",
+          "official"
+        ],
+        "enumDescriptions": {
+          "snapshot": "Provisional seller/source reporting evidence; not sufficient by itself for billing.",
+          "official": "The seller considers the represented period finalized, subject to separate measurement, billing, and settlement terms."
+        },
+        "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/reporting-finality.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact retained revision to resolve in revision view."
+    },
+    "pagination": {
+      "title": "Pagination Request",
+      "description": "Periods or revision-view pagination. Cursors are bound to the authenticated caller, account, filters, and ledger snapshot.",
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50,
+          "description": "Maximum number of items to return per page"
+        },
+        "cursor": {
+          "type": "string",
+          "description": "Opaque cursor from a previous response to fetch the next page"
+        }
+      },
+      "additionalProperties": false,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/pagination-request.json"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/context.json"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "view"
+  ],
+  "_bundled": {
+    "generatedAt": "2026-09-01T14:58:33.966Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/collection-property-delivery-metrics.json",
+  "title": "Collection Property Delivery Metrics",
+  "description": "Delivery metrics at the intersection of one collection and one publisher property. The property operational key is (publisher_domain, identifier.type, identifier.value). This row grain proves where a collection delivered; independent by_collection and by_property marginals do not.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "property_domain_consistency": "property_ref.publisher_domain MUST equal publisher_domain when property_ref is present"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "collection_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/collection-ref.json"
+        },
+        "collection_name": {
+          "type": "string",
+          "description": "Current human-readable collection name. Convenience metadata only."
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Publisher or platform authority that namespaces the property identifier, including for an unregistered surface."
+        },
+        "identifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/identifier.json",
+          "description": "Operational identity of the property that delivered."
+        },
+        "property_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/property-ref.json",
+          "description": "Canonical publisher-scoped catalog identity when available. Its publisher_domain MUST equal the row's publisher_domain."
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Current human-readable property name. Convenience metadata only."
+        }
+      },
+      "required": [
+        "collection_ref",
+        "publisher_domain",
+        "identifier",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

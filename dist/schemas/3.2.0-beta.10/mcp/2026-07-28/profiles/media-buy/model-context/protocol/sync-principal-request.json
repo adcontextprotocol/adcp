@@ -1,0 +1,437 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "type": "string"
+    },
+    "adcp_major_version": {
+      "type": "integer"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "expected_configuration_version": {
+      "type": "string"
+    },
+    "expected_principal_kind": {
+      "$ref": "#/$defs/external:enums~1principal-kind.json"
+    },
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "notification_configs": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1agent-notification-config.json"
+              },
+              {
+                "if": {
+                  "required": [
+                    "authentication"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "authentication": {
+                      "required": [
+                        "credentials"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "reporting_destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1agent-reporting-destination.json"
+          }
+        },
+        "declarations": {
+          "$ref": "#/$defs/external:core~1principal-declarations.json"
+        }
+      }
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "configuration"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:enums/principal-kind.json": {
+      "enum": [
+        "buyer_agent",
+        "operator"
+      ]
+    },
+    "external:core/agent-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:enums~1notification-type.json"
+              },
+              {
+                "not": {
+                  "enum": [
+                    "scheduled",
+                    "final",
+                    "delayed",
+                    "adjusted",
+                    "window_update",
+                    "impairment"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "all_authorized_accounts": {
+          "type": "boolean"
+        },
+        "include_future_event_types": {
+          "type": "boolean"
+        },
+        "authentication": {
+          "type": "object",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              }
+            },
+            "credentials": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "schemes"
+          ]
+        },
+        "active": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "if": {
+        "properties": {
+          "event_types": {
+            "contains": {
+              "enum": [
+                "creative.status_changed",
+                "creative.assignment_changed",
+                "indicators.changed",
+                "creative.purged",
+                "account.status_changed",
+                "account.change_recorded",
+                "product.created",
+                "product.updated",
+                "product.priced",
+                "product.removed",
+                "signal.created",
+                "signal.updated",
+                "signal.priced",
+                "signal.removed",
+                "wholesale_feed.bulk_change"
+              ]
+            }
+          }
+        },
+        "required": [
+          "event_types"
+        ]
+      },
+      "then": {
+        "properties": {
+          "all_authorized_accounts": {
+            "const": true
+          }
+        },
+        "required": [
+          "all_authorized_accounts"
+        ]
+      }
+    },
+    "external:enums/notification-type.json": {
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update",
+        "impairment",
+        "creative.status_changed",
+        "creative.assignment_changed",
+        "indicators.changed",
+        "creative.purged",
+        "account.status_changed",
+        "account.change_recorded",
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change",
+        "capabilities.changed",
+        "reporting.delivery_ready",
+        "reporting.status_changed",
+        "principal.changed"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/agent-reporting-destination.json": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "const": "file_transfer"
+            },
+            "destination_id": {
+              "type": "string"
+            },
+            "operator_id": {
+              "type": "string"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "accepted_formats": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "jsonl",
+                  "csv",
+                  "parquet",
+                  "avro",
+                  "orc"
+                ]
+              }
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_formats",
+            "accepted_verification_profiles"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "const": "warehouse_materialization"
+            },
+            "destination_id": {
+              "type": "string"
+            },
+            "operator_id": {
+              "type": "string"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_verification_profiles"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "const": "dataset_share"
+            },
+            "destination_id": {
+              "type": "string"
+            },
+            "operator_id": {
+              "type": "string"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string"
+            },
+            "access_mode": {
+              "type": "string"
+            },
+            "recipient": {
+              "$ref": "#/$defs/external:core~1delivery-recipient.json"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "access_mode",
+            "recipient",
+            "accepted_verification_profiles"
+          ]
+        }
+      ]
+    },
+    "external:core/delivery-provider.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/reporting-verification-profile-set.json": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "native_commit",
+          "manifest_checksums",
+          "canonical_digest"
+        ]
+      }
+    },
+    "external:core/delivery-recipient.json": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "type": "string"
+        },
+        "cloud": {
+          "$ref": "#/$defs/external:enums~1delivery-recipient-cloud.json"
+        },
+        "region": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "identity"
+      ],
+      "dependentRequired": {
+        "cloud": [
+          "region"
+        ],
+        "region": [
+          "cloud"
+        ]
+      }
+    },
+    "external:enums/delivery-recipient-cloud.json": {
+      "enum": [
+        "aws",
+        "azure",
+        "gcp"
+      ]
+    },
+    "external:core/principal-declarations.json": {
+      "type": "object",
+      "properties": {
+        "async_adcp_versions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "webhook_signing_algorithms": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "ed25519",
+              "ecdsa-p256-sha256"
+            ]
+          }
+        },
+        "experimental_features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1experimental-feature-id.json"
+          }
+        }
+      }
+    },
+    "external:core/experimental-feature-id.json": {
+      "type": "string"
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

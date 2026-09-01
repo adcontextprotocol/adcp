@@ -1,0 +1,179 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/canonical-format-option.json",
+  "title": "Canonical Format Option",
+  "description": "Compact canonical creative-format declaration. Legacy named-format links are intentionally absent; params are validated against the canonical schema selected by format_kind without inlining every format union into product discovery. Format-option processing metadata such as macro_resolution_capabilities stays at this object's top level and is not part of canonical params.",
+  "type": "object",
+  "properties": {
+    "format_option_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publisher_domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "tracker_execution_contract": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/tracker-execution-contract.json",
+      "description": "Seller- or publisher-authored production commitment for first-class manifest tracker execution. Presence requires a stable format_option_id. Creative-agent projections MUST strip this authority-bearing field."
+    },
+    "macro_resolution_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/macro-resolution-capability.json"
+      },
+      "description": "Binding format-option processing capabilities for exact macro dialect identities, semantics, operations, actors, contexts, and encodings. Absence means undeclared, not supported on the opt-in declared-token path. Seller-wide capabilities are only a ceiling. This field does not claim that a buyer tracker asset is honored or fired.",
+      "x-adcp-validation": {
+        "verifier_constraints": {
+          "translation_chain_closure": "every translate_to_native entry must have an exact matching resolve_value entry for its translation_target in this same array"
+        }
+      }
+    },
+    "technical_requirements_complete": {
+      "type": "boolean",
+      "description": "When true, every technical creative-acceptance constraint for this declaration layer is expressed and omitted technical fields mean no constraint. When false or absent, omitted technical fields are undeclared and MUST NOT be inferred. The effective contract is complete only when every applicable declaration layer asserts true."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sample_render_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "applies_to_channels": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/channels.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "seller_preference": {
+      "type": "string",
+      "enum": [
+        "preferred",
+        "accepted",
+        "discouraged"
+      ]
+    },
+    "locale_policy": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/creative-locale-policy.json"
+    },
+    "canonical_formats_only": {
+      "type": "boolean",
+      "default": false
+    },
+    "experimental": {
+      "type": "boolean",
+      "default": false
+    },
+    "format_kind": {
+      "type": "string",
+      "enum": [
+        "image",
+        "html5",
+        "display_tag",
+        "image_carousel",
+        "video_hosted",
+        "video_vast",
+        "audio_hosted",
+        "audio_vast",
+        "audio_daast",
+        "sponsored_placement",
+        "native_in_feed",
+        "responsive_creative",
+        "agent_placement",
+        "custom"
+      ]
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "format_shape": {
+      "type": "string",
+      "minLength": 1
+    },
+    "format_schema": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/platform-extension-ref.json"
+    }
+  },
+  "required": [
+    "format_kind",
+    "params"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "tracker_execution_contract"
+        ]
+      },
+      "then": {
+        "required": [
+          "format_option_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "publisher_domain"
+        ]
+      },
+      "then": {
+        "required": [
+          "format_option_id"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "format_kind": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "format_kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "format_shape",
+          "format_schema",
+          "canonical_formats_only"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "format_shape"
+              ]
+            },
+            {
+              "required": [
+                "format_schema"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "canonical_params": {
+        "non_custom": "validate params against /schemas/formats/canonical/{format_kind}.json",
+        "custom": "validate params against fetched format_schema uri and digest",
+        "on_violation": "reject_product"
+      }
+    }
+  },
+  "additionalProperties": false
+}

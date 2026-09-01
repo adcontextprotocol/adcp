@@ -1,0 +1,226 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/protocol/get-principal-response.json",
+  "title": "Get Principal Response",
+  "x-status": "experimental",
+  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "title": "Current principal configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "current"
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "principal_kind": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/principal-kind.json",
+              "description": "Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
+            },
+            "configuration_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_principal replacement."
+            },
+            "configuration": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/principal-state.json"
+            }
+          },
+          "required": [
+            "kind",
+            "principal_id",
+            "principal_kind",
+            "configuration_version",
+            "configuration"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Recognized principal without standing configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "recognized"
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for the existing durable principal record. The read returns the same identifier after credential renewal or rotation when the new credential maps to this principal. It is not a credential and does not grant authority over an advertiser account."
+            },
+            "principal_kind": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/principal-kind.json",
+              "description": "Seller-resolved party kind of the authenticated principal. This is resolved from authenticated transport and authorization state, never request content."
+            }
+          },
+          "required": [
+            "kind",
+            "principal_id",
+            "principal_kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Unconfigured principal",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unconfigured"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Failed principal read",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/ext.json"
+    }
+  },
+  "required": [
+    "result"
+  ],
+  "additionalProperties": true,
+  "if": {
+    "properties": {
+      "result": {
+        "properties": {
+          "kind": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "required": [
+      "result"
+    ]
+  },
+  "then": {
+    "properties": {
+      "status": {
+        "enum": [
+          "failed",
+          "rejected"
+        ]
+      }
+    }
+  },
+  "x-adcp-validation": {
+    "recognized_identity": "Return recognized only when the authenticated caller maps to a durable principal record that existed before the read and has no standing configuration. It MUST include principal_id and principal_kind and MUST NOT include configuration_version or configuration. The read MUST NOT create a record or mint principal_id to produce this result.",
+    "identity_continuity": "When a renewed or rotated credential maps to an existing durable principal record, recognized MUST return that record's stable principal_id. Never derive principal_id from a raw credential, signing key identifier, key thumbprint, or transient session.",
+    "unconfigured_identity": "Return unconfigured when stable authentication succeeds but no durable principal record exists. Preserve its exact kind-only shape; the read MUST NOT create a record, mint principal_id, issue configuration_version, or return configuration.",
+    "non_disclosure": "Return identity facts only for the authenticated caller. Failed and unconfigured results MUST NOT carry principal_kind, principal_id, configuration_version, or configuration, and no result arm may become an oracle for any other principal's existence or state."
+  },
+  "examples": [
+    {
+      "description": "Current principal configuration with a superseded generation",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "current",
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "principal_kind": "buyer_agent",
+          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+          "configuration": {
+            "notification_configs": [],
+            "reporting_destinations": [
+              {
+                "destination_id": "analytics-warehouse",
+                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+                "prior_destination_refs": [
+                  "dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"
+                ],
+                "state": "ready",
+                "configuration": {
+                  "pattern": "warehouse_materialization",
+                  "destination_id": "analytics-warehouse",
+                  "active": true,
+                  "provider": {
+                    "domain": "data-warehouse.example"
+                  },
+                  "transport": "bigquery",
+                  "location": "pinnacle-analytics.adcp_reporting",
+                  "accepted_verification_profiles": [
+                    "native_commit",
+                    "canonical_digest"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Registered buyer agent has a durable principal record but no standing configuration",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "recognized",
+          "principal_kind": "buyer_agent",
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
+        }
+      }
+    },
+    {
+      "description": "Stable authenticated caller has no durable principal record",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "unconfigured"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/agent-reporting-destination.json",
+  "title": "Agent Reporting Destination",
+  "x-status": "experimental",
+  "description": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. Exactly one delivery pattern per destination; pattern is the discriminator and matches the managed reporting delivery pattern vocabulary. It does not grant account authority: account/reporting configuration separately binds authorized data to the seller-issued destination_ref. Sellers key ownership to the stable transport principal, never a signing key, token, or request-body identity. Credentials, private keys, bearer profiles, signed URLs, and embedded passwords are forbidden. Sellers implementing this schema advertise protocol.principal.",
+  "oneOf": [
+    {
+      "title": "File transfer destination",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "file_transfer",
+          "description": "Discriminator. Producer publishes immutable files plus a manifest to caller-controlled object storage."
+        },
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "True permits use. False suspends the destination: the seller MUST stop initiating new deliveries to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered."
+        },
+        "provider": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/delivery-provider.json"
+        },
+        "transport": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "description": "Open provider transport name, such as s3, gcs, or azure_blob."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^[!$&-;=@-~]+$",
+          "description": "Provider-native bucket/prefix locator, such as s3://bucket/prefix/ or abfss://container@account.dfs.core.windows.net/path. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
+        },
+        "accepted_formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "jsonl",
+              "csv",
+              "parquet",
+              "avro",
+              "orc"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "description": "Physical formats accepted by this file-transfer destination."
+        },
+        "accepted_verification_profiles": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/reporting-verification-profile-set.json"
+        }
+      },
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "location",
+        "accepted_formats",
+        "accepted_verification_profiles"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Warehouse materialization destination",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "warehouse_materialization",
+          "description": "Discriminator. Producer or its connector commits reporting revisions into a caller-owned warehouse relation."
+        },
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "True permits use. False suspends the destination: the seller MUST stop initiating new deliveries to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered."
+        },
+        "provider": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/delivery-provider.json"
+        },
+        "transport": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "description": "Open provider transport name, such as bigquery, snowflake, or databricks_sql."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^[!$&-;=@-~]+$",
+          "description": "Provider-native project/dataset, database/schema, or catalog/schema locator. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
+        },
+        "accepted_verification_profiles": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/reporting-verification-profile-set.json"
+        }
+      },
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "location",
+        "accepted_verification_profiles"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Dataset share recipient",
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "const": "dataset_share",
+          "description": "Discriminator. Producer retains and versions the dataset; the named recipient reads provider-hosted share objects."
+        },
+        "destination_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+        },
+        "operator_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "True permits use. False suspends the destination: the seller MUST stop publishing new revisions to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered or revoke provider-side grants by itself."
+        },
+        "provider": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/delivery-provider.json"
+        },
+        "transport": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "description": "Open provider transport name, such as delta_sharing or snowflake_secure_sharing."
+        },
+        "access_mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$",
+          "description": "Dataset-share access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
+        },
+        "recipient": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/delivery-recipient.json"
+        },
+        "accepted_verification_profiles": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/reporting-verification-profile-set.json"
+        }
+      },
+      "required": [
+        "pattern",
+        "destination_id",
+        "active",
+        "provider",
+        "transport",
+        "access_mode",
+        "recipient",
+        "accepted_verification_profiles"
+      ],
+      "additionalProperties": false
+    }
+  ],
+  "x-adcp-validation": {
+    "proof_file_transfer": "A file_transfer destination MUST NOT become ready until both hold: (1) the caller has proven control of the normalized location through a seller-verifiable challenge, such as writing a seller-named proof object under the prefix or granting the seller's published principal and surfacing provider-native evidence of that grant; and (2) the seller has successfully written and read back a probe object under the prefix. Grant existence alone is insufficient.",
+    "proof_warehouse_materialization": "A warehouse_materialization destination MUST NOT become ready until the seller has verified, through provider-native access it was granted, that it can create and commit into the normalized locator, and the seller has bound that verification to the caller's proof tuple. A caller-asserted locator with no observed grant MUST remain action_required.",
+    "proof_dataset_share": "A dataset_share destination MUST NOT become ready until the named recipient has affirmatively completed the provider's recipient-side acceptance or activation step and the provider reports the recipient able to read the share. For access modes that grant access to a named identifier with no recipient-side acceptance step, the seller MUST require an equivalent recipient-initiated proof (for example, a recipient read of a seller-published proof dataset) before ready; grant creation alone MUST NOT produce ready. Provider grant propagation can lag: ready asserts recipient readability was observed, and account-level delivery readiness additionally requires consumer-read verification as defined by managed reporting delivery.",
+    "normalization": "Before proof binding, uniqueness comparison, and generation comparison, sellers MUST canonicalize coordinates per transport: Unicode NFC, lowercase scheme and host authority, no default ports, single canonical path separators, and no percent-encoding of characters that are valid literally. Sellers MUST reject a location or recipient identity whose host authority is not ASCII after canonicalization. Proof is bound to the canonical form.",
+    "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, secret query parameters, and secret fragments in any field, including forms the schema pattern cannot express such as userinfo-style 'key:secret@host' prefixes inside an otherwise valid locator. The schema pattern is a transport guard, not the enforcement boundary; sellers MUST screen canonicalized values. Exchange access through provider-native control planes or out of band.",
+    "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
+    "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
+    "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
+    "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
+  }
+}
