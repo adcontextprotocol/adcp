@@ -87,4 +87,20 @@ describe('Addie long-form input and output boundaries', () => {
       reason: 'Output truncated due to length',
     });
   });
+
+  it('prefers a complete Markdown list line over a later in-line whitespace boundary', () => {
+    const text = [
+      'Opening sentence.',
+      ...Array.from(
+        { length: 360 },
+        (_, index) => `- [Delivery checkpoint ${String(index + 1).padStart(3, '0')}](https://fixture.test/checkpoint/${index + 1}): synthetic evidence, accountable owner, review status, and implementation handoff`,
+      ),
+    ].join('\n');
+
+    const output = validateOutput(text).sanitized;
+    const body = output.slice(0, -(`\n\n${OUTPUT_TRUNCATION_SUFFIX}`).length);
+
+    expect(output).toContain('Delivery checkpoint 060');
+    expect(body.split('\n').at(-1)).toMatch(/^\- \[Delivery checkpoint \d{3}\]\(https:\/\/fixture\.test\/checkpoint\/\d+\): synthetic evidence, accountable owner, review status, and implementation handoff$/);
+  });
 });
