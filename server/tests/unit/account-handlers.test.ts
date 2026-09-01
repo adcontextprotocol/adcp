@@ -21,6 +21,7 @@ import {
   handleSyncGovernance,
   MAX_ACCOUNT_WEBHOOK_PROOF_CANDIDATES_PER_SYNC,
   resolveGovernanceAgentsForAccount,
+  seedAccountFixture,
 } from '../../src/training-agent/account-handlers.js';
 import {
   InMemoryGovernanceBindingStore,
@@ -1014,6 +1015,47 @@ describe('sync_governance', () => {
     });
     return (result.accounts as Record<string, unknown>[])[0];
   }
+
+  it('registers the governance agent after controller seeding into a different open-mode partition', async () => {
+    // seed_account keys off empty args (`open:default`). sync_governance keys
+    // off accounts[0].account.brand.domain (`open:<domain>`). Training mode
+    // hides the split because both collapse to training:${userId}:${moduleId}.
+    const account = {
+      brand: { domain: 'acmeoutdoor.example' },
+      operator: 'pinnacle-agency.example',
+      sandbox: true,
+    };
+    expect(sessionKeyFromArgs({}, 'open')).toBe('open:default');
+    expect(sessionKeyFromArgs({ accounts: [{ account }] }, 'open')).toBe('open:acmeoutdoor.example');
+
+    const seeded = seedAccountFixture({
+      params: {
+        account_id: 'acc_sales_dooh_partition',
+        fixture: {
+          brand: account.brand,
+          operator: account.operator,
+          billing: 'operator',
+          sandbox: true,
+          status: 'active',
+        },
+      },
+    }, DEFAULT_CTX);
+    expect(seeded.success).toBe(true);
+
+    const { result } = await simulateCallTool(server, 'sync_governance', {
+      accounts: [{
+        account,
+        governance_agents: [{
+          url: 'https://test-agent.adcontextprotocol.org',
+          authentication: { schemes: ['bearer'], credentials: 'gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+        }],
+      }],
+    });
+
+    expect(result.accounts).toHaveLength(1);
+    const govResult = (result.accounts as Record<string, unknown>[])[0];
+    expect(govResult.status).toBe('synced');
+  });
 
   it('registers the governance agent on an existing account', async () => {
     await createSandboxAccount();
