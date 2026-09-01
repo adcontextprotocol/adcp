@@ -26,6 +26,23 @@ if ! [[ "$secs" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
+# Optional load-compensation scale (ADCP_TIMEOUT_SCALE). Budgets are
+# calibrated for an otherwise-idle machine; on a host running many parallel
+# agent workspaces the same suite can take several times longer, and a
+# killed-at-budget run is indistinguishable from a hang. Setting e.g.
+# ADCP_TIMEOUT_SCALE=3 scales every with-timeout budget without touching
+# call sites, keeping the calibrated ratios between stages intact. The
+# scale only stretches the kill deadline — it never weakens what runs.
+# Invalid values are ignored with a warning rather than failing the hook.
+if [ -n "${ADCP_TIMEOUT_SCALE:-}" ]; then
+  if [[ "${ADCP_TIMEOUT_SCALE}" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    && awk -v s="${ADCP_TIMEOUT_SCALE}" 'BEGIN { exit !(s >= 1) }'; then
+    secs=$(awk -v t="$secs" -v s="${ADCP_TIMEOUT_SCALE}" 'BEGIN { printf "%d", (t * s) + 0.999999 }')
+  else
+    echo "with-timeout: ignoring invalid ADCP_TIMEOUT_SCALE='${ADCP_TIMEOUT_SCALE}' (need a number >= 1)" >&2
+  fi
+fi
+
 started=$(date +%s)
 
 report_if_timeout() {
