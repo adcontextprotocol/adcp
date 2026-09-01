@@ -23,7 +23,15 @@
 import { canonicalizePublisherDomain } from './publisher-domain.js';
 import type { AdagentsManifest, AdagentsAuthorizedAgent } from '../db/publisher-db.js';
 
+// Memoized per manifest object: hostConfirmsCarriage evaluates every
+// authorized_agents entry, and rebuilding the tag index per entry makes the
+// scan O(entries × properties). The cache key is the manifest object
+// identity, so a re-fetched manifest naturally gets a fresh index.
+const tagIndexCache = new WeakMap<AdagentsManifest, Map<string, Set<string>>>();
+
 function hostPropertyIdsByTag(manifest: AdagentsManifest): Map<string, Set<string>> {
+  const cached = tagIndexCache.get(manifest);
+  if (cached) return cached;
   const byTag = new Map<string, Set<string>>();
   for (const property of Array.isArray(manifest.properties) ? manifest.properties : []) {
     const record = property as { property_id?: unknown; tags?: unknown } | null;
@@ -35,6 +43,7 @@ function hostPropertyIdsByTag(manifest: AdagentsManifest): Map<string, Set<strin
       byTag.set(tag, set);
     }
   }
+  tagIndexCache.set(manifest, byTag);
   return byTag;
 }
 

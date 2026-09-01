@@ -58,7 +58,7 @@ const CommunityCollectionUpsertSchema = z.object({
   collection_id: z.string().min(1).optional(),
   name: z.string().min(1).max(500),
   kind: z.enum(COLLECTION_KIND_VALUES).optional(),
-  distribution: z.array(CollectionDistributionSchema).min(1),
+  distribution: z.array(CollectionDistributionSchema).min(1).max(100),
 }).passthrough();
 
 const ProvenanceSchema = z.object({

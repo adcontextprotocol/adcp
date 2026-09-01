@@ -240,7 +240,11 @@ describe('CollectionCatalogDatabase integration', () => {
         kind: 'channel',
         distribution: [
           { publisher_domain: OTHER_PUB, property_ids: ['hoststream_ctv'] },
-          { publisher_domain: 'never-crawled.example', property_ids: ['mystery_app'] },
+          // Publisher-authored host_confirmed must be stripped and replaced
+          // by the registry-computed value (an uncrawled host cannot confirm).
+          { publisher_domain: 'never-crawled.example', property_ids: ['mystery_app'], host_confirmed: true },
+          // Self-carriage: single-party attestation is never annotated.
+          { publisher_domain: TEST_PUB, property_ids: ['owner_own_app'] },
         ],
       }],
     } as never;
@@ -263,8 +267,12 @@ describe('CollectionCatalogDatabase integration', () => {
 
     let distribution = await readDistribution();
     expect(distribution[0]).toMatchObject({ publisher_domain: OTHER_PUB, host_confirmed: true });
-    // A host the registry has never crawled cannot corroborate carriage.
+    // A host the registry has never crawled cannot corroborate carriage —
+    // and the publisher-authored host_confirmed: true was stripped, not kept.
     expect(distribution[1]).toMatchObject({ publisher_domain: 'never-crawled.example', host_confirmed: false });
+    // Self-carriage entries are left unannotated (absent, not false).
+    expect(distribution[2].publisher_domain).toBe(TEST_PUB);
+    expect(distribution[2]).not.toHaveProperty('host_confirmed');
 
     // Host withdraws the attestation; the owner's next projection flips the
     // flag and the flip alone is an externally visible change.
@@ -291,6 +299,40 @@ describe('CollectionCatalogDatabase integration', () => {
     const flip = feed.events.find((event) => event.actor === 'test:collections:carriage-flip');
     expect(flip?.event_type).toBe('collection.updated');
     expect(validateRegistryEvent(eventForSchema(flip!))).toBe(true);
+  });
+
+  it('does not annotate community-contributed projections with host_confirmed', async () => {
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      const event = await collectionsDb.projectCollection(client, {
+        publisherDomain: COMMUNITY_PUB,
+        collection: {
+          collection_id: 'retro_news',
+          name: 'Acme Retro News',
+          kind: 'channel',
+          distribution: [{ publisher_domain: OTHER_PUB, property_ids: ['hoststream_ctv'] }],
+        },
+        evidence: 'community',
+        confidence: 'strong',
+        source: 'contributed',
+        adagentsUrl: null,
+        createdBy: 'test:community',
+        hostManifests: new Map([[OTHER_PUB, { authorized_agents: [] }]]),
+      });
+      await client.query('COMMIT');
+      const entry = (event?.collection?.distribution as Array<Record<string, unknown>>)[0];
+      // A community author could pair a genuinely confirmed carriage path
+      // with attacker-chosen identifiers; contributed records never get the
+      // flag's halo.
+      expect(entry.publisher_domain).toBe(OTHER_PUB);
+      expect(entry).not.toHaveProperty('host_confirmed');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   });
 
   it('retires renamed collections and lets the new collection reclaim the same identifier in one crawl', async () => {

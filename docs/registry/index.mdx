@@ -617,7 +617,14 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 
 Payloads likewise carry `collections` — the collection constraints from `authorized_agents[*].collections`. When present, the grant does NOT authorize the property unqualified: consumers maintaining a local authorization index MUST scope it to those selectors (a selector without `collection_ids` is a bulk grant for all collections at that publisher domain), and a collection-constrained grant queried without collection scope fails closed. See [owner-sold channel carriage](/docs/governance/property/adagents#owner-sold-channel-carriage).
 
-`collection.*` payloads annotate each `distribution[]` entry with a registry-computed `host_confirmed` boolean: whether the named host's own `adagents.json` affirmatively names the owning publisher in a `collections` selector that reaches the claimed properties. The flag is never publisher-authored (publisher-supplied values are stripped at projection) and is recomputed when the owner's file is re-crawled, so its freshness is bounded by crawl cadence. `false` covers both "the host does not corroborate this carriage" and "the registry has not crawled the host." It labels discovery data only — enforcement-grade verification still goes through the [supply-path verifier](/docs/governance/property/adagents#owner-sold-channel-carriage) or the authoritative files.
+`collection.*` payloads on authoritative projections annotate third-party `distribution[]` entries with a registry-computed `host_confirmed` boolean: whether the named host's own `adagents.json` affirmatively names the owning publisher in a `collections` selector that reaches the claimed properties. Scope caveats, in trust order:
+
+- **It corroborates the (owner, collection, host, properties) path only.** It says nothing about the entry's `identifiers[]` — an entry can be host-confirmed while carrying identifiers the confirmation never examined.
+- **The flag is never publisher-authored at the origin registry** (publisher-supplied values are stripped at projection), but a mirror consuming this feed re-serves whatever the feed carried — mirrors MUST NOT present the flag as locally verified.
+- **Staleness runs in the permissive direction.** The flag is recomputed when the *owner's* file is re-crawled, so a host that withdraws its grant leaves a stale `true` until then; `false` covers both "the host does not corroborate this carriage" and "the registry has not crawled the host."
+- **Absent is not false.** Community-contributed projections, self-carriage entries (host == owner — single-party attestation, not corroboration), and entries past the per-collection annotation cap are left unannotated.
+
+It labels discovery data only — enforcement-grade verification still goes through the [supply-path verifier](/docs/governance/property/adagents#owner-sold-channel-carriage) or the authoritative files.
 
 <CodeGroup>
 
