@@ -2710,7 +2710,7 @@ describe('AdAgentsManager', () => {
         expect(duplicate.errors.some(e => e.message.includes('Duplicate preview provider route'))).toBe(true);
       });
 
-      it('requires cache-versioned community provenance and revision coupling for renderer pins', () => {
+      it('requires cache-versioned community provenance without coupling renderer and format revisions', () => {
         const format = {
           format_option_id: 'homepage_mrec_image',
           format_kind: 'image',
@@ -2721,7 +2721,6 @@ describe('AdAgentsManager', () => {
             package: '@example/reference-renderer',
             version: '1.2.3',
             export: 'renderImage',
-            format_revision: '1.0.0',
             integrity: 'sha512-x1jq2OSx+17LLvQQFzHTyXFF9fUxy148EqEo0OWav+ffvL338FffUqPBbrB62kkPRcwFxvVuzy1eEvG4uLUMkA==',
             provenance: {
               source_repository: 'https://github.com/example/reference-renderer',
@@ -2735,6 +2734,17 @@ describe('AdAgentsManager', () => {
         expect(missingProvenance.errors.some(e => e.field === 'catalog_etag')).toBe(true);
         expect(missingProvenance.errors.some(e => e.field === 'catalog_role')).toBe(true);
 
+        const unversionedFormat = { ...format } as Partial<typeof format>;
+        delete unversionedFormat.format_revision;
+        const missingFormatRevision = manager.validateProposed({
+          agents: [],
+          formats: [unversionedFormat],
+          catalogEtag: 'renderer-catalog-v1',
+          catalogRole: 'community_format_registry',
+        } as any);
+        expect(missingFormatRevision.valid).toBe(false);
+        expect(missingFormatRevision.errors.some(e => e.field === 'formats[0].format_revision')).toBe(true);
+
         const valid = manager.validateProposed({
           agents: [],
           formats: [format],
@@ -2743,15 +2753,20 @@ describe('AdAgentsManager', () => {
         } as any);
         expect(valid.valid).toBe(true);
 
-        format.reference_renderer.format_revision = '2.0.0';
-        const mismatch = manager.validateProposed({
+        const legacyAnnotations = manager.validateProposed({
           agents: [],
-          formats: [format],
+          formats: [{
+            ...format,
+            format_revision: '2.0.0',
+            reference_renderer: {
+              ...format.reference_renderer,
+              format_revision: '1.0.0',
+            },
+          }],
           catalogEtag: 'renderer-catalog-v1',
           catalogRole: 'community_format_registry',
         } as any);
-        expect(mismatch.valid).toBe(false);
-        expect(mismatch.errors.some(e => e.field.endsWith('reference_renderer.format_revision'))).toBe(true);
+        expect(legacyAnnotations.valid).toBe(true);
       });
     });
   });

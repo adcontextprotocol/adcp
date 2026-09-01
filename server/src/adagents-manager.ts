@@ -743,11 +743,10 @@ export class AdAgentsManager {
         });
       }
       rendererFormats.forEach(({ format, index }: { format: any; index: number }) => {
-        if (typeof format.format_revision !== 'string'
-          || format.reference_renderer?.format_revision !== format.format_revision) {
+        if (typeof format.format_revision !== 'string') {
           result.errors.push({
-            field: `formats[${index}].reference_renderer.format_revision`,
-            message: 'reference_renderer.format_revision must equal the enclosing format_revision',
+            field: `formats[${index}].format_revision`,
+            message: 'format_revision is required when reference_renderer is present',
             severity: 'error'
           });
         }

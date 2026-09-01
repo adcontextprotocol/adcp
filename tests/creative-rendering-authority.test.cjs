@@ -148,7 +148,6 @@ test('community format entries accept only pinned reference renderers', async ()
         package: '@example/reference-renderer',
         version: '1.2.3',
         export: 'renderImage',
-        format_revision: '1.0.0',
         integrity: 'sha512-x1jq2OSx+17LLvQQFzHTyXFF9fUxy148EqEo0OWav+ffvL338FffUqPBbrB62kkPRcwFxvVuzy1eEvG4uLUMkA==',
         provenance: {
           source_repository: 'https://github.com/example/reference-renderer',
@@ -162,8 +161,19 @@ test('community format entries accept only pinned reference renderers', async ()
   assert.equal(validate(adagents), true, JSON.stringify(validate.errors, null, 2));
   const rendererSchema = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/core/reference-renderer.json'), 'utf8'));
   assert.equal(
-    rendererSchema['x-adcp-validation'].verifier_constraints.format_revision,
-    'equals_enclosing_community_format_entry.format_revision'
+    rendererSchema['x-adcp-validation'].verifier_constraints.export,
+    'exists_in_pinned_package_and_passes_contract_fixtures_for_enclosing_format_input_contract'
+  );
+
+  delete adagents.formats[0].format_revision;
+  assert.equal(validate(adagents), false, 'renderer entries identify the enclosing input-contract revision');
+
+  adagents.formats[0].format_revision = '2.0.0';
+  adagents.formats[0].reference_renderer.format_revision = '1.0.0';
+  assert.equal(
+    validate(adagents),
+    true,
+    'legacy renderer revision annotations remain accepted but are independent of format revisions'
   );
 
   adagents.formats[0].reference_renderer.version = '^1.2.3';
