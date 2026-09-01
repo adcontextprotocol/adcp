@@ -82,6 +82,28 @@ test('candidate-bundle capability discovery registers the external schema root',
   );
 });
 
+test('candidate-version compatibility is explicit and resolver-scoped', () => {
+  const source = fs.readFileSync(RUNNER_FILE, 'utf8');
+  assert.match(
+    source,
+    /const candidateVersionMode = process\.env\.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE === '1'/,
+  );
+  assert.match(
+    source,
+    /candidateVersionMode[\s\S]*isCurrentSourceRun[\s\S]*releasedComplianceVersion[\s\S]*packageVersion !== releasedComplianceVersion/,
+    'candidate mode must be limited to the generated current bundle matching package.json',
+  );
+  assert.match(
+    source,
+    /resolveStoryboardsForCapabilities\([\s\S]*hostedStableLineAlias:\s*TRAINING_AGENT_CURRENT_ADCP_VERSION/,
+  );
+  assert.doesNotMatch(
+    source,
+    /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
+    'candidate mode must not rewrite the seller capability declaration',
+  );
+});
+
 test('storyboard runs use public roots and pin the intended wire surface', () => {
   const source = fs.readFileSync(RUNNER_FILE, 'utf8');
   assert.match(source, /import \{ TRAINING_AGENT_CURRENT_ADCP_VERSION \} from/);

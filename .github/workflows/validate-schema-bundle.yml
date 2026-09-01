@@ -132,6 +132,9 @@ jobs:
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"
           printf '%s\n' "${bundle_version}" > sdk/ADCP_VERSION
+          # This is a disposable candidate checkout: align the SDK's AdCP
+          # metadata without bumping its own package release number.
+          npm --prefix sdk run sync-version -- --force
 
           python3 -m http.server 8765 --directory "${RUNNER_TEMP}/protocol-host" > "${RUNNER_TEMP}/protocol-http.log" 2>&1 &
           server_pid=$!
@@ -193,7 +196,24 @@ jobs:
           (cd bundle && shasum -a 256 -c latest.tgz.sha256)
           node -e "const fs=require('node:fs'); const p=require('./bundle/latest.tgz.provenance.json'); const digest=fs.readFileSync('./bundle/latest.tgz.sha256','utf8').trim().split(/\s+/)[0]; if (p.source_repository !== 'adcontextprotocol/adcp') throw new Error('Unexpected protocol provenance repository'); if (p.source_commit !== process.env.PR_HEAD_SHA) throw new Error('Protocol provenance does not match PR head'); if (p.bundle_sha256 !== digest) throw new Error('Protocol provenance digest does not match checksum')"
           bundle_version="$(node -p "require('./bundle/latest.tgz.provenance.json').published_version")"
+          sdk_version="$(cat sdk/src/adcp/ADCP_VERSION)"
           printf '%s\n' "${bundle_version}" > sdk/src/adcp/ADCP_VERSION
+          # The SDK deliberately packages only its current prerelease schema.
+          # Keep that disposable package-data allowlist aligned with the
+          # candidate pin before exercising its version consistency test.
+          SDK_VERSION="${sdk_version}" BUNDLE_VERSION="${bundle_version}" python - <<'PY'
+          import os
+          from pathlib import Path
+
+          old = f"_schemas/{os.environ['SDK_VERSION']}/"
+          new = f"_schemas/{os.environ['BUNDLE_VERSION']}/"
+          for filename in ("sdk/pyproject.toml", "sdk/MANIFEST.in"):
+              path = Path(filename)
+              source = path.read_text()
+              if old not in source:
+                  raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
+              path.write_text(source.replace(old, new))
+          PY
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
           cp bundle/latest.tgz.sha256 "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz.sha256"

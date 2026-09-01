@@ -22,6 +22,10 @@ const schemaPrWorkflowConfig = YAML.parse(fs.readFileSync(
   path.join(repoRoot, '.github/workflows/validate-schema-bundle.yml'),
   'utf8'
 ));
+const trainingAgentWorkflowConfig = YAML.parse(fs.readFileSync(
+  path.join(repoRoot, '.github/workflows/training-agent-storyboards.yml'),
+  'utf8'
+));
 const workflowConfig = YAML.parse(workflow);
 const eolReleaseBranches = ['2.5-maintenance', '2.6.x'];
 const activeWorkflowPaths = [
@@ -71,6 +75,47 @@ assert.deepStrictEqual(
   schemaPrWorkflowConfig.on.pull_request.paths,
   ['static/schemas/source/**'],
   'Schema PR bundle validation must run only for canonical schema source changes.'
+);
+
+const typescriptCandidateStep = schemaPrWorkflowConfig.jobs['typescript-sdk'].steps.find(
+  step => step.name === 'Generate and build from the PR bundle'
+).run;
+const candidatePinIndex = typescriptCandidateStep.indexOf('> sdk/ADCP_VERSION');
+const candidateSyncIndex = typescriptCandidateStep.indexOf('npm --prefix sdk run sync-version -- --force');
+const candidateSchemaSyncIndex = typescriptCandidateStep.indexOf('npm --prefix sdk run sync-schemas');
+assert(
+  candidatePinIndex !== -1 && candidatePinIndex < candidateSyncIndex && candidateSyncIndex < candidateSchemaSyncIndex,
+  'TypeScript candidate validation must sync package AdCP metadata after pinning ADCP_VERSION and before schema generation.'
+);
+assert(
+  !typescriptCandidateStep.includes('sync-version -- --auto-update'),
+  'Candidate validation must not bump the TypeScript SDK package release number.'
+);
+
+const pythonCandidateStep = schemaPrWorkflowConfig.jobs['python-sdk'].steps.find(
+  step => step.name === 'Generate and test from the PR bundle'
+).run;
+const pythonCandidatePinIndex = pythonCandidateStep.indexOf('> sdk/src/adcp/ADCP_VERSION');
+const pythonCandidateManifestIndex = pythonCandidateStep.indexOf('SDK_VERSION="${sdk_version}"');
+const pythonCandidateRegenIndex = pythonCandidateStep.indexOf('make -C sdk regenerate-schemas');
+assert(
+  pythonCandidatePinIndex !== -1 &&
+    pythonCandidatePinIndex < pythonCandidateManifestIndex &&
+    pythonCandidateManifestIndex < pythonCandidateRegenIndex,
+  'Python candidate validation must align its disposable package-data allowlist after pinning ADCP_VERSION and before schema generation.'
+);
+assert(
+  pythonCandidateStep.includes('for filename in ("sdk/pyproject.toml", "sdk/MANIFEST.in")'),
+  'Python candidate validation must update both wheel and sdist schema allowlists.'
+);
+
+const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
+  step => step.name === 'Run storyboards against /${{ matrix.tenant }}'
+).env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
+assert(
+  storyboardCandidateMode.includes("matrix.surface == 'current'") &&
+    storyboardCandidateMode.includes("github.head_ref == 'changeset-release/main'"),
+  'Only current-surface Version Packages PR jobs may enable candidate-version resolution.'
 );
 
 assert.strictEqual(
