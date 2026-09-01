@@ -1,0 +1,72 @@
+---
+title: Sell-side governance boundaries
+sidebarTitle: Sell-side boundaries
+description: "How seller acceptance, buyer spend authority, negotiated change rights, and seller-internal review remain distinct in AdCP."
+"og:title": "AdCP — Sell-side governance boundaries"
+---
+
+AdCP governance is intentionally asymmetric. A buyer agent spends money on
+behalf of a principal, so it needs authority from that principal. A seller does
+not need authority from the buyer to decide whether it will accept a campaign,
+creative, or change. The seller instead acts under its own commercial,
+operational, and legal policies.
+
+This is a split-authority model, not a missing seller-side approval layer.
+
+## Keep the authority layers separate
+
+| Layer | Question it answers | Protocol surface |
+|---|---|---|
+| Buyer governance | May this caller commit or change spend for the buyer? | [`check_governance`](/dist/docs/3.2.0-beta.10/governance/campaign/tasks/check_governance) and signed `governance_context` |
+| Seller acceptance | Will this seller accept this business, campaign, creative, targeting, or format? | [Acceptance-policy discovery](/dist/docs/3.2.0-beta.10/media-buy/media-buys/policy-compliance) and structured task errors |
+| Negotiated change rights | Which post-acceptance changes did these parties agree the buyer may request? | `commercial_terms.change_terms[]` and runtime `available_actions[]` |
+| Seller operations | How does the seller evaluate or fulfill an accepted request? | Seller implementation detail |
+
+A successful governance check establishes buyer authority; it does not oblige a
+seller to transact. Conversely, a seller's willingness to transact does not
+grant a caller permission to spend buyer funds.
+
+## Seller review is internal
+
+A seller may use deterministic rules, an AI system, human review, or any
+combination of them to decide whether to accept a request. That workflow does
+not need protocol orchestration and does not make the seller a counterpart
+governance authority over the buyer's plan.
+
+Buyer-visible timing may still be useful. Proposal-bound change terms can state
+that an action is `seller_managed` and provide elapsed-time response and
+completion maxima. Those terms describe the service the buyer can rely on; they
+do not reveal whether a person reviewed the request or require the buyer to
+coordinate the seller's internal queue.
+
+## Rejection is a disposition, not a governance veto
+
+An authorized action can still fail under seller policy. Use the error category
+that identifies the actual boundary:
+
+- `POLICY_VIOLATION` when seller content, advertising, legal, or commercial
+  policy rejects an otherwise authorized action.
+- `ACTION_NOT_ALLOWED` when a media-buy change is outside the accepted terms or
+  is not currently available.
+- `PERMISSION_DENIED` when the authenticated caller, credential, account scope,
+  or signed governance context lacks authority.
+
+When a seller rejects an approved action, the buyer reports the failure through
+[`report_plan_outcome`](/dist/docs/3.2.0-beta.10/governance/campaign/tasks/report_plan_outcome)
+with `outcome: "failed"`. The governance audit retains the bounded,
+buyer-attributed error evidence so an auditor can explain why execution did not
+occur. The copied error is an audit record; it neither grants the seller plan
+authority nor becomes seller-attested evidence.
+
+## Governance-agent acceptance is dependency management
+
+A seller may declare which governance agents it can depend on and reject an
+unacceptable binding during
+[`sync_governance`](/dist/docs/3.2.0-beta.10/accounts/tasks/sync_governance). This decision is about
+the endpoint the seller must call for authorization and recovery. It does not
+allow the seller to modify the buyer's governance rules or approve buyer spend.
+
+Together, these boundaries preserve the central invariant: buyer authority,
+seller acceptance, negotiated commercial rights, and seller-internal operations
+remain attributable without being collapsed into one jointly controlled
+governance agent.
