@@ -205,9 +205,19 @@ jobs:
           import os
           from pathlib import Path
 
-          old = f"_schemas/{os.environ['SDK_VERSION']}/"
-          new = f"_schemas/{os.environ['BUNDLE_VERSION']}/"
-          for filename in ("sdk/pyproject.toml", "sdk/MANIFEST.in"):
+          sdk_version = os.environ["SDK_VERSION"]
+          bundle_version = os.environ["BUNDLE_VERSION"]
+          replacements = {
+              "sdk/pyproject.toml": (
+                  f"_schemas/{sdk_version}/",
+                  f"_schemas/{bundle_version}/",
+              ),
+              "sdk/MANIFEST.in": (
+                  f"_schemas/{sdk_version} ",
+                  f"_schemas/{bundle_version} ",
+              ),
+          }
+          for filename, (old, new) in replacements.items():
               path = Path(filename)
               source = path.read_text()
               if old not in source:

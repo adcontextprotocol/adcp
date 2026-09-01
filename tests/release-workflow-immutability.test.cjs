@@ -105,8 +105,11 @@ assert(
   'Python candidate validation must align its disposable package-data allowlist after pinning ADCP_VERSION and before schema generation.'
 );
 assert(
-  pythonCandidateStep.includes('for filename in ("sdk/pyproject.toml", "sdk/MANIFEST.in")'),
-  'Python candidate validation must update both wheel and sdist schema allowlists.'
+  pythonCandidateStep.includes('"sdk/pyproject.toml": (') &&
+    pythonCandidateStep.includes('f"_schemas/{sdk_version}/"') &&
+    pythonCandidateStep.includes('"sdk/MANIFEST.in": (') &&
+    pythonCandidateStep.includes('f"_schemas/{sdk_version} "'),
+  'Python candidate validation must update the distinct wheel and sdist schema allowlist syntaxes.'
 );
 
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
