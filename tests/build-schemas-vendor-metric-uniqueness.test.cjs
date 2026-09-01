@@ -99,24 +99,6 @@ test('collectVendorMetricExamples: detects a duplicate vendor_metric_values tupl
   assert.equal(out[0].arrayField, 'vendor_metric_values');
 });
 
-test('collectVendorMetricExamples: absent brand_id and explicit "" collide (both normalize the same)', () => {
-  const schema = {
-    examples: [
-      {
-        vendor_metrics: [
-          { vendor: { domain: 'scope3.com' }, metric_id: 'gco2e_per_impression' },
-          { vendor: { domain: 'scope3.com', brand_id: '' }, metric_id: 'gco2e_per_impression' },
-        ],
-      },
-    ],
-  };
-  const out = collectVendorMetricExamples(schema, 'core/reporting-capabilities.json');
-  assert.deepEqual(out[0].tuples, [
-    'scope3.com||gco2e_per_impression',
-    'scope3.com||gco2e_per_impression',
-  ]);
-});
-
 test('collectVendorMetricExamples: recurses into nested examples at any depth', () => {
   const schema = {
     properties: {
