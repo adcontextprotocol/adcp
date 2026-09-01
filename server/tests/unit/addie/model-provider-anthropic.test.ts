@@ -180,6 +180,17 @@ describe('AnthropicModelProvider request translation', () => {
       ],
       betas: ['web-search-2025-03-05'],
     });
+    expect(prepared.diagnosticComponents?.systemBlocks)
+      .toEqual(prepared.providerRequest.system);
+    expect(prepared.diagnosticComponents?.toolSchemas.map(({ name }) => name))
+      .toEqual(['search_docs', 'web_search']);
+    expect(prepared.diagnosticComponents?.toolSchemas.map(({ payload }) => payload))
+      .toEqual(prepared.providerRequest.tools);
+    expect(prepared.diagnosticComponents?.messagePayloads)
+      .toEqual(prepared.providerRequest.messages);
+    expect(Object.isFrozen(prepared.diagnosticComponents)).toBe(true);
+    expect(Object.isFrozen(prepared.diagnosticComponents?.toolSchemas)).toBe(true);
+    expect(Object.isFrozen(prepared.diagnosticComponents?.toolSchemas[0])).toBe(true);
   });
 
   it('rejects continuation state from a different provider', () => {

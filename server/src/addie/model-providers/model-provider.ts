@@ -245,6 +245,12 @@ export type NormalizedModelEvent =
   | { type: 'provider_state'; index: number; state: ModelProviderStateContent }
   | { type: 'response_complete'; response: ModelResponse };
 
+export interface PreparedRequestDiagnosticComponents {
+  systemBlocks: readonly unknown[];
+  toolSchemas: ReadonlyArray<{ name: string; payload: unknown }>;
+  messagePayloads: readonly unknown[];
+}
+
 export interface PreparedModelInvocation {
   provider: ModelProviderId;
   model: string;
@@ -253,6 +259,12 @@ export interface PreparedModelInvocation {
   requestMetadata?: Readonly<Record<string, string | number | boolean>>;
   /** Exact object handed to the SDK, exposed for last-moment signed parity. */
   providerRequest: Readonly<Record<string, unknown>>;
+  /**
+   * Optional ordered SDK payload components for compatibility-sensitive
+   * diagnostics. Adapters whose translated SDK envelope diverges from the
+   * canonical request should provide these to preserve established hashes.
+   */
+  diagnosticComponents?: Readonly<PreparedRequestDiagnosticComponents>;
 }
 
 export interface ModelRespondOptions {

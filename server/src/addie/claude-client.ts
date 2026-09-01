@@ -122,16 +122,6 @@ export interface InvocationPreparedSnapshot {
   provider_request_sha256: string;
 }
 
-interface PreparedProviderRequest {
-  model: string;
-  max_tokens: number;
-  output_config?: Anthropic.Beta.BetaOutputConfig;
-  system: Anthropic.TextBlockParam[];
-  tools: Array<Record<string, unknown>>;
-  messages: Anthropic.MessageParam[];
-  betas?: readonly string[];
-}
-
 const DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
 const SONNET_5_MAX_OUTPUT_TOKENS = 32_768;
 // The Anthropic SDK rejects non-streaming requests whose calculated timeout
@@ -142,14 +132,22 @@ const SONNET_5_MAX_NONSTREAMING_OUTPUT_TOKENS = 16_384;
 function addieModelOutputControls(
   model: string,
   maxOutputTokens?: number,
-): Pick<PreparedProviderRequest, 'max_tokens' | 'output_config'> {
+): { maxOutputTokens: number; reasoning?: { effort: 'medium' } } {
   if (/^claude-sonnet-5(?:-|$)/.test(model)) {
     return {
-      max_tokens: Math.min(SONNET_5_MAX_OUTPUT_TOKENS, maxOutputTokens ?? SONNET_5_MAX_OUTPUT_TOKENS),
-      output_config: { effort: 'medium' },
+      maxOutputTokens: Math.min(
+        SONNET_5_MAX_OUTPUT_TOKENS,
+        maxOutputTokens ?? SONNET_5_MAX_OUTPUT_TOKENS,
+      ),
+      reasoning: { effort: 'medium' },
     };
   }
-  return { max_tokens: Math.min(DEFAULT_MAX_OUTPUT_TOKENS, maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS) };
+  return {
+    maxOutputTokens: Math.min(
+      DEFAULT_MAX_OUTPUT_TOKENS,
+      maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    ),
+  };
 }
 
 function isIsolatedExecution(options?: ProcessMessageOptions): boolean {
@@ -1112,27 +1110,17 @@ export class AddieClaudeClient {
       options?.invocationHashDomain,
     );
     const providerRequest = preparedInvocation.providerRequest;
-    // Preserve the existing Anthropic envelope hashes byte-for-byte. Other
-    // adapters expose different SDK shapes, so their component hashes use the
-    // canonical ordered request while the full request hash always covers the
-    // exact provider SDK payload.
-    const anthropicRequest = preparedInvocation.provider === 'anthropic'
-      ? providerRequest as unknown as PreparedProviderRequest
-      : null;
-    const systemBlocks: readonly unknown[] = anthropicRequest?.system ?? modelRequest.system;
-    const toolPayloads: Array<{ name: string; payload: unknown }> = anthropicRequest
-      ? anthropicRequest.tools.map((tool, index) => ({
-          name: typeof tool.name === 'string' ? tool.name : `tool_${index}`,
-          payload: tool,
-        }))
-      : [
+    const diagnosticComponents = preparedInvocation.diagnosticComponents;
+    const systemBlocks = diagnosticComponents?.systemBlocks ?? modelRequest.system;
+    const toolPayloads = diagnosticComponents?.toolSchemas
+      ?? [
           ...modelRequest.tools.map((tool) => ({ name: tool.name, payload: tool })),
           ...(modelRequest.providerTools ?? []).map((tool) => ({
             name: `provider:${tool.type}`,
             payload: tool,
           })),
         ];
-    const messagePayloads: readonly unknown[] = anthropicRequest?.messages ?? modelRequest.messages;
+    const messagePayloads = diagnosticComponents?.messagePayloads ?? modelRequest.messages;
     return {
       execution_mode: executionMode,
       model: preparedInvocation.model,
@@ -1322,10 +1310,8 @@ export class AddieClaudeClient {
       tools,
       ...(toolChoice && { toolChoice }),
       ...(providerWebSearchEnabled && { providerTools: [{ type: 'web_search' as const }] }),
-      ...(controls.output_config?.effort === 'medium' && {
-        reasoning: { effort: 'medium' as const },
-      }),
-      maxOutputTokens: controls.max_tokens,
+      ...(controls.reasoning && { reasoning: controls.reasoning }),
+      maxOutputTokens: controls.maxOutputTokens,
     };
   }
 
