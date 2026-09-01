@@ -1390,28 +1390,29 @@ export class AddieClaudeClient {
       );
     }
 
-    // #2790: per-user Anthropic cost cap. Check at entry; when the
+    // #2790: per-user model cost cap. Check exact pricing at entry; when the
     // user has exhausted their daily budget, return a friendly
     // "try again later" response instead of firing another
     // (billable) Claude call. The caller's ProcessMessageOptions
     // carries both `userId` and `tier` so we don't have to resolve
     // the subscription tier here.
-    if (operationalExecution && options?.costScope) {
+    if (operationalExecution) {
       const capResult = await checkCostCap(
-        options.costScope.userId,
-        options.costScope.tier,
+        options?.costScope?.userId,
+        options?.costScope?.tier ?? 'anonymous',
+        { selection: { provider: this.modelProvider.id, model: requestedModel } },
       );
       if (!capResult.ok) {
         const message = formatCapExceededMessage(capResult)
-          + (options.costScope.certificationReserveUsd ? ' Your certification progress is saved.' : '');
+          + (options?.costScope?.certificationReserveUsd ? ' Your certification progress is saved.' : '');
         logger.warn(
           {
-            userId: options.costScope.userId,
-            tier: options.costScope.tier,
+            userId: options?.costScope?.userId,
+            tier: options?.costScope?.tier,
             spentCents: capResult.spentCents,
             retryAfterMs: capResult.retryAfterMs,
           },
-          'Addie cost cap exceeded — refusing Claude call',
+          'Addie cost admission refused — refusing model call',
         );
         return {
           text: message,
@@ -1494,6 +1495,12 @@ export class AddieClaudeClient {
       : await getCurrentConfigVersionId();
 
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    const recordAccumulatedCost = async () => {
+      if (!operationalExecution || !options?.costScope) return;
+      for (const event of modelLoop.accountedUsage) {
+        await recordCost(options.costScope.userId, event);
+      }
+    };
 
     // Log if using precision model
     if (options?.modelOverride && options.modelOverride !== this.model) {
@@ -1514,7 +1521,6 @@ export class AddieClaudeClient {
     let iteration = 0;
     let hasExecutedCustomTool = false;
     let activeModel = effectiveModel;
-    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
     let modelFallbackReason: ModelFallbackReason | null = null;
 
     while (modelLoop.hasRemaining) {
@@ -1598,7 +1604,6 @@ export class AddieClaudeClient {
           const { decision: fallback } = fallbackAttempt;
           response = fallbackAttempt.response;
           activeModel = fallback.model;
-          costModel = fallback.model;
           modelFallbackReason = fallback.reason;
           modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
           if (operationalExecution) {
@@ -1806,11 +1811,7 @@ export class AddieClaudeClient {
           'Addie: Model provider stopped before response completion',
         );
         if (operationalExecution && options?.costScope) {
-          await recordCost(
-            options.costScope.userId,
-            costModel,
-            finalUsage,
-          );
+          await recordAccumulatedCost();
         }
         return terminal.response;
       }
@@ -1870,11 +1871,7 @@ export class AddieClaudeClient {
         // counts even if a downstream flag/logging failure occurs.
         // recordCost no-ops for missing userId / system users.
         if (operationalExecution && options?.costScope) {
-          await recordCost(
-            options.costScope.userId,
-            costModel,
-            finalUsage,
-          );
+          await recordAccumulatedCost();
         }
         return terminal.response;
       }
@@ -1908,11 +1905,7 @@ export class AddieClaudeClient {
     // Still charge the user for tokens actually consumed on the way to
     // hitting max-iterations. Production delivery is Anthropic-only here.
     if (operationalExecution && options?.costScope) {
-      await recordCost(
-        options.costScope.userId,
-        costModel,
-        maxIterationsUsage,
-      );
+      await recordAccumulatedCost();
     }
     return terminal.response;
   }
@@ -1948,32 +1941,35 @@ export class AddieClaudeClient {
       );
     }
 
-    // #2790: per-user Anthropic cost cap (streaming path). Same
+    // #2790: provider-neutral cost admission (streaming path). Same
     // contract as `processMessage` — yield a `done` event with the
     // friendly cap-exceeded text and return early instead of firing
     // another billable Claude call.
     let certificationReserveUsed = false;
     let certificationLeaseId: string | undefined;
     let certificationLeaseHeartbeat: ReturnType<typeof setInterval> | undefined;
-    if (operationalExecution && options?.costScope) {
+    if (operationalExecution) {
       const capResult = await checkCostCap(
-        options.costScope.userId,
-        options.costScope.tier,
-        { certificationReserveUsd: options.costScope.certificationReserveUsd },
+        options?.costScope?.userId,
+        options?.costScope?.tier ?? 'anonymous',
+        {
+          certificationReserveUsd: options?.costScope?.certificationReserveUsd,
+          selection: { provider: this.modelProvider.id, model: requestedModel },
+        },
       );
       certificationReserveUsed = capResult.usedCertificationReserve === true;
       certificationLeaseId = capResult.certificationLeaseId;
       if (!capResult.ok) {
         const message = formatCapExceededMessage(capResult)
-          + (options.costScope.certificationReserveUsd ? ' Your certification progress is saved.' : '');
+          + (options?.costScope?.certificationReserveUsd ? ' Your certification progress is saved.' : '');
         logger.warn(
           {
-            userId: options.costScope.userId,
-            tier: options.costScope.tier,
+            userId: options?.costScope?.userId,
+            tier: options?.costScope?.tier,
             spentCents: capResult.spentCents,
             retryAfterMs: capResult.retryAfterMs,
           },
-          'Addie cost cap exceeded — refusing Claude stream',
+          'Addie cost admission refused — refusing model stream',
         );
         yield {
           type: 'done',
@@ -2083,10 +2079,15 @@ export class AddieClaudeClient {
       );
     }
     const modelLoop = new ModelTurnLoopState(options?.maxIterations ?? DEFAULT_MAX_ITERATIONS);
+    const recordAccumulatedCost = async () => {
+      if (!operationalExecution || !options?.costScope) return;
+      for (const event of modelLoop.accountedUsage) {
+        await recordCost(options.costScope.userId, event);
+      }
+    };
     let iteration = 0;
     let lastProviderModel: string | undefined;
     let activeModel = effectiveModel;
-    let costModel = options?.modelOverride ?? AddieModelConfig.chat;
     let modelFallbackReason: ModelFallbackReason | null = null;
 
       while (modelLoop.hasRemaining) {
@@ -2247,7 +2248,6 @@ export class AddieClaudeClient {
                 const { decision: fallback } = fallbackAttempt;
                 currentResponse = fallbackAttempt.response;
                 activeModel = fallback.model;
-                costModel = fallback.model;
                 modelFallbackReason = fallback.reason;
                 lastProviderModel = currentResponse.model;
                 modelLoop.emptyResponseRecovery.completeInvocation(recoveryInvocation);
@@ -2471,14 +2471,8 @@ export class AddieClaudeClient {
         // budget (#2790). Both stream terminal paths (end_turn and
         // no-tool-blocks) serialize the same normalized accumulator.
         const buildStreamUsage = () => toAddieUsage(modelLoop.usage);
-        const chargeStreamCost = async (usage: ReturnType<typeof buildStreamUsage>) => {
-          if (operationalExecution && options?.costScope) {
-            await recordCost(
-              options.costScope.userId,
-              costModel,
-              usage,
-            );
-          }
+        const chargeStreamCost = async () => {
+          await recordAccumulatedCost();
         };
 
         const iterationText = turnDecision.text;
@@ -2552,7 +2546,7 @@ export class AddieClaudeClient {
             },
             'Addie Stream: Response stopped before completion',
           );
-          await chargeStreamCost(streamUsage);
+          await chargeStreamCost();
           yield { type: 'text', text: terminal.response.text };
           yield {
             type: 'done',
@@ -2608,7 +2602,7 @@ export class AddieClaudeClient {
               'Addie Stream: Normally completed response exceeded output cap',
             );
           }
-          await chargeStreamCost(streamUsage);
+          await chargeStreamCost();
           yield { type: 'text', text: terminal.response.text };
           yield {
             type: 'done',
@@ -2646,11 +2640,7 @@ export class AddieClaudeClient {
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
       if (operationalExecution && options?.costScope) {
-        await recordCost(
-          options.costScope.userId,
-          costModel,
-          maxIterUsage,
-        );
+        await recordAccumulatedCost();
       }
       if (terminal.finalized.lengthExceeded) {
         logger.error(
