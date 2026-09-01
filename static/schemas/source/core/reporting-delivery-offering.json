@@ -12,6 +12,11 @@
       "type": "string",
       "enum": ["pacing", "analytics", "billing"],
       "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+    },
+    "ReportingDeliveryPattern": {
+      "title": "Reporting Delivery Pattern",
+      "type": "string",
+      "enum": ["file_transfer", "dataset_share", "warehouse_materialization"]
     }
   },
   "properties": {
@@ -48,7 +53,7 @@
       "type": "object",
       "description": "Managed delivery method for this offering. Omit for a Core (API-delivered) offering: rows flow through existing get_media_buy_delivery and reporting_webhook transports and no destination is involved. Present only when the seller advertises managed_delivery.",
       "properties": {
-        "pattern": { "type": "string", "enum": ["file_transfer", "dataset_share", "warehouse_materialization"] },
+        "pattern": { "$ref": "#/definitions/ReportingDeliveryPattern" },
         "transport": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$" },
         "orchestration": { "$ref": "/schemas/core/reporting-delivery-method.json#/definitions/ReportingOrchestration" },
         "destination_modes": { "type": "array", "items": { "type": "string", "enum": ["provision", "existing"] }, "minItems": 1, "uniqueItems": true },

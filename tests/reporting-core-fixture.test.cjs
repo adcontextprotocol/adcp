@@ -199,6 +199,12 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     ]);
   });
 
+  it('gives the managed-delivery pattern a domain-specific codegen name', () => {
+    const offering = readSchema('/schemas/core/reporting-delivery-offering.json');
+    assert.equal(offering.properties.method.properties.pattern.$ref, '#/definitions/ReportingDeliveryPattern');
+    assert.equal(offering.definitions.ReportingDeliveryPattern.title, 'Reporting Delivery Pattern');
+  });
+
   it('accepts a Core capability block with no receipt, push, or managed-delivery fields', () => {
     assert.equal(validateCapabilities(coreCapabilities), true, JSON.stringify(validateCapabilities.errors));
 
