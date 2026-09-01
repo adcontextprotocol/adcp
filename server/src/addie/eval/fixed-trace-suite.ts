@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v7';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v8';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -19,6 +19,7 @@ export type FixedTraceCategory =
   | 'prompt_injection'
   | 'date_sensitive'
   | 'truncation'
+  | 'long_form_incident'
   | 'provider_degradation';
 
 export type FixedTraceTerminalStatus =
@@ -88,6 +89,16 @@ export interface FixedTraceCase {
   };
   /** Subjective criteria are intentionally not used by the deterministic gate. */
   answerRubric?: ReadonlyArray<string>;
+  /**
+   * Extra deterministic evidence for a known incident shape. This remains
+   * synthetic and provider-neutral; the no-network incident runner exercises
+   * it through the isolated full-response client seam.
+   */
+  incident?: {
+    latePromptMarkers: ReadonlyArray<string>;
+    requiredDeliveredMarkers: ReadonlyArray<string>;
+    minimumDeliveredCharacters: number;
+  };
 }
 
 export interface FixedTraceToolObservation {
@@ -174,6 +185,21 @@ export interface FixedTraceGrade {
 }
 
 const NOW = '2026-08-28T12:00:00.000Z';
+
+/**
+ * A realistic deck-sized request whose decision facts intentionally appear
+ * after the legacy 4k sanitizer boundary. It contains no production data.
+ */
+export const LONG_FORM_INCIDENT_QUESTION = [
+  'Prepare a detailed implementation review from this synthetic planning deck.',
+  ...Array.from(
+    { length: 155 },
+    (_, index) => `Background slide ${String(index + 1).padStart(3, '0')}: synthetic planning context and supporting detail for the implementation review`,
+  ),
+  'Late decision fact: cobalt release gate requires an owner approval.',
+  'Late decision fact: retain the evidence appendix for 48 hours.',
+  'Late decision fact: the final recommendation must name the verified handoff.',
+].join('\n');
 
 function deepFreeze<T>(value: T): T {
   if (typeof value !== 'object' || value === null || Object.isFrozen(value)) return value;
@@ -350,6 +376,45 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     toolFixtures: [],
     expectation: {
       terminalStatuses: ['truncated'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none', requireFlagged: true,
+    },
+  },
+  {
+    id: 'long-form-deck-delivery',
+    category: 'long_form_incident',
+    privacy: 'synthetic',
+    request: {
+      source: 'dm',
+      message: LONG_FORM_INCIDENT_QUESTION,
+      nowUtc: NOW,
+      isAdmin: false,
+    },
+    routing: { action: 'respond', toolSets: [] },
+    toolFixtures: [],
+    expectation: {
+      terminalStatuses: ['complete'], requiredTools: [], allowedTools: [], forbiddenTools: [], mutationAuthorization: 'none',
+      requiredTextAny: [
+        ['cobalt release gate'],
+        ['48 hours'],
+        ['verified handoff'],
+      ],
+    },
+    answerRubric: [
+      'Uses all three decision facts that occur after the legacy input boundary.',
+      'Retains a useful, Markdown-valid long-form delivery rather than collapsing to its opening sentence.',
+    ],
+    incident: {
+      latePromptMarkers: [
+        'cobalt release gate requires an owner approval',
+        'retain the evidence appendix for 48 hours',
+        'final recommendation must name the verified handoff',
+      ],
+      requiredDeliveredMarkers: [
+        'cobalt release gate',
+        '48 hours',
+        'verified handoff',
+        'Delivery checkpoint 060',
+      ],
+      minimumDeliveredCharacters: 9_500,
     },
   },
   {
