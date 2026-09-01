@@ -303,7 +303,7 @@ describe('RegistrySync', () => {
           agent_url: 'https://whitelist-me.example.com',
           markets: ['US', 'CA'],
           changed_fields: ['markets'],
-          type: 'sales', // schema's agentProfilePayload.type — not an AgentProfile field
+          type: 'sales', // schema field maps to AgentProfile.agent_type
           internal_crawl_note: 'seen on run 42', // arbitrary runtime field a producer could attach
         },
         actor: 'pipeline:crawler', created_at: new Date('2026-02-01'),
@@ -313,12 +313,13 @@ describe('RegistrySync', () => {
 
       const updated = sync.agents!.get('https://whitelist-me.example.com');
       expect(updated?.markets).toEqual(['US', 'CA']);
+      expect(updated?.agent_type).toBe('sales');
       expect(updated).not.toHaveProperty('changed_fields');
       expect(updated).not.toHaveProperty('type');
       expect(updated).not.toHaveProperty('internal_crawl_note');
       expect(Object.keys(updated ?? {}).sort()).toEqual(
         [
-          'agent_url', 'channels', 'property_types', 'markets', 'categories', 'tags',
+          'agent_url', 'agent_type', 'channels', 'property_types', 'markets', 'categories', 'tags',
           'delivery_types', 'format_kinds', 'property_count', 'publisher_count', 'has_tmp',
           'category_taxonomy', 'updated_at',
         ].sort(),

@@ -322,6 +322,7 @@ export class RegistrySync extends EventEmitter {
     // from event.created_at) are handled by the caller, not here.
     const patch: Partial<AgentProfile> = {};
     if (typeof payload.name === 'string') patch.name = payload.name;
+    if (typeof payload.type === 'string') patch.agent_type = payload.type;
     if (Array.isArray(payload.channels)) patch.channels = payload.channels as string[];
     if (Array.isArray(payload.property_types)) patch.property_types = payload.property_types as string[];
     if (Array.isArray(payload.markets)) patch.markets = payload.markets as string[];
