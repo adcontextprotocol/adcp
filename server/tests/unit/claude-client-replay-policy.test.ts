@@ -537,6 +537,89 @@ describe('AddieClaudeClient isolated execution policy', () => {
     },
   );
 
+  it('derives later-turn failure diagnostics from the active canonical request', async () => {
+    const privateSentinel = 'private-later-turn-provider-error';
+    const safeRead = vi.fn().mockResolvedValue('private tool result');
+    sdkState.nonStreamingResponses.push(
+      toolUseResponse([{ id: 'tool-1', name: 'read_docs', input: { value: 'private query' } }]),
+      new Error(privateSentinel),
+    );
+    const client = new AddieClaudeClient('unused', 'test-model');
+
+    await expect(client.processMessage(
+      'private question',
+      undefined,
+      requestTools([tool('read_docs', 'pure_local')], [['read_docs', safeRead]]),
+      { systemPrompt: 'private system' },
+      {
+        executionMode: 'replay',
+        disableServerTools: true,
+        uncapped: true,
+        toolExecutionPolicy: ({ tool: definition }) => ({
+          allowed: definition?.replaySafety === 'pure_local',
+        }),
+        invocationHashKey: 'canonical-diagnostics-key',
+        invocationHashDomain: 'canonical-diagnostics-domain',
+      },
+    )).rejects.toThrow(privateSentinel);
+
+    const failureEntry = loggerState.entries.find(
+      ([, message]) => message === 'Addie: Isolated provider invocation failed',
+    );
+    expect(failureEntry?.[0]).toMatchObject({
+      source: 'processMessage',
+      payload: {
+        model: 'test-model',
+        iteration: 2,
+        tool_count: 1,
+        message_count: 3,
+      },
+    });
+    expect(JSON.stringify(failureEntry)).not.toContain(privateSentinel);
+  });
+
+  it('uses the same active canonical request for streaming failure diagnostics', async () => {
+    const privateSentinel = 'private-later-stream-provider-error';
+    const safeRead = vi.fn().mockResolvedValue('private streaming tool result');
+    sdkState.streamingResponses.push(
+      toolUseResponse([{ id: 'tool-1', name: 'read_docs', input: { value: 'private query' } }]),
+      new Error(privateSentinel),
+    );
+    const client = new AddieClaudeClient('unused', 'test-model');
+
+    for await (const _event of client.processMessageStream(
+      'private question',
+      undefined,
+      requestTools([tool('read_docs', 'pure_local')], [['read_docs', safeRead]]),
+      {
+        executionMode: 'replay',
+        disableServerTools: true,
+        uncapped: true,
+        toolExecutionPolicy: ({ tool: definition }) => ({
+          allowed: definition?.replaySafety === 'pure_local',
+        }),
+        invocationHashKey: 'canonical-stream-diagnostics-key',
+        invocationHashDomain: 'canonical-stream-diagnostics-domain',
+      },
+    )) {
+      // Consume the terminal stream-error event.
+    }
+
+    const failureEntry = loggerState.entries.find(
+      ([, message]) => message === 'Addie Stream: Isolated provider invocation failed',
+    );
+    expect(failureEntry?.[0]).toMatchObject({
+      source: 'processMessageStream',
+      payload: {
+        model: 'test-model',
+        iteration: 2,
+        tool_count: 1,
+        message_count: 3,
+      },
+    });
+    expect(JSON.stringify(failureEntry)).not.toContain(privateSentinel);
+  });
+
   it.each(['replay', 'shadow'] as const)(
     'streams %s exactly once and logs no provider-echoed private text',
     async (executionMode) => {

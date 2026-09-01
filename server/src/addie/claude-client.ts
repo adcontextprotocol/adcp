@@ -55,6 +55,7 @@ import type {
   ModelProviderId,
   ModelRequest,
   ModelResponse,
+  ModelSystemBlock,
   ModelToolChoice,
   ModelToolCallContent,
   ModelToolDefinition,
@@ -94,7 +95,6 @@ import {
 } from './model-providers/provider-health.js';
 import { getProviderRetryAfterSeconds } from './model-providers/provider-errors.js';
 import {
-  buildAddieWireTools,
   buildModelToolDefinitions,
   mergeAddieToolDefinitions,
 } from './tool-wire-shape.js';
@@ -210,147 +210,6 @@ function boundedContentTypes(
     }
   });
   return [...new Set(categories)].sort();
-}
-
-/**
- * Convert MessageTurn[] into Anthropic.MessageParam[] with proper tool_use/tool_result
- * content blocks. When an assistant message has toolCalls, we:
- * 1. Build the assistant content as [text, tool_use, tool_use, ...]
- * 2. Insert a synthetic user message with [tool_result, tool_result, ...]
- *
- * This prevents the model from hallucinating tool calls as text (which happens when
- * tool results are flattened into plain text in conversation history).
- */
-function toAnthropicMessages(turns: MessageTurn[]): Anthropic.MessageParam[] {
-  const messages: Anthropic.MessageParam[] = [];
-  let toolIdCounter = 0;
-
-  for (const turn of turns) {
-    if (turn.role === 'assistant' && turn.toolCalls && turn.toolCalls.length > 0) {
-      // Build assistant content blocks: text + tool_use blocks
-      const content: Anthropic.ContentBlockParam[] = [];
-      if (turn.content.trim()) {
-        content.push({ type: 'text', text: turn.content });
-      }
-
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const tc of turn.toolCalls) {
-        const toolUseId = `hist_${toolIdCounter++}`;
-        content.push({
-          type: 'tool_use',
-          id: toolUseId,
-          name: tc.name,
-          input: (tc.input && typeof tc.input === 'object' && !Array.isArray(tc.input)) ? tc.input : {},
-        });
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: toolUseId,
-          content: tc.result,
-          is_error: tc.is_error ?? false,
-        });
-      }
-
-      // Defensive: skip if no content blocks were produced
-      if (content.length === 0) {
-        messages.push({ role: turn.role, content: turn.content });
-      } else {
-        messages.push({ role: 'assistant', content });
-        // Insert tool_result in a user turn (required by Anthropic API)
-        messages.push({ role: 'user', content: toolResults });
-      }
-    } else {
-      messages.push({ role: turn.role, content: turn.content });
-    }
-  }
-
-  // Anthropic API requires alternating roles — merge consecutive same-role messages
-  // The first merge (in buildMessageTurnsWithMetadata) handles raw MessageTurns for
-  // token estimation. This second merge handles synthetic user messages (tool_result
-  // blocks) that toAnthropicMessages inserts, which may collide with real user messages.
-  const merged: Anthropic.MessageParam[] = [];
-  for (const msg of messages) {
-    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
-      const prev = merged[merged.length - 1];
-      // Normalize both to arrays and concatenate
-      const prevContent = Array.isArray(prev.content)
-        ? prev.content
-        : [{ type: 'text' as const, text: prev.content }];
-      const newContent = Array.isArray(msg.content)
-        ? msg.content
-        : [{ type: 'text' as const, text: msg.content }];
-      prev.content = [...prevContent, ...newContent];
-    } else {
-      merged.push({ ...msg });
-    }
-  }
-
-  return merged;
-}
-
-function buildInputAttachmentBlocks(
-  attachments?: AddieInputAttachment[]
-): Anthropic.ContentBlockParam[] {
-  if (!attachments || attachments.length === 0) return [];
-
-  const blocks: Anthropic.ContentBlockParam[] = [];
-  for (const attachment of attachments) {
-    if (attachment.type === 'image') {
-      if (!isAllowedImageType(attachment.media_type)) {
-        logger.warn({ mediaType: attachment.media_type }, 'Addie: Invalid image media type in user attachment');
-        continue;
-      }
-      blocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: attachment.media_type,
-          data: attachment.data,
-        },
-      });
-      blocks.push({
-        type: 'text',
-        text: `[Uploaded image: ${attachment.filename || 'image'}]`,
-      });
-    } else if (attachment.type === 'document') {
-      blocks.push({
-        type: 'document',
-        source: {
-          type: 'base64',
-          media_type: 'application/pdf',
-          data: attachment.data,
-        },
-      });
-      blocks.push({
-        type: 'text',
-        text: `[Uploaded PDF: ${attachment.filename || 'document'}]`,
-      });
-    }
-  }
-  return blocks;
-}
-
-function appendInputAttachments(
-  messages: Anthropic.MessageParam[],
-  attachments?: AddieInputAttachment[]
-): Anthropic.MessageParam[] {
-  const attachmentBlocks = buildInputAttachmentBlocks(attachments);
-  if (attachmentBlocks.length === 0) return messages;
-
-  const nextMessages = messages.map((message) => ({ ...message }));
-  let currentTurn = nextMessages[nextMessages.length - 1];
-  if (!currentTurn || currentTurn.role !== 'user') {
-    currentTurn = { role: 'user', content: [] };
-    nextMessages.push(currentTurn);
-  }
-
-  const currentContent = Array.isArray(currentTurn.content)
-    ? currentTurn.content
-    : currentTurn.content.trim()
-      ? [{ type: 'text' as const, text: currentTurn.content }]
-      : [];
-  currentTurn.content = [...currentContent, ...attachmentBlocks];
-  return nextMessages;
 }
 
 /** Build the provider-neutral form of historical turns for live orchestration. */
@@ -1112,11 +971,11 @@ export class AddieClaudeClient {
     selectedToolSetNames?: readonly string[],
     requestContext?: string,
     rulesOverride?: RulesOverride,
-  ): Anthropic.TextBlockParam[] {
+  ): ModelSystemBlock[] {
     if (rulesOverride) {
       return [
-        { type: 'text', text: rulesOverride.systemPrompt, cache_control: { type: 'ephemeral' } },
-        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
+        { text: rulesOverride.systemPrompt, cacheHint: 'ephemeral' },
+        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
       ];
     }
 
@@ -1132,92 +991,77 @@ export class AddieClaudeClient {
       const responseStyle = loadResponseStyle();
       return [
         {
-          type: 'text',
           text: `${basePrompt}\n\n---\n\n${stableToolReference}`,
-          cache_control: { type: 'ephemeral' },
+          cacheHint: 'ephemeral',
         },
         {
-          type: 'text',
           text: [scopedRules, scopedToolReference].filter(Boolean).join('\n\n---\n\n'),
         },
-        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
-        { type: 'text', text: `${constraints}\n\n---\n\n${responseStyle}` },
+        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
+        { text: `${constraints}\n\n---\n\n${responseStyle}` },
       ];
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
       return [
         {
-          type: 'text',
           text: assembleAddieFallbackPrompt(ADDIE_FALLBACK_PROMPT, stableToolReference),
-          cache_control: { type: 'ephemeral' },
+          cacheHint: 'ephemeral',
         },
-        { type: 'text', text: scopedToolReference },
-        ...(requestContext?.trim() ? [{ type: 'text' as const, text: requestContext }] : []),
+        { text: scopedToolReference },
+        ...(requestContext?.trim() ? [{ text: requestContext }] : []),
       ];
     }
   }
 
-  private estimateMessageContentChars(content: Anthropic.MessageParam['content']): number {
-    if (typeof content === 'string') return content.length;
-    if (!Array.isArray(content)) return 0;
-
+  private estimateMessageContentChars(content: readonly ModelMessageContent[]): number {
     let total = 0;
     for (const block of content) {
-      if ('text' in block && typeof block.text === 'string') {
-        total += block.text.length;
+      if (block.type === 'text') total += block.text.length;
+      if (block.type === 'image' || block.type === 'document') total += block.data.length;
+      if (block.type === 'tool_call') total += block.name.length + JSON.stringify(block.input).length;
+      if (block.type === 'tool_result') {
+        total += block.toolName?.length ?? 0;
+        total += typeof block.content === 'string'
+          ? block.content.length
+          : JSON.stringify(block.content).length;
       }
-      if ('name' in block && typeof block.name === 'string') {
-        total += block.name.length;
+      if (block.type === 'provider_tool_call') {
+        total += block.name.length + JSON.stringify(block.inputKeys).length;
       }
-      if ('input' in block && block.input !== undefined) {
-        total += JSON.stringify(block.input).length;
-      }
-      if ('content' in block && typeof block.content === 'string') {
-        total += block.content.length;
-      } else if ('content' in block && Array.isArray(block.content)) {
-        total += JSON.stringify(block.content).length;
-      }
-      // Base64 image data
-      if ('source' in block) {
-        const source = (block as unknown as { source: { data?: string } }).source;
-        if (typeof source?.data === 'string') {
-          total += source.data.length;
-        }
-      }
+      if (block.type === 'provider_tool_result') total += block.name.length;
+      if (block.type === 'provider_state') total += block.kind.length;
     }
     return total;
   }
 
   private buildPayloadDebugStats(
-    effectiveModel: string,
-    systemBlocks: Anthropic.TextBlockParam[],
-    customTools: Anthropic.Tool[],
-    messages: Anthropic.MessageParam[],
+    request: ModelRequest,
     iteration: number = 0,
-    extraToolCount: number = 0,
     requestContextChars: number = 0,
   ): PayloadDebugStats {
-    const systemChars = systemBlocks.reduce((sum, block) => sum + block.text.length, 0);
+    const systemChars = request.system.reduce((sum, block) => sum + block.text.length, 0);
 
     let largestMessage: PayloadDebugStats['largest_message'];
     let messageChars = 0;
-    for (let i = 0; i < messages.length; i++) {
-      const chars = this.estimateMessageContentChars(messages[i].content);
+    for (let i = 0; i < request.messages.length; i++) {
+      const chars = this.estimateMessageContentChars(request.messages[i].content);
       messageChars += chars;
       if (!largestMessage || chars > largestMessage.chars) {
-        largestMessage = { index: i, role: messages[i].role, chars };
+        largestMessage = { index: i, role: request.messages[i].role, chars };
       }
     }
 
+    const toolPayloads = [...request.tools, ...(request.providerTools ?? [])];
+
     return {
-      model: effectiveModel,
+      model: request.model,
       iteration,
-      system_block_count: systemBlocks.length,
+      system_block_count: request.system.length,
       system_chars: systemChars,
       request_context_chars: requestContextChars,
-      tool_count: customTools.length + extraToolCount,
-      tool_chars: JSON.stringify(customTools).length,
-      message_count: messages.length,
+      tool_count: toolPayloads.length,
+      tool_chars: JSON.stringify(toolPayloads).length,
+      message_count: request.messages.length,
       message_chars: messageChars,
       largest_message: largestMessage,
     };
@@ -1425,18 +1269,13 @@ export class AddieClaudeClient {
         : null;
       const contextWarning = summary
         || `\n\n## Context Warning\n${messageTurnsResult.messagesRemoved} earlier messages were dropped from this conversation to fit the context window. If the user references something you don't recall, let them know and suggest starting a new thread for better accuracy.`;
-      systemBlocks.push({ type: 'text', text: contextWarning });
+      systemBlocks.push({ text: contextWarning });
     }
 
-    const messages: Anthropic.MessageParam[] = appendInputAttachments(
-      toAnthropicMessages(messageTurnsResult.messages),
-      options?.inputAttachments,
-    );
     const modelMessages = appendModelInputAttachments(
       toModelMessages(messageTurnsResult.messages),
       options?.inputAttachments,
     );
-    const customTools = buildAddieWireTools(allTools) as Anthropic.Tool[];
     const modelTools = buildModelToolDefinitions(allTools);
 
     return {
@@ -1446,9 +1285,7 @@ export class AddieClaudeClient {
       toolsByName,
       toolCount,
       messageTurnsResult,
-      messages,
       modelMessages,
-      customTools,
       modelTools,
       requestWebSearchEnabled,
       systemPromptMs,
@@ -1457,7 +1294,7 @@ export class AddieClaudeClient {
 
   private buildModelRequest(
     effectiveModel: string,
-    systemBlocks: Anthropic.TextBlockParam[],
+    systemBlocks: ModelSystemBlock[],
     tools: ModelToolDefinition[],
     messages: ModelMessage[],
     providerWebSearchEnabled: boolean,
@@ -1477,8 +1314,7 @@ export class AddieClaudeClient {
       system: systemBlocks.map((block) => ({
         text: block.text,
         ...(this.modelProvider.id === 'anthropic'
-          && 'cache_control' in block
-          && block.cache_control?.type === 'ephemeral'
+          && block.cacheHint === 'ephemeral'
           ? { cacheHint: 'ephemeral' as const }
           : {}),
       })),
@@ -1643,9 +1479,7 @@ export class AddieClaudeClient {
       toolsByName,
       toolCount,
       messageTurnsResult,
-      messages: anthropicMessages,
       modelMessages,
-      customTools,
       modelTools,
       requestWebSearchEnabled,
     } = prepared;
@@ -1708,6 +1542,7 @@ export class AddieClaudeClient {
       const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
       const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
       let invocationAttempt = 0;
+      let lastModelRequest: ModelRequest | undefined;
       const invokeProvider = async (exactlyOnce: boolean, model = activeModel) => {
         invocationAttempt++;
         const modelRequest = this.buildModelRequest(
@@ -1722,6 +1557,7 @@ export class AddieClaudeClient {
             ? options?.initialToolChoice
             : undefined,
         );
+        lastModelRequest = modelRequest;
         const provider = exactlyOnce
           ? this.exactlyOnceModelProvider
           : this.modelProvider;
@@ -1818,13 +1654,12 @@ export class AddieClaudeClient {
             response = fallbackResponse;
             reusedEmptyResponse = true;
           } else {
+            if (!lastModelRequest) {
+              throw invocationError;
+            }
             const stats = this.buildPayloadDebugStats(
-              effectiveModel,
-              systemBlocks,
-              customTools,
-              anthropicMessages,
+              lastModelRequest,
               iteration,
-              requestWebSearchEnabled ? 1 : 0,
               options?.requestContext?.trim() ? options.requestContext.length : 0,
             );
             if (isIsolatedExecution(options)) {
@@ -2231,9 +2066,7 @@ export class AddieClaudeClient {
       toolsByName,
       toolCount,
       messageTurnsResult,
-      messages,
       modelMessages,
-      customTools,
       modelTools,
     } = prepared;
     systemPromptMs = prepared.systemPromptMs;
@@ -2291,20 +2124,20 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           const recoveryInvocation = modelLoop.emptyResponseRecovery.prepareInvocation();
+          const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
+          const modelRequest = this.buildModelRequest(
+            activeModel,
+            systemBlocks,
+            invocationTools,
+            modelMessages,
+            false,
+            recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
+            true,
+            iteration === 1 && invocationTools.length > 0
+              ? options?.initialToolChoice
+              : undefined,
+          );
           try {
-            const invocationTools = recoveryInvocation.toolsAllowed ? modelTools : [];
-            const modelRequest = this.buildModelRequest(
-              activeModel,
-              systemBlocks,
-              invocationTools,
-              modelMessages,
-              false,
-              recoveryInvocation.isRecovery ? DEFAULT_MAX_OUTPUT_TOKENS : undefined,
-              true,
-              iteration === 1 && invocationTools.length > 0
-                ? options?.initialToolChoice
-                : undefined,
-            );
             const provider = isExactlyOnceExecution(options) || recoveryInvocation.requiresExactlyOnce
               ? this.exactlyOnceModelProvider
               : this.modelProvider;
@@ -2347,12 +2180,8 @@ export class AddieClaudeClient {
             }
             streamRetryCount++;
             const stats = this.buildPayloadDebugStats(
-              effectiveModel,
-              systemBlocks,
-              customTools,
-              messages,
+              modelRequest,
               iteration,
-              0,
               options?.requestContext?.trim() ? options.requestContext.length : 0,
             );
             if (isIsolatedExecution(options)) {
