@@ -1,5 +1,0 @@
----
-"adcontextprotocol": patch
----
-
-Harden A2A 1.0 response extraction per the post-merge follow-up in #2966: add a `constructor.prototype` test vector alongside the existing `__proto__` vector and assert against a simulated downstream `Object.assign` merge (the realistic prototype-pollution threat, not `JSON.parse`); state a concrete 5 MB decoded-size cap for `raw` FileParts in the security considerations; add a 100+ DataPart boundary vector, malformed-envelope vectors (two-key, empty-key, empty-string-key), and combinatorial `{ task: ... }`/`{ statusUpdate: ... }` envelope vectors for `TASK_STATE_REJECTED` and `TASK_STATE_AUTH_REQUIRED`; assert each vector's documented `path` against real extraction behavior (and correct three vectors whose `path` label didn't match); standardize all test-vector timestamps on ISO-8601 UTC with millisecond precision; and document the intentional first-match/last-match asymmetry between `extractTextPartFromArtifacts` and `extractDataPartFromArtifacts`.
