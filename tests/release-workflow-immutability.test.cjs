@@ -71,6 +71,13 @@ const changesetsActionImplementation = fs.readFileSync(
 );
 const changesetsActionContract = YAML.parse(changesetsActionContractSource);
 
+assert(
+  releaseRelevance.includes(
+    '[.]github/workflows/(release|training-agent-storyboards|validate-schema-bundle)[.]yml$'
+  ),
+  'Candidate bundle validation workflow changes must trigger release PR regeneration.'
+);
+
 assert.deepStrictEqual(
   schemaPrWorkflowConfig.on.pull_request.paths,
   ['static/schemas/source/**'],
