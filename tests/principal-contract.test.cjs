@@ -66,6 +66,8 @@ describe('sync_principal contract', () => {
     assert.equal(declarations.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
     assert.equal(capabilities.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
     assert.equal(getResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(getResponse.properties.result.oneOf[1].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(getResponse.properties.result.oneOf[1].properties.kind.const, 'recognized');
     assert.equal(syncRequest.properties.expected_principal_kind.$ref, '/schemas/enums/principal-kind.json');
     assert.equal(syncResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
   });
@@ -452,11 +454,12 @@ describe('sync_principal contract', () => {
 
     const request = readSchema('/schemas/protocol/get-principal-request.json');
     assert.match(request['x-adcp-validation'].read_only, /MUST NOT mutate/);
+    assert.match(request['x-adcp-validation'].read_only, /create a principal record/);
     assert.match(request['x-adcp-validation'].read_only, /do not advance the version/);
     assert.match(request['x-adcp-validation'].principal_isolation, /unconfigured/);
   });
 
-  it('reads back current state, retained generations, and an unconfigured arm without leaks', () => {
+  it('reads back current state and a recognized identity before configuration without leaks', () => {
     assert.equal(validateReadResponse({
       status: 'completed',
       result: {
@@ -484,8 +487,40 @@ describe('sync_principal contract', () => {
 
     assert.equal(validateReadResponse({
       status: 'completed',
+      result: {
+        kind: 'recognized',
+        principal_kind: 'buyer_agent',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+      },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
       result: { kind: 'unconfigured' },
     }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: { kind: 'recognized', principal_kind: 'operator' },
+    }), false);
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: {
+        kind: 'unconfigured',
+        principal_kind: 'buyer_agent',
+      },
+    }), false);
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: {
+        kind: 'recognized',
+        principal_kind: 'buyer_agent',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        configuration_version: 'cfg_must_not_exist',
+      },
+    }), false);
 
     assert.equal(validateReadResponse({
       status: 'failed',
@@ -495,6 +530,13 @@ describe('sync_principal contract', () => {
         principal_id: 'leaked_principal',
       },
     }), false);
+
+    const response = readSchema('/schemas/protocol/get-principal-response.json');
+    assert.match(response['x-adcp-validation'].recognized_identity, /MUST include principal_id and principal_kind/);
+    assert.match(response['x-adcp-validation'].recognized_identity, /MUST NOT create a record/);
+    assert.match(response['x-adcp-validation'].identity_continuity, /renewed or rotated credential/);
+    assert.match(response['x-adcp-validation'].unconfigured_identity, /exact kind-only shape/);
+    assert.match(response['x-adcp-validation'].non_disclosure, /unconfigured results MUST NOT carry principal_kind/);
   });
 
   it('accepts caller-eligible event types and rejects media-buy-anchored ones', async () => {

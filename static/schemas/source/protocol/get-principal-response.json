@@ -3,7 +3,7 @@
   "$id": "/schemas/protocol/get-principal-response.json",
   "title": "Get Principal Response",
   "x-status": "experimental",
-  "description": "Result of reading the authenticated principal's standing configuration. Current responses return the complete credential-free configuration with its version. Unconfigured responses indicate the authenticated caller has no persisted principal record. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "description": "Result of reading the authenticated principal's identity and standing configuration. Current responses return a durable principal record with complete credential-free configuration and its version. Recognized responses return an existing durable principal identity before standing configuration exists. Unconfigured responses indicate that the stable authenticated caller has no durable principal record. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
   "type": "object",
   "allOf": [
     {
@@ -45,6 +45,28 @@
             }
           },
           "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
+          "additionalProperties": false
+        },
+        {
+          "title": "Recognized principal without standing configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "recognized"
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for the existing durable principal record. The read returns the same identifier after credential renewal or rotation when the new credential maps to this principal. It is not a credential and does not grant authority over an advertiser account."
+            },
+            "principal_kind": {
+              "$ref": "/schemas/enums/principal-kind.json",
+              "description": "Seller-resolved party kind of the authenticated principal. This is resolved from authenticated transport and authorization state, never request content."
+            }
+          },
+          "required": ["kind", "principal_id", "principal_kind"],
           "additionalProperties": false
         },
         {
@@ -108,6 +130,12 @@
       }
     }
   },
+  "x-adcp-validation": {
+    "recognized_identity": "Return recognized only when the authenticated caller maps to a durable principal record that existed before the read and has no standing configuration. It MUST include principal_id and principal_kind and MUST NOT include configuration_version or configuration. The read MUST NOT create a record or mint principal_id to produce this result.",
+    "identity_continuity": "When a renewed or rotated credential maps to an existing durable principal record, recognized MUST return that record's stable principal_id. Never derive principal_id from a raw credential, signing key identifier, key thumbprint, or transient session.",
+    "unconfigured_identity": "Return unconfigured when stable authentication succeeds but no durable principal record exists. Preserve its exact kind-only shape; the read MUST NOT create a record, mint principal_id, issue configuration_version, or return configuration.",
+    "non_disclosure": "Return identity facts only for the authenticated caller. Failed and unconfigured results MUST NOT carry principal_kind, principal_id, configuration_version, or configuration, and no result arm may become an oracle for any other principal's existence or state."
+  },
   "examples": [
     {
       "description": "Current principal configuration with a superseded generation",
@@ -142,7 +170,18 @@
       }
     },
     {
-      "description": "Caller has no persisted principal record",
+      "description": "Registered buyer agent has a durable principal record but no standing configuration",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "recognized",
+          "principal_kind": "buyer_agent",
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
+        }
+      }
+    },
+    {
+      "description": "Stable authenticated caller has no durable principal record",
       "data": {
         "status": "completed",
         "result": {

@@ -39,7 +39,7 @@ Request-body fields, a raw signing key ID, an API-key fingerprint, an access tok
 
 For an RFC 9421 signed caller, the stable Agent subject is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry—but only after the seller verifies the publication chain and confirms that entry authorizes the request-signing key. The URL is therefore a verified identity input, not a body assertion. The operator domain, raw URL spelling, `brand_json_url`, `jwks_uri`, `kid`, key thumbprint, and key generation remain trust or credential-binding facts beneath that identity. Two canonical Agent URLs are two principals even when they share a domain, operator, type, or JWKS endpoint; key rotation under one canonical Agent URL preserves that principal. If the verified chain cannot select exactly one canonical Agent URL, the seller fails closed without reading or creating principal state.
 
-Every applied or current readback carries the seller-resolved `principal_kind` — `buyer_agent` or `operator` — resolved solely from the authorization system, never from request content, so per-party policy such as billing gates can rely on it. A request may carry `expected_principal_kind` as an assertion fence ("I believe I am authenticating as the agent"); on mismatch with the resolved kind the seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation. The assertion never influences resolution.
+Every applied, current, or recognized readback carries the seller-resolved `principal_kind` — `buyer_agent` or `operator` — resolved solely from the authorization system, never from request content, so per-party policy such as billing gates can rely on it before configuration begins. A request may carry `expected_principal_kind` as an assertion fence ("I believe I am authenticating as the agent"); on mismatch with the resolved kind the seller rejects with [`CONFLICT`](/docs/building/verification/compliance-catalog#error-code-conflict) before mutation. The assertion never influences resolution.
 
 The response's `principal_id` is a seller-issued audit and routing handle for the principal record. It is not a credential and does not authorize any advertiser account.
 
@@ -49,10 +49,11 @@ The principal layer begins **after authentication**. AdCP defines no credential-
 
 1. **Authenticate.** Autonomous software presents its workload identity; a person presents their delegated user identity. No `register_buyer_agent` step exists or is needed.
 2. **Read [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).** Discover `adcp.principal`, its supported sections, event and delivery offerings, and limits.
-3. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
-4. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–3 grants account authority.
-5. **Bind each account's feeds** to the reusable `destination_ref`s.
-6. **Observe readiness.** [`get_principal`](/docs/protocol/get_principal) shows destination and declaration state; `principal.changed` keeps it fresh.
+3. **Verify the resolved identity.** Call [`get_principal`](/docs/protocol/get_principal). A `recognized` result returns the existing durable `principal_id` and seller-resolved `principal_kind` without standing configuration. `unconfigured` means stable authentication succeeded but no durable record exists. The read creates neither records nor identifiers.
+4. **Call `sync_principal`.** Declare consumption facts (`declarations`), register webhook subscribers (including `principal.changed` and, with explicit scope, account-anchored events), and register reusable reporting destinations.
+5. **Authorize advertiser accounts separately** through [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and account-level tasks. Nothing in steps 1–4 grants account authority.
+6. **Bind each account's feeds** to the reusable `destination_ref`s.
+7. **Observe readiness.** [`get_principal`](/docs/protocol/get_principal) shows destination and declaration state; `principal.changed` keeps it fresh.
 
 That yields four deliberately separate objects: the **credential** (seller's authorization system, out of AdCP scope), the **principal record** (this layer — one party's standing configuration), **account authorization** (which advertiser data the principal may access), and **delivery configuration** (where authorized data goes). A destination can be registered before any account exists, but it cannot receive account data until an account-scoped feed binding succeeds.
 
