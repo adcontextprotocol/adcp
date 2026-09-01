@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/reporting-file-entry.json",
+  "title": "Reporting File Entry",
+  "x-status": "experimental",
+  "description": "One immutable data object committed by a reporting file manifest.",
+  "type": "object",
+  "properties": {
+    "object_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "description": "Credential-free object identifier resolved through the configured destination."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "partition": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 512
+      },
+      "maxProperties": 32
+    }
+  },
+  "required": [
+    "object_ref",
+    "size_bytes",
+    "sha256",
+    "row_count"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/acceptance-policy-profile-ids.json",
+  "title": "Acceptance Policy Profile IDs",
+  "description": "Acceptance-policy profiles from the seller catalog that apply to this product in addition to seller defaults. Profiles compose restrictively; the most restrictive matching disposition wins.",
+  "type": "array",
+  "items": {
+    "type": "string",
+    "minLength": 1,
+    "x-entity": "acceptance_policy_profile"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

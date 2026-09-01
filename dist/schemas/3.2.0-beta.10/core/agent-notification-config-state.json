@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/agent-notification-config-state.json",
+  "title": "Agent Notification Config State",
+  "description": "Credential-free readback of one caller-scoped agent-level webhook subscription. The optional legacy authentication selector identifies the scheme only; write-only credentials can never appear.",
+  "type": "object",
+  "properties": {
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "event_types": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/notification-type.json"
+          },
+          {
+            "not": {
+              "enum": [
+                "scheduled",
+                "final",
+                "delayed",
+                "adjusted",
+                "window_update",
+                "impairment"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "all_authorized_accounts": {
+      "type": "boolean",
+      "description": "Echoed scope acknowledgment for account-anchored event types."
+    },
+    "include_future_event_types": {
+      "type": "boolean",
+      "description": "Echoed from the desired configuration when set."
+    },
+    "authentication": {
+      "type": "object",
+      "deprecated": true,
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/auth-scheme.json"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        }
+      },
+      "required": [
+        "schemes"
+      ],
+      "additionalProperties": false
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/ext.json"
+    }
+  },
+  "required": [
+    "subscriber_id",
+    "url",
+    "event_types"
+  ],
+  "additionalProperties": false
+}

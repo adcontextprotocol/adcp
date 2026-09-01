@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/experimental-feature-id.json",
+  "title": "Experimental Feature ID",
+  "description": "Dot-separated lowercase identifier for an experimental AdCP surface, such as protocol.principal or media_buy.reporting_delivery.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 128,
+  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+}

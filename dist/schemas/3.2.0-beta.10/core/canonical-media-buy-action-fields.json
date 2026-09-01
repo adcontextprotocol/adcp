@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/canonical-media-buy-action-fields.json",
+  "title": "Canonical Media Buy Action Fields",
+  "description": "Shared closed field set for task-discriminated canonical MediaBuy actions.",
+  "type": "object",
+  "properties": {
+    "task": {
+      "type": "string",
+      "enum": [
+        "control_media_buy",
+        "refine_proposals",
+        "sync_creatives"
+      ]
+    },
+    "action": {
+      "type": "string"
+    },
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/enums/canonical-media-buy-action-mode.json"
+    },
+    "sla": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/sla-window.json"
+    },
+    "change_term_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/media-buy-change-term-id.json"
+    },
+    "terms_ref": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.10/core/media-buy-legacy-terms-ref.json"
+    }
+  },
+  "required": [
+    "task",
+    "action",
+    "mode"
+  ],
+  "additionalProperties": false
+}
