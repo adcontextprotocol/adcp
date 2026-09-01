@@ -1762,6 +1762,7 @@ export class AddieClaudeClient {
       if (turn.discardedRecoveryToolCalls) {
         logger.warn({ iteration }, 'Addie: Ignoring tool use from text-only recovery');
       }
+      const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
 
       let turnDecision: AddieAcceptedTurnDecision | undefined;
       for await (const event of orchestrateAcceptedAddieTurn({
@@ -1771,6 +1772,15 @@ export class AddieClaudeClient {
         messages: modelMessages,
         ledger: executionLedger,
         execute: executeToolCall,
+        emptyResponseRecovery: {
+          loop: modelLoop,
+          deliverableText: stripBannedRituals(acceptedTurnText.trim()),
+          eligibility: {
+            allowInitial: operationalExecution,
+            initialEligible: !hasExecutedCustomTool && toolExecutions.length === 0,
+            postToolEligible: hasExecutedCustomTool,
+          },
+        },
       })) {
         if (event.type === 'provider_tool') {
           logger.debug(
@@ -1796,20 +1806,32 @@ export class AddieClaudeClient {
       }
       if (!turnDecision) throw new Error('Accepted model turn produced no orchestration decision');
 
-      const stopAction = turnDecision.action;
-
-      if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
-        // Anthropic pause_turn and compaction responses are resumable only
-        // when their content is included in the next request. Repeating the
-        // unchanged prompt can loop or repeat server-side work.
-        logger.info(
-          { stopReason: response.providerFinishReason, iteration },
-          'Addie: Continuing resumable provider turn',
-        );
+      if (turnDecision.disposition.type === 'continue') {
+        if (
+          turnDecision.disposition.reason === 'continue'
+          || turnDecision.disposition.reason === 'continue_provider_tools'
+        ) {
+          // Anthropic pause_turn and compaction responses are resumable only
+          // when their content is included in the next request. Repeating the
+          // unchanged prompt can loop or repeat server-side work.
+          logger.info(
+            { stopReason: response.providerFinishReason, iteration },
+            'Addie: Continuing resumable provider turn',
+          );
+        }
         continue;
       }
 
-      if (stopAction === 'truncated') {
+      if (turnDecision.disposition.type === 'recover') {
+        if (turnDecision.disposition.reason === 'initial') {
+          logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
+        } else {
+          logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
+        }
+        continue;
+      }
+
+      if (turnDecision.disposition.reason === 'truncated') {
         const rawText = turnDecision.text.trim();
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
         if (finalized.emptyReason) {
@@ -1867,32 +1889,9 @@ export class AddieClaudeClient {
       }
 
       // Done - no tool use, just text
-      if (stopAction === 'complete') {
+      if (turnDecision.disposition.reason === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
         const rawText = turnDecision.text.trim();
-        // A provider-successful but wholly empty first sample has no visible
-        // output or side effect. Production may safely resample it once; eval
-        // and replay preserve the original terminal outcome for integrity.
-        const emptyRecovery = modelLoop.scheduleEmptyResponseRecovery(
-          response,
-          stripBannedRituals(rawText),
-          {
-            allowInitial: operationalExecution,
-            initialEligible: !hasExecutedCustomTool && toolExecutions.length === 0,
-            postToolEligible: hasExecutedCustomTool,
-          },
-        );
-        if (emptyRecovery === 'initial') {
-          logger.warn({ iteration }, 'Addie: Retrying wholly empty initial response');
-          continue;
-        }
-        // Anthropic can occasionally return an empty end_turn immediately
-        // after a tool result. Resampling the unchanged post-tool turn once is
-        // safe because no assistant response has reached the caller yet.
-        if (emptyRecovery === 'post_tool') {
-          logger.warn({ iteration, toolsUsed }, 'Addie: Retrying empty response after tool use');
-          continue;
-        }
         const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
         const text = finalized.text;
 
@@ -2483,6 +2482,7 @@ export class AddieClaudeClient {
         if (turn.discardedRecoveryToolCalls) {
           logger.warn({ iteration }, 'Addie Stream: Ignoring tool use from text-only recovery');
         }
+        const acceptedTurnText = turn.textBlocks.map((block) => block.text).join('\n\n');
 
         let turnDecision: AddieAcceptedTurnDecision | undefined;
         for await (const event of orchestrateAcceptedAddieTurn({
@@ -2492,6 +2492,15 @@ export class AddieClaudeClient {
           messages: modelMessages,
           ledger: executionLedger,
           execute: executeToolCall,
+          emptyResponseRecovery: {
+            loop: modelLoop,
+            deliverableText: stripBannedRituals(acceptedTurnText),
+            eligibility: {
+              allowInitial: operationalExecution,
+              initialEligible: toolExecutions.length === 0 && logicalText.length === 0,
+              postToolEligible: toolExecutions.length > 0,
+            },
+          },
         })) {
           if (event.type === 'provider_tool') {
             yield {
@@ -2516,7 +2525,10 @@ export class AddieClaudeClient {
             );
           } else if (event.type === 'turn_decision') {
             turnDecision = event.decision;
-            if (event.decision.action === 'execute_tools') {
+            if (
+              event.decision.disposition.type === 'continue'
+              && event.decision.disposition.reason === 'execute_tools'
+            ) {
               // Preserve accepted text before a tool handler can fail.
               logicalText += event.decision.text;
             }
@@ -2559,18 +2571,36 @@ export class AddieClaudeClient {
           }
         };
 
-        const stopAction = turnDecision.action;
         const iterationText = turnDecision.text;
-        if (stopAction === 'continue' || stopAction === 'continue_provider_tools') {
-          // Resume from the provider response without exposing interim text.
-          logger.info(
-            { stopReason: currentResponse.providerFinishReason, iteration },
-            'Addie Stream: Continuing resumable provider turn',
-          );
+        if (turnDecision.disposition.type === 'continue') {
+          if (
+            turnDecision.disposition.reason === 'continue'
+            || turnDecision.disposition.reason === 'continue_provider_tools'
+          ) {
+            // Resume from the provider response without exposing interim text.
+            logger.info(
+              { stopReason: currentResponse.providerFinishReason, iteration },
+              'Addie Stream: Continuing resumable provider turn',
+            );
+          } else if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
+            // Add spacing between tool use and subsequent text to prevent run-on text.
+            logicalText += '\n\n';
+          }
           continue;
         }
 
-        if (stopAction === 'truncated') {
+        if (turnDecision.disposition.type === 'recover') {
+          if (turnDecision.disposition.reason === 'initial') {
+            logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
+          } else {
+            // Logical-turn buffering means no text from this iteration has
+            // been emitted, so retrying ritual-only output cannot duplicate text.
+            logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
+          }
+          continue;
+        }
+
+        if (turnDecision.disposition.reason === 'truncated') {
           logicalText += iterationText;
           const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions, true);
           if (finalized.emptyReason) {
@@ -2628,28 +2658,7 @@ export class AddieClaudeClient {
         }
 
         // Done - no tool use
-        if (stopAction === 'complete') {
-          const emptyRecovery = modelLoop.scheduleEmptyResponseRecovery(
-            currentResponse,
-            stripBannedRituals(iterationText),
-            {
-              allowInitial: operationalExecution,
-              initialEligible: toolExecutions.length === 0 && logicalText.length === 0,
-              postToolEligible: toolExecutions.length > 0,
-            },
-          );
-          if (emptyRecovery === 'initial') {
-            logger.warn({ iteration }, 'Addie Stream: Retrying wholly empty initial response');
-            continue;
-          }
-
-          // Logical-turn buffering means no text from this iteration has been
-          // emitted, so retrying ritual-only output cannot duplicate text.
-          if (emptyRecovery === 'post_tool') {
-            logger.warn({ iteration, toolsUsed }, 'Addie Stream: Retrying empty response after tool use');
-            continue;
-          }
-
+        if (turnDecision.disposition.reason === 'complete') {
           logicalText += iterationText;
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
           const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
@@ -2716,13 +2725,6 @@ export class AddieClaudeClient {
           return;
         }
 
-        // Handle tool use
-        if (stopAction === 'execute_tools') {
-          // Add spacing between tool use and subsequent text to prevent run-on text
-          if (logicalText.length > 0 && !logicalText.endsWith('\n')) {
-            logicalText += '\n\n';
-          }
-        }
       }
 
       // Max iterations reached

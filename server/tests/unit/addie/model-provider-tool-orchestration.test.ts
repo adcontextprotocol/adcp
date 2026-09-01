@@ -523,8 +523,27 @@ describe('orchestrateAcceptedAddieTurn', () => {
     isError: false,
   };
 
-  function accept(response: ModelResponse) {
-    return new ModelTurnLoopState(2).beginNext().acceptResponse(response);
+  function accept(
+    response: ModelResponse,
+    eligibility = {
+      allowInitial: false,
+      initialEligible: false,
+      postToolEligible: false,
+    },
+    limit = 2,
+  ) {
+    const loop = new ModelTurnLoopState(limit);
+    return {
+      turn: loop.beginNext().acceptResponse(response),
+      emptyResponseRecovery: {
+        loop,
+        deliverableText: response.content
+          .filter((content) => content.type === 'text')
+          .map((content) => content.text)
+          .join('\n\n'),
+        eligibility,
+      },
+    };
   }
 
   it('owns provider receipts, custom-tool dispatch, and continuation ordering', async () => {
@@ -566,7 +585,7 @@ describe('orchestrateAcceptedAddieTurn', () => {
     const events = [];
 
     for await (const event of orchestrateAcceptedAddieTurn({
-      turn: accept(response),
+      ...accept(response),
       provider: { id: 'anthropic' },
       executionMode: 'production',
       messages,
@@ -585,7 +604,7 @@ describe('orchestrateAcceptedAddieTurn', () => {
     expect(events[1]).toEqual({
       type: 'turn_decision',
       decision: {
-        action: 'execute_tools',
+        disposition: { type: 'continue', reason: 'execute_tools' },
         text: 'Checking both sources.',
         hasCustomToolCalls: true,
       },
@@ -625,7 +644,7 @@ describe('orchestrateAcceptedAddieTurn', () => {
     const events = [];
 
     for await (const event of orchestrateAcceptedAddieTurn({
-      turn: accept(response),
+      ...accept(response),
       provider: { id: 'anthropic' },
       executionMode: 'production',
       messages,
@@ -637,7 +656,11 @@ describe('orchestrateAcceptedAddieTurn', () => {
 
     expect(events).toEqual([{
       type: 'turn_decision',
-      decision: { action: 'continue', text: '', hasCustomToolCalls: false },
+      decision: {
+        disposition: { type: 'continue', reason: 'continue' },
+        text: '',
+        hasCustomToolCalls: false,
+      },
     }]);
     expect(execute).not.toHaveBeenCalled();
     expect(messages).toEqual([{ role: 'assistant', content: response.content }]);
@@ -654,18 +677,101 @@ describe('orchestrateAcceptedAddieTurn', () => {
       usage: { inputTokens: 3, outputTokens: 1 },
     };
     const messages: ModelMessage[] = [];
+    const events = [];
 
-    for await (const _event of orchestrateAcceptedAddieTurn({
-      turn: accept(response),
+    for await (const event of orchestrateAcceptedAddieTurn({
+      ...accept(response),
       provider: { id: 'anthropic' },
       executionMode: 'production',
       messages,
       ledger: new AddieToolExecutionLedger(),
       execute: vi.fn(),
     })) {
-      // Consume the shared boundary so its mutation policy is exercised.
+      events.push(event);
     }
 
+    expect(events).toEqual([{
+      type: 'turn_decision',
+      decision: {
+        disposition: { type: 'terminal', reason: 'complete' },
+        text: 'Done.',
+        hasCustomToolCalls: false,
+      },
+    }]);
     expect(messages).toEqual([]);
+  });
+
+  it('owns empty-terminal recovery selection before delivery handles the turn', async () => {
+    const response: ModelResponse = {
+      provider: 'anthropic',
+      model: 'test-model',
+      id: 'response_empty',
+      content: [],
+      finishReason: 'stop',
+      providerFinishReason: 'end_turn',
+      usage: { inputTokens: 3, outputTokens: 0 },
+    };
+    const accepted = accept(response, {
+      allowInitial: true,
+      initialEligible: true,
+      postToolEligible: false,
+    });
+    const events = [];
+
+    for await (const event of orchestrateAcceptedAddieTurn({
+      ...accepted,
+      provider: { id: 'anthropic' },
+      executionMode: 'production',
+      messages: [],
+      ledger: new AddieToolExecutionLedger(),
+      execute: vi.fn(),
+    })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([{
+      type: 'turn_decision',
+      decision: {
+        disposition: { type: 'recover', reason: 'initial' },
+        text: '',
+        hasCustomToolCalls: false,
+      },
+    }]);
+    expect(accepted.emptyResponseRecovery.loop.emptyResponseRecovery.pending).toBe(true);
+  });
+
+  it('keeps an empty terminal terminal when the shared iteration wall is exhausted', async () => {
+    const response: ModelResponse = {
+      provider: 'anthropic',
+      model: 'test-model',
+      id: 'response_empty_exhausted',
+      content: [],
+      finishReason: 'stop',
+      providerFinishReason: 'end_turn',
+      usage: { inputTokens: 3, outputTokens: 0 },
+    };
+    const events = [];
+
+    for await (const event of orchestrateAcceptedAddieTurn({
+      ...accept(response, {
+        allowInitial: true,
+        initialEligible: true,
+        postToolEligible: false,
+      }, 1),
+      provider: { id: 'anthropic' },
+      executionMode: 'production',
+      messages: [],
+      ledger: new AddieToolExecutionLedger(),
+      execute: vi.fn(),
+    })) {
+      events.push(event);
+    }
+
+    expect(events[0]).toMatchObject({
+      type: 'turn_decision',
+      decision: {
+        disposition: { type: 'terminal', reason: 'complete' },
+      },
+    });
   });
 });
