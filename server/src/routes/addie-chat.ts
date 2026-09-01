@@ -17,6 +17,25 @@ import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { optionalAuth } from "../middleware/auth.js";
 import { serveHtmlWithConfig } from "../utils/html-config.js";
 import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
+import {
+  AddieRouter,
+  type ExecutionPlan,
+  type RoutingContext,
+} from "../addie/router.js";
+import { createProductionRouter } from "../addie/router-runtime.js";
+import {
+  buildUnavailableSetsHint,
+  getSafeReadOnlyFallbackTools,
+  getToolsForSets,
+  getValidToolSetNames,
+  MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
+} from "../addie/tool-sets.js";
+import {
+  classifyActiveCertificationProgress,
+  selectRoutedToolSets,
+  type ActiveCertificationKind,
+} from "../addie/slack-tool-selection.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
 import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
@@ -43,6 +62,7 @@ import {
 import {
   SI_HOST_TOOLS,
   createSiHostToolHandlers,
+  hasCachedSiSession,
 } from "../addie/mcp/si-host-tools.js";
 import {
   ADCP_TOOLS,
@@ -160,6 +180,7 @@ export const EMPTY_ASSISTANT_RESPONSE_FALLBACK =
 const logger = createLogger("addie-chat-routes");
 
 let claudeClient: AddieClaudeClient | null = null;
+let webChatRouter: AddieRouter | null = null;
 let initialized = false;
 
 function readAnonymousThreadOwner(req: Request): string | null {
@@ -292,6 +313,114 @@ export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean, is
   return { requestTools, processOptions, effectiveModel };
 }
 
+type WebChatRouter = Pick<AddieRouter, 'quickMatch' | 'route'>;
+type WebChatClient = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
+  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools'>>;
+
+export interface RoutedWebTools {
+  requestTools: RequestTools;
+  selectedToolSets: string[];
+  allowedToolNames: string[];
+  unavailableHint: string;
+}
+
+/**
+ * Apply the same bounded router selection used by direct Slack conversations
+ * to an authenticated web request. Definitions and handlers are intersected
+ * before dispatch, so an incomplete request-local registration fails closed.
+ */
+export async function selectRoutedWebTools(input: {
+  message: string;
+  memberContext: MemberContext | null;
+  threadId: string;
+  isAAOAdmin: boolean;
+  requestTools: RequestTools;
+  router: WebChatRouter | null;
+  /** Globally registered definitions whose handlers were paired at registration time. */
+  globalToolNames?: readonly string[];
+  activeCertificationKind?: ActiveCertificationKind | null;
+  hasSponsoredIntelligenceContext?: boolean;
+  threadMessages?: string[];
+}): Promise<RoutedWebTools> {
+  let plan: ExecutionPlan | null = null;
+  let routerAvailable = input.router !== null;
+
+  if (input.router) {
+    const routingContext: RoutingContext = {
+      message: input.message,
+      source: 'dm',
+      memberContext: input.memberContext,
+      isThread: true,
+      isAAOAdmin: input.isAAOAdmin,
+      threadMessages: input.threadMessages,
+    };
+    try {
+      plan = input.router.quickMatch(routingContext) ?? await input.router.route(routingContext);
+    } catch (error) {
+      routerAvailable = false;
+      logger.warn({ error, threadId: input.threadId }, 'Addie Chat: Router unavailable; using safe read-only fallback');
+    }
+  }
+
+  const validToolSets = getValidToolSetNames(input.isAAOAdmin);
+  const respondPlan = plan?.action === 'respond' ? plan : null;
+  const hasValidRespondPlan = respondPlan !== null
+    && Array.isArray(respondPlan.tool_sets)
+    && respondPlan.tool_sets.length <= MAX_DIRECT_ROUTED_TOOL_SET_COUNT
+    && respondPlan.tool_sets.every((name) => typeof name === 'string' && validToolSets.has(name));
+  const useSafeFallback = !routerAvailable || !hasValidRespondPlan;
+
+  // Web chat is a direct interaction. An ignore/react, malformed, stale, or
+  // unauthorized plan cannot be delivered safely, so use the explicit
+  // read-only fallback rather than the normal always-available escape hatches.
+  const routerSelectedSets = hasValidRespondPlan
+    ? respondPlan.tool_sets
+    : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
+  const selectedToolSets = selectRoutedToolSets({
+    routerSelectedSets,
+    routerAvailable: !useSafeFallback,
+    source: 'dm',
+    isAdmin: input.isAAOAdmin,
+    activeCertificationKind: useSafeFallback ? null : input.activeCertificationKind,
+    hasSponsoredIntelligenceContext: useSafeFallback
+      ? false
+      : input.hasSponsoredIntelligenceContext,
+  });
+  const allowedToolNames = useSafeFallback
+    ? getSafeReadOnlyFallbackTools()
+    : getToolsForSets(selectedToolSets, input.isAAOAdmin);
+  const definitions = new Map(input.requestTools.tools.map((tool) => [tool.name, tool]));
+  const globalToolNames = new Set(input.globalToolNames ?? []);
+  const matchedToolNames = allowedToolNames.filter((name) =>
+    (definitions.has(name) || globalToolNames.has(name))
+    && (input.requestTools.handlers.has(name) || globalToolNames.has(name)),
+  );
+  const incompleteToolNames = allowedToolNames.filter((name) =>
+    name !== 'web_search' && !matchedToolNames.includes(name),
+  );
+  if (incompleteToolNames.length > 0) {
+    logger.warn(
+      { threadId: input.threadId, incompleteToolNames },
+      'Addie Chat: Excluded incomplete routed tool registrations',
+    );
+  }
+  const matched = new Set(matchedToolNames);
+
+  return {
+    requestTools: {
+      tools: input.requestTools.tools.filter((tool) => matched.has(tool.name)),
+      handlers: new Map(
+        [...input.requestTools.handlers].filter(([name]) => matched.has(name)),
+      ),
+    },
+    selectedToolSets,
+    // Keep provider-managed web_search in the allowlist even though it has no
+    // custom handler. The client applies this list to global definitions too.
+    allowedToolNames,
+    unavailableHint: buildUnavailableSetsHint(selectedToolSets, input.isAAOAdmin),
+  };
+}
+
 /**
  * Initialize the chat client
  *
@@ -309,6 +438,7 @@ async function initializeChatClient(): Promise<void> {
 
   // Client defaults to Sonnet; anonymous requests override to Haiku per-request
   claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.chat);
+  webChatRouter = createProductionRouter(apiKey, process.env.OPENAI_API_KEY?.trim()).router;
 
   // Initialize knowledge search
   await initializeKnowledgeSearch();
@@ -556,6 +686,7 @@ export interface PreparedRequest {
   certificationModuleContext: { moduleId?: string };
   certificationProgress: certDb.LearnerProgress[];
   threadExternalId: string;
+  isAAOAdmin: boolean;
 }
 
 export function resolveThreadCertificationProgress(
@@ -733,6 +864,7 @@ export async function prepareRequestWithMemberTools(
   let hasThreadCertificationContext = false;
   let certificationModuleId: string | undefined;
   let certificationProgress: certDb.LearnerProgress[] = [];
+  let isAAOAdmin = false;
   if (memberContext?.workos_user?.workos_user_id) {
     try {
       const progress = await certDb.getProgress(memberContext.workos_user.workos_user_id);
@@ -787,6 +919,7 @@ export async function prepareRequestWithMemberTools(
       certificationModuleContext: trainingModuleContext,
       certificationProgress,
       threadExternalId,
+      isAAOAdmin: false,
     };
   }
 
@@ -850,6 +983,7 @@ export async function prepareRequestWithMemberTools(
     ]);
 
     if (userIsAdmin) {
+      isAAOAdmin = true;
       allTools.push(...ADMIN_TOOLS);
       for (const [name, handler] of createAdminToolHandlers(memberContext)) {
         combinedHandlers.set(name, handler);
@@ -921,6 +1055,7 @@ export async function prepareRequestWithMemberTools(
     certificationModuleContext: trainingModuleContext,
     certificationProgress,
     threadExternalId,
+    isAAOAdmin,
   };
 }
 
@@ -943,11 +1078,18 @@ const chatCorsOptions: cors.CorsOptions = {
 };
 
 export function createAddieChatRouter(options?: {
-  chatClient?: Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>;
+  chatClient?: WebChatClient;
+  router?: WebChatRouter | null;
 }): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
   const injectedChatClient = options?.chatClient;
+  // An explicit null is a deterministic test/replay choice: do not replace it
+  // with the process-wide production router. Injected clients otherwise use a
+  // safe fallback unless their test supplies a router fixture.
+  const resolveRouter = (): WebChatRouter | null => Object.hasOwn(options ?? {}, 'router')
+    ? options?.router ?? null
+    : (injectedChatClient ? null : webChatRouter);
 
   // Enable CORS for all API routes (for native app support)
   apiRouter.use(cors(chatCorsOptions));
@@ -1150,6 +1292,10 @@ export function createAddieChatRouter(options?: {
         messageToProcess,
         requestContext,
         requestTools: memberTools,
+        memberContext,
+        siAgents,
+        certificationProgress,
+        isAAOAdmin,
         hasThreadCertificationContext,
       } = await prepareRequestWithMemberTools(
         inputValidation.sanitized,
@@ -1159,11 +1305,33 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(
+      const tieredAccess = buildTieredAccess(
         memberTools,
         isAuth,
         hasThreadCertificationContext,
       );
+      const activeCertificationKind = classifyActiveCertificationProgress(
+        certificationProgress.filter((entry) =>
+          entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
+        ),
+      );
+      const routedWebTools = isAuth
+        ? await selectRoutedWebTools({
+            message: messageToProcess,
+            memberContext,
+            threadId: thread.thread_id,
+            isAAOAdmin,
+            requestTools: tieredAccess.requestTools,
+            router: resolveRouter(),
+            globalToolNames: activeChatClient.getRegisteredTools?.(),
+            activeCertificationKind,
+            hasSponsoredIntelligenceContext:
+              hasCachedSiSession(externalId) || siAgents.length > 0,
+            threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+          })
+        : null;
+      const { processOptions, effectiveModel } = tieredAccess;
+      const requestTools = routedWebTools?.requestTools ?? tieredAccess.requestTools;
 
       // Cost-cap scope (#2790 / #2945 f/u). Authenticated callers key
       // off the WorkOS user ID and resolve their tier from
@@ -1183,7 +1351,9 @@ export function createAddieChatRouter(options?: {
       try {
         response = await activeChatClient.processMessage(messageToProcess, contextMessages, requestTools, undefined, {
           ...processOptions,
-          requestContext,
+          requestContext: [requestContext, routedWebTools?.unavailableHint].filter(Boolean).join('\n\n'),
+          selectedToolSetNames: routedWebTools?.selectedToolSets,
+          allowedToolNames: routedWebTools?.allowedToolNames,
           threadId: thread.thread_id,
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
@@ -1613,10 +1783,12 @@ export function createAddieChatRouter(options?: {
         messageToProcess,
         requestContext,
         requestTools: memberTools,
+        memberContext,
         siAgents,
         hasThreadCertificationContext: hasThreadCertCtx,
         certificationModuleContext,
         certificationProgress,
+        isAAOAdmin,
       } = await prepareRequestWithMemberTools(
         messageForModel,
         req.user?.id,
@@ -1625,7 +1797,29 @@ export function createAddieChatRouter(options?: {
         thread.thread_id,
         typeof organization_id === 'string' ? organization_id : null
       );
-      const { requestTools, processOptions, effectiveModel } = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      const tieredAccess = buildTieredAccess(memberTools, isAuth, hasThreadCertCtx);
+      const activeCertificationKind = classifyActiveCertificationProgress(
+        certificationProgress.filter((entry) =>
+          entry.addie_thread_id === externalId || entry.addie_thread_id === thread.thread_id,
+        ),
+      );
+      const routedWebTools = isAuth
+        ? await selectRoutedWebTools({
+            message: messageToProcess,
+            memberContext,
+            threadId: thread.thread_id,
+            isAAOAdmin,
+            requestTools: tieredAccess.requestTools,
+            router: resolveRouter(),
+            globalToolNames: activeChatClient.getRegisteredTools?.(),
+            activeCertificationKind,
+            hasSponsoredIntelligenceContext:
+              hasCachedSiSession(externalId) || siAgents.length > 0,
+            threadMessages: contextMessages.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+          })
+        : null;
+      const { processOptions, effectiveModel } = tieredAccess;
+      const requestTools = routedWebTools?.requestTools ?? tieredAccess.requestTools;
       requestedModelForAttempt = effectiveModel;
       const preTurnCertification = userId && certificationModuleContext.moduleId
         ? await getCertificationModuleExperience(userId, certificationModuleContext.moduleId)
@@ -1668,7 +1862,9 @@ export function createAddieChatRouter(options?: {
       for await (const event of activeChatClient.processMessageStream(messageToProcess, contextMessages, requestTools, {
         ...processOptions,
         ...(completionReserveEligible ? { maxIterations: 3, maxMessages: 12 } : {}),
-        requestContext,
+        requestContext: [requestContext, routedWebTools?.unavailableHint].filter(Boolean).join('\n\n'),
+        selectedToolSetNames: routedWebTools?.selectedToolSets,
+        allowedToolNames: routedWebTools?.allowedToolNames,
         threadId: thread.thread_id,
         userDisplayName: displayName || undefined,
         currentSpeakerName: displayName || undefined,

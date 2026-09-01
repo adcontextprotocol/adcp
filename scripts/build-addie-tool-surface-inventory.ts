@@ -591,24 +591,105 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
       ...memberTools,
     ];
   };
-  const authenticatedMemberRequest = buildAuthenticatedRequest(false);
-  const authenticatedAdminRequest = buildAuthenticatedRequest(true);
+  const buildRoutedAuthenticatedProfiles = (isAdmin: boolean): Profile[] => {
+    const audience = isAdmin ? 'authenticated_admin' : 'authenticated_member';
+    const authenticatedRequest = buildAuthenticatedRequest(isAdmin);
+    const selectedFor = (routerSelectedSets: string[], hasSponsoredIntelligenceContext = false) => selectSlackToolSets({
+      routerSelectedSets,
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin,
+      hasSponsoredIntelligenceContext,
+    });
+    const profileFor = (
+      id: string,
+      selectedToolSets: string[],
+      conditionalMaximums: string[],
+      safeFallback = false,
+    ) =>
+      profile({
+        id: `web_chat:${audience}:${id}`,
+        runtime: 'web_chat',
+        audience,
+        globalTools,
+        requestTools: authenticatedRequest,
+        allowedToolNames: safeFallback
+          ? defs.toolSets.getSafeReadOnlyFallbackTools()
+          : defs.toolSets.getToolsForSets(selectedToolSets, isAdmin),
+        selectedToolSets,
+        providerToolCount: 1,
+        conditionalMaximums,
+      });
+    const routerVisibleSetNames = Object.values(defs.toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false && (isAdmin || !set.adminOnly))
+      .map((set) => set.name);
+    const routed = routerVisibleSetNames.map((setName) => profileFor(
+        `routed:${setName}`,
+        selectedFor([setName]),
+        ['router_selected_bounded_domain', 'nonstreaming_web_search'],
+      ));
+    const boundedDomainCombinations = routerVisibleSetNames.map((setName) => [setName]);
+    for (let first = 0; first < routerVisibleSetNames.length; first += 1) {
+      for (let second = first + 1; second < routerVisibleSetNames.length; second += 1) {
+        boundedDomainCombinations.push([routerVisibleSetNames[first], routerVisibleSetNames[second]]);
+      }
+    }
+    const boundedRouteCandidates = boundedDomainCombinations.flatMap((setNames) => [
+      profileFor(
+        `routed_combination:${setNames.join('+')}`,
+        selectedFor(setNames),
+        ['router_selected_up_to_two_bounded_domains', 'nonstreaming_web_search'],
+      ),
+      profileFor(
+        `routed_combination:${setNames.join('+')}:si_context`,
+        selectedFor(setNames, true),
+        ['router_selected_up_to_two_bounded_domains', 'active_sponsored_intelligence_session', 'nonstreaming_web_search'],
+      ),
+    ]);
+    // The runtime accepts at most two routed domains and can add SI only from
+    // trusted session/retrieval context. Retain the exact profiles that
+    // establish each generated maximum without checking in every combination.
+    const boundedRouteMaximums = new Map<string, Profile>();
+    for (const metric of ['custom_tool_count', 'wire_schema_bytes', 'tool_reference_bytes'] as const) {
+      const maximum = Math.max(...boundedRouteCandidates.map((candidate) => candidate[metric]));
+      for (const candidate of boundedRouteCandidates) {
+        if (candidate[metric] === maximum) {
+          boundedRouteMaximums.set(candidate.id, candidate);
+          break;
+        }
+      }
+    }
+    const fallback = profileFor(
+      'safe_fallback',
+      selectSlackToolSets({ routerAvailable: false, source: 'dm', isAdmin }),
+      ['router_unavailable', 'nonstreaming_web_search'],
+      true,
+    );
+    const activeCertification = ([
+      ['active_certification_learning', 'learning'],
+      ['active_certification_assessment', 'assessment'],
+      ['active_certification_mixed', 'mixed'],
+    ] as const).map(([id, activeCertificationKind]) => profileFor(
+      id,
+      selectSlackToolSets({
+        routerAvailable: true,
+        source: 'dm',
+        isAdmin,
+        activeCertificationKind,
+      }),
+      ['active_certification_session', 'nonstreaming_web_search'],
+    ));
+    return [...routed, ...boundedRouteMaximums.values(), fallback, ...activeCertification];
+  };
+
   return [
     profile({
       id: 'web_chat:anonymous:maximum', runtime: 'web_chat', audience: 'anonymous',
       globalTools, providerToolCount: 1,
       conditionalMaximums: ['nonstreaming_web_search'],
     }),
-    profile({
-      id: 'web_chat:authenticated_member:maximum', runtime: 'web_chat', audience: 'authenticated_member',
-      globalTools, requestTools: authenticatedMemberRequest, providerToolCount: 1,
-      conditionalMaximums: ['moltbook_configured', 'event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'web_chat:authenticated_admin:maximum', runtime: 'web_chat', audience: 'authenticated_admin',
-      globalTools, requestTools: authenticatedAdminRequest, providerToolCount: 1,
-      conditionalMaximums: ['moltbook_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
+    ...buildRoutedAuthenticatedProfiles(false),
+    ...buildRoutedAuthenticatedProfiles(true),
   ];
 }
 
