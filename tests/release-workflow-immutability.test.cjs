@@ -55,6 +55,8 @@ const uploadStep = extractStep('Upload protocol tarball to GitHub Release');
 const changesetsStepConfig = workflowConfig.jobs.release.steps.find(
   step => step.name === 'Create Release Pull Request or Tag Release'
 );
+const verificationJob = workflowConfig.jobs['verify-release'];
+const releaseJob = workflowConfig.jobs.release;
 const changesetsActionContractSource = fs.readFileSync(
   path.join(changesetsActionFixtureDir, 'action.yml'),
   'utf8'
@@ -101,6 +103,55 @@ assert(
   'Release workflow must not silently repair existing releases from unrelated pushes.'
 );
 
+assert.strictEqual(
+  releaseJob.needs,
+  'verify-release',
+  'The release mutation job must wait for the long-running verification job.'
+);
+
+assert.strictEqual(
+  verificationJob.outputs.relevant,
+  '${{ steps.release-relevance.outputs.relevant }}',
+  'The verification job must expose release relevance to the mutation job.'
+);
+
+assert.strictEqual(
+  releaseJob.if,
+  "needs.verify-release.outputs.relevant == 'true'",
+  'The release mutation job must be skipped for pushes without release-relevant changes.'
+);
+
+assert.deepStrictEqual(
+  verificationJob.permissions,
+  { contents: 'read' },
+  'The verification job must not receive release mutation or signing permissions.'
+);
+
+assert.strictEqual(
+  releaseJob.permissions['id-token'],
+  'write',
+  'The post-verification release job must retain Sigstore OIDC permission.'
+);
+
+assert(
+  verificationJob.steps.some(step => step.name === 'Verify current storyboard coverage') &&
+    verificationJob.steps.some(step => step.name === 'Verify 3.0 storyboard compatibility'),
+  'Both storyboard gates must run in the verification job before an App token is minted.'
+);
+
+assert(
+  !verificationJob.steps.some(step => step.name === 'Mint AAO Release Bot installation token') &&
+    releaseJob.steps[0].name === 'Mint AAO Release Bot installation token',
+  'The short-lived release App token must be minted at the start of the post-verification mutation job.'
+);
+
+const releaseCheckout = releaseJob.steps.find(step => step.name === 'Checkout Repo');
+assert.strictEqual(
+  releaseCheckout.with.token,
+  '${{ steps.app-token.outputs.token }}',
+  'The release checkout must persist the App token used by Changesets git-CLI pushes.'
+);
+
 assert(
   !artifactDetection.includes('[ -d "dist/schemas/${VERSION}" ]'),
   'Release artifact detection must not treat artifacts that merely exist in the tree as publishable.'
@@ -144,7 +195,7 @@ assert.deepStrictEqual(
   changesetsStepConfig,
   {
     name: 'Create Release Pull Request or Tag Release',
-    if: "steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'",
+    if: "steps.release-artifacts.outputs.has_release_artifacts != 'true'",
     id: 'changesets',
     uses: `changesets/action@${changesetsActionSha}`,
     with: {

@@ -22,9 +22,9 @@
       "typical_use": "Audio ads for streaming, podcasts, radio"
     },
     "vast": {
-      "description": "VAST XML tag for third-party video ad serving",
+      "description": "VAST XML tag for third-party video or audio ad serving",
       "schema": "/schemas/core/assets/vast-asset.json",
-      "typical_use": "Third-party served video ads with VAST 2.0-4.3"
+      "typical_use": "Third-party served video ads with VAST 2.0-4.3 or audio ads with VAST 4.1+ and explicitly seller-supported legacy versions"
     },
     "daast": {
       "description": "DAAST XML tag for third-party audio ad serving",

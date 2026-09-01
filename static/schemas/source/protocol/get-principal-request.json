@@ -4,7 +4,7 @@
   "title": "Get Principal Request",
   "x-status": "experimental",
   "description": "Read the authenticated principal's current standing configuration with this AdCP agent: the same caller-scoped state that sync_principal replaces, plus retained superseded and revoked destination generations. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body fields. The read is side-effect free: it never issues identifiers, sends proof challenges, or advances the configuration version. Use it to bootstrap expected_configuration_version before a guarded sync, to reconcile after local-state loss, and to observe destination setup-state transitions such as action_required becoming ready. Prefer sync_principal only when changing state; prefer this task for every read.",
-  "x-tool-summary": "Read caller-scoped connection configuration, version, and destination setup states for this agent connection.",
+  "x-tool-summary": "Read caller-scoped principal configuration, version, and destination setup states with this seller agent.",
   "type": "object",
   "allOf": [
     {
@@ -32,12 +32,13 @@
   "additionalProperties": true,
   "x-adcp-validation": {
     "stable_principal": "Resolve the same server-side stable authenticated principal as sync_principal and reject NO_AUTH, anonymous, or unstable caller identities. Any unmodeled request-body field MUST be ignored for identity and authorization.",
-    "principal_isolation": "Return only the caller's own connection state. A caller with no persisted connection receives the unconfigured result, indistinguishable in shape and timing from a caller whose configuration another principal owns.",
+    "signed_agent_identity": "For an RFC 9421 signed caller, reuse sync_principal's verified mapping from exactly one canonical brand.json agents[].url to the seller-local principal. Domain, jwks_uri, kid, key material, and request-body URLs are not principal identifiers; key rotation under the same canonical Agent URL preserves the principal, while distinct canonical Agent URLs remain isolated.",
+    "principal_isolation": "Return only the caller's own principal state. A caller with no persisted principal record receives the unconfigured result, indistinguishable in shape and timing from a caller whose configuration another principal owns.",
     "read_only": "This task MUST NOT mutate state, issue durable identifiers, send endpoint proof challenges, or advance configuration_version. Seller-side setup-state transitions observed here (for example validating to ready) do not advance the version; only successful configuration mutations do."
   },
   "examples": [
     {
-      "description": "Read current connection configuration",
+      "description": "Read current principal configuration",
       "data": {}
     }
   ]

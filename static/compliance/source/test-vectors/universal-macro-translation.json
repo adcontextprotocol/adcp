@@ -233,6 +233,75 @@
       }
     },
     {
+      "name": "embedded-percent-native-tokens-are-deduplicated",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "prefix-%%FIRST%%-middle-%%SECOND%%-suffix" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=prefix-%25%25FIRST%25%25-middle-%25%25SECOND%25%25-suffix",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{VALUE}"]
+      }
+    },
+    {
+      "name": "embedded-double-brace-native-token-is-suspect",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "prefix-{{token}}-suffix" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=prefix-%7B%7Btoken%7D%7D-suffix",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{VALUE}"]
+      }
+    },
+    {
+      "name": "embedded-dollar-brace-native-token-is-suspect",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "prefix-${token}-suffix" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=prefix-%24%7Btoken%7D-suffix",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{VALUE}"]
+      }
+    },
+    {
+      "name": "embedded-upper-snake-bracket-native-token-is-suspect",
+      "input_pixel_url": "https://pixel.example/i?v={VALUE}",
+      "mapping": { "{VALUE}": { "value": "prefix-[UPPER_SNAKE]-suffix" } },
+      "expected": {
+        "url": "https://pixel.example/i?v=prefix-%5BUPPER_SNAKE%5D-suffix",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{VALUE}"]
+      }
+    },
+    {
+      "name": "embedded-native-values-are-mapping-scoped-and-ordered",
+      "input_pixel_url": "https://pixel.example/i?first={FIRST}&second={SECOND}",
+      "mapping": {
+        "{SECOND}": { "value": "prefix-{{second}}-suffix" },
+        "{UNUSED}": { "value": "prefix-${unused}-suffix" },
+        "{FIRST}": { "value": "prefix-[FIRST_TOKEN]-suffix" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?first=prefix-%5BFIRST_TOKEN%5D-suffix&second=prefix-%7B%7Bsecond%7D%7D-suffix",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": ["{SECOND}", "{UNUSED}", "{FIRST}"]
+      }
+    },
+    {
       "name": "ordinary-bracketed-values-not-suspect",
       "input_pixel_url": "https://pixel.example/i?a={A}&b={B}",
       "mapping": {
@@ -241,6 +310,22 @@
       },
       "expected": {
         "url": "https://pixel.example/i?a=%5B1%2C2%2C3%5D&b=%5Bredacted%5D",
+        "dropped_params": [],
+        "unmapped_macros": [],
+        "dropped_consent_macros": [],
+        "frozen_consent_macros": [],
+        "suspect_native_values": []
+      }
+    },
+    {
+      "name": "embedded-ordinary-bracketed-values-not-suspect",
+      "input_pixel_url": "https://pixel.example/i?a={A}&b={B}",
+      "mapping": {
+        "{A}": { "value": "prefix-[1,2,3]-suffix" },
+        "{B}": { "value": "prefix-[redacted]-suffix" }
+      },
+      "expected": {
+        "url": "https://pixel.example/i?a=prefix-%5B1%2C2%2C3%5D-suffix&b=prefix-%5Bredacted%5D-suffix",
         "dropped_params": [],
         "unmapped_macros": [],
         "dropped_consent_macros": [],

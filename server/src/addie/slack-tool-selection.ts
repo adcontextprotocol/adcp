@@ -79,6 +79,14 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
     ? [...(input.routerSelectedSets ?? [])]
     : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
 
+  // Direct conversations must always retain Addie's authoritative docs and
+  // public-repository lookup. The response model is instructed to verify
+  // questions about Addie's own capabilities, so an empty or overly narrow
+  // router plan must not make those tools disappear from DMs or mentions.
+  if (input.source === 'dm' || input.source === 'mention') {
+    appendUnique(selected, ['knowledge']);
+  }
+
   if (input.isAdmin && input.systemRole) {
     appendUnique(selected, SYSTEM_CHANNEL_TOOL_SETS[input.systemRole] ?? []);
   }

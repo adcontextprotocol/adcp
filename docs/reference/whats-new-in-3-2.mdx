@@ -88,6 +88,37 @@ Cross-agent transfer of a committed hold is deliberately not implied: the
 agent that accepts a proposal must be able to authenticate its buyer binding,
 resolve the immutable snapshot, and consume its inventory hold atomically.
 
+### A durable connection for authenticated principals
+
+3.2 adds an experimental principal layer for configuration that belongs to an
+authenticated caller's standing relationship with a seller, rather than to one
+advertiser account or media buy. The seller's authorization system still
+issues credentials and resolves the stable party before AdCP begins; the
+protocol does not turn a self-asserted agent URL or key ID into identity.
+
+After authentication, [`sync_principal`](/docs/protocol/sync_principal) lets a
+buyer agent or operator synchronize the sections a seller advertises:
+
+- caller-level webhook subscriptions, including a one-call endpoint kill
+  switch;
+- reusable reporting destinations whose setup and suspension state can be
+  shared across separately authorized accounts; and
+- declarations of asynchronous AdCP versions, signing algorithms, and
+  experimental features the caller can consume.
+
+[`get_principal`](/docs/protocol/get_principal) is the side-effect-free repair
+path. It returns the seller-resolved principal kind, an opaque configuration
+version for guarded replacement, destination generations and setup state, and
+the accepted intersection of caller declarations with seller support.
+`principal.changed` invalidates cached state after seller-side changes.
+
+Principal configuration never grants advertiser-account authority. Every
+account and reporting-feed binding is still authorized independently, and
+credential rotation preserves a record only when the seller maps the new
+credential to the same stable principal. The surface remains experimental so
+implementers can validate rotation, multi-account destination reuse,
+revocation timing, and delegated-operator boundaries before it freezes.
+
 ### Targeting that survives discovery and execution
 
 Targeting-aware discovery separates concrete constraints from future
@@ -165,9 +196,10 @@ products expose accepted `format_options[]`; build and transformer calls select
 those capabilities directly.
 
 3.2 also adds image pixel-density and rendition-set semantics, creative
-localization, optional async preview, audio loudness constraints, VAST 4.3 and
-validation levels, structured accessibility rejection detail, and synthetic
-depiction provenance.
+localization, optional async preview, audio loudness constraints, VAST-tagged
+audio delivery through the `audio_vast` canonical, VAST 4.3 and validation
+levels, structured accessibility rejection detail, and synthetic depiction
+provenance.
 
 `list_creative_formats` remains a compatibility task, but new discovery must
 use product format options and creative capabilities. Exact plural

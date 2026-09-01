@@ -3,8 +3,8 @@
   "$id": "/schemas/protocol/sync-principal-request.json",
   "title": "Sync Principal Request",
   "x-status": "experimental",
-  "description": "Declaratively synchronize selected sections of the authenticated principal's standing configuration with one AdCP agent. The principal is a party: a buyer agent, or an operator-side identity acting through any client. Use this task only to change state; read current state, the configuration version, and destination setup progress through get_principal, and prefer this task over the narrower sync_agent_notification_configs when both are advertised. This task does not register a buyer agent: the stable principal MAY be a delegated human user or an autonomous workload. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body agent URLs, signing key IDs, account IDs, or other self-asserted fields. Each present section is the caller's complete desired set and replaces only that section; omitted sections remain unchanged. All submitted sections apply atomically or none do. This task configures reusable connection resources but grants no advertiser-account authority. Sellers implementing it MUST advertise adcp.principal and protocol.principal.",
-  "x-tool-summary": "Synchronize caller-scoped webhooks and reusable reporting destinations for this agent connection.",
+  "description": "This task begins after authentication: AdCP defines no credential-registration protocol, and the seller’s authorization system (OAuth, API keys, signed requests, workload identity) issues and maps credentials before the first call. Declaratively synchronize selected sections of the authenticated principal's standing configuration with one AdCP agent. The principal is a party: a buyer agent, or an operator-side identity acting through any client. Use this task only to change state; read current state, the configuration version, and destination setup progress through get_principal, and prefer this task over the narrower sync_agent_notification_configs when both are advertised. This task does not register a buyer agent: the stable principal MAY be a delegated human user or an autonomous workload. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body agent URLs, signing key IDs, account IDs, or other self-asserted fields. Each present section is the caller's complete desired set and replaces only that section; omitted sections remain unchanged. All submitted sections apply atomically or none do. This task configures reusable principal resources but grants no advertiser-account authority. Sellers implementing it MUST advertise adcp.principal and protocol.principal.",
+  "x-tool-summary": "Synchronize caller-scoped webhooks and reusable reporting destinations with this seller agent.",
   "type": "object",
   "allOf": [
     {
@@ -13,10 +13,26 @@
     {
       "not": {
         "anyOf": [
-          { "required": ["buyer_agent_url"] },
-          { "required": ["agent_url"] },
-          { "required": ["principal_id"] },
-          { "required": ["connection_id"] }
+          {
+            "required": [
+              "buyer_agent_url"
+            ]
+          },
+          {
+            "required": [
+              "agent_url"
+            ]
+          },
+          {
+            "required": [
+              "principal_id"
+            ]
+          },
+          {
+            "required": [
+              "connection_id"
+            ]
+          }
         ]
       }
     }
@@ -36,6 +52,10 @@
       "maxLength": 255,
       "description": "Optional optimistic-concurrency fence returned by a previous successful sync. When present and stale, the seller rejects the whole request without mutation. Compare only for equality."
     },
+    "expected_principal_kind": {
+      "$ref": "/schemas/enums/principal-kind.json",
+      "description": "Optional assertion fence, not identity input: the caller states which party kind it believes it is authenticating as. When present and different from the seller-resolved principal_kind, the seller rejects the whole request with CONFLICT before mutation. The field never influences resolution."
+    },
     "configuration": {
       "type": "object",
       "description": "Sections to replace atomically. At least one section is required. A present array is complete desired state for that section; [] clears it; omission leaves it unchanged.",
@@ -50,12 +70,16 @@
               },
               {
                 "if": {
-                  "required": ["authentication"]
+                  "required": [
+                    "authentication"
+                  ]
                 },
                 "then": {
                   "properties": {
                     "authentication": {
-                      "required": ["credentials"]
+                      "required": [
+                        "credentials"
+                      ]
                     }
                   }
                 }
@@ -71,6 +95,10 @@
             "$ref": "/schemas/core/agent-reporting-destination.json"
           },
           "maxItems": 64
+        },
+        "declarations": {
+          "$ref": "/schemas/core/principal-declarations.json",
+          "description": "Complete declared consumption facts for this principal record. A present object replaces the declared set wholesale; {} clears it; omission leaves it unchanged. The seller computes and returns the accepted intersection in state."
         }
       },
       "minProperties": 1,
@@ -88,19 +116,26 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "required": ["idempotency_key", "configuration"],
+  "required": [
+    "idempotency_key",
+    "configuration"
+  ],
   "additionalProperties": true,
   "x-adcp-validation": {
     "stable_principal": "Reject NO_AUTH, anonymous, or unstable caller identities. Ownership is the server-resolved stable authenticated principal, not the current signing key, token, session, interactive client application identity, request-body identity, bucket coordinates, or principal_id. Any request-body field not defined by this schema MUST be ignored for identity, ownership, and authorization decisions. A delegated human user and an autonomous workload are both valid principal kinds. Interactive use through Claude, ChatGPT, another MCP host, or a UI MUST NOT require registration of that client or user as a buyer agent; it does require a stable delegated user subject. When an interactive client supplies only a shared service identity, require delegated authorization or account linking before persistence.",
-    "credential_rotation": "A new token or signing key MUST resolve to the existing connection when and only when the authorization system maps it to the same stable principal. A key ID, key fingerprint, token, or session MUST NOT become the owner key.",
-    "principal_isolation": "Do not infer shared ownership from organization membership, client application, agent URL, destination coordinates, or advertiser account. Different principals cannot discover or claim each other's connection or destination references. Cross-principal linking requires a separate explicitly authorized administrative operation.",
+    "signed_agent_identity": "For an RFC 9421 signed caller resolved through operator brand.json, the stable Agent subject MUST be the canonical form of the exactly matched agents[].url after the publication chain and request-signing key authorization have verified. A request-body URL, matching domain, raw URL spelling, brand_json_url, jwks_uri, kid, key thumbprint, or key generation is not that subject. Distinct canonical Agent URLs remain distinct principals even when they share a domain, operator, functional type, or JWKS endpoint. Key rotation preserves the principal when the replacement key is authorized for the same canonical Agent URL. A resolver that cannot bind the verified caller to exactly one canonical Agent URL MUST fail closed without materializing or accessing principal state.",
+    "credential_rotation": "A new token or signing key MUST resolve to the existing principal record when and only when the authorization system maps it to the same stable principal. A key ID, key fingerprint, token, or session MUST NOT become the owner key.",
+    "principal_isolation": "Do not infer shared ownership from organization membership, client application, an unverified or merely domain-matched agent URL, destination coordinates, or advertiser account. The verified canonical Agent URL rule for RFC 9421 signed callers is the identity mapping, not cross-principal linking. Different principals cannot discover or claim each other's principal record or destination references. Cross-principal linking otherwise requires a separate explicitly authorized administrative operation.",
     "account_authority": "Destination proof establishes where the authenticated principal can receive delivery; it does not establish which advertiser data that principal can receive. Every destination use MUST independently authorize the account-scoped feed binding.",
     "atomic_sections": "Validate every submitted section, uniqueness constraint, and authorization check before commit; failure leaves all prior sections unchanged. A proof-bound resource may persist as validating or action_required, but cannot become ready until proof succeeds. Active notification subscribers require endpoint proof before replacement. dry_run performs no grants, challenges, or persistence.",
     "optimistic_concurrency": "After resolving an exact idempotent replay, when expected_configuration_version is present and does not equal the current version, reject a new operation with CONFLICT without revealing another principal's version or configuration. Idempotency lookup precedes the version fence so a lost successful response remains replayable after the persisted version advances. When the seller advertises optimistic_concurrency false, a request carrying expected_configuration_version is rejected with UNSUPPORTED_FEATURE, never silently ignored.",
-    "idempotency_scope": "Idempotency records are scoped to the stable authenticated principal. A key first seen under a different principal MUST be treated as a new operation, never a replay, because a replayed applied response discloses the owner's complete connection state.",
+    "idempotency_scope": "Idempotency records are scoped to the stable authenticated principal. A key first seen under a different principal MUST be treated as a new operation, never a replay, because a replayed applied response discloses the owner's complete principal state.",
+    "principal_kind_fence": "principal_kind is resolved solely from the seller's authorization system and reported on every applied or current readback. expected_principal_kind is an assertion fence evaluated after idempotent-replay resolution: on mismatch with the resolved kind, reject with CONFLICT before mutation. Neither field is identity input, and a caller cannot change its resolved kind through this task.",
     "version_coherence": "Every successful configuration mutation through this task or sync_agent_notification_configs advances configuration_version over the one shared underlying state. Seller-driven setup-state transitions, such as a destination moving from validating to ready, MUST NOT advance it.",
     "no_cross_principal_oracle": "Applied action values, dry_run outcomes, warnings, errors, and timing are computed solely against the caller's own state and MUST NOT reveal whether coordinates, recipients, endpoints, or references are registered to any other principal.",
     "offering_boundary": "Schema violations, authorization failures, unsupported sections, oversize sections, and destinations outside the advertised reporting_destination_offerings fail the whole request atomically. Provider-side setup outcomes for in-offering destinations are expressed per destination as validating, action_required, or rejected states inside an applied response.",
+    "declarations_intersection": "On every declarations replacement the seller recomputes the accepted intersection against its objective support and returns it in state. Unknown experimental feature identifiers are accepted and excluded from the intersection, not rejected. An empty webhook_signing_algorithms intersection while any webhook subscriber is active — on either side of the same request — fails the whole request with UNSUPPORTED_FEATURE, because fires would be unverifiable. A later seller-side change to the accepted intersection fires principal.changed with reason declarations_intersection_changed and does not advance configuration_version. The readback MUST persist the declared set, the accepted intersection, the selected_async_adcp_version chosen from it, and an exclusions entry with a reason for every declared value not accepted.",
+    "caller_level_account_events": "Account-anchored event types on caller-level subscribers require the explicit all_authorized_accounts acknowledgment — subscribing an endpoint to every account is never implicit — and are authorized at each delivery attempt against the caller's current account authority: revocation suppresses queued retries carrying that account's data, not merely new fires. Registration itself requires no account authority and grants none. Media-buy-anchored event types are rejected. include_future_event_types extends only to invalidation-only classified types, never payload-bearing ones. Caller-level and account-level subscriptions are independent; sellers fire both and receivers dedupe by notification_id.",
     "compatibility": "A notification_configs update has the same effect as sync_agent_notification_configs for that authenticated caller. Implementations supporting both tasks MUST expose one underlying subscriber set, not divergent copies, and MUST keep accepting the specialized task while notifications.supported is true."
   },
   "examples": [
@@ -113,7 +148,9 @@
             {
               "subscriber_id": "buyer-events",
               "url": "https://buyer.example/webhooks/adcp",
-              "event_types": ["capabilities.changed"],
+              "event_types": [
+                "capabilities.changed"
+              ],
               "active": true
             }
           ],
@@ -122,20 +159,32 @@
               "pattern": "file_transfer",
               "destination_id": "reporting-archive",
               "active": true,
-              "provider": { "domain": "object-store.example" },
+              "provider": {
+                "domain": "object-store.example"
+              },
               "transport": "s3",
               "location": "s3://pinnacle-reporting/adcp/",
-              "accepted_formats": ["parquet"],
-              "accepted_verification_profiles": ["manifest_checksums", "canonical_digest"]
+              "accepted_formats": [
+                "parquet"
+              ],
+              "accepted_verification_profiles": [
+                "manifest_checksums",
+                "canonical_digest"
+              ]
             },
             {
               "pattern": "warehouse_materialization",
               "destination_id": "analytics-warehouse",
               "active": true,
-              "provider": { "domain": "data-warehouse.example" },
+              "provider": {
+                "domain": "data-warehouse.example"
+              },
               "transport": "bigquery",
               "location": "pinnacle-analytics.adcp_reporting",
-              "accepted_verification_profiles": ["native_commit", "canonical_digest"]
+              "accepted_verification_profiles": [
+                "native_commit",
+                "canonical_digest"
+              ]
             }
           ]
         }

@@ -2693,6 +2693,80 @@ describe('validate_input handler', () => {
     ]);
   });
 
+  it('validates the canonical audio_vast slot contract', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const manifest = {
+      format_kind: 'audio_vast',
+      assets: {
+        vast_tag: {
+          asset_type: 'vast',
+          delivery_type: 'url',
+          url: 'https://vast.acme.example/audio.xml',
+          vast_version: '4.3',
+        },
+      },
+    };
+
+    const passing = await simulateCallTool(server, 'validate_input', {
+      manifest,
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(passing.result.results).toEqual([
+      { target: { kind: 'canonical', id: 'audio_vast' }, result_kind: 'validated_pass' },
+    ]);
+
+    const failing = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        ...manifest,
+        assets: {
+          vast_tag: {
+            asset_type: 'daast',
+            delivery_type: 'url',
+            url: 'https://vast.acme.example/audio.xml',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(failing.result.results[0]).toMatchObject({
+      target: { kind: 'canonical', id: 'audio_vast' },
+      result_kind: 'validated_fail',
+      violations: [
+        expect.objectContaining({
+          rule: 'asset_type',
+          field: 'assets.vast_tag.asset_type',
+          expected: 'vast',
+          predicted: 'daast',
+        }),
+      ],
+    });
+
+    const missingVersion = await simulateCallTool(server, 'validate_input', {
+      manifest: {
+        ...manifest,
+        assets: {
+          vast_tag: {
+            asset_type: 'vast',
+            delivery_type: 'url',
+            url: 'https://vast.acme.example/audio.xml',
+          },
+        },
+      },
+      targets: [{ kind: 'canonical', id: 'audio_vast' }],
+    });
+    expect(missingVersion.result.results[0]).toMatchObject({
+      target: { kind: 'canonical', id: 'audio_vast' },
+      result_kind: 'validated_fail',
+      violations: expect.arrayContaining([
+        expect.objectContaining({
+          rule: 'schema',
+          field: 'manifest.assets.vast_tag',
+          expected: "must have required property 'vast_version'",
+        }),
+      ]),
+    });
+  });
+
   it('routes validation through an advertised capability ID', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result } = await simulateCallTool(server, 'validate_input', {

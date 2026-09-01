@@ -1,6 +1,6 @@
 ---
 title: Connect Addie to your AI client
-description: Add the AAO MCP server to Claude Desktop, Claude Code, ChatGPT, and other MCP-compatible clients — with troubleshooting for the common "reconnection failed" error.
+description: Add the AgenticAdvertising.org MCP server to Claude Desktop, Claude Code, ChatGPT, and other MCP-compatible clients — with troubleshooting for the common "reconnection failed" error.
 "og:title": "AdCP — Connect Addie to your AI client"
 ---
 
@@ -8,16 +8,29 @@ description: Add the AAO MCP server to Claude Desktop, Claude Code, ChatGPT, and
 
 Addie runs on a hosted MCP endpoint at `https://agenticadvertising.org/mcp`. Most MCP clients that speak streamable HTTP can connect — Claude Desktop, Claude Code, ChatGPT, and custom clients built on the MCP SDK. This page covers the install steps for each, plus how to recover from the most common failure modes.
 
-For end-user help with what Addie can *do*, see [AAO for Members](/docs/aao/users) and the [Addie Tool Reference](/docs/aao/addie-tools).
+For end-user help with what Addie can *do*, see [AgenticAdvertising.org for members](/docs/aao/users) and the [Addie Tool Reference](/docs/aao/addie-tools).
+
+## What the MCP connection exposes
+
+Yes, Addie is available through MCP. The hosted server exposes her conversational interface as the `chat_with_addie` tool. Send a `message` and, for a multi-turn conversation, an optional `history` array:
+
+```json
+{
+  "message": "How does AdCP media buying work?",
+  "history": [
+    {
+      "role": "user",
+      "content": "I'm implementing a buyer agent."
+    }
+  ]
+}
+```
+
+`chat_with_addie` returns a `response` plus a `tools_used` list. It can search official documentation, public code repositories, and the public member, agent, and publisher directories while composing its answer. The MCP server also exposes specialized directory, validation, and agent-testing tools for clients that prefer structured calls. Tool discovery shows the server's complete catalog; individual tools can still require member or organization permissions.
 
 ## Authentication at a glance
 
-The endpoint requires authentication on every request. It accepts two credential types:
-
-- **OAuth 2.1 user JWT** — for human-driven clients (Claude Desktop, Claude Code, ChatGPT, Cursor). Sign in with your AAO email; the client handles the OAuth flow.
-- **WorkOS organization API key** — for server-to-server callers. Generate one at [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys). Send as `Authorization: Bearer <key>` and skip OAuth entirely.
-
-Use one *or* the other on a given connection — never both. When a static `Authorization` header is present, the server treats the request as authenticated and the OAuth flow never starts. If your client still pops a browser despite the header, it's stripping or overriding it — verify with `claude mcp get addie` (Claude Code) or your client's equivalent.
+The endpoint requires OAuth 2.1 user authentication on every request. Sign in with your AgenticAdvertising.org email; compatible clients handle the authorization flow and token refresh. Organization API keys authenticate the REST API, not MCP, and `/mcp` rejects them.
 
 For the underlying OAuth surface (authorization server metadata, dynamic client registration, scopes), see the [Reference URLs](#reference-urls) at the bottom of this page.
 
@@ -28,7 +41,7 @@ Claude Desktop's built-in **Connectors** UI is the smoothest path. Anthropic hos
 1. Open Claude Desktop → Settings → Connectors.
 2. Click **Add custom connector** (or **Connect** → custom).
 3. In the dialog, set Name = `Addie`, Remote MCP server URL = `https://agenticadvertising.org/mcp`, then click **Add**.
-4. Sign in with your AAO email when the browser opens.
+4. Sign in with your AgenticAdvertising.org email when the browser opens.
 5. Claude Desktop shows Addie as connected. Tools appear in the chat tool picker.
 
 ## ChatGPT
@@ -66,33 +79,6 @@ claude mcp add --transport http addie https://agenticadvertising.org/mcp
 
 Run `/mcp`, complete sign-in. If you see *"Authentication successful, but server reconnection failed"*, fully quit Claude Code (⌘Q on macOS, not just close window) and relaunch. Sometimes a single restart picks up the stored tokens; often it doesn't. If one restart doesn't recover, fall back to the `mcp-remote` path above.
 
-### Using an API key instead of OAuth
-
-If you have a WorkOS organization API key, register the server with a static `Authorization` header so OAuth never runs:
-
-```bash
-claude mcp add --transport http addie https://agenticadvertising.org/mcp \
-  --header "Authorization: Bearer sk_your_key_here"
-```
-
-`claude mcp add` writes to `~/.claude.json` safely without disturbing your other entries. Hand-editing that file works but can clobber other servers — only do it if you know what's already there. The equivalent JSON shape is:
-
-```json
-{
-  "mcpServers": {
-    "addie": {
-      "type": "http",
-      "url": "https://agenticadvertising.org/mcp",
-      "headers": {
-        "Authorization": "Bearer sk_your_key_here"
-      }
-    }
-  }
-}
-```
-
-Don't combine this with the OAuth flow — pick one. If Claude Code triggers OAuth despite the header being present, the key is invalid or expired. Generate a fresh one at [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys).
-
 ## Other MCP clients
 
 Any MCP client that speaks streamable HTTP + OAuth 2.1 can connect. Generic config:
@@ -119,7 +105,7 @@ This is not Addie-specific: the same error affects Notion, Supabase, Slack, New 
 If your client says it has a valid token but every request to `/mcp` returns 401:
 
 - Check the token is fresh. WorkOS access tokens are short-lived; refresh tokens last longer. Most clients auto-refresh; some don't. Force re-auth.
-- Check you're not double-sending credentials. If your config has both an `Authorization` header *and* an OAuth flow, one will conflict with the other.
+- Check that the bearer token came from the MCP OAuth flow. Organization API keys are REST-only credentials and will be rejected by `/mcp`.
 - Test the token manually:
   ```bash
   curl -i -X POST https://agenticadvertising.org/mcp \
@@ -152,5 +138,4 @@ On macOS: `tail -f ~/Library/Logs/Claude/mcp*.log`. Run your client and trigger 
 - **Authorization server metadata** (RFC 8414): `https://agenticadvertising.org/.well-known/oauth-authorization-server`
 - **Protected resource metadata** (RFC 9728): `https://agenticadvertising.org/.well-known/oauth-protected-resource/mcp`
 - **Dynamic client registration** (RFC 7591): `POST /register`
-- **API keys dashboard:** [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys)
 - **Issue tracker:** [github.com/adcontextprotocol/adcp/issues](https://github.com/adcontextprotocol/adcp/issues)

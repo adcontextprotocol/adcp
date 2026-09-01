@@ -217,7 +217,7 @@ validations:
   - check: field_value
     path: "context.correlation_id"
     value: "sales_non_guaranteed--create_buy"
-    description: "Agent echoes context verbatim"
+    description: "Agent echoes the same context JSON value"
 ```
 
 The runner does NOT auto-inject `context:` on sample_requests that omit it. Storyboards whose validator expects `context.correlation_id` in the response but whose sample_request lacks `context:` are authoring bugs — the agent is allowed (and required) to omit context when the caller sent none.
@@ -314,7 +314,7 @@ Single-code `check: error_code` is still correct when the spec mandates a canoni
 The parallel-optional-phases + `assert_contribution` shape is only appropriate when the **spec text itself** permits multiple observable outcomes (look for explicit `MAY`/`OR` in the normative prose, or an enum of acceptable statuses). It is **not** a tool for softening a vector because an agent's behavior drifted from the spec. Do not apply this pattern to:
 
 - **Idempotency semantics.** `idempotency_key` must be rejected when missing on mutating tasks; replay must return the cached response; conflict must surface `IDEMPOTENCY_CONFLICT`. The spec mandates single behaviors — any other outcome is non-conformant, not a valid branch.
-- **Context echo.** Responses MUST echo `context:` verbatim when the caller sent it. There is no conformant branch that omits the echo.
+- **Context echo.** Responses MUST echo the same `context:` JSON value when the caller sent it. There is no conformant branch that omits the echo.
 - **Error-code vocabulary.** Canonical codes enumerated in `static/schemas/source/enums/error-code.json` are single-value per scenario. If a storyboard asserts `GOVERNANCE_DENIED` on a governance-denied outcome, that is the code — not one option among several.
 - **Webhook signing correctness.** RFC 9421 signing with AdCP's covered-components profile is a single verification shape; there is no alternate branch.
 

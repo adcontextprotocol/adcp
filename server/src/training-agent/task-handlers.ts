@@ -138,6 +138,7 @@ type InlineCreativeInput = {
   placement_ids?: string[];
 };
 type TrainingCanonicalFormatKind = CanonicalFormatKind
+  | 'audio_vast'
   | 'seller_rendered_stateful_display'
   | 'coordinated_placements';
 type InlineCreativeIdentity =
@@ -349,6 +350,10 @@ const CANONICAL_FORMAT_SLOTS: Record<string, CanonicalSlot[]> = {
     { asset_group_id: 'audio_main', asset_type: 'audio', required: true },
     { asset_group_id: 'companion_image', asset_type: 'image' },
     { asset_group_id: 'brand_name', asset_type: 'text' },
+    { asset_group_id: 'landing_page_url', asset_type: 'url' },
+  ],
+  audio_vast: [
+    { asset_group_id: 'vast_tag', asset_type: 'vast', required: true },
     { asset_group_id: 'landing_page_url', asset_type: 'url' },
   ],
   audio_daast: [
@@ -5369,6 +5374,7 @@ function canonicalFormatKind(value: unknown): TrainingCanonicalFormatKind | unde
     case 'video_hosted':
     case 'video_vast':
     case 'audio_hosted':
+    case 'audio_vast':
     case 'audio_daast':
     case 'sponsored_placement':
     case 'native_in_feed':

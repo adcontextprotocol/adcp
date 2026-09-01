@@ -12,7 +12,7 @@
     },
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json",
-      "description": "Canonical 3.2 path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `seller_rendered_stateful_display`, `coordinated_placements`). Selects the contract against which the seller validates the manifest's assets. Mutually exclusive with deprecated `format_id`."
+      "description": "Canonical 3.2 path. The canonical format name this manifest targets (e.g., `image`, `video_hosted`, `audio_vast`, `seller_rendered_stateful_display`, `coordinated_placements`). Selects the contract against which the seller validates the manifest's assets. Mutually exclusive with deprecated `format_id`."
     },
     "format_option_ref": {
       "$ref": "/schemas/core/format-option-ref.json",
@@ -106,6 +106,46 @@
       },
       "then": { "required": ["component_assets"] },
       "else": { "not": { "required": ["component_assets"] } }
+    },
+    {
+      "$comment": "audio_vast is new in 3.2, so its VAST assets require an exact version without changing the additive compatibility of existing video_vast or named-format manifests.",
+      "if": {
+        "properties": { "format_kind": { "const": "audio_vast" } },
+        "required": ["format_kind"]
+      },
+      "then": {
+        "properties": {
+          "assets": {
+            "patternProperties": {
+              ".*": {
+                "allOf": [
+                  {
+                    "if": {
+                      "type": "object",
+                      "properties": { "asset_type": { "const": "vast" } },
+                      "required": ["asset_type"]
+                    },
+                    "then": { "required": ["vast_version"] }
+                  },
+                  {
+                    "if": { "type": "array" },
+                    "then": {
+                      "items": {
+                        "if": {
+                          "type": "object",
+                          "properties": { "asset_type": { "const": "vast" } },
+                          "required": ["asset_type"]
+                        },
+                        "then": { "required": ["vast_version"] }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ],
   "additionalProperties": true

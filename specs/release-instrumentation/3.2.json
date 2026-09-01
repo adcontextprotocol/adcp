@@ -57,6 +57,15 @@
       }
     },
     {
+      "id": "principal_connection_layer",
+      "surfaces": {
+        "docs": { "status": "covered", "evidence": ["docs/protocol/sync_principal.mdx", "docs/protocol/get_principal.mdx", "docs/reference/experimental-status.mdx"] },
+        "training_agent": { "status": "deferred", "reason": "The live principal handlers wait for an SDK generated from the release-candidate bundle; tracked by issue #7056." },
+        "compliance": { "status": "covered", "evidence": ["static/compliance/source/universal/principal.yaml"] },
+        "training": { "status": "deferred", "reason": "The hands-on registration lab waits for the live training-agent implementation; tracked by issues #7057 and #7074." }
+      }
+    },
+    {
       "id": "idempotency_retention_and_retry_binding",
       "surfaces": {
         "docs": { "status": "covered", "evidence": ["docs/learning/specialist/security.mdx"] },

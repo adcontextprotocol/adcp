@@ -155,6 +155,7 @@ describe('MCP get_member viewer context', () => {
     const body = parseResource(result);
     const urls = body.agents.map((a: { url: string }) => a.url).sort();
     expect(urls).toEqual(['https://public.acme']);
+    expect(body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
   });
 
   it('reveals members_only agents to Professional callers', async () => {
@@ -165,6 +166,7 @@ describe('MCP get_member viewer context', () => {
     const body = parseResource(result);
     const urls = body.agents.map((a: { url: string }) => a.url).sort();
     expect(urls).toEqual(['https://members.acme', 'https://public.acme']);
+    expect(body.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
   });
 
   it('surfaces authoritative brand.json content when profile fields are empty', async () => {
@@ -179,5 +181,16 @@ describe('MCP get_member viewer context', () => {
       description: 'brand_json',
     });
     expect(body.brand_identity.domain).toBe('origin.example');
+  });
+});
+
+describe('MCP list_members visibility summary', () => {
+  it('reports public and members-only registrations without revealing private existence', async () => {
+    const h = new MCPToolHandler();
+    const result = await h.handleToolCall('list_members', {}, undefined);
+    const body = parseResource(result);
+
+    expect(body.members[0].agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
+    expect(body.members[0].agent_visibility_summary).not.toHaveProperty('private');
   });
 });

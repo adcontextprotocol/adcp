@@ -47,10 +47,13 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `CREATIVE_DEADLINE_EXCEEDED` | correctable | check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller |
 | `CREATIVE_INACCESSIBLE` | correctable | verify the asset URLs in creative_manifest are reachable without agent-side credentials, then re-submit |
 | `CREATIVE_LOCALE_NOT_ACCEPTED` | correctable | supply or assign a creative variant matching every in-scope format option's accepted_language_ranges, narrow placement scope, choose a compatible format option, or change an ineligible serve_default |
+| `CREATIVE_MISSING_CLICK_URL` | correctable | add the required destination URL and resubmit the creative |
 | `CREATIVE_NOT_FOUND` | correctable | verify creative_id via list_creatives, or sync_creatives to register it |
 | `CREATIVE_REJECTED` | correctable | revise the creative according to the applicable advertising policy or validated accessibility criteria |
 | `CREATIVE_REPRESENTATION_UNRESOLVED` | correctable | inspect every error.details.representation_rejections entry, then choose a compatible format option or supply a compatible representation |
 | `CREATIVE_REVISION_CONTENT_MISMATCH` | correctable | resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content |
+| `CREATIVE_SIZE_MISMATCH` | correctable | resize or replace the creative with a size accepted by every selected package that may serve it |
+| `CREATIVE_VALIDATION_FAILED_GENERIC` | correctable | correct the buyer-visible validation problem and resubmit the creative |
 | `CREATIVE_VALUE_NOT_ALLOWED` | correctable | pick a value from error.details.allowed_values (or re-fetch the format) and resubmit |
 | `CREDENTIAL_IN_ARGS` | terminal | do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move authentication material or caller-supplied trust material out of request args (top-level, <code>{"context"}</code>, <code>{"ext"}</code>, any nested location) onto the relevant transport authentication/trust channel or account provisioning path (Authorization: Bearer, RFC 9421 signature/JWKS, mTLS, MCP/A2A authentication framing); rotate any leaked credential, then resubmit |
 | `CURSOR_EXPIRED` | correctable | obtain a latest checkpoint, rebuild authoritative account snapshots, then drain changes after the checkpoint |
@@ -447,6 +450,15 @@ A creative governance agent (get_creative_features) could not retrieve the submi
 A creative bound to a locale-constrained product format has no materialized variant matching locale_policy.accepted_language_ranges, lacks protocol-declared locale topology, or uses serve_default with a seller-ineligible default variant. Seller ranges use RFC 4647 Basic Filtering and are applied independently for every placement where the assignment may serve, before buyer Lookup, locale_fallbacks, or default selection. Distinct from CREATIVE_REJECTED because this is a mechanically discoverable assignment-eligibility mismatch, not subjective content review. error.field SHOULD point to the offending creative or assignment; error.details SHOULD include format_option_id when present, accepted_language_ranges, available_variant_locales, and placement identity when applicable. Recovery: correctable (supply or assign a matching materialized locale variant, narrow placement scope, choose a compatible format option, or change an ineligible serve_default).
 
 </Accordion>
+<a id="error-code-creative-missing-click-url"></a>
+
+<Accordion title="CREATIVE_MISSING_CLICK_URL — correctable">
+
+**Suggested action:** add the required destination URL and resubmit the creative
+
+A submitted creative that requires a destination URL does not provide one. Sellers SHOULD identify the missing buyer-visible field in error.field and MUST NOT expose downstream ad-server names or internal object identifiers in the buyer-facing message. Recovery: correctable (add the required destination URL and resubmit the creative).
+
+</Accordion>
 <a id="error-code-creative-not-found"></a>
 
 <Accordion title="CREATIVE_NOT_FOUND — correctable">
@@ -481,6 +493,24 @@ No representation in a CreativeRepresentationSet is compatible with the selected
 **Suggested action:** resend the exact content previously bound to this revision_id, or mint a new revision_id for changed content
 
 A sync_creatives item reused a revision_id for different canonical revision content under the same creative_id. Revision identity is scoped to the parent creative and immutable after first acceptance. Sellers MUST evaluate the buyer input before transcoding or normalization, MUST leave the prior creative state unchanged, and SHOULD return details conforming to error-details/creative-revision-content-mismatch.json. Distinct from IDEMPOTENCY_CONFLICT: idempotency_key protects one request replay window, while revision identity protects creative content across requests and retention. Recovery: correctable (resend the exact content previously bound to this revision_id, or mint a new revision_id for the changed content).
+
+</Accordion>
+<a id="error-code-creative-size-mismatch"></a>
+
+<Accordion title="CREATIVE_SIZE_MISMATCH — correctable">
+
+**Suggested action:** resize or replace the creative with a size accepted by every selected package that may serve it
+
+The submitted creative dimensions do not match any size accepted by the selected packages. Sellers SHOULD identify the offending creative in error.field and MAY include the submitted and accepted dimensions in buyer-safe error.details. Recovery: correctable (resize or replace the creative with a size accepted by every selected package that may serve it).
+
+</Accordion>
+<a id="error-code-creative-validation-failed-generic"></a>
+
+<Accordion title="CREATIVE_VALIDATION_FAILED_GENERIC — correctable">
+
+**Suggested action:** correct the buyer-visible validation problem and resubmit the creative
+
+The creative failed buyer-correctable validation, but the producer cannot classify the failure with a more specific standard code. Producers SHOULD prefer a specific creative code whenever one applies and MUST keep buyer-facing messages free of vendor identifiers, internal object names, internal IDs, and stack traces. Recovery: correctable (correct the buyer-visible validation problem and resubmit the creative).
 
 </Accordion>
 <a id="error-code-creative-value-not-allowed"></a>

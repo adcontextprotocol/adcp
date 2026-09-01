@@ -9,6 +9,7 @@ import {
   SYSTEM_CHANNEL_TOOL_SETS,
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
+import { getToolsForSets } from '../../../src/addie/tool-sets.js';
 
 const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
 
@@ -76,6 +77,39 @@ describe('Slack tool-set selection policy', () => {
       source: 'dm',
       isAdmin: false,
     })).toEqual(safeKnowledgeFallback);
+  });
+
+  it.each(['dm', 'mention'] as const)(
+    'keeps authoritative knowledge available in a direct %s when the router selects no tools',
+    (source) => {
+      const selectedSets = selectSlackToolSets({
+        routerSelectedSets: [],
+        routerAvailable: true,
+        source,
+        isAdmin: false,
+      });
+
+      expect(selectedSets).toEqual(['knowledge']);
+      expect(getToolsForSets(selectedSets, false, source === 'mention')).toEqual(
+        expect.arrayContaining(['search_docs', 'get_doc', 'search_repos']),
+      );
+    },
+  );
+
+  it('adds authoritative knowledge to a narrow direct route without changing channel routes', () => {
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['directory'],
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+    })).toEqual(['directory', 'knowledge']);
+
+    expect(selectSlackToolSets({
+      routerSelectedSets: ['directory'],
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+    })).toEqual(['directory']);
   });
 
   it('does not treat a non-DM certification context as a routing override', () => {

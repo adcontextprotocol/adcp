@@ -93,7 +93,7 @@ The buyer may perform these checks locally from seller discovery and submit the 
 
 The request carries `representation_destination.product_id` plus the exact effective product `format_option`. The destination seller verifies that declaration against its current product, every named placement/publisher narrowing, and its current seller-wide execution ceilings. When `placement_refs` is omitted, the output must satisfy the common effective contract for every placement where it may deliver. `target_capability_id` selects the seller's creative-operation route; it is not a substitute for the inventory contract.
 
-Resolution requires explicit compatibility inputs. In particular, every `video_vast` source representation has an exact asset `vast_version`, while the selected product option and seller advertise non-empty plural `vast_versions`. An absent set is unproven and cannot be treated as accepting every version on this opt-in resolution path.
+Resolution requires explicit compatibility inputs. In particular, every `video_vast` or `audio_vast` source representation has an exact asset `vast_version`, while the selected product option and seller advertise non-empty plural `vast_versions`. An absent set is unproven and cannot be treated as accepting every version on this opt-in resolution path.
 
 When a first-class `vast_tracker` or `daast_tracker` has no sibling exact-version delivery document, `representation_destination` carries `execution_vast_version` or `execution_daast_version`. The value must belong to the destination acceptance set and is echoed in `representation_selection`. It joins the selected representation and output digest in the execution-review identity, so changing it requires re-resolution and ordinary re-review. Package assignment must preserve the same exact version.
 
@@ -321,7 +321,7 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
 }
 ```
 
-If the seller-wide ceiling is `['3.0', '4.0', '4.1', '4.2']` but the selected product accepts only `['3.0', '4.0']`, the compatible candidates are VAST 3.0 and 4.0. `highest_compatible_vast` chooses 4.0 only after that intersection is computed; if multiple compatible candidates declare the same highest exact version, the first in representation array order wins. That strategy is valid only for a `video_vast` destination; using it for another format returns `INVALID_REQUEST` and never silently falls back. `representation_order` always chooses the first compatible entry. Resolution must never relabel the VAST 3.0 asset as 4.0.
+If the seller-wide ceiling is `['3.0', '4.0', '4.1', '4.2']` but the selected video product accepts only `['3.0', '4.0']`, the compatible candidates are VAST 3.0 and 4.0. `highest_compatible_vast` chooses 4.0 only after that intersection is computed; if multiple compatible candidates declare the same highest exact version, the first in representation array order wins. That strategy is valid only for `video_vast` or `audio_vast` destinations; using it for another format returns `INVALID_REQUEST` and never silently falls back. For audio, 4.1+ is the standards-conformant profile; a product accepts an older VAST audio representation only when both the product and seller explicitly advertise that exact legacy version. `representation_order` always chooses the first compatible entry. Resolution must never relabel an asset as a newer VAST version.
 
 ## Representation namespaces
 

@@ -33,10 +33,10 @@ test("input-field weight report attributes the largest transitive schema graphs"
   const { schemas } = loadRepresentativeMediaBuyRuntime();
   const report = analyzeInputSchemaWeights(schemas);
 
-  assert.equal(report.tool_count, 16);
-  assert.equal(report.definition_instances, 586);
-  assert.equal(report.unique_definitions, 157);
-  assert.equal(report.repeated_definitions, 114);
+  assert.equal(report.tool_count, 18);
+  assert.equal(report.definition_instances, 604);
+  assert.equal(report.unique_definitions, 163);
+  assert.equal(report.repeated_definitions, 115);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -155,7 +155,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
   });
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
-  assert.equal(Object.keys(view.dictionary.$defs).length, 157);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 163);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -214,7 +214,7 @@ test("experiment report keeps all alternatives smaller than standalone model con
   const variants = report.variants;
   assert.equal(report.status, "non-normative");
   assert.equal(report.prompt_cleanup_adapter.required, true);
-  assert.equal(report.selection.tools.length, 16);
+  assert.equal(report.selection.tools.length, 18);
   // Tolerance band, not an exact pin: every schema-touching PR shifts this
   // number, and an exact equality forced each one to re-pin the constant —
   // guaranteeing merge conflicts between any two in-flight schema PRs (#6571).

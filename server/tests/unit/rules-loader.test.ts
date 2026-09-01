@@ -157,6 +157,7 @@ describe('Rules Loader', () => {
     const meetingRules = loadRules({ selectedToolSetNames: ['meetings'] });
     const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
     const memberRules = loadRules({ selectedToolSetNames: ['member'] });
+    const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
 
     expect(knowledgeRules).toContain('# Knowledge');
     expect(knowledgeRules).toContain('## Spec Feedback Response Pattern');
@@ -173,6 +174,12 @@ describe('Rules Loader', () => {
     expect(directoryRules).toContain('Registry visibility is not registry completeness');
     expect(memberRules).toContain('## Honest Reporting After Search');
     expect(memberRules).toContain('Registry visibility is not registry completeness');
+    expect(schemaRules).not.toContain('# Knowledge');
+    expect(schemaRules).not.toContain('When asked about AdCP\'s current version');
+    expect(schemaRules).toContain('## Verify Claims With Tools');
+    expect(schemaRules).not.toContain('Use search_docs and get_schema');
+    expect(schemaRules).toContain('Use the verification tools that appear in the request-scoped catalog');
+    expect(schemaRules).toContain('If `draft_github_issue` appears in the request-scoped catalog');
   });
 
   it('separates cacheable core rules from route-specific rules', () => {
@@ -190,6 +197,9 @@ describe('Rules Loader', () => {
     expect(coreRules).not.toContain('# Constraints');
     expect(constraints).toContain('# Constraints');
     expect(constraints).toContain('## Tool Outcomes — Three Distinct Cases');
+    expect(constraints).toContain('exact tool surface for this request');
+    expect(constraints).toContain('Never call a tool unless it appears in that catalog');
+    expect(constraints).not.toContain('There is no per-conversation gating');
     expect(knowledgeRules).toContain('# Knowledge');
     expect(knowledgeRules).toContain('## Knowledge Search First');
     expect(knowledgeRules).not.toContain('## Verify Claims With Tools');
@@ -748,6 +758,14 @@ describe('Addie tool reference', () => {
     expect(catalog).not.toContain('search_repos');
     expect(catalog).not.toContain('not_a_registered_tool');
     expect(catalog).not.toContain('- **admin_prospects**');
+    expect(catalog).toContain('use `search_docs` with "addie tools"');
+
+    const catalogWithoutDocs = buildAddieScopedToolReference({
+      availableToolNames: getToolsForSets(['directory'], false, false),
+      selectedToolSetNames: ['directory'],
+    });
+    expect(catalogWithoutDocs).not.toContain('use `search_docs`');
+    expect(catalogWithoutDocs).toContain('Tool names mentioned elsewhere in policy or examples are not callable');
   });
 
   it('response-style.md lands at the END of the assembled system prompt', () => {

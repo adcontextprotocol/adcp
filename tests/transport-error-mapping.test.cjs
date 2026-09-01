@@ -195,6 +195,15 @@ describe('Transport error mapping test vectors', () => {
     assert.ok(recoveries.has('terminal'), 'must have terminal recovery vector');
   });
 
+  it('should preserve buyer_reason across a transport envelope', () => {
+    const vector = data.vectors.find(v => v.expected_error?.buyer_reason);
+    assert.ok(vector, 'must have a vector carrying buyer_reason');
+    assert.deepStrictEqual(
+      extractAdcpError(vector.response)?.buyer_reason,
+      vector.expected_error.buyer_reason,
+    );
+  });
+
   it('should have null-extraction vectors for legacy servers', () => {
     const nullVectors = data.vectors.filter(v => v.expected_error === null);
     assert.ok(nullVectors.length >= 2, 'must have at least 2 null-extraction vectors (MCP + A2A)');

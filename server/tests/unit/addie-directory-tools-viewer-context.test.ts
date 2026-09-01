@@ -164,6 +164,7 @@ describe('Addie directory tool viewer context', () => {
       ]);
       expect(member.visibility_scope).toEqual(['public']);
       expect(member.private_agents_included).toBe(false);
+      expect(member.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
 
       const agents = await call(context, 'list_agents');
       expect(agents.agents.map((agent: { url: string }) => unwrap(agent.url))).toEqual([
@@ -187,6 +188,7 @@ describe('Addie directory tool viewer context', () => {
     ]);
     expect(member.visibility_scope).toEqual(['public', 'members_only']);
     expect(member.private_agents_included).toBe(false);
+    expect(member.agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
 
     const agents = await call(context, 'list_agents');
     expect(agents.agents.map((agent: { url: string }) => unwrap(agent.url)).sort()).toEqual([
@@ -237,6 +239,7 @@ describe('Addie directory tool viewer context', () => {
     );
     expect(result.count).toBe(1);
     expect(unwrap(result.members[0].slug)).toBe('acme-media');
+    expect(result.members[0].agent_visibility_summary).toEqual({ public: 1, members_only: 1 });
 
     const chainedLookup = await call(
       memberContext('individual_professional'),

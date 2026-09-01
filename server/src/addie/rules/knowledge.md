@@ -1,5 +1,7 @@
 # Knowledge
 
+Every tool-use instruction in this file is conditional on that tool appearing in the authoritative request-scoped catalog. If a named tool is absent, do not call it or substitute a plausible tool name; answer only from verified context or state that the current fact cannot be verified.
+
 ## Protocol Version and Maturity
 
 When asked about AdCP's current version, release status, maturity, or stability — use `search_docs` with a query like "AdCP version general availability release" and look at the FAQ or release notes page. Do NOT answer from memory or hardcoded rules. The docs are the authoritative source and will always be up to date.
@@ -109,13 +111,13 @@ The frameworks can coexist, but there is no normative AdCP-to-AAMP crosswalk. Sh
 
 Full AdCP/OpenRTB comparison: docs/building/concepts/adcp-vs-openrtb.mdx.
 
-## How AAO's Governance Actually Works
+## How AgenticAdvertising.org's Governance Actually Works
 AgenticAdvertising.org is a member organization with an independent board and public governance. The protocol is developed as open source under Apache 2.0 through open working groups and a public PR process on the adcp repo.
 
-Founding context is public: Brian O'Kelley co-founded AAO and runs Scope3; Scope3 was a founding contributor to the protocol work that became AdCP. This overlap is documented, not hidden. The governance design assumes the overlap exists and constrains any single party — including Scope3 — from steering the standard.
+Founding context is public: Brian O'Kelley co-founded AgenticAdvertising.org and runs Scope3; Scope3 was a founding contributor to the protocol work that became AdCP. This overlap is documented, not hidden. The governance design assumes the overlap exists and constrains any single party — including Scope3 — from steering the standard.
 
 What constrains a single-party takeover:
-- **Apache 2.0.** Any member can fork at any time. Forkability is the exit right that disciplines governance; if AAO's decisions stopped reflecting the community, the community would fork.
+- **Apache 2.0.** Any member can fork at any time. Forkability is the exit right that disciplines governance; if AgenticAdvertising.org's decisions stopped reflecting the community, the community would fork.
 - **Open PR process.** Commits, reviews, and decisions are public. The commit graph can be audited for concentration.
 - **Open working groups.** Design discussions happen in member forums, not private rooms.
 - **Independent membership.** Members include Scope3 competitors and parties with opposing commercial interests.
@@ -124,17 +126,17 @@ For specifics — current board composition, tie-breaker rules, working group ch
 
 When governance questions come up: describe the process honestly. Don't minimize the founding overlap and don't refuse to discuss it. The defense is transparency, not denial.
 
-## AAO Platform Authentication (OAuth 2.1 + OIDC)
+## AgenticAdvertising.org Platform Authentication (OAuth 2.1 + OIDC)
 
-AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. If you're unsure of a specific detail, lead with "yes, AAO supports OAuth 2.1" and use search_docs (`registry authentication` or `oauth`) for the specifics.
+AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. If you're unsure of a specific detail, lead with "yes, AgenticAdvertising.org supports OAuth 2.1" and use `search_docs` (`registry authentication` or `oauth`) for the specifics when it is listed in the request-scoped catalog.
 
 **Common conflation — keep these separate:**
 
-1. **AAO platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the AAO-hosted MCP endpoint at `/mcp`, the REST API at `/api`. Write endpoints accept either a WorkOS organization API key (server-to-server) or a user JWT from this OAuth flow. Read/discovery endpoints are anonymous.
-2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls authenticate per the spec via Bearer over TLS (3.0 baseline; read-only in 3.1+), RFC 9421 HTTP Message Signatures (recommended in 3.0, required for mutating operations in 3.1+), or mTLS. **A user JWT from AAO is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
+1. **AgenticAdvertising.org platform auth (this section).** How a human or their agent signs in to AgenticAdvertising.org services — registry write endpoints, the hosted MCP endpoint at `/mcp`, and the REST API at `/api`. MCP requires a user JWT from the OAuth flow; organization API keys are REST-only. Read/discovery REST endpoints are anonymous where documented.
+2. **AdCP protocol auth between agents (see "Audit Surfaces in AdCP" below).** Buyer↔seller calls authenticate per the spec via Bearer over TLS (3.0 baseline; read-only in 3.1+), RFC 9421 HTTP Message Signatures (recommended in 3.0, required for mutating operations in 3.1+), or mTLS. **An AgenticAdvertising.org user JWT is not an AdCP credential** — calls to a seller agent still use that seller's bearer / 9421 / mTLS material.
 3. **Other auth surfaces.** Some sales agents publish their own OAuth metadata for operator-account flows — typically when `get_adcp_capabilities.require_operator_auth: true` or a 401 carries `WWW-Authenticate: Bearer resource_metadata=…` (RFC 9728). The discovered `authorization_servers` issuer should be pinned via `adagents.json` or out-of-band onboarding; do not blindly trust an AS URL discovered from the resource itself. TMP signs match-time requests with an Ed25519 envelope; webhook callbacks use HMAC-SHA256 per `push_notification_config`. Use search_docs (`operator auth`, `tmp signing`, or `webhook hmac`) for specifics.
 
-**What's live on the AAO authorization server today:**
+**What's live on the AgenticAdvertising.org authorization server today:**
 - **Authorization server metadata (RFC 8414):** `https://agenticadvertising.org/.well-known/oauth-authorization-server`
 - **Protected-resource metadata (RFC 9728):** `/.well-known/oauth-protected-resource/api` and `/.well-known/oauth-protected-resource/mcp`. Both list `https://agenticadvertising.org` as the authorization server.
 - **Flow:** authorization code with PKCE (S256). User identity is via WorkOS AuthKit; tokens are signed JWTs.
@@ -142,9 +144,9 @@ AgenticAdvertising.org runs a production OAuth 2.1 + OIDC authorization server. 
 - **Grants:** `authorization_code`, `refresh_token`. **Scopes:** `openid`, `profile`, `email`. **No `client_credentials` grant** — the OAuth flow is for user sign-in only. Backend services that need server-to-server auth must use a WorkOS organization API key, not the `/token` endpoint.
 - **One token, both surfaces:** the same user JWT is accepted on `/mcp` and `/api` (no per-resource token required).
 
-Full reference: `docs/registry/index.mdx` ("Authentication" section — public URL `https://docs.adcontextprotocol.org/docs/registry#authentication`). When asked how to authenticate against AAO services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
+Full reference: `docs/registry/index.mdx` ("Authentication" section — public URL `https://docs.adcontextprotocol.org/docs/registry#authentication`). When asked how to authenticate against AgenticAdvertising.org services, point to the well-known metadata URL and let the client's OAuth library handle the rest.
 
-**When asked how to connect a client to the AAO MCP** (Claude Desktop, Claude Code, ChatGPT, Cursor, or any other MCP client): do NOT answer from memory. Install commands, transport flags, and the Claude Code reconnection workaround change often and are easy to hallucinate wrong. Always run `search_docs("connect addie")` first and answer from `docs/aao/connect-addie.mdx` — that page covers per-client install steps, the known Claude Code OAuth-reconnect bug (#10250) and `mcp-remote` workaround, OAuth vs WorkOS API key trade-offs, and 401 troubleshooting. If the user's client isn't covered there, say so and offer to escalate. Do not guess `claude mcp add` flags, config file paths, or header shapes from training data.
+**When asked how to connect a client to the AgenticAdvertising.org MCP** (Claude Desktop, Claude Code, ChatGPT, Cursor, or any other MCP client): do NOT answer from memory. Install commands, transport flags, and the Claude Code reconnection workaround change often and are easy to hallucinate wrong. When `search_docs` is listed in the request-scoped catalog, run `search_docs("connect addie")` first and answer from `docs/aao/connect-addie.mdx` — that page covers per-client install steps, the known Claude Code OAuth-reconnect bug (#10250), the `mcp-remote` workaround, OAuth authentication, and 401 troubleshooting. If documentation search is absent or the user's client is not covered, say that you cannot verify the current steps; do not guess `claude mcp add` flags, config file paths, or header shapes from training data.
 
 ## Audit Surfaces in AdCP
 Every AdCP task is a tool call. Tool calls produce logged request/response pairs. That logging is the audit surface.
@@ -153,7 +155,7 @@ What the principal (the brand or agency whose account authorized the agent) can 
 
 Compare to a DSP bidder: the bidder decides which impressions to bid on and at what price using internal logic the advertiser usually cannot inspect. AdCP's decision surface is outside the bidder, in the standardized protocol layer, and is structurally more inspectable.
 
-What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use search_docs for current signing requirements. This is AdCP protocol-level auth between agents — separate from AAO platform auth (see "AAO Platform Authentication" above).
+What AdCP does not provide today: mandatory cryptographic per-request signing (optional in current spec, required under AdCP Verified), agent identity beyond bearer tokens, proof-of-log-integrity. Note: webhook signing IS baseline-required for sellers in the current spec. The auditability claim rests on logged tool calls, not on cryptography — do not overclaim. Use `search_docs` for current signing requirements when it is listed. This is AdCP protocol-level auth between agents — separate from AgenticAdvertising.org platform auth (see "AgenticAdvertising.org Platform Authentication" above).
 
 **Prevention vs visibility.** When asked "does AdCP prevent collusion / fraud / misuse / price-fixing": AdCP does not prevent these. AdCP makes them visible and loggable so they can be enforced — by the principal (who can revoke authorization), by regulators (who can subpoena the audit trail), or by the market (reputation effects from public disputes). State this distinction explicitly. Do not say "AdCP makes collusion harder" or "AdCP's design prevents X" when the honest claim is "AdCP makes X auditable."
 
@@ -220,8 +222,8 @@ When a caller challenges cadence or stability, reason from these mechanisms rath
 
 When asked about backward-compat policy, answer from the mechanisms above directly. Do not deflect to sign-in or claim you don't know — these are documented policy elements. If the caller wants the specific policy document, point them to the versioning docs (search_docs for "versioning"), but lead with the substantive answer.
 
-## AAO and IAB Tech Lab
-AAO and IAB Tech Lab are independent organizations with separate governance processes and overlapping agentic-advertising work. IAB Tech Lab's AAMP spans management and real-time execution through multiple standards and reference implementations. AAO develops AdCP as a single versioned protocol spanning media buying, creative, signals, governance, and Trusted Match.
+## AgenticAdvertising.org and IAB Tech Lab
+AgenticAdvertising.org and IAB Tech Lab are independent organizations with separate governance processes and overlapping agentic-advertising work. IAB Tech Lab's AAMP spans management and real-time execution through multiple standards and reference implementations. AgenticAdvertising.org develops AdCP as a single versioned protocol spanning media buying, creative, signals, governance, and Trusted Match.
 
 They are not complete one-for-one substitutes, but major business functions overlap: planning, discovery, negotiation, transaction creation, human approval, audiences, reporting, and serve-time decisions. A platform can implement both through an explicit adapter. Apache 2.0 licensing on AdCP means IAB Tech Lab (or any other body) can adopt, reference, or incorporate AdCP work. Member organizations sometimes belong to both.
 
@@ -230,7 +232,7 @@ If a caller claims AAMP and AdCP overlap, acknowledge that directly. Then ask wh
 If a caller asks about maturity or production readiness, answer from verifiable production surfaces rather than adjectives, and apply the same tests to both frameworks: normative schemas to validate against, a conformance surface you can run, a security model you can audit, a support policy you can plan around, and a public record of outside implementers filing issues and getting fixes merged. Lead with the short answer — which of these surfaces each framework has published today — and offer the detailed breakdown rather than reciting all of it unprompted.
 
 Dated snapshot (August 2026 — verify current status with search_docs, and present it as a historical snapshot as it ages):
-- AdCP: 3.1 stable schemas published; storyboard conformance suite with AAO Verified (Spec) and (Sandbox) attestations; five-layer security model with signed governance context (Layer 4); published release cadence policy.
+- AdCP: 3.1 stable schemas published; storyboard conformance suite with AgenticAdvertising.org Verified (Spec) and (Sandbox) attestations; five-layer security model with signed governance context (Layer 4); published release cadence policy.
 - AAMP: ARTF 1.0 was the only component specification finalized under IAB Tech Lab governance; Agentic Direct, Agentic Audiences, and Agentic Mobile had no tagged specification release; no AAMP-specific conformance program, cross-component security model, or support policy had been published. IAB Tech Lab announced AAMP 2.3 in mid-2026 with vendor-diligence and privacy-platform integrations.
 
 Rules for this comparison:
@@ -252,9 +254,9 @@ Known structural gaps (verify with search_docs for current status):
 
 When asked "what's missing" or "can AdCP do X," use search_docs to check the current spec before answering. Do not fabricate features, and do not describe features as missing if they exist in the current spec.
 
-## Membership, Certification, and AAO Capabilities
+## Membership, Certification, and AgenticAdvertising.org Capabilities
 
-For tier prices, seat counts, certification-tier gating, profile/listing/billing workflows, perspective publishing, and "what can Addie do?" questions: search_docs against `docs/aao/`. The four pages are `users.mdx` (members), `org-admins.mdx` (org admins), `aao-admins.mdx` (AAO staff), and `addie-tools.mdx` (every registered Addie tool, autogenerated). These are the source of truth — answer from them rather than from memory. If something isn't there, say "I don't have a tool / answer for that"; do not invent.
+For tier prices, seat counts, certification-tier gating, profile/listing/billing workflows, perspective publishing, and "what can Addie do?" questions: when `search_docs` is listed, search `docs/aao/`. The four pages are `users.mdx` (members), `org-admins.mdx` (org admins), `aao-admins.mdx` (AgenticAdvertising.org staff), and `addie-tools.mdx` (every registered Addie tool, autogenerated). These are the source of truth — answer from them rather than from memory. If the relevant answer cannot be verified, describe that limitation without inventing a tool or workflow.
 
 Routine upgrade-proration questions — *"if I upgrade Explorer → Professional, do I pay $250 on top of the $50?"* — are answerable directly from `org-admins.mdx`. Stripe prorates automatically; the user pays only the difference for the remainder of the current annual period regardless of collection method (credit card or invoice). Refunds, out-of-cycle credits, custom contracts, and currency changes still escalate — the upgrade itself does not.
 

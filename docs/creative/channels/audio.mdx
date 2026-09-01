@@ -1,11 +1,13 @@
 ---
 title: Audio Ads
-description: "Canonical hosted-audio and DAAST creative contracts for AdCP 3.2."
+description: "Canonical hosted-audio, VAST, and DAAST creative contracts for AdCP 3.2."
 "og:title": "AdCP — Audio Ads"
 testable: true
 ---
 
-AdCP separates hosted audio bytes (`audio_hosted`) from DAAST tag delivery (`audio_daast`). Streaming, podcast, host-read, and broadcast products narrow these canonicals with production, duration, and slot parameters.
+AdCP separates direct audio bytes (`audio_hosted`), VAST audio tag delivery (`audio_vast`), and legacy DAAST tag delivery (`audio_daast`). Streaming, podcast, host-read, and broadcast products narrow these canonicals with production, duration, and slot parameters.
+
+Choose by the payload the seller accepts: direct audio bytes use `audio_hosted`; a VAST tag carrying audio uses `audio_vast`; a DAAST tag uses `audio_daast`. AdCP keeps DAAST valid for existing integrations while enabling the IAB-recommended VAST 4.1+ path. These canonicals identify creative delivery shape; dynamic ad insertion timing and stream-stitching behavior remain outside this contract.
 
 ## Hosted audio
 
@@ -93,8 +95,55 @@ If both shapes describe the same accepted format, the canonical format parameter
 
 Platform normalization happens after source-asset validation. Digital streaming and SSAI platforms may normalize or gain-adjust audio during insertion, but that does not waive the declared source requirement. Terrestrial broadcast chains commonly apply automatic gain control or other playout normalization; there, the declared loudness remains production guidance and the broadcaster's distribution target remains authoritative.
 
+## VAST-delivered audio
+
+VAST standardized audio support begins at version 4.1, which is the recommended authoring profile. A seller may explicitly list VAST 2.0, 3.0, or 4.0 when its player supports legacy audio-in-VAST interoperability; listing an older version does not make it standards-conformant audio. Each submitted asset declares its exact version. The resolved terminal InLine ad must be Linear and provide an `audio/*` MediaFile with `width="0"` and `height="0"`; VAST 4.1+ documents must also declare `adType="audio"`.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/product-format-declaration.json",
+  "format_option_id": "streaming_audio_vast_30s",
+  "format_kind": "audio_vast",
+  "params": {
+    "vast_versions": ["4.1", "4.2", "4.3"],
+    "duration_ms_exact": 30000,
+    "media_file_requirements": {
+      "mime_types": ["audio/mpeg", "audio/aac"],
+      "min_bitrate_kbps": 128
+    },
+    "max_wrapper_depth": 3,
+    "ssl_required": true,
+    "slots": [
+      { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+    ]
+  }
+}
+```
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
+  "format_kind": "audio_vast",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "streaming_audio_vast_30s"
+  },
+  "assets": {
+    "vast_tag": {
+      "asset_type": "vast",
+      "delivery_type": "url",
+      "url": "https://ads.acmeaudio.example/vast/audio-30s",
+      "vast_version": "4.3"
+    }
+  }
+}
+```
+
+The VAST document carries its own impression, start, quartile, completion, click, error, and other applicable audio events. Visual-only VAST events are not implied by choosing `audio_vast`.
+
 ## DAAST
 
-Use `audio_daast` with a required `daast` asset slot for third-party tag delivery. DAAST event tracking belongs in the tag; non-DAAST companion or impression trackers use declared canonical slots.
+Use `audio_daast` with a required `daast` asset slot when an existing integration still delivers DAAST. DAAST event tracking belongs in the tag; non-DAAST companion or impression trackers use declared canonical slots.
 
 See [Canonical formats](/docs/creative/canonical-formats), [Radio](/docs/creative/channels/radio), [Broadcast](/docs/creative/channels/broadcast), and [`list_transformers`](/docs/creative/task-reference/list_transformers).

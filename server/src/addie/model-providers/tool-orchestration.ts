@@ -29,7 +29,10 @@ import type {
 import {
   appendModelTurnContinuation,
   type AcceptedModelTurn,
+  type EmptyResponseRecoveryEligibility,
+  type EmptyResponseRecoveryKind,
   type ModelTurnAction,
+  type ModelTurnLoopState,
 } from './model-turn.js';
 
 const logger = createLogger('addie-tool-orchestration');
@@ -110,10 +113,24 @@ export interface AddieProviderToolExecution {
 }
 
 export interface AddieAcceptedTurnDecision {
-  action: ModelTurnAction;
+  disposition: AddieAcceptedTurnDisposition;
   text: string;
   hasCustomToolCalls: boolean;
 }
+
+export type AddieAcceptedTurnDisposition =
+  | Readonly<{
+      type: 'continue';
+      reason: Extract<ModelTurnAction, 'execute_tools' | 'continue' | 'continue_provider_tools'>;
+    }>
+  | Readonly<{
+      type: 'recover';
+      reason: EmptyResponseRecoveryKind;
+    }>
+  | Readonly<{
+      type: 'terminal';
+      reason: Extract<ModelTurnAction, 'complete' | 'truncated'>;
+    }>;
 
 export type AddieAcceptedTurnEvent =
   | { type: 'provider_tool'; recorded: AddieProviderToolExecution }
@@ -127,6 +144,11 @@ export interface OrchestrateAcceptedAddieTurnOptions {
   messages: ModelMessage[];
   ledger: AddieToolExecutionLedger;
   execute: AddieToolExecutor;
+  emptyResponseRecovery: {
+    loop: Pick<ModelTurnLoopState, 'scheduleEmptyResponseRecovery'>;
+    deliverableText: string;
+    eligibility: EmptyResponseRecoveryEligibility;
+  };
 }
 
 /**
@@ -232,6 +254,7 @@ export async function* orchestrateAcceptedAddieTurn(
     messages,
     ledger,
     execute,
+    emptyResponseRecovery,
   } = options;
 
   const providerExecutions = ledger.recordProviderResults(
@@ -244,19 +267,38 @@ export async function* orchestrateAcceptedAddieTurn(
     yield { type: 'provider_tool', recorded };
   }
 
+  const text = turn.textBlocks.map((block) => block.text).join('\n\n');
+  const emptyRecovery = turn.action === 'complete'
+    ? emptyResponseRecovery.loop.scheduleEmptyResponseRecovery(
+        turn.response,
+        emptyResponseRecovery.deliverableText,
+        emptyResponseRecovery.eligibility,
+      )
+    : null;
+  const disposition: AddieAcceptedTurnDisposition = emptyRecovery
+    ? Object.freeze({ type: 'recover', reason: emptyRecovery })
+    : turn.action === 'complete' || turn.action === 'truncated'
+      ? Object.freeze({ type: 'terminal', reason: turn.action })
+      : Object.freeze({ type: 'continue', reason: turn.action });
   const decision: AddieAcceptedTurnDecision = Object.freeze({
-    action: turn.action,
-    text: turn.textBlocks.map((block) => block.text).join('\n\n'),
+    disposition,
+    text,
     hasCustomToolCalls: turn.toolCalls.length > 0,
   });
   yield { type: 'turn_decision', decision };
 
-  if (decision.action === 'continue' || decision.action === 'continue_provider_tools') {
+  if (
+    decision.disposition.type === 'continue'
+    && decision.disposition.reason !== 'execute_tools'
+  ) {
     appendModelTurnContinuation(messages, turn.response);
     return;
   }
 
-  if (decision.action !== 'execute_tools') return;
+  if (
+    decision.disposition.type !== 'continue'
+    || decision.disposition.reason !== 'execute_tools'
+  ) return;
 
   const toolResults: ModelToolResultContent[] = [];
   for await (const event of ledger.executeCustomCalls(
@@ -550,6 +592,37 @@ export function createAddieToolExecutor(
     const operationalExecution = options.executionMode === 'production';
     const registered = registry.get(call.name);
     if (!registered?.handler) {
+      const definitionPresent = Boolean(registered?.definition);
+      const invariantEvent = definitionPresent
+        ? 'addie_declared_tool_missing_handler'
+        : 'addie_undeclared_tool_call';
+      const invariantMessage = definitionPresent
+        ? 'Addie: Declared request tool is missing an executable handler'
+        : 'Addie: Model requested a tool outside the executable request surface';
+      const invariantContext = {
+        event: invariantEvent,
+        toolName: call.name,
+        definitionPresent,
+        executableToolCount: registry.size,
+        executionMode: options.executionMode,
+      };
+      if (operationalExecution) {
+        logger.error(invariantContext, invariantMessage);
+      } else {
+        logger.debug(invariantContext, invariantMessage);
+      }
+      if (operationalExecution) {
+        notifyToolError({
+          // Keep provider/model-controlled tool names out of Slack rendering
+          // and use a stable key so arbitrary names cannot bypass throttling.
+          toolName: invariantEvent,
+          errorMessage: invariantMessage,
+          slackUserId: options.notificationContext?.slackUserId,
+          userDisplayName: options.notificationContext?.userDisplayName,
+          threadId: options.notificationContext?.threadId,
+          threw: false,
+        });
+      }
       const normalized = observeNormalizedToolResult(
         call.name,
         normalizeToolError(call.name, new Error(`Unknown tool "${call.name}"`), { expected: false }),

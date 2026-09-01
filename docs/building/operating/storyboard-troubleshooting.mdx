@@ -68,7 +68,7 @@ The runner's `check: error_code` is shape-agnostic — it resolves from either l
 
 Your agent returned a response that does not include the `context:` object from the request. Every storyboard step that sends `context: { correlation_id: ... }` asserts that `context.correlation_id` echoes unchanged in the response.
 
-**Fix:** Preserve the full `context:` object verbatim on every response, including errors. The echo contract is normative — buyers use `correlation_id` to stitch multi-agent flows, and the runner grades every context-carrying step on it. See [Context and sessions — Normative echo contract](/docs/building/by-layer/L2/context-sessions#normative-echo-contract).
+**Fix:** Preserve the same `context:` JSON value on every response, including errors. The echo contract is normative — buyers use `correlation_id` to stitch multi-agent flows, and the runner grades every context-carrying step on it. See [Context and sessions — Normative echo contract](/docs/building/by-layer/L2/context-sessions#normative-echo-contract).
 
 Captures use the same contract in reverse: storyboards that pass `"$context.<name>"` through `context_outputs:` rely on the capture populating after the producer step's validations pass. A downstream step reading `$context.foo` when the producer failed or omitted `context:` grades as `unresolved_substitution`.
 

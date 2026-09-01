@@ -11,6 +11,8 @@ server/
 tests/
 scripts/
 skills/
+# Executable conformance fixtures are served by the application, not Mintlify.
+static/test-assets/**/*.js
 *.test.*
 *.spec.*
 CHANGELOG.md

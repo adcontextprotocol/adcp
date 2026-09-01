@@ -56,6 +56,20 @@ const shareDestination = {
 };
 
 describe('sync_principal contract', () => {
+  it('reuses shared codegen types for principal kind and experimental feature ids', () => {
+    const declarations = readSchema('/schemas/core/principal-declarations.json');
+    const capabilities = readSchema('/schemas/protocol/get-adcp-capabilities-response.json');
+    const getResponse = readSchema('/schemas/protocol/get-principal-response.json');
+    const syncRequest = readSchema('/schemas/protocol/sync-principal-request.json');
+    const syncResponse = readSchema('/schemas/protocol/sync-principal-response.json');
+
+    assert.equal(declarations.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
+    assert.equal(capabilities.properties.experimental_features.items.$ref, '/schemas/core/experimental-feature-id.json');
+    assert.equal(getResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(syncRequest.properties.expected_principal_kind.$ref, '/schemas/enums/principal-kind.json');
+    assert.equal(syncResponse.properties.result.oneOf[0].properties.principal_kind.$ref, '/schemas/enums/principal-kind.json');
+  });
+
   let validateRequest;
   let validateResponse;
   let validateDestination;
@@ -143,6 +157,35 @@ describe('sync_principal contract', () => {
     assert.match(rules.account_authority, /independently authorize the account-scoped feed binding/);
   });
 
+  it('keys signed Agent principals by the verified canonical Agent URL, not credentials or domain', () => {
+    const syncRequest = readSchema('/schemas/protocol/sync-principal-request.json');
+    const getRequest = readSchema('/schemas/protocol/get-principal-request.json');
+    const brand = readSchema('/schemas/brand.json');
+    const security = fs.readFileSync(
+      path.join(__dirname, '..', 'docs', 'building', 'by-layer', 'L1', 'security.mdx'),
+      'utf8',
+    );
+    const canonicalization = fs.readFileSync(
+      path.join(__dirname, '..', 'docs', 'reference', 'url-canonicalization.mdx'),
+      'utf8',
+    );
+
+    const syncRule = syncRequest['x-adcp-validation'].signed_agent_identity;
+    const getRule = getRequest['x-adcp-validation'].signed_agent_identity;
+    const agentUrlDescription = brand.definitions.brand_agent_entry.properties.url.description;
+
+    assert.match(syncRule, /canonical form of the exactly matched agents\[\]\.url/);
+    assert.match(syncRule, /Distinct canonical Agent URLs remain distinct principals/);
+    assert.match(syncRule, /Key rotation preserves the principal/);
+    assert.match(syncRule, /MUST fail closed/);
+    assert.match(getRule, /same canonical Agent URL preserves the principal/);
+    assert.match(agentUrlDescription, /stable Agent identity input for principal mapping/);
+    assert.match(security, /\*\*Canonical signed-Agent identity\.\*\*/);
+    assert.match(security, /canonicalizeAdcpUrl\(e\.url\) === canonicalAgentUrl/);
+    assert.doesNotMatch(security, /Find the entry in `agents\[\]` whose `url` \*\*byte-equals\*\* `A`/);
+    assert.match(canonicalization, /\| Signed-Agent identity \|/);
+  });
+
   it('keeps every destination variant atomic and rejects secret-shaped schema fields', () => {
     for (const destination of [fileDestination, warehouseDestination, shareDestination]) {
       assert.equal(validateDestination(destination), true, JSON.stringify(validateDestination.errors));
@@ -226,6 +269,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -248,6 +292,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [{
@@ -271,6 +316,7 @@ describe('sync_principal contract', () => {
         action: 'updated',
         dry_run: false,
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -289,7 +335,7 @@ describe('sync_principal contract', () => {
     }), false);
   });
 
-  it('makes failed result arms incapable of leaking connection state', () => {
+  it('makes failed result arms incapable of leaking principal state', () => {
     assert.equal(validateResponse({
       status: 'failed',
       result: {
@@ -303,7 +349,7 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_connection',
+        principal_id: 'leaked_principal',
         configuration_version: 'leaked_version',
       },
     }), false);
@@ -416,6 +462,7 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'current',
         principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
         configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
         configuration: {
           notification_configs: [],
@@ -445,9 +492,121 @@ describe('sync_principal contract', () => {
       result: {
         kind: 'failed',
         errors: [{ code: 'AUTH_INVALID', message: 'Authentication failed' }],
-        principal_id: 'leaked_connection',
+        principal_id: 'leaked_principal',
       },
     }), false);
+  });
+
+  it('accepts caller-eligible event types and rejects media-buy-anchored ones', async () => {
+    const validateNotificationConfig = await compile('/schemas/core/agent-notification-config.json');
+    const base = {
+      subscriber_id: 'buyer-events',
+      url: 'https://buyer.example/webhooks/adcp',
+    };
+
+    for (const eventTypes of [
+      ['capabilities.changed'],
+      ['principal.changed'],
+    ]) {
+      assert.equal(validateNotificationConfig({ ...base, event_types: eventTypes }), true,
+        JSON.stringify(validateNotificationConfig.errors));
+    }
+
+    // Account-anchored types require the explicit all-accounts scope
+    // acknowledgment — never implicit.
+    const accountScoped = ['capabilities.changed', 'principal.changed', 'creative.status_changed', 'account.change_recorded'];
+    assert.equal(validateNotificationConfig({ ...base, event_types: accountScoped }), false,
+      'account-anchored types without all_authorized_accounts must be rejected');
+    assert.equal(validateNotificationConfig({ ...base, event_types: accountScoped, all_authorized_accounts: false }), false);
+    assert.equal(validateNotificationConfig({
+      ...base,
+      event_types: accountScoped,
+      all_authorized_accounts: true,
+    }), true, JSON.stringify(validateNotificationConfig.errors));
+
+    for (const mediaBuyType of ['scheduled', 'final', 'delayed', 'adjusted', 'window_update', 'impairment']) {
+      assert.equal(validateNotificationConfig({ ...base, event_types: [mediaBuyType] }), false, mediaBuyType);
+    }
+
+    assert.equal(validateNotificationConfig({
+      ...base,
+      event_types: ['capabilities.changed'],
+      include_future_event_types: true,
+    }), true, JSON.stringify(validateNotificationConfig.errors));
+
+    const config = readSchema('/schemas/core/agent-notification-config.json');
+    assert.match(config.properties.include_future_event_types.description, /invalidation-only/);
+    assert.match(config.properties.all_authorized_accounts.description, /never implicit/);
+    assert.match(config.properties.all_authorized_accounts.description, /queued retries/);
+  });
+
+  it('round-trips declarations with a seller-computed accepted intersection', async () => {
+    const validateWebhook = await compile('/schemas/core/principal-changed-webhook.json');
+
+    const declarations = {
+      async_adcp_versions: ['3.2'],
+      webhook_signing_algorithms: ['ed25519', 'ecdsa-p256-sha256'],
+      experimental_features: ['protocol.principal'],
+    };
+
+    assert.equal(validateRequest({
+      idempotency_key: '528f1f06-e2a7-49b9-bd13-c953f35a1c49',
+      configuration: { declarations },
+    }), true, JSON.stringify(validateRequest.errors));
+
+    // {} is the documented clear form for the declarations section.
+    assert.equal(validateRequest({
+      idempotency_key: '528f1f06-e2a7-49b9-bd13-c953f35a1c49',
+      configuration: { declarations: {} },
+    }), true, JSON.stringify(validateRequest.errors));
+
+    assert.equal(validateReadResponse({
+      status: 'completed',
+      result: {
+        kind: 'current',
+        principal_id: 'prin_01K4C6RGT5Q18VCPGXE7DDWQ5F',
+        principal_kind: 'buyer_agent',
+        configuration_version: 'cfg_01K4C6V2N5PC1TQAH9WTT8D2HP',
+        configuration: {
+          declarations: {
+            declared: declarations,
+            accepted: {
+              async_adcp_versions: ['3.2'],
+              webhook_signing_algorithms: ['ed25519'],
+            },
+            selected_async_adcp_version: '3.2',
+            exclusions: [
+              {
+                axis: 'webhook_signing_algorithms',
+                value: 'ecdsa-p256-sha256',
+                reason: 'This seller signs webhooks with ed25519 only.',
+              },
+              {
+                axis: 'experimental_features',
+                value: 'protocol.principal',
+                reason: 'Declared feature is not an async payload opt-in on this seller.',
+              },
+            ],
+          },
+        },
+      },
+    }), true, JSON.stringify(validateReadResponse.errors));
+
+    assert.equal(validateWebhook({
+      idempotency_key: '9f2c1e57-3f6a-4f4e-9f0d-2a45b7c6e881',
+      notification_id: 'conn_txn_01K4D0Z3M8Q0V5T2C9XWJ7R4BA',
+      notification_type: 'principal.changed',
+      fired_at: '2026-08-29T12:00:05Z',
+      subscriber_id: 'buyer-events',
+      agent_url: 'https://sales.streamhaus.example/adcp',
+      changed_at: '2026-08-29T12:00:03Z',
+      reason: 'declarations_intersection_changed',
+    }), true, JSON.stringify(validateWebhook.errors));
+
+    const request = readSchema('/schemas/protocol/sync-principal-request.json');
+    assert.match(request['x-adcp-validation'].declarations_intersection, /UNSUPPORTED_FEATURE/);
+    assert.match(request['x-adcp-validation'].caller_level_account_events, /each delivery attempt/);
+    assert.match(request['x-adcp-validation'].caller_level_account_events, /all_authorized_accounts/);
   });
 
   it('couples suspension state to inactive configuration in both directions', () => {

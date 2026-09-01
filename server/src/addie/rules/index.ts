@@ -59,7 +59,7 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   ],
   'Partner Directory': ['directory'],
   'Meeting Tool Selection': ['meetings'],
-  'Capability Questions: Search docs/aao/ First': GLOBAL_BEHAVIOR_SECTION,
+  'Capability Questions: Verify Against the Request Surface': GLOBAL_BEHAVIOR_SECTION,
   'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory', 'member'],
   'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
   'Compliance Controller Skip Framing': ['agent_validation', 'agent_conformance'],
@@ -75,12 +75,12 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Opportunistic Information Gathering': GLOBAL_BEHAVIOR_SECTION,
   'Knowledge Search First': ['knowledge'],
   'Building and Testing Agents': ['knowledge', 'agent_validation', 'agent_conformance'],
-  'Registering an Agent in the AAO Registry': ['agent_validation'],
+  'Registering an Agent in the AgenticAdvertising.org Registry': ['agent_validation'],
   'Brand-Ownership Intent: Route to Brand Builder': ['brand_registry', 'property_catalog'],
   'Uncertainty Acknowledgment': GLOBAL_BEHAVIOR_SECTION,
 };
 
-const KNOWLEDGE_RULE_TOOL_SETS = new Set(['knowledge', 'schema_reference']);
+const KNOWLEDGE_RULE_TOOL_SETS = new Set(['knowledge']);
 // Ordinary protocol questions use the authoritative docs boundary and do not
 // need the volatile roadmap snapshot or expert-persona catalog. Explicit
 // roadmap/RFC requests route with `github`; community research has its own

@@ -67,7 +67,7 @@ Member-enrolled agents have one of three visibility levels:
 | `members_only` | AAO API-tier members on `/api/registry/operator?domain=X` |
 | `private` | Profile owner only |
 
-The `/api/registry/operator?domain=X` endpoint is auth-aware: anonymous callers see only `public` agents; authenticated AAO API-tier callers see `members_only` agents; profile owners additionally see `private` agents.
+The `/api/registry/operator?domain=X` endpoint is auth-aware: anonymous callers see only `public` agents; authenticated AAO API-tier callers see `members_only` agents; profile owners additionally see `private` agents. Its `agent_visibility_summary` reports public and members-only registration counts to every caller, so an empty visibility-filtered `agents` array does not imply that the organization has no discoverable registrations. Private registrations are excluded so their existence remains visible only to the profile owner.
 
 ## Membership benefits
 

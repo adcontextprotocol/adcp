@@ -38,7 +38,13 @@ const REQUIRED_SUCCESS_CASES = [
   'macro-in-key-left-untouched',
   'substitution-is-single-pass',
   'suspect-native-values-are-mapping-scoped-and-ordered',
+  'embedded-percent-native-tokens-are-deduplicated',
+  'embedded-double-brace-native-token-is-suspect',
+  'embedded-dollar-brace-native-token-is-suspect',
+  'embedded-upper-snake-bracket-native-token-is-suspect',
+  'embedded-native-values-are-mapping-scoped-and-ordered',
   'ordinary-bracketed-values-not-suspect',
+  'embedded-ordinary-bracketed-values-not-suspect',
   'privacy-value-mappings-are-encoded-and-reported',
   'bare-query-normalized-away',
 ];
@@ -85,6 +91,28 @@ describe('universal macro translation compliance fixture', () => {
     assert.equal(
       vectorsByName.get('bare-query-normalized-away').expected.url,
       'https://pixel.example/i',
+    );
+  });
+
+  it('flags embedded native-token shapes without flagging ordinary bracketed text', () => {
+    const vectorsByName = new Map(fixture.vectors.map((vector) => [vector.name, vector]));
+    const suspectNames = [
+      'embedded-percent-native-tokens-are-deduplicated',
+      'embedded-double-brace-native-token-is-suspect',
+      'embedded-dollar-brace-native-token-is-suspect',
+      'embedded-upper-snake-bracket-native-token-is-suspect',
+    ];
+
+    for (const name of suspectNames) {
+      assert.deepEqual(vectorsByName.get(name).expected.suspect_native_values, ['{VALUE}'], name);
+    }
+    assert.deepEqual(
+      vectorsByName.get('embedded-ordinary-bracketed-values-not-suspect').expected.suspect_native_values,
+      [],
+    );
+    assert.deepEqual(
+      vectorsByName.get('embedded-native-values-are-mapping-scoped-and-ordered').expected.suspect_native_values,
+      ['{SECOND}', '{UNUSED}', '{FIRST}'],
     );
   });
 });

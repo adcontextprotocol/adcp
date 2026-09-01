@@ -774,6 +774,18 @@
           "$ref": "/schemas/core/principal-state.json",
           "description": "Credential-free caller-scoped connection configuration returned by sync_principal"
         },
+        "principal-declarations": {
+          "$ref": "/schemas/core/principal-declarations.json",
+          "description": "Buyer-declared consumption facts for asynchronous payload versioning and webhook verification"
+        },
+        "principal-declarations-state": {
+          "$ref": "/schemas/core/principal-declarations-state.json",
+          "description": "Declared consumption facts with the seller-computed accepted intersection"
+        },
+        "principal-changed-webhook": {
+          "$ref": "/schemas/core/principal-changed-webhook.json",
+          "description": "Caller-anchored invalidation payload for seller-driven connection-state transitions"
+        },
         "agent-reporting-destination": {
           "$ref": "/schemas/core/agent-reporting-destination.json",
           "description": "Reusable caller-scoped reporting destination configuration"
@@ -1923,6 +1935,26 @@
           "response": {
             "$ref": "/schemas/media-buy/get-media-buy-delivery-response.json",
             "description": "Response payload for get_media_buy_delivery task"
+          }
+        },
+        "get-reporting-status": {
+          "request": {
+            "$ref": "/schemas/media-buy/get-reporting-status-request.json",
+            "description": "Request parameters for reconciling managed reporting obligations, revisions, and materializations"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/get-reporting-status-response.json",
+            "description": "Authoritative reporting ledger status for summary, periods, or one exact revision"
+          }
+        },
+        "sync-reporting-receipts": {
+          "request": {
+            "$ref": "/schemas/media-buy/sync-reporting-receipts-request.json",
+            "description": "Submit authenticated consumer reconciliation receipts for durable reporting materializations"
+          },
+          "response": {
+            "$ref": "/schemas/media-buy/sync-reporting-receipts-response.json",
+            "description": "Per-receipt durable recording results"
           }
         },
         "provide-performance-feedback": {

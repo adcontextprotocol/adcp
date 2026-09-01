@@ -4,6 +4,20 @@
   "title": "Get AdCP Capabilities Response",
   "description": "Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP protocols. Each protocol has its own capability section.",
   "type": "object",
+  "definitions": {
+    "CapabilityReportingDeliveryMethod": {
+      "title": "Capability Reporting Delivery Method",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": ["webhook", "offline"]
+    },
+    "BudgetCappingTimezoneBasis": {
+      "title": "Budget Capping Timezone Basis",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": ["account", "fixed"]
+    }
+  },
   "allOf": [
     {
       "$ref": "/schemas/core/version-envelope.json"
@@ -156,6 +170,53 @@
               }
             },
             "required": ["principal"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "properties": {
+          "experimental_features": {
+            "contains": { "const": "media_buy.reporting_delivery" }
+          }
+        },
+        "required": ["experimental_features"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "media_buy": {
+            "properties": {
+              "reporting_delivery": {
+                "anyOf": [
+                  { "required": ["readiness_notification"] },
+                  { "required": ["status_notification"] }
+                ]
+              }
+            },
+            "required": ["reporting_delivery"]
+          }
+        },
+        "required": ["media_buy"]
+      },
+      "then": {
+        "required": ["webhook_signing"],
+        "properties": {
+          "webhook_signing": {
+            "properties": {
+              "supported": { "const": true }
+            },
+            "required": ["supported", "profile", "algorithms", "legacy_hmac_fallback"]
           }
         }
       }
@@ -481,7 +542,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["notification_configs", "reporting_destinations"]
+                "enum": ["notification_configs", "reporting_destinations", "declarations"]
               },
               "minItems": 1,
               "uniqueItems": true,
@@ -552,7 +613,32 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 86400,
-              "description": "Advertised upper bound, in seconds, between a committed destination suspension or revocation and the halt of new deliveries to every generation of that destination."
+              "description": "Advertised upper bound, in seconds, between a committed destination suspension or revocation — or a subscriber deactivation — and the halt of new deliveries and fires."
+            },
+            "caller_event_types": {
+              "type": "array",
+              "items": {
+                "allOf": [
+                  {
+                    "$ref": "/schemas/enums/notification-type.json"
+                  },
+                  {
+                    "not": {
+                      "enum": [
+                        "scheduled",
+                        "final",
+                        "delayed",
+                        "adjusted",
+                        "window_update",
+                        "impairment"
+                      ]
+                    }
+                  }
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "Notification types this seller can emit against caller-level subscribers, so buyers select from the offering instead of probing by rejection. Account-anchored entries fire with fire-time authorization scoping. When absent, only capabilities.changed is assumed. A caller-level subscriber requesting a type outside this set fails the sync request with UNSUPPORTED_FEATURE."
             },
             "optimistic_concurrency": {
               "type": "boolean",
@@ -1203,8 +1289,7 @@
           "type": "array",
           "description": "How this seller delivers reporting data to buyers. Polling via get_media_buy_delivery is always available as a baseline regardless of this field. This array declares additional push-based delivery methods the seller supports. 'webhook': seller pushes to buyer-provided URL (configured per buy via reporting_webhook). 'offline': seller pushes batch files to a cloud storage bucket (seller-provisioned per account via reporting_bucket on the account object). When absent, only polling is available.",
           "items": {
-            "type": "string",
-            "enum": ["webhook", "offline"]
+            "$ref": "#/definitions/CapabilityReportingDeliveryMethod"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -1231,6 +1316,11 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "reporting_delivery": {
+          "$ref": "/schemas/core/reporting-delivery-capabilities.json",
+          "x-status": "experimental",
+          "description": "Managed reporting status and durable delivery capability. Presence requires media_buy.reporting_delivery in experimental_features. This generalizes, but does not remove, the legacy reporting_delivery_methods/offline_delivery_protocols surface."
         },
         "supports_proposals": {
           "type": "boolean",
@@ -1891,8 +1981,7 @@
               "uniqueItems": true
             },
             "timezone_basis": {
-              "type": "string",
-              "enum": ["account", "fixed"],
+              "$ref": "#/definitions/BudgetCappingTimezoneBasis",
               "description": "Source of the default cap-day boundary. account uses the selected Account.timezone and therefore supports different boundaries for different accounts. fixed uses fixed_timezone for every media buy regardless of account timezone."
             },
             "fixed_timezone": {
@@ -3056,9 +3145,7 @@
       "type": "array",
       "description": "Experimental AdCP surfaces this agent implements. A surface is experimental when its schema carries x-status: experimental and the working group has not yet frozen it. Sellers that implement any experimental surface MUST list its feature id here. Buyers inspect this array before relying on experimental surfaces — a seller that does not list a surface is asserting it does not implement it. Experimental surfaces MAY break between any two 3.x releases with at least 6 weeks notice; the full contract is in docs/reference/experimental-status.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
-        "description": "Experimental feature id (dot-separated lowercase identifiers, e.g., 'brand.rights_lifecycle', 'governance.campaign', 'measurement.core', 'trusted_match.core')"
+        "$ref": "/schemas/core/experimental-feature-id.json"
       },
       "uniqueItems": true
     },

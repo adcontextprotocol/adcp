@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/principal-changed-webhook.json",
+  "title": "Principal Changed Webhook",
+  "x-status": "experimental",
+  "description": "Caller-anchored webhook payload fired when the seller changes the authenticated caller's principal state through a seller-driven transition: a reporting destination moving between validating, ready, action_required, and rejected, a setup action nearing or passing its expiry, a proof invalidation, or a change to the accepted declarations intersection. It is not fired for the caller's own sync_principal mutations — the sync response already reports those. Registered through sync_principal or the specialized sync_agent_notification_configs task using event_types containing principal.changed. The payload is an invalidation signal, not principal state: receivers repair by re-reading get_principal. Sellers MUST make the post-transition state observable on that read before firing, and SHOULD coalesce bursts of transitions into one fire per settled state.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "description": "Stable identifier for this logical principal-state transition. Re-emissions of the same transition reuse this value under a new idempotency_key; a later distinct transition receives a new id.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "principal.changed",
+      "description": "Fixed notification type discriminator. Matches the value registered on the subscriber's `event_types`."
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from `changed_at`, which is when the seller recorded the state transition."
+    },
+    "subscriber_id": {
+      "type": "string",
+      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Canonical seller agent URL whose principal state changed. Receivers connected to multiple agents use this to select which principal record to re-read."
+    },
+    "changed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller recorded the principal-state transition."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "destination_state_changed",
+        "setup_expiring",
+        "setup_expired",
+        "proof_invalidated",
+        "declarations_intersection_changed",
+        "other"
+      ],
+      "description": "Coarse reason for the invalidation. Advisory routing/debug metadata; receivers MUST re-read get_principal rather than inferring the new state from the reason."
+    },
+    "destination_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "description": "Optional advisory hint naming the affected reporting destination for destination-scoped reasons. Receivers MAY use it for selective handling but MUST still treat the get_principal read as authoritative."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["idempotency_key", "notification_id", "notification_type", "fired_at", "subscriber_id", "agent_url", "changed_at", "reason"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Destination reached ready after recipient acceptance",
+      "data": {
+        "idempotency_key": "9f2c1e57-3f6a-4f4e-9f0d-2a45b7c6e881",
+        "notification_id": "conn_txn_01K4D0Z3M8Q0V5T2C9XWJ7R4BA",
+        "notification_type": "principal.changed",
+        "fired_at": "2026-08-29T12:00:05Z",
+        "subscriber_id": "buyer-events",
+        "agent_url": "https://sales.streamhaus.example/adcp",
+        "changed_at": "2026-08-29T12:00:03Z",
+        "reason": "destination_state_changed",
+        "destination_id": "daily-share"
+      }
+    }
+  ]
+}

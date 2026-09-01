@@ -246,13 +246,13 @@ Get search analytics for the user's member profile. Shows how many times their p
 
 ### `list_members`
 
-List AgenticAdvertising.org member organizations visible to the caller. Public directory members are always returned; callers on an API-access tier also see organizations with members_only agents. Can filter by offerings, markets, or search term. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.
+List visible AgenticAdvertising.org member organizations. Public profiles are always returned; API-tier callers also see organizations with members_only agents. Filter by offerings, markets, or search. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 
 ### `get_member`
 
-Get detailed information about a specific AgenticAdvertising.org member by slug, including agents visible to the caller. Agent results are visibility-filtered, so an empty agents array does not prove that the organization has no registered agents.
+Get an AgenticAdvertising.org member by slug. Returns visibility-filtered agent details plus public/members-only registration counts; private registrations are excluded.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
 

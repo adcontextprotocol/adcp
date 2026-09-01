@@ -24,7 +24,7 @@ type EffectiveSlot = {
 };
 
 /** Permitted ctv_ad_experience values per canonical. Canonicals absent from
- * this map (html5, display_tag, image_carousel, audio_hosted, audio_daast,
+ * this map (html5, display_tag, image_carousel, audio_hosted, audio_vast, audio_daast,
  * responsive_creative, agent_placement, custom, ...) never permit
  * ctv_ad_experience — any declared value on those canonicals is a violation.
  */

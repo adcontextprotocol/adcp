@@ -1,10 +1,10 @@
 ---
 title: get_principal
-description: "Read the authenticated caller's connection configuration, version, and destination setup states."
+description: "Read the authenticated caller's principal configuration, version, and destination setup states."
 "og:title": "AdCP — get_principal"
 ---
 
-`get_principal` returns the authenticated caller's current durable connection configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations.
+`get_principal` returns the authenticated caller's current durable principal configuration with one AdCP agent: the same caller-scoped state that [`sync_principal`](/docs/protocol/sync_principal) replaces, plus retained superseded and revoked destination generations.
 
 The read is side-effect free. It never issues identifiers, sends endpoint proof challenges, mutates state, or advances `configuration_version`.
 
@@ -20,7 +20,8 @@ Call it whenever you need current state rather than a change:
 
 - **Bootstrap the concurrency fence.** Read `configuration_version` before a guarded [`sync_principal`](/docs/protocol/sync_principal) replacement instead of writing blind.
 - **Recover after local-state loss.** A restarted service reads `principal_id`, `configuration_version`, every `destination_ref`, and each destination's setup state before deciding what to sync.
-- **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready`. Polling never disturbs the version fence.
+- **Observe setup progress.** After a destination returns `action_required` or `validating`, poll here until it reaches `ready` — or subscribe to the `principal.changed` webhook and use this read as the repair path. Polling never disturbs the version fence.
+- **Read the negotiated async contract.** The `declarations` state carries both the declared set and the seller-computed accepted intersection that governs webhook payload versions and signing algorithms.
 - **Audit generations.** Superseded generations appear in each destination's `prior_destination_refs`; revoked destinations appear in `retired_destinations`. Both remain resolvable for existing authorized account bindings and retained reporting history.
 
 Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) advertises `adcp.principal` with `read_task: "get_principal"`. Sellers advertising `principal` implement both the sync and read tasks.
@@ -29,15 +30,17 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
 
 Identity resolution is identical to [`sync_principal`](/docs/protocol/sync_principal): the seller resolves the stable authenticated principal from transport and ignores every request-body field for identity and authorization. The request body carries no parameters beyond the protocol envelope.
 
+For RFC 9421 signed callers, that stable identity is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry after publication and key verification. Rotation to another key authorized for the same canonical Agent URL preserves the principal; a domain, JWKS URI, or key never replaces the Agent URL as the subject.
+
 ## Results
 
 | `result.kind` | Meaning |
 |---|---|
-| `current` | The caller has a persisted connection. Returns `principal_id`, `configuration_version`, and complete credential-free configuration state. |
-| `unconfigured` | The authenticated caller has no persisted connection with this agent. |
+| `current` | The caller has a persisted principal record. Returns `principal_id`, the seller-resolved `principal_kind` (`buyer_agent` or `operator`), `configuration_version`, and complete credential-free configuration state. |
+| `unconfigured` | The authenticated caller has no persisted principal record with this agent. |
 | `failed` | The read could not be served. Carries only structured errors, never identifiers or state. |
 
-A caller with no connection and a caller probing coordinates owned by someone else receive indistinguishable results: configuration state is visible only to its owning principal.
+A caller with no principal record and a caller probing coordinates owned by someone else receive indistinguishable results: configuration state is visible only to its owning principal.
 
 ```json
 {
@@ -45,6 +48,7 @@ A caller with no connection and a caller probing coordinates owned by someone el
   "result": {
     "kind": "current",
     "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+    "principal_kind": "buyer_agent",
     "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
     "configuration": {
       "notification_configs": [],
