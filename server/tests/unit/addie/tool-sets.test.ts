@@ -9,12 +9,6 @@ import {
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
   COMMUNITY_GROUP_TOOLS,
-  LEGACY_ADMIN_GROUP_TOOLS,
-  LEGACY_ADMIN_TOOLS,
-  LEGACY_AGENT_TESTING_TOOLS,
-  LEGACY_CERTIFICATION_TOOLS,
-  LEGACY_MEMBER_TOOLS,
-  LEGACY_PUBLISHING_TOOLS,
   MEMBER_PROFILE_TOOLS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
@@ -56,20 +50,7 @@ describe('getToolsForSets', () => {
       }
     });
 
-    it('preserves the exact 66-tool legacy surface without exposing it to new router plans', () => {
-      expect(LEGACY_ADMIN_TOOLS).toHaveLength(66);
-      expect(new Set(LEGACY_ADMIN_TOOLS).size).toBe(66);
-      expect(TOOL_SETS.admin.tools).toEqual(LEGACY_ADMIN_TOOLS);
-      expect(TOOL_SETS.admin.routerVisible).toBe(false);
-      expect(getValidToolSetNames(true).has('admin')).toBe(false);
-    });
-
-    it('keeps the mixed group surface only as an in-flight compatibility shim', () => {
-      expect(LEGACY_ADMIN_GROUP_TOOLS).toHaveLength(12);
-      expect(TOOL_SETS.admin_groups.tools).toEqual(LEGACY_ADMIN_GROUP_TOOLS);
-      expect(TOOL_SETS.admin_groups.routerVisible).toBe(false);
-      expect(getValidToolSetNames(true).has('admin_groups')).toBe(false);
-
+    it('keeps admin group operations in their bounded domains', () => {
       for (const name of [
         'admin_group_structure',
         'admin_group_leadership',
@@ -91,29 +72,18 @@ describe('getToolsForSets', () => {
       expect(memberTools).not.toContain('query_prospects');
     });
 
-    it('keeps the legacy set callable only as a continuity shim', () => {
-      const tools = getToolsForSets(['admin'], true, false);
-      expect(tools).toContain('query_prospects');
-      expect(tools).toContain('merge_organizations');
-      expect(buildUnavailableSetsHint([], true)).not.toContain('**admin**');
-    });
-
     it('generates the compact catalog from router-visible domains only', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organizations**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_groups**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin** *(admin only)*');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_author**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_review**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **publishing_promotion**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **publishing**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_overview**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_learning**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_assessment**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **certification**');
     });
   });
 
@@ -144,16 +114,6 @@ describe('getToolsForSets', () => {
       }
     });
 
-    it('keeps the exact mixed workflow callable only as a compatibility shim', () => {
-      expect(LEGACY_CERTIFICATION_TOOLS).toHaveLength(15);
-      expect(new Set(LEGACY_CERTIFICATION_TOOLS).size).toBe(15);
-      expect(TOOL_SETS.certification.tools).toEqual(LEGACY_CERTIFICATION_TOOLS);
-      expect(TOOL_SETS.certification.routerVisible).toBe(false);
-      expect(getValidToolSetNames(false).has('certification')).toBe(false);
-      expect(getValidToolSetNames(false).has('certification_overview')).toBe(true);
-      expect(getValidToolSetNames(false).has('certification_learning')).toBe(true);
-      expect(getValidToolSetNames(false).has('certification_assessment')).toBe(true);
-    });
   });
 
   describe('Sponsored Intelligence workflow', () => {
@@ -207,29 +167,11 @@ describe('getToolsForSets', () => {
       expect(property).not.toContain('diagnose_agent_auth');
     });
 
-    it('preserves the exact legacy union without exposing it to new router plans', () => {
+    it('keeps agent validation and property-catalog routes visible', () => {
       expect(AGENT_VALIDATION_TOOLS).toHaveLength(12);
       expect(PROPERTY_CATALOG_TOOLS).toHaveLength(9);
-      expect(LEGACY_AGENT_TESTING_TOOLS).toHaveLength(21);
-      expect(new Set(LEGACY_AGENT_TESTING_TOOLS).size).toBe(21);
-      expect(TOOL_SETS.agent_testing.tools).toEqual(LEGACY_AGENT_TESTING_TOOLS);
-      expect(TOOL_SETS.agent_testing.routerVisible).toBe(false);
-      expect(getValidToolSetNames(false).has('agent_testing')).toBe(false);
       expect(getValidToolSetNames(false).has('agent_validation')).toBe(true);
       expect(getValidToolSetNames(false).has('property_catalog')).toBe(true);
-    });
-
-    it('keeps the old combined set callable only as a continuity shim', () => {
-      const tools = getToolsForSets(['agent_testing'], false, false);
-      expect(tools).toEqual(expect.arrayContaining([
-        'evaluate_agent_quality',
-        'resolve_property',
-        'dispute_catalog_entry',
-      ]));
-      expect(buildUnavailableSetsHint([], false)).not.toContain('**agent_testing**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **agent_validation**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **property_catalog**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **agent_testing**');
     });
   });
 
@@ -303,8 +245,6 @@ describe('getToolsForSets', () => {
       expect(TOOL_SETS.billing.requiresPrecision).toBe(true);
       expect(TOOL_SETS.billing.tools).toContain('preview_org_stripe_customer_update');
       expect(TOOL_SETS.billing.tools).toContain('confirm_org_stripe_customer_update');
-      expect(TOOL_SETS.admin.tools).not.toContain('preview_org_stripe_customer_update');
-      expect(TOOL_SETS.admin.tools).not.toContain('confirm_org_stripe_customer_update');
     });
 
     it('still includes non-enrollment always-available tools in public channels', () => {
@@ -343,14 +283,9 @@ describe('getToolsForSets', () => {
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
     });
 
-    it('preserves the exact legacy member surface without exposing it to new router plans', () => {
+    it('keeps profile and community-group routes visible', () => {
       expect(MEMBER_PROFILE_TOOLS).toHaveLength(7);
       expect(COMMUNITY_GROUP_TOOLS).toHaveLength(11);
-      expect(LEGACY_MEMBER_TOOLS).toHaveLength(21);
-      expect(new Set(LEGACY_MEMBER_TOOLS).size).toBe(21);
-      expect(TOOL_SETS.member.tools).toEqual(LEGACY_MEMBER_TOOLS);
-      expect(TOOL_SETS.member.routerVisible).toBe(false);
-      expect(getValidToolSetNames(false).has('member')).toBe(false);
       expect(getValidToolSetNames(false).has('member_profile')).toBe(true);
       expect(getValidToolSetNames(false).has('community_groups')).toBe(true);
     });
@@ -382,31 +317,21 @@ describe('getToolsForSets', () => {
       expect(author).not.toContain('join_working_group');
     });
 
-    it('preserves the exact legacy publishing surface without exposing it to new router plans', () => {
+    it('keeps publishing routes visible', () => {
       expect(PUBLISHING_AUTHOR_TOOLS).toHaveLength(6);
       expect(PUBLISHING_REVIEW_TOOLS).toHaveLength(4);
       expect(PUBLISHING_PROMOTION_TOOLS).toHaveLength(2);
-      expect(LEGACY_PUBLISHING_TOOLS).toHaveLength(12);
-      expect(new Set(LEGACY_PUBLISHING_TOOLS).size).toBe(12);
-      expect(TOOL_SETS.publishing.tools).toEqual(LEGACY_PUBLISHING_TOOLS);
-      expect(TOOL_SETS.publishing.routerVisible).toBe(false);
-      expect(getValidToolSetNames(false).has('publishing')).toBe(false);
       expect(getValidToolSetNames(false).has('publishing_author')).toBe(true);
       expect(getValidToolSetNames(false).has('publishing_review')).toBe(true);
       expect(getValidToolSetNames(false).has('publishing_promotion')).toBe(true);
     });
 
-    it('keeps the legacy member set callable only as a continuity shim', () => {
-      const tools = getToolsForSets(['member'], false, false);
-      expect(tools).toEqual(expect.arrayContaining([
-        'get_my_profile',
-        'join_working_group',
-        'draft_social_posts',
-      ]));
-      expect(buildUnavailableSetsHint([], false)).not.toContain('**member**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **member_profile**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **community_groups**');
-      expect(ADDIE_TOOL_CATALOG).not.toContain('- **member**');
+    it('rejects removed pre-split aliases without expanding the request surface', () => {
+      for (const name of ['admin', 'admin_groups', 'member', 'agent_testing', 'publishing', 'certification']) {
+        expect(TOOL_SETS).not.toHaveProperty(name);
+        expect(getValidToolSetNames(true).has(name)).toBe(false);
+        expect(getToolsForSets([name], false, false)).toEqual(ALWAYS_AVAILABLE_TOOLS);
+      }
     });
 
     it('routes GitHub issue tools without exposing them globally', () => {

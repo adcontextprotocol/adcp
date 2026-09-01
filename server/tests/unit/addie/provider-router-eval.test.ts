@@ -236,7 +236,7 @@ describe('strict router eval', () => {
     expect(parseStrictRouterPlan('{"action":"ignore","reason":"not needed"}', false)).toEqual({ action: 'ignore', reason: 'not needed' });
     expect(parseStrictRouterPlan('{"action":"ignore","reason":"not needed","emoji":null,"tool_sets":[],"confidence":null,"requires_depth":null}', false)).toEqual({ action: 'ignore', reason: 'not needed' });
     expect(() => parseStrictRouterPlan('```json\n{"action":"ignore","reason":"x","extra":true}\n```', false)).toThrow(RouterPlanParseError);
-    expect(() => parseStrictRouterPlan('{"action":"respond","tool_sets":["admin"],"confidence":"high","requires_depth":false,"reason":"x"}', false)).toThrow('unauthorized');
+    expect(() => parseStrictRouterPlan('{"action":"respond","tool_sets":["billing"],"confidence":"high","requires_depth":false,"reason":"x"}', false)).toThrow('unauthorized');
     expect(() => parseStrictRouterPlan('{"action":"ignore","reason":"x","extra":true}', false)).toThrow('invalid fields');
   });
 

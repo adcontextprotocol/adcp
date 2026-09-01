@@ -156,7 +156,7 @@ describe('Rules Loader', () => {
     const knowledgeRules = loadRules({ selectedToolSetNames: ['knowledge'] });
     const meetingRules = loadRules({ selectedToolSetNames: ['meetings'] });
     const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
-    const memberRules = loadRules({ selectedToolSetNames: ['member'] });
+    const memberRules = loadRules({ selectedToolSetNames: ['member_profile'] });
     const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
 
     expect(knowledgeRules).toContain('# Knowledge');
@@ -172,8 +172,8 @@ describe('Rules Loader', () => {
 
     expect(directoryRules).toContain('## Honest Reporting After Search');
     expect(directoryRules).toContain('Registry visibility is not registry completeness');
-    expect(memberRules).toContain('## Honest Reporting After Search');
-    expect(memberRules).toContain('Registry visibility is not registry completeness');
+    expect(memberRules).not.toContain('## Honest Reporting After Search');
+    expect(memberRules).not.toContain('Registry visibility is not registry completeness');
     expect(schemaRules).not.toContain('# Knowledge');
     expect(schemaRules).not.toContain('When asked about AdCP\'s current version');
     expect(schemaRules).toContain('## Verify Claims With Tools');
@@ -261,22 +261,14 @@ describe('Addie tool reference', () => {
     expect(reference).not.toContain('### Admin workflow operations');
   });
 
-  it('scopes group-admin guidance while preserving the hidden compatibility route', () => {
+  it('scopes group-admin guidance to the selected domain', () => {
     const leadership = buildAddieToolReference({
       availableToolNames: getToolsForSets(['admin_group_leadership'], true, false),
       selectedToolSetNames: ['admin_group_leadership'],
     });
-    const legacy = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['admin_groups'], true, false),
-      selectedToolSetNames: ['admin_groups'],
-    });
-
     expect(leadership).toContain('### Admin group-leadership operations');
     expect(leadership).not.toContain('### Admin group-membership operations');
     expect(leadership).not.toContain('### Admin group-structure operations');
-    expect(legacy).toContain('### Admin group-leadership operations');
-    expect(legacy).toContain('### Admin group-membership operations');
-    expect(legacy).toContain('### Admin group-structure operations');
   });
 
   it('keeps the cacheable guidance stable while domain instructions vary', () => {
@@ -340,18 +332,6 @@ describe('Addie tool reference', () => {
     expect(meetings).not.toContain('### Member profile and company-listing operations');
   });
 
-  it('retains all member guidance for the hidden legacy continuity set', () => {
-    const legacy = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['member'], false, false),
-      selectedToolSetNames: ['member'],
-    });
-
-    expect(legacy).toContain('### Member account and organization self-service');
-    expect(legacy).toContain('### Member profile and company-listing operations');
-    expect(legacy).toContain('### Working-group operations');
-    expect(legacy).toContain('### Member content operations');
-  });
-
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
     const author = buildAddieToolReference({
       availableToolNames: getToolsForSets(['publishing_author'], false, false),
@@ -397,19 +377,6 @@ describe('Addie tool reference', () => {
 
     expect(reference).toContain('### Content submission and author safety');
     expect(reference).not.toContain('### Google Docs publishing chain');
-  });
-
-  it('loads all publishing guidance for the hidden legacy continuity set', () => {
-    const legacy = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['publishing'], false, false),
-      selectedToolSetNames: ['publishing'],
-    });
-
-    expect(legacy).toContain('### Content submission and author safety');
-    expect(legacy).toContain('### Editorial review safety');
-    expect(legacy).toContain('### Google Docs publishing chain');
-    expect(legacy).toContain('### Member content operations');
-    expect(legacy).toContain('### Member content assets');
   });
 
   it('scopes account self-service guidance to member requests', () => {
@@ -477,11 +444,6 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['property_catalog'], false, false),
       selectedToolSetNames: ['property_catalog'],
     });
-    const legacy = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['agent_testing'], false, false),
-      selectedToolSetNames: ['agent_testing'],
-    });
-
     expect(protocol).toContain('### AdCP protocol operations');
     expect(protocol).toContain('### Seller-agent monitoring');
     expect(protocol).toContain('### Building with AdCP');
@@ -494,11 +456,6 @@ describe('Addie tool reference', () => {
     expect(property).toContain('### Property-list enrichment');
     expect(property).not.toContain('### Publisher and agent testing');
     expect(property).not.toContain('### Building with AdCP');
-    expect(legacy).toContain('### Publisher and agent testing');
-    expect(legacy).toContain('### Property-registry operations');
-    expect(legacy).toContain('### Building with AdCP');
-    expect(legacy).not.toContain('### AdCP protocol operations');
-    expect(legacy).not.toContain('### Seller-agent monitoring');
   });
 
   it('scopes brand guidance to brand-registry requests', () => {
@@ -604,10 +561,6 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['certification_overview'], false, false),
       selectedToolSetNames: ['certification_overview'],
     });
-    const legacy = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['certification'], false, false),
-      selectedToolSetNames: ['certification'],
-    });
     const activeSession = buildAddieToolReference({
       availableToolNames: getToolsForSets(['certification_learning', 'knowledge'], false, false),
       selectedToolSetNames: ['certification_learning', 'knowledge'],
@@ -631,9 +584,6 @@ describe('Addie tool reference', () => {
     expect(assessment).not.toContain('BUILD PROJECT ERROR COACHING');
     expect(overview).toContain('## AdCP Academy — overview and progress');
     expect(overview).not.toContain('MUST call start_certification_module IMMEDIATELY');
-    expect(legacy).toContain('## AdCP Academy — overview and progress');
-    expect(legacy).toContain('## AdCP Academy — module learning');
-    expect(legacy).toContain('## AdCP Academy — placement and specialist assessment');
     expect(activeSession).toContain('## AdCP Academy');
     expect(activeSession).toContain('### Knowledge search operations');
     expect(missingCheckpoint).not.toContain('## AdCP Academy');

@@ -51,8 +51,6 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
     'certification_overview',
     'certification_learning',
     'certification_assessment',
-    'certification',
-    'member',
     'member_billing',
     'member_profile',
     'community_groups',
@@ -60,7 +58,7 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Partner Directory': ['directory'],
   'Meeting Tool Selection': ['meetings'],
   'Capability Questions: Verify Against the Request Surface': GLOBAL_BEHAVIOR_SECTION,
-  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory', 'member'],
+  'Honest Reporting After Search': ['knowledge', 'schema_reference', 'directory'],
   'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
   'Compliance Controller Skip Framing': ['agent_validation', 'agent_conformance'],
   'Publisher and Agent Setup Diagnosis': ['agent_validation', 'property_catalog'],
@@ -92,7 +90,6 @@ const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
   'publishing_author',
   'publishing_review',
   'publishing_promotion',
-  'publishing',
   'illustrations',
 ]);
 const EVIDENCE_BOUND_URL_FREE_TOOL_SETS = new Set([

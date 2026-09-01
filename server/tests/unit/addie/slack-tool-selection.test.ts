@@ -54,7 +54,7 @@ describe('Slack tool-set selection policy', () => {
     ['mixed', ['certification_learning', 'certification_assessment', ...safeKnowledgeFallback, 'illustrations']],
   ] as const)('overrides router and admin sets for an active %s certification DM', (activeCertificationKind, expected) => {
     expect(selectSlackToolSets({
-      routerSelectedSets: ['billing', 'admin'],
+      routerSelectedSets: ['billing', 'admin_workflows'],
       routerAvailable: true,
       source: 'dm',
       isAdmin: true,
@@ -182,13 +182,13 @@ describe('Slack tool-set selection policy', () => {
     })).toEqual([...safeKnowledgeFallback, 'sponsored_intelligence']);
   });
 
-  it('preserves an already-created legacy admin plan for continuity', () => {
+  it('rejects obsolete router-plan aliases before they reach prompt or tool selection', () => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['admin'],
       routerAvailable: true,
       source: 'channel',
       isAdmin: true,
-    })).toEqual(['admin']);
+    })).toEqual([]);
   });
 
   it('returns verified channel context from the required resolver', async () => {

@@ -400,7 +400,7 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     if (surface.source === 'dm') {
       for (const activeCertificationKind of ['learning', 'assessment', 'mixed'] as const) {
         const certificationSets = selectSlackToolSets({
-          routerSelectedSets: ['admin'],
+          routerSelectedSets: ['admin_workflows'],
           routerAvailable: true,
           source: surface.source,
           isAdmin: surface.isAdmin,
@@ -430,63 +430,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       }
     }
   }
-
-  const legacyAdminAllowed = new Set(toolSets.getToolsForSets(['admin'], true, false));
-  profiles.push(profile({
-    id: 'slack_bolt:admin_dm:legacy_admin_compatibility',
-    runtime: 'slack_bolt',
-    audience: 'admin_dm',
-    route: 'legacy_admin_compatibility',
-    selectedToolSets: ['admin'],
-    allowedToolNames: [...legacyAdminAllowed],
-    globalTools,
-    requestTools: adminRequest.filter((tool) => legacyAdminAllowed.has(tool.name)),
-    providerToolCount: 1,
-    conditionalMaximums: [
-      'plan_created_before_admin_domain_split',
-      'google_docs_configured',
-      'nonstreaming_web_search',
-    ],
-  }));
-
-  const legacyMemberAllowed = new Set(toolSets.getToolsForSets(['member'], false, false));
-  profiles.push(profile({
-    id: 'slack_bolt:member_dm:legacy_member_compatibility',
-    runtime: 'slack_bolt',
-    audience: 'member_dm',
-    route: 'legacy_member_compatibility',
-    selectedToolSets: ['member'],
-    allowedToolNames: [...legacyMemberAllowed],
-    globalTools,
-    requestTools: memberRequest.filter((tool) => legacyMemberAllowed.has(tool.name)),
-    providerToolCount: 1,
-    conditionalMaximums: [
-      'plan_created_before_member_domain_split',
-      'google_docs_configured',
-      'nonstreaming_web_search',
-    ],
-  }));
-
-  const legacyAgentTestingAllowed = new Set(
-    toolSets.getToolsForSets(['agent_testing'], false, false),
-  );
-  profiles.push(profile({
-    id: 'slack_bolt:member_dm:legacy_agent_testing_compatibility',
-    runtime: 'slack_bolt',
-    audience: 'member_dm',
-    route: 'legacy_agent_testing_compatibility',
-    selectedToolSets: ['agent_testing'],
-    allowedToolNames: [...legacyAgentTestingAllowed],
-    globalTools,
-    requestTools: memberRequest.filter((tool) => legacyAgentTestingAllowed.has(tool.name)),
-    providerToolCount: 1,
-    conditionalMaximums: [
-      'plan_created_before_agent_property_split',
-      'google_docs_configured',
-      'conformance_socket_enabled',
-      'nonstreaming_web_search',
-    ],
-  }));
 
   for (const systemRole of Object.keys(SYSTEM_CHANNEL_TOOL_SETS) as SystemChannelRole[]) {
     const allValidSets = Object.entries(toolSets.TOOL_SETS)
