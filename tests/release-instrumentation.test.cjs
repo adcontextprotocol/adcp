@@ -17,6 +17,7 @@ const expectedFeatureFamilies = [
   'idempotency_retention_and_retry_binding',
   'measurement_tracking_candidate',
   'portable_attestations',
+  'principal_connection_layer',
   'radio_and_place_based_audio_candidates',
   'request_signing_profile_3_2',
   'targeting_aware_discovery',
