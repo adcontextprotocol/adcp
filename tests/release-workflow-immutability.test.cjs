@@ -92,6 +92,23 @@ assert(
   'Candidate validation must not bump the TypeScript SDK package release number.'
 );
 
+const pythonCandidateStep = schemaPrWorkflowConfig.jobs['python-sdk'].steps.find(
+  step => step.name === 'Generate and test from the PR bundle'
+).run;
+const pythonCandidatePinIndex = pythonCandidateStep.indexOf('> sdk/src/adcp/ADCP_VERSION');
+const pythonCandidateManifestIndex = pythonCandidateStep.indexOf('SDK_VERSION="${sdk_version}"');
+const pythonCandidateRegenIndex = pythonCandidateStep.indexOf('make -C sdk regenerate-schemas');
+assert(
+  pythonCandidatePinIndex !== -1 &&
+    pythonCandidatePinIndex < pythonCandidateManifestIndex &&
+    pythonCandidateManifestIndex < pythonCandidateRegenIndex,
+  'Python candidate validation must align its disposable package-data allowlist after pinning ADCP_VERSION and before schema generation.'
+);
+assert(
+  pythonCandidateStep.includes('for filename in ("sdk/pyproject.toml", "sdk/MANIFEST.in")'),
+  'Python candidate validation must update both wheel and sdist schema allowlists.'
+);
+
 const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.steps.find(
   step => step.name === 'Run storyboards against /${{ matrix.tenant }}'
 ).env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
