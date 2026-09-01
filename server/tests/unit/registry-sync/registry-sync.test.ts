@@ -245,6 +245,100 @@ describe('RegistrySync', () => {
       expect(sync.agents!.get('https://remove-me.example.com')).toBeUndefined();
     });
 
+    it('handles agent.profile_updated event by merging onto the existing profile', () => {
+      // Add agent first, with a full profile.
+      sync.agents!.upsert({
+        agent_url: 'https://update-me.example.com',
+        channels: ['ctv'], property_types: ['video'], markets: ['US'], categories: ['news'],
+        tags: ['premium'], delivery_types: ['guaranteed'], format_kinds: ['video'],
+        property_count: 5, publisher_count: 2, has_tmp: true, category_taxonomy: null,
+        updated_at: '2026-01-01',
+      });
+
+      // The registry sends only the fields that changed (changed_fields is
+      // advisory metadata, not part of AgentProfile) — markets grew to
+      // include CA, everything else is untouched.
+      const event = {
+        event_id: 'e-profile-update', event_type: 'agent.profile_updated', entity_type: 'agent',
+        entity_id: 'https://update-me.example.com',
+        payload: {
+          agent_url: 'https://update-me.example.com',
+          markets: ['US', 'CA'],
+          changed_fields: ['markets'],
+        },
+        actor: 'pipeline:crawler', created_at: new Date('2026-02-01'),
+      };
+
+      (sync as any).applyEvents([event]);
+
+      const updated = sync.agents!.get('https://update-me.example.com');
+      expect(updated?.markets).toEqual(['US', 'CA']);
+      // Fields absent from the partial payload must survive the merge.
+      expect(updated?.channels).toEqual(['ctv']);
+      expect(updated?.property_count).toBe(5);
+      expect(updated?.has_tmp).toBe(true);
+      // changed_fields is advisory event metadata, not part of AgentProfile —
+      // it must not leak into the stored profile.
+      expect(updated).not.toHaveProperty('changed_fields');
+    });
+
+    it('does not leak advisory or unrecognized payload fields into the stored profile', () => {
+      // Add agent first, with a full profile.
+      sync.agents!.upsert({
+        agent_url: 'https://whitelist-me.example.com',
+        channels: ['ctv'], property_types: ['video'], markets: ['US'], categories: ['news'],
+        tags: ['premium'], delivery_types: ['guaranteed'], format_kinds: ['video'],
+        property_count: 5, publisher_count: 2, has_tmp: true, category_taxonomy: null,
+        updated_at: '2026-01-01',
+      });
+
+      // additionalProperties: true on agentProfilePayload means a producer
+      // (or a future one) could legally attach fields that are not part of
+      // AgentProfile at all. get()/list()/search() must never surface these
+      // as if they were real profile data.
+      const event = {
+        event_id: 'e-profile-update-leak', event_type: 'agent.profile_updated', entity_type: 'agent',
+        entity_id: 'https://whitelist-me.example.com',
+        payload: {
+          agent_url: 'https://whitelist-me.example.com',
+          markets: ['US', 'CA'],
+          changed_fields: ['markets'],
+          type: 'sales', // schema field maps to AgentProfile.agent_type
+          internal_crawl_note: 'seen on run 42', // arbitrary runtime field a producer could attach
+        },
+        actor: 'pipeline:crawler', created_at: new Date('2026-02-01'),
+      };
+
+      (sync as any).applyEvents([event]);
+
+      const updated = sync.agents!.get('https://whitelist-me.example.com');
+      expect(updated?.markets).toEqual(['US', 'CA']);
+      expect(updated?.agent_type).toBe('sales');
+      expect(updated).not.toHaveProperty('changed_fields');
+      expect(updated).not.toHaveProperty('type');
+      expect(updated).not.toHaveProperty('internal_crawl_note');
+      expect(Object.keys(updated ?? {}).sort()).toEqual(
+        [
+          'agent_url', 'agent_type', 'channels', 'property_types', 'markets', 'categories', 'tags',
+          'delivery_types', 'format_kinds', 'property_count', 'publisher_count', 'has_tmp',
+          'category_taxonomy', 'updated_at',
+        ].sort(),
+      );
+    });
+
+    it('ignores agent.profile_updated for an agent not already in the index', () => {
+      const event = {
+        event_id: 'e-profile-update-unknown', event_type: 'agent.profile_updated', entity_type: 'agent',
+        entity_id: 'https://unknown.example.com',
+        payload: { agent_url: 'https://unknown.example.com', markets: ['US'] },
+        actor: 'pipeline:crawler', created_at: new Date(),
+      };
+
+      (sync as any).applyEvents([event]);
+
+      expect(sync.agents!.get('https://unknown.example.com')).toBeUndefined();
+    });
+
     it('handles property.created event', () => {
       const event = {
         event_id: 'e3', event_type: 'property.created', entity_type: 'property',
