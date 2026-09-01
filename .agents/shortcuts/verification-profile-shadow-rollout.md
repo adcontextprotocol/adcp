@@ -60,8 +60,18 @@ identity (`role` plus `adcp_version`), a separately flagged legacy-badge cohort,
 per-endpoint blocking reasons, and review reasons. Do not paste it into public
 issues, pull requests, or other unrestricted systems.
 
+Candidate transitions compare only the version, proposed Spec/Sandbox statuses,
+and recommendation. The repeat gate counts only complete, bundle-backed
+observations with no unattributed failures or Sandbox-applicable unresolved
+bundles. Evidence-count changes are reported separately for manual review;
+they do not by themselves mean that the candidate outcome flapped.
+Endpoints with no assessment are labeled `not_assessed` instead of being
+misreported as incomplete runs with missing bundle evidence.
+
 Before proceeding, require:
 
+- at least the requested observation window since the first assessment written
+  by the current policy version (the audit fails closed before that age);
 - at least 95% coverage, with both numerator and denominator limited to the
   currently eligible monitored endpoints;
 - stable repeat observations for at least 95% of eligible endpoints, with no
@@ -80,6 +90,11 @@ Before proceeding, require:
   unmonitored lifecycle stages.
 
 These are decision gates, not automatic migration rules.
+
+Any change to evaluator semantics must advance
+`VERIFICATION_PROFILE_SHADOW_POLICY_VERSION`. Re-enable the audited lease after
+deploying that change and start a new 48-hour window; never combine observations
+from two policy versions to satisfy coverage or stability gates.
 
 The shadow evaluator intentionally leaves mixed executed partial bundles
 unresolved, even when their visible steps include a controller omission. The
