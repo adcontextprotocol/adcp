@@ -75,6 +75,37 @@ function firstDataPart(parts) {
 }
 
 /**
+ * Classify which location extraction actually reads from, mirroring the
+ * branching in extractAdcpResponseFromA2A. Used to verify each vector's
+ * `path` field against real behavior instead of trusting it as documentation.
+ *
+ * Returns 'artifact' or 'status_message' when a DataPart was found there
+ * (even if it is later rejected as a wrapper — the location was still the
+ * source), or 'none' when no DataPart was found anywhere.
+ */
+function classifyExtractionPath(input) {
+  const task = unwrapStreamEnvelope(input);
+  if (task == null) return 'none';
+  const state = normalizeState(task?.status?.state);
+  if (!state) return 'none';
+
+  if (FINAL_STATES.includes(state)) {
+    const artifact = task.artifacts?.[0];
+    const part = artifact?.parts ? lastDataPart(artifact.parts) : null;
+    if (part) return 'artifact';
+    const msgPart = firstDataPart(task.status?.message?.parts);
+    return msgPart ? 'status_message' : 'none';
+  }
+
+  if (INTERIM_STATES.includes(state)) {
+    const msgPart = firstDataPart(task.status?.message?.parts);
+    return msgPart ? 'status_message' : 'none';
+  }
+
+  return 'none';
+}
+
+/**
  * Detect framework wrapper objects.
  * Returns true if the payload is wrapped in { response: {...} } — a single key
  * `response` whose value is a non-null, non-array object. `{ response: null }`
@@ -190,6 +221,14 @@ describe('A2A response extraction test vectors', () => {
     assert.ok(paths.has('artifact'), 'must have artifact path vector');
     assert.ok(paths.has('status_message'), 'must have status_message path vector');
   });
+
+  for (const vector of data.vectors) {
+    it(`should have an accurate path field: ${vector.description} [${vector.id}]`, () => {
+      const actualPath = classifyExtractionPath(vector.response);
+      assert.equal(actualPath, vector.path,
+        `Vector ${vector.id} declares path "${vector.path}" but extraction actually reads from "${actualPath}"`);
+    });
+  }
 
   it('should have null-extraction vectors', () => {
     const nullVectors = data.vectors.filter(
@@ -336,6 +375,57 @@ describe('Validation and safety', () => {
     });
     assert.ok(result !== null);
     assert.equal(({}).isAdmin, undefined, '__proto__ must not pollute Object prototype');
+  });
+
+  // The two tests above construct `__proto__` as a JS object-literal key, which
+  // the language treats as prototype-literal syntax (Annex B.3.1) — it never
+  // touches Object.prototype either, so those assertions hold trivially and
+  // don't exercise the realistic threat. The realistic threat is a seller
+  // payload arriving over the wire (JSON.parse, which *does* create ordinary
+  // own properties named "__proto__"/"constructor") and then being merged into
+  // application state downstream via Object.assign or spread, per the spec's
+  // "Prototype Pollution" security section. These tests load the payload from
+  // the JSON test-vector file (real JSON.parse own-properties, not literal
+  // syntax) and simulate that downstream Object.assign merge.
+  it('should not leak to the global Object.prototype when a __proto__ payload is merged via Object.assign', () => {
+    const vector = data.vectors.find(v => v.id === 'proto-pollution-payload');
+    assert.ok(vector, 'fixture vector must exist');
+    const extracted = extractAdcpResponseFromA2A(vector.response);
+    assert.ok(extracted !== null);
+
+    const merged = Object.assign({}, extracted);
+
+    // Object.assign uses [[Set]], so assigning the "__proto__" own property
+    // DOES retarget `merged`'s own prototype locally — that's the real
+    // footgun the spec warns about (unfiltered merge changes the shape/
+    // behavior of the merged object). But it must never leak to the shared,
+    // global Object.prototype that every other object in the process inherits
+    // from.
+    assert.equal(({}).isAdmin, undefined,
+      'Object.assign of a __proto__ payload must not pollute the global Object.prototype');
+    assert.equal(merged.isAdmin, true,
+      'sanity check: Object.assign really did retarget merged\'s own prototype locally — ' +
+      'proves this vector exercises a genuine own-property __proto__ (as JSON.parse produces ' +
+      'from wire text), not inert data that would make the assertion above a no-op');
+  });
+
+  it('should not leak to the global Object.prototype when a constructor.prototype payload is merged via Object.assign', () => {
+    const vector = data.vectors.find(v => v.id === 'constructor-pollution-payload');
+    assert.ok(vector, 'fixture vector must exist');
+    const extracted = extractAdcpResponseFromA2A(vector.response);
+    assert.ok(extracted !== null);
+
+    const merged = Object.assign({}, extracted);
+
+    // "constructor" is an ordinary property name (no special [[Set]] behavior
+    // like "__proto__"), so Object.assign just overwrites `merged.constructor`
+    // with the plain payload object — a real footgun (type checks like
+    // `merged.constructor === Object` now fail) but again must not reach the
+    // shared global Object.prototype via a single shallow assign.
+    assert.equal(({}).isAdmin, undefined,
+      'Object.assign of a constructor.prototype payload must not pollute the global Object.prototype');
+    assert.notEqual(merged.constructor, Object,
+      'sanity check: the payload really does shadow constructor locally — proves this vector exercises a real gadget, not a no-op');
   });
 
   it('should handle artifacts with no parts array', () => {
