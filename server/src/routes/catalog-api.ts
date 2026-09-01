@@ -9,7 +9,7 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import { CatalogDatabase, type ResolveMode, type Provenance } from '../db/catalog-db.js';
-import { CollectionCatalogDatabase } from '../db/collection-catalog-db.js';
+import { CollectionCatalogDatabase, loadCarriageHostManifests } from '../db/collection-catalog-db.js';
 import { CatalogEventsDatabase } from '../db/catalog-events-db.js';
 import { CatalogDisputesDatabase, type DisputeType } from '../db/catalog-disputes-db.js';
 import { getClient } from '../db/client.js';
@@ -389,6 +389,7 @@ export function createCatalogApiRouter(config: CatalogApiConfig): Router {
             source: 'contributed',
             adagentsUrl: null,
             createdBy: actor,
+            hostManifests: await loadCarriageHostManifests(client, [collection]),
           });
           if (event) {
             await catalogEventsDb.writeEvent(

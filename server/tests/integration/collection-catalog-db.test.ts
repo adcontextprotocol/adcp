@@ -214,6 +214,85 @@ describe('CollectionCatalogDatabase integration', () => {
     expect(validateRegistryEvent(eventForSchema(created!))).toBe(true);
   });
 
+  it('annotates carriage with registry-computed host_confirmed and flips it when the host withdraws', async () => {
+    // Host publishes a manifest that affirmatively names the owner's
+    // collection in a property-scoped authorized_agents entry.
+    await publisherDb.upsertAdagentsCache({
+      domain: OTHER_PUB,
+      manifest: {
+        properties: [{ property_id: 'hoststream_ctv', name: 'HostStream CTV' }],
+        authorized_agents: [{
+          url: 'https://sales.channel-owner.example',
+          authorized_for: 'Owner-sold avails',
+          authorization_type: 'property_ids',
+          property_ids: ['hoststream_ctv'],
+          collections: [{ publisher_domain: TEST_PUB, collection_ids: ['retro_news'] }],
+        }],
+      } as never,
+      eventsDb,
+    });
+
+    const ownerManifest = {
+      authorized_agents: [],
+      collections: [{
+        collection_id: 'retro_news',
+        name: 'Acme Retro News',
+        kind: 'channel',
+        distribution: [
+          { publisher_domain: OTHER_PUB, property_ids: ['hoststream_ctv'] },
+          { publisher_domain: 'never-crawled.example', property_ids: ['mystery_app'] },
+        ],
+      }],
+    } as never;
+    await publisherDb.upsertAdagentsCache({
+      domain: TEST_PUB,
+      manifest: ownerManifest,
+      eventsDb,
+      collectionEventActor: 'test:collections:carriage',
+    });
+
+    const readDistribution = async () => {
+      const stored = await pool.query<{ collection_json: { distribution: Array<Record<string, unknown>> } }>(
+        `SELECT collection_json
+           FROM catalog_collections
+          WHERE publisher_domain = $1 AND collection_id = 'retro_news'`,
+        [TEST_PUB],
+      );
+      return stored.rows[0].collection_json.distribution;
+    };
+
+    let distribution = await readDistribution();
+    expect(distribution[0]).toMatchObject({ publisher_domain: OTHER_PUB, host_confirmed: true });
+    // A host the registry has never crawled cannot corroborate carriage.
+    expect(distribution[1]).toMatchObject({ publisher_domain: 'never-crawled.example', host_confirmed: false });
+
+    // Host withdraws the attestation; the owner's next projection flips the
+    // flag and the flip alone is an externally visible change.
+    await publisherDb.upsertAdagentsCache({
+      domain: OTHER_PUB,
+      manifest: {
+        properties: [{ property_id: 'hoststream_ctv', name: 'HostStream CTV' }],
+        authorized_agents: [],
+      } as never,
+      eventsDb,
+    });
+    await publisherDb.upsertAdagentsCache({
+      domain: TEST_PUB,
+      manifest: ownerManifest,
+      eventsDb,
+      collectionEventActor: 'test:collections:carriage-flip',
+    });
+
+    distribution = await readDistribution();
+    expect(distribution[0]).toMatchObject({ publisher_domain: OTHER_PUB, host_confirmed: false });
+
+    const feed = await eventsDb.queryFeed(null, ['collection.*'], 20);
+    if ('error' in feed) throw new Error(feed.message);
+    const flip = feed.events.find((event) => event.actor === 'test:collections:carriage-flip');
+    expect(flip?.event_type).toBe('collection.updated');
+    expect(validateRegistryEvent(eventForSchema(flip!))).toBe(true);
+  });
+
   it('retires renamed collections and lets the new collection reclaim the same identifier in one crawl', async () => {
     await publisherDb.upsertAdagentsCache({
       domain: TEST_PUB,

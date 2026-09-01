@@ -598,7 +598,7 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `property.stale` | Property failed re-crawl validation |
 | `property.reactivated` | A stale property passed re-crawl |
 | `collection.created` | A new publisher collection was added to the registry |
-| `collection.updated` | Collection metadata or distribution identifiers changed |
+| `collection.updated` | Collection metadata, distribution identifiers, or registry-computed carriage corroboration changed |
 | `collection.merged` | Two collection records were merged |
 | `collection.removed` | A collection is no longer visible in the publisher's authoritative catalog |
 | `agent.discovered` | A new `agent_url` appeared in a publisher's `adagents.json` (authorization graph; does not imply the agent is in `/api/registry/agents`) |
@@ -616,6 +616,8 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 `authorization.*` payloads carry `signing_keys` — the publisher-pinned JWK set from `authorized_agents[*].signing_keys` in `adagents.json`. Consumers verifying inbound TMP signatures key on `kid → JWK`; null when the publisher declared no keys, in which case consumers fall back to the agent-hosted JWKS per [spec R-2](/docs/governance/property/adagents#signing_keys). Note that per `specs/registry-change-feed.md` §Advisory identity material the feed is change-detection, not a trust anchor: consumers MUST re-verify against the publisher's own `adagents.json` before acting on identity changes.
 
 Payloads likewise carry `collections` — the collection constraints from `authorized_agents[*].collections`. When present, the grant does NOT authorize the property unqualified: consumers maintaining a local authorization index MUST scope it to those selectors (a selector without `collection_ids` is a bulk grant for all collections at that publisher domain), and a collection-constrained grant queried without collection scope fails closed. See [owner-sold channel carriage](/docs/governance/property/adagents#owner-sold-channel-carriage).
+
+`collection.*` payloads annotate each `distribution[]` entry with a registry-computed `host_confirmed` boolean: whether the named host's own `adagents.json` affirmatively names the owning publisher in a `collections` selector that reaches the claimed properties. The flag is never publisher-authored (publisher-supplied values are stripped at projection) and is recomputed when the owner's file is re-crawled, so its freshness is bounded by crawl cadence. `false` covers both "the host does not corroborate this carriage" and "the registry has not crawled the host." It labels discovery data only — enforcement-grade verification still goes through the [supply-path verifier](/docs/governance/property/adagents#owner-sold-channel-carriage) or the authoritative files.
 
 <CodeGroup>
 

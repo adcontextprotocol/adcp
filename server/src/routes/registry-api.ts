@@ -2819,7 +2819,16 @@ const CollectionEventPayloadSchema = z
       .array(z.object({ publisher_domain: z.string(), type: z.string(), value: z.string() }))
       .optional()
       .openapi({ description: "Distribution identifiers; the per-identifier publisher_domain (e.g. youtube.com) is the distribution surface, distinct from the owning publisher_domain above." }),
-    collection: z.record(z.string(), z.unknown()).optional(),
+    collection: z.record(z.string(), z.unknown()).optional().openapi({
+      description:
+        "Normalized collection body (core/collection.json shape). distribution[] entries carry a " +
+        "registry-computed `host_confirmed` boolean: whether the host's own adagents.json " +
+        "affirmatively names the owning publisher in a collections selector reaching the claimed " +
+        "properties. It is derived from the host manifest cached at the owner's last projection — " +
+        "never publisher-authored (publisher-supplied values are stripped) — and false covers both " +
+        "'host does not corroborate' and 'host not yet crawled'. Carriage remains discovery data; " +
+        "for enforcement use the supply-path verifier or the authoritative files.",
+    }),
     changed_fields: ChangedFieldsSchema.optional(),
     alias_rid: z.string().optional().openapi({ description: "On collection.merged: the RID merged away." }),
     canonical_rid: z.string().optional().openapi({ description: "On collection.merged: the surviving RID." }),

@@ -17,6 +17,8 @@ import {
   normalizeCollectionDistributionIdentifier,
 } from '../services/collection-identifier-normalization.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
+import { hostConfirmsCarriage } from '../services/carriage-confirmation.js';
+import type { AdagentsManifest } from './publisher-db.js';
 
 export interface CatalogCollection {
   collection_rid: string;
@@ -74,6 +76,16 @@ export interface CollectionProjectionInput {
   source: 'authoritative' | 'enriched' | 'contributed';
   adagentsUrl?: string | null;
   createdBy: string;
+  /**
+   * Cached adagents.json manifests for the host domains named in this
+   * collection's distribution[], keyed by canonicalized domain (null =
+   * the registry has no manifest for that host). When provided, each
+   * projected distribution entry is annotated with registry-computed
+   * `host_confirmed`: whether the host's own file affirmatively names
+   * the owner in a collections selector reaching the claimed properties.
+   * Omit to leave entries unannotated (flag absent, not false).
+   */
+  hostManifests?: ReadonlyMap<string, AdagentsManifest | null>;
 }
 
 export interface CollectionProjectionEvent {
@@ -296,6 +308,40 @@ async function disputeSupersededLowerConfidenceIdentifiers(
   );
 }
 
+/**
+ * Batched fetch of cached host manifests for every distribution host domain
+ * named across a set of collections, on the caller's client (so a crawl
+ * transaction sees its own writes). Every named domain gets a map entry;
+ * hosts the registry has never crawled map to null, which projects as
+ * host_confirmed: false rather than an absent flag — an unknown host cannot
+ * corroborate carriage.
+ */
+export async function loadCarriageHostManifests(
+  client: PoolClient,
+  collections: unknown[],
+): Promise<Map<string, AdagentsManifest | null>> {
+  const domains = new Set<string>();
+  for (const collection of collections) {
+    const distribution = (collection as { distribution?: unknown } | null)?.distribution;
+    if (!Array.isArray(distribution)) continue;
+    for (const entry of distribution) {
+      const raw = (entry as { publisher_domain?: unknown } | null)?.publisher_domain;
+      if (typeof raw !== 'string') continue;
+      const canonical = canonicalizePublisherDomain(raw);
+      if (canonical && isValidCollectionPublisherDomain(canonical)) domains.add(canonical);
+    }
+  }
+  const manifests = new Map<string, AdagentsManifest | null>();
+  if (domains.size === 0) return manifests;
+  for (const domain of domains) manifests.set(domain, null);
+  const rows = await client.query<{ domain: string; adagents_json: AdagentsManifest | null }>(
+    `SELECT domain, adagents_json FROM publishers WHERE domain = ANY($1)`,
+    [[...domains]],
+  );
+  for (const row of rows.rows) manifests.set(row.domain, row.adagents_json ?? null);
+  return manifests;
+}
+
 export class CollectionCatalogDatabase {
   async projectCollection(
     client: PoolClient,
@@ -311,6 +357,25 @@ export class CollectionCatalogDatabase {
     const kind = normalizeCollectionKind(input.collection.kind);
     if (kind === undefined) return null;
     const distribution = normalizeCollectionDistribution(input.collection);
+    // Registry-computed carriage corroboration. Set AFTER the allowlist
+    // rebuild above so a publisher-authored host_confirmed can never pass
+    // through; the value is derived exclusively from the HOST's cached
+    // manifest. A boolean (no per-check timestamp) keeps the
+    // stableStringify change detection meaningful: the projected JSON only
+    // changes — and only emits collection.updated — when the flag flips.
+    // Freshness is bounded by the owner's crawl cadence; host-change-driven
+    // recompute is tracked in adcp#7104.
+    if (input.hostManifests) {
+      for (const entry of distribution) {
+        entry.host_confirmed = hostConfirmsCarriage({
+          ownerDomain: publisherDomain,
+          collectionId,
+          hostDomain: entry.publisher_domain,
+          claimedPropertyIds: entry.property_ids ?? [],
+          hostManifest: input.hostManifests.get(entry.publisher_domain) ?? null,
+        });
+      }
+    }
     const identifiers = extractDistributionIdentifiers(distribution);
     const normalizedCollection = collectionWithNormalizedDistribution(
       input.collection,

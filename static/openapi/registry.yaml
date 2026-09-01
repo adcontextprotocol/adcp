@@ -3972,6 +3972,7 @@ components:
         collection:
           type: object
           additionalProperties: {}
+          description: "Normalized collection body (core/collection.json shape). distribution[] entries carry a registry-computed `host_confirmed` boolean: whether the host's own adagents.json affirmatively names the owning publisher in a collections selector reaching the claimed properties. It is derived from the host manifest cached at the owner's last projection — never publisher-authored (publisher-supplied values are stripped) — and false covers both 'host does not corroborate' and 'host not yet crawled'. Carriage remains discovery data; for enforcement use the supply-path verifier or the authoritative files."
         changed_fields:
           type: array
           items:
