@@ -130,13 +130,17 @@ describe("organization authorization system setting", () => {
     ]);
   });
 
-  it("accepts both supported read boundaries", async () => {
+  it("accepts all supported read boundaries", async () => {
     queryMock.mockResolvedValueOnce({ rows: [] });
 
     await setOrganizationAuthorizationEnforcement(
       {
         enabled: true,
-        boundaries: ["organization_roles_read", "organization_domains_read"],
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+        ],
       },
       "user_authenticated_admin",
     );
@@ -145,7 +149,11 @@ describe("organization authorization system setting", () => {
       "organization_authorization_enforcement",
       JSON.stringify({
         enabled: true,
-        boundaries: ["organization_roles_read", "organization_domains_read"],
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+        ],
       }),
       "user_authenticated_admin",
     ]);

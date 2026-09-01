@@ -35,6 +35,8 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
   ORGANIZATION_AUTHORIZATION_BOUNDARIES: {
     ORGANIZATION_ROLES_READ: "organization_roles_read",
     ORGANIZATION_DOMAINS_READ: "organization_domains_read",
+    ORGANIZATION_PENDING_JOIN_REQUEST_COUNT_READ:
+      "organization_pending_join_request_count_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -149,14 +151,14 @@ describe("organization authorization runtime admin setting", () => {
 
   it("reports the environment ceiling independently for each supported boundary", async () => {
     environmentAllowsBoundaryMock.mockImplementation(
-      (boundary: string) => boundary === "organization_domains_read",
+      (boundary: string) => boundary === "organization_pending_join_request_count_read",
     );
 
     const response = await request(createApp()).get("/api/admin/settings");
 
     expect(response.status).toBe(200);
     expect(response.body.organization_authorization_environment_ceiling).toEqual({
-      boundaries: ["organization_domains_read"],
+      boundaries: ["organization_pending_join_request_count_read"],
     });
   });
 
@@ -176,6 +178,91 @@ describe("organization authorization runtime admin setting", () => {
       },
       "user_authenticated_admin",
     );
+  });
+
+  it("persists the pending-count boundary independently", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_pending_join_request_count_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      {
+        enabled: true,
+        boundaries: ["organization_pending_join_request_count_read"],
+      },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("supports all-three activation and pending-count-only rollback", async () => {
+    const app = createApp();
+    const activation = await request(app)
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+        ],
+      });
+
+    expect(activation.status).toBe(200);
+    expect(setSettingMock).toHaveBeenNthCalledWith(
+      1,
+      {
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+        ],
+      },
+      "user_authenticated_admin",
+    );
+
+    const rollback = await request(app)
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      });
+
+    expect(rollback.status).toBe(200);
+    expect(setSettingMock).toHaveBeenNthCalledWith(
+      2,
+      {
+        enabled: true,
+        boundaries: ["organization_roles_read", "organization_domains_read"],
+      },
+      "user_authenticated_admin",
+    );
+    expect(invalidateCacheMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("will not arm pending-count enforcement before its ceiling is staged", async () => {
+    environmentAllowsBoundaryMock.mockImplementation(
+      (boundary: string) => boundary !== "organization_pending_join_request_count_read",
+    );
+
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: [
+          "organization_roles_read",
+          "organization_domains_read",
+          "organization_pending_join_request_count_read",
+        ],
+      });
+
+    expect(response.status).toBe(409);
+    expect(setSettingMock).not.toHaveBeenCalled();
+    expect(invalidateCacheMock).not.toHaveBeenCalled();
   });
 
   it("rejects a mixed selection when any boundary is outside the environment ceiling", async () => {

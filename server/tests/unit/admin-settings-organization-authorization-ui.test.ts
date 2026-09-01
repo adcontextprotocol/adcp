@@ -23,6 +23,7 @@ function loadControls(currentSettings: Record<string, unknown>) {
     </select>
     <input type="checkbox" id="organizationAuthorizationRolesRead">
     <input type="checkbox" id="organizationAuthorizationDomainsRead">
+    <input type="checkbox" id="organizationAuthorizationPendingJoinRequestCountRead">
     <button id="saveOrganizationAuthorizationBtn" disabled>Save</button>
   `);
   const fetchMock = vi.fn();
@@ -89,6 +90,12 @@ describe("admin organization authorization runtime control", () => {
       .toBe(false);
     expect((document.getElementById("organizationAuthorizationDomainsRead") as HTMLInputElement).disabled)
       .toBe(true);
+    expect((document.getElementById(
+      "organizationAuthorizationPendingJoinRequestCountRead",
+    ) as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById(
+      "organizationAuthorizationPendingJoinRequestCountRead",
+    ) as HTMLInputElement).disabled).toBe(true);
     expect(document.getElementById("currentOrganizationAuthorizationStatus")?.textContent)
       .toContain("roles read");
 
@@ -163,6 +170,44 @@ describe("admin organization authorization runtime control", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       enabled: true,
       boundaries: ["organization_domains_read"],
+    });
+
+    controls.dom.window.close();
+  });
+
+  it("saves a pending-count-only staged selection independently", async () => {
+    const controls = loadControls({
+      organization_authorization_enforcement: {
+        enabled: false,
+        boundaries: [],
+      },
+      organization_authorization_environment_ceiling: {
+        boundaries: ["organization_pending_join_request_count_read"],
+      },
+    });
+    controls.updateOrganizationAuthorizationDisplay();
+    const document = controls.dom.window.document;
+    expect((document.getElementById(
+      "organizationAuthorizationPendingJoinRequestCountRead",
+    ) as HTMLInputElement).disabled).toBe(false);
+    (document.getElementById("organizationAuthorizationEnabled") as HTMLSelectElement).value = "true";
+    (document.getElementById(
+      "organizationAuthorizationPendingJoinRequestCountRead",
+    ) as HTMLInputElement).checked = true;
+
+    controls.fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      organization_authorization_enforcement: {
+        enabled: true,
+        boundaries: ["organization_pending_join_request_count_read"],
+      },
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+
+    await controls.saveOrganizationAuthorizationEnforcement();
+
+    const [, init] = controls.fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      enabled: true,
+      boundaries: ["organization_pending_join_request_count_read"],
     });
 
     controls.dom.window.close();
