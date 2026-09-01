@@ -327,6 +327,48 @@ describe('Addie response truncation (#4431)', () => {
     expect(done?.response.text).toBe(textEvents[0].text);
   });
 
+  it.each([
+    ['complete', 'end_turn' as const, 'A complete provider answer.'],
+    ['provider-truncated', 'max_tokens' as const, partialText],
+  ])('keeps common %s terminal payload fields identical across delivery modes', async (_label, stopReason, rawText) => {
+    const terminalMessage = message(stopReason, rawText, { input_tokens: 13, output_tokens: 21 });
+    mocks.createMessage.mockResolvedValueOnce(terminalMessage);
+    mocks.streamMessage.mockReturnValueOnce(streamFor(terminalMessage, [rawText]));
+    const client = new AddieClaudeClient('sk-fake-unused', 'claude-sonnet-4-6');
+
+    const nonStreaming = await client.processMessage(
+      'Explain the protocol behavior',
+      undefined,
+      undefined,
+      undefined,
+      { uncapped: true },
+    );
+    const streamEvents: StreamEvent[] = [];
+    for await (const event of client.processMessageStream(
+      'Explain the protocol behavior',
+      undefined,
+      undefined,
+      { uncapped: true },
+    )) streamEvents.push(event);
+    const streaming = streamEvents.find(
+      (event): event is Extract<StreamEvent, { type: 'done' }> => event.type === 'done',
+    )?.response;
+
+    const commonTerminalFields = (response: typeof nonStreaming) => ({
+      text: response.text,
+      tools_used: response.tools_used,
+      tool_executions: response.tool_executions,
+      flagged: response.flagged,
+      flag_reason: response.flag_reason,
+      active_rule_ids: response.active_rule_ids,
+      config_version_id: response.config_version_id,
+      model_execution: response.model_execution,
+      usage: response.usage,
+    });
+    expect(streaming).toBeDefined();
+    expect(commonTerminalFields(streaming!)).toEqual(commonTerminalFields(nonStreaming));
+  });
+
   it('does not treat an under-10k alphanumeric ending as a truncation sentinel', async () => {
     const completeText = 'A complete sentence. A final sentence without punctuation';
     mocks.streamMessage.mockReturnValueOnce(streamFor(

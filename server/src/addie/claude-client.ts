@@ -850,6 +850,119 @@ function localModelExecution(
   };
 }
 
+const MAX_ITERATIONS_FALLBACK_TEXT = "I'm having trouble completing that request. Could you try rephrasing?";
+
+interface TerminalAddieResponseCommon {
+  userMessage: string;
+  rawText: string;
+  toolsUsed: readonly string[];
+  toolExecutions: readonly ToolExecution[];
+  requestedProvider: ModelProviderId;
+  requestedModel: string;
+  fallbackReason: ModelFallbackReason | null;
+  configVersionId: number | null | undefined;
+  usage: NonNullable<AddieResponse['usage']>;
+  timing: NonNullable<AddieResponse['timing']>;
+  certificationReserveUsed?: boolean;
+}
+
+type TerminalAddieResponseInput = TerminalAddieResponseCommon & (
+  | {
+      kind: 'provider';
+      disposition: 'complete' | 'truncated';
+      providerResponse: Pick<ModelResponse, 'provider' | 'model' | 'providerFinishReason'>;
+    }
+  | {
+      kind: 'max_iterations';
+      lastProviderModel: string | null | undefined;
+    }
+);
+
+interface TerminalAddieResponseResult {
+  response: AddieResponse;
+  finalized: FinalizedAssistantText;
+  hallucinationReason: string | null;
+}
+
+/** Build the provider-neutral terminal payload before delivery returns or emits it. */
+function buildTerminalAddieResponse(input: TerminalAddieResponseInput): TerminalAddieResponseResult {
+  const hasProviderText = input.rawText.length > 0;
+  const terminalRawText = input.kind === 'max_iterations' && !hasProviderText
+    ? MAX_ITERATIONS_FALLBACK_TEXT
+    : input.rawText;
+  const finalized = finalizeAssistantText(
+    input.userMessage,
+    terminalRawText,
+    input.toolExecutions,
+    input.kind === 'provider' && input.disposition === 'truncated',
+  );
+  const hallucinationReason = input.kind === 'provider' && input.disposition === 'complete'
+    ? detectHallucinatedAction(finalized.text, input.toolExecutions)
+    : null;
+  const flagReason = input.kind === 'max_iterations'
+    ? 'Max tool iterations reached'
+    : input.disposition === 'truncated'
+      ? `Response truncated: ${input.providerResponse.providerFinishReason}`
+      : finalized.lengthExceeded
+        ? 'Output truncated due to length'
+        : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
+
+  let modelExecution: ModelExecution;
+  if (finalized.emptyReason) {
+    modelExecution = localModelExecution(
+      'no_provider_response',
+      input.requestedProvider,
+      input.requestedModel,
+    );
+  } else if (finalized.localReplacementReason) {
+    modelExecution = localModelExecution(
+      'canned_response',
+      input.requestedProvider,
+      input.requestedModel,
+    );
+  } else if (input.kind === 'provider') {
+    modelExecution = providerModelExecution(
+      input.providerResponse,
+      input.requestedProvider,
+      input.requestedModel,
+      input.fallbackReason,
+    );
+  } else if (hasProviderText && input.lastProviderModel) {
+    modelExecution = providerModelExecution(
+      { provider: input.requestedProvider, model: input.lastProviderModel },
+      input.requestedProvider,
+      input.requestedModel,
+      input.fallbackReason,
+    );
+  } else {
+    modelExecution = localModelExecution(
+      'canned_response',
+      input.requestedProvider,
+      input.requestedModel,
+    );
+  }
+
+  return {
+    finalized,
+    hallucinationReason,
+    response: {
+      text: finalized.text,
+      tools_used: [...input.toolsUsed],
+      tool_executions: [...input.toolExecutions],
+      flagged: !!flagReason,
+      flag_reason: flagReason ?? undefined,
+      active_rule_ids: undefined,
+      config_version_id: input.configVersionId ?? undefined,
+      model_execution: modelExecution,
+      timing: input.timing,
+      usage: input.usage,
+      ...(input.certificationReserveUsed !== undefined && {
+        capacity: { certification_reserve_used: input.certificationReserveUsed },
+      }),
+    },
+  };
+}
+
 function providerUnavailableResponse(
   availability: ProviderAvailability,
   requestedProvider: ModelProviderId,
@@ -1833,13 +1946,31 @@ export class AddieClaudeClient {
 
       if (turnDecision.disposition.reason === 'truncated') {
         const rawText = turnDecision.text.trim();
-        const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions, true);
-        if (finalized.emptyReason) {
-          reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
-        }
-        const text = finalized.text;
         totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
         const finalUsage = toAddieUsage(modelLoop.usage);
+        const terminal = buildTerminalAddieResponse({
+          kind: 'provider',
+          disposition: 'truncated',
+          userMessage,
+          rawText,
+          toolsUsed,
+          toolExecutions,
+          requestedProvider: this.modelProvider.id,
+          requestedModel: effectiveModel,
+          fallbackReason: modelFallbackReason,
+          providerResponse: response,
+          configVersionId,
+          usage: finalUsage,
+          timing: {
+            system_prompt_ms: systemPromptMs,
+            total_llm_ms: totalLlmMs,
+            total_tool_execution_ms: totalToolExecutionMs,
+            iterations: iteration,
+          },
+        });
+        if (terminal.finalized.emptyReason) {
+          reportEmptyResponseFallback(terminal.finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+        }
         logger.error(
           {
             event: 'addie_response_truncated',
@@ -1847,7 +1978,7 @@ export class AddieClaudeClient {
             stopReason: response.providerFinishReason,
             iteration,
             originalLength: rawText.length,
-            deliveredLength: text.length,
+            deliveredLength: terminal.response.text.length,
             contentTypes: boundedModelContentTypes(response.content),
             outputTokens: response.usage.outputTokens,
           },
@@ -1860,54 +1991,46 @@ export class AddieClaudeClient {
             finalUsage,
           );
         }
-        return {
-          text,
-          tools_used: [...toolsUsed],
-          tool_executions: [...toolExecutions],
-          flagged: true,
-          flag_reason: `Response truncated: ${response.providerFinishReason}`,
-          active_rule_ids: undefined,
-          config_version_id: configVersionId ?? undefined,
-          model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
-            : finalized.localReplacementReason
-              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-            : providerModelExecution(
-                response,
-                this.modelProvider.id,
-                effectiveModel,
-                modelFallbackReason,
-              ),
-          timing: {
-            system_prompt_ms: systemPromptMs,
-            total_llm_ms: totalLlmMs,
-            total_tool_execution_ms: totalToolExecutionMs,
-            iterations: iteration,
-          },
-          usage: finalUsage,
-        };
+        return terminal.response;
       }
 
       // Done - no tool use, just text
       if (turnDecision.disposition.reason === 'complete') {
         // Collect ALL text blocks (web search responses have multiple text blocks)
         const rawText = turnDecision.text.trim();
-        const finalized = finalizeAssistantText(userMessage, rawText, toolExecutions);
-        const text = finalized.text;
-
         // Calculate total tool execution time from tool_executions
         totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
+        const finalUsage = toAddieUsage(modelLoop.usage);
+        const terminal = buildTerminalAddieResponse({
+          kind: 'provider',
+          disposition: 'complete',
+          userMessage,
+          rawText,
+          toolsUsed,
+          toolExecutions,
+          requestedProvider: this.modelProvider.id,
+          requestedModel: effectiveModel,
+          fallbackReason: modelFallbackReason,
+          providerResponse: response,
+          configVersionId,
+          usage: finalUsage,
+          timing: {
+            system_prompt_ms: systemPromptMs,
+            total_llm_ms: totalLlmMs,
+            total_tool_execution_ms: totalToolExecutionMs,
+            iterations: iteration,
+          },
+        });
 
         // Detect possible hallucinated actions (text claims success without successful tool calls)
-        const hallucinationReason = detectHallucinatedAction(text, toolExecutions);
-        if (hallucinationReason) {
-          logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
+        if (terminal.hallucinationReason) {
+          logger.warn({ toolsUsed, reason: terminal.hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
-        if (finalized.emptyReason) {
-          reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
+        if (terminal.finalized.emptyReason) {
+          reportEmptyResponseFallback(terminal.finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessage', effectiveModel, iteration);
         }
-        if (finalized.lengthExceeded) {
+        if (terminal.finalized.lengthExceeded) {
           logger.error(
             {
               event: 'addie_response_truncated',
@@ -1915,17 +2038,12 @@ export class AddieClaudeClient {
               stopReason: response.providerFinishReason,
               iteration,
               originalLength: rawText.length,
-              deliveredLength: text.length,
+              deliveredLength: terminal.response.text.length,
               localCapExceeded: true,
             },
             'Addie: Normally completed response exceeded output cap',
           );
         }
-        const flagReason = finalized.lengthExceeded
-          ? 'Output truncated due to length'
-          : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
-
-        const finalUsage = toAddieUsage(modelLoop.usage);
         // Record the call against the user's daily budget (#2790).
         // Runs after the response is built so a successful charge
         // counts even if a downstream flag/logging failure occurs.
@@ -1937,33 +2055,7 @@ export class AddieClaudeClient {
             finalUsage,
           );
         }
-
-        return {
-          text,
-          tools_used: [...toolsUsed],
-          tool_executions: [...toolExecutions],
-          flagged: !!flagReason,
-          flag_reason: flagReason ?? undefined,
-          active_rule_ids: undefined,
-          config_version_id: configVersionId ?? undefined,
-          model_execution: finalized.emptyReason
-            ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
-            : finalized.localReplacementReason
-              ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-            : providerModelExecution(
-                response,
-                this.modelProvider.id,
-                effectiveModel,
-                modelFallbackReason,
-              ),
-          timing: {
-            system_prompt_ms: systemPromptMs,
-            total_llm_ms: totalLlmMs,
-            total_tool_execution_ms: totalToolExecutionMs,
-            iterations: iteration,
-          },
-          usage: finalUsage,
-        };
+        return terminal.response;
       }
 
       // Custom tool execution and continuation state are owned by the shared
@@ -1973,6 +2065,25 @@ export class AddieClaudeClient {
     logger.warn('Addie: Hit max tool iterations');
     totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
     const maxIterationsUsage = toAddieUsage(modelLoop.usage);
+    const terminal = buildTerminalAddieResponse({
+      kind: 'max_iterations',
+      userMessage,
+      rawText: '',
+      toolsUsed,
+      toolExecutions,
+      requestedProvider: this.modelProvider.id,
+      requestedModel: effectiveModel,
+      fallbackReason: modelFallbackReason,
+      lastProviderModel: null,
+      configVersionId,
+      usage: maxIterationsUsage,
+      timing: {
+        system_prompt_ms: systemPromptMs,
+        total_llm_ms: totalLlmMs,
+        total_tool_execution_ms: totalToolExecutionMs,
+        iterations: modelLoop.limit,
+      },
+    });
     // Still charge the user for tokens actually consumed on the way to
     // hitting max-iterations. Production delivery is Anthropic-only here.
     if (operationalExecution && options?.costScope) {
@@ -1982,23 +2093,7 @@ export class AddieClaudeClient {
         maxIterationsUsage,
       );
     }
-    return {
-      text: "I'm having trouble completing that request. Could you try rephrasing?",
-      tools_used: [...toolsUsed],
-      tool_executions: [...toolExecutions],
-      flagged: true,
-      flag_reason: 'Max tool iterations reached',
-      active_rule_ids: undefined,
-      config_version_id: configVersionId ?? undefined,
-      model_execution: localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
-      timing: {
-        system_prompt_ms: systemPromptMs,
-        total_llm_ms: totalLlmMs,
-        total_tool_execution_ms: totalToolExecutionMs,
-        iterations: modelLoop.limit,
-      },
-      usage: maxIterationsUsage,
-    };
+    return terminal.response;
   }
 
   /**
@@ -2602,12 +2697,32 @@ export class AddieClaudeClient {
 
         if (turnDecision.disposition.reason === 'truncated') {
           logicalText += iterationText;
-          const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions, true);
-          if (finalized.emptyReason) {
-            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
-          }
           totalToolExecutionMs = toolExecutions.reduce((sum, execution) => sum + execution.duration_ms, 0);
           const streamUsage = buildStreamUsage();
+          const terminal = buildTerminalAddieResponse({
+            kind: 'provider',
+            disposition: 'truncated',
+            userMessage,
+            rawText: logicalText,
+            toolsUsed,
+            toolExecutions,
+            requestedProvider: this.modelProvider.id,
+            requestedModel: effectiveModel,
+            fallbackReason: modelFallbackReason,
+            providerResponse: currentResponse,
+            configVersionId,
+            usage: streamUsage,
+            timing: {
+              system_prompt_ms: systemPromptMs,
+              total_llm_ms: totalLlmMs,
+              total_tool_execution_ms: totalToolExecutionMs,
+              iterations: iteration,
+            },
+            certificationReserveUsed,
+          });
+          if (terminal.finalized.emptyReason) {
+            reportEmptyResponseFallback(terminal.finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+          }
           logger.error(
             {
               event: 'addie_response_truncated',
@@ -2615,44 +2730,18 @@ export class AddieClaudeClient {
               stopReason: currentResponse.providerFinishReason,
               iteration,
               originalLength: logicalText.length,
-              deliveredLength: finalized.text.length,
-              localCapExceeded: finalized.lengthExceeded,
+              deliveredLength: terminal.response.text.length,
+              localCapExceeded: terminal.finalized.lengthExceeded,
               contentTypes: boundedModelContentTypes(currentResponse.content),
               outputTokens: currentResponse.usage.outputTokens,
             },
             'Addie Stream: Response stopped before completion',
           );
           await chargeStreamCost(streamUsage);
-          yield { type: 'text', text: finalized.text };
+          yield { type: 'text', text: terminal.response.text };
           yield {
             type: 'done',
-            response: {
-              text: finalized.text,
-              tools_used: [...toolsUsed],
-              tool_executions: [...toolExecutions],
-              flagged: true,
-              flag_reason: `Response truncated: ${currentResponse.providerFinishReason}`,
-              active_rule_ids: undefined,
-              config_version_id: configVersionId ?? undefined,
-              model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
-                : finalized.localReplacementReason
-                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-                : providerModelExecution(
-                    currentResponse,
-                    this.modelProvider.id,
-                    effectiveModel,
-                    modelFallbackReason,
-                  ),
-              timing: {
-                system_prompt_ms: systemPromptMs,
-                total_llm_ms: totalLlmMs,
-                total_tool_execution_ms: totalToolExecutionMs,
-                iterations: iteration,
-              },
-              usage: streamUsage,
-              capacity: { certification_reserve_used: certificationReserveUsed },
-            },
+            response: terminal.response,
           };
           return;
         }
@@ -2661,17 +2750,36 @@ export class AddieClaudeClient {
         if (turnDecision.disposition.reason === 'complete') {
           logicalText += iterationText;
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
-          const finalized = finalizeAssistantText(userMessage, logicalText, toolExecutions);
-          if (finalized.emptyReason) {
-            reportEmptyResponseFallback(finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
+          const streamUsage = buildStreamUsage();
+          const terminal = buildTerminalAddieResponse({
+            kind: 'provider',
+            disposition: 'complete',
+            userMessage,
+            rawText: logicalText,
+            toolsUsed,
+            toolExecutions,
+            requestedProvider: this.modelProvider.id,
+            requestedModel: effectiveModel,
+            fallbackReason: modelFallbackReason,
+            providerResponse: currentResponse,
+            configVersionId,
+            usage: streamUsage,
+            timing: {
+              system_prompt_ms: systemPromptMs,
+              total_llm_ms: totalLlmMs,
+              total_tool_execution_ms: totalToolExecutionMs,
+              iterations: iteration,
+            },
+            certificationReserveUsed,
+          });
+          if (terminal.finalized.emptyReason) {
+            reportEmptyResponseFallback(terminal.finalized.emptyReason, toolsUsed, toolExecutions, options, 'processMessageStream', effectiveModel, iteration);
           }
 
-          const finalText = finalized.text;
-          const hallucinationReason = detectHallucinatedAction(finalText, toolExecutions);
-          if (hallucinationReason) {
-            logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
+          if (terminal.hallucinationReason) {
+            logger.warn({ toolsUsed, reason: terminal.hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
-          if (finalized.lengthExceeded) {
+          if (terminal.finalized.lengthExceeded) {
             logger.error(
               {
                 event: 'addie_response_truncated',
@@ -2679,48 +2787,17 @@ export class AddieClaudeClient {
                 stopReason: currentResponse.providerFinishReason,
                 iteration,
                 originalLength: logicalText.length,
-                deliveredLength: finalText.length,
+                deliveredLength: terminal.response.text.length,
                 localCapExceeded: true,
               },
               'Addie Stream: Normally completed response exceeded output cap',
             );
           }
-          const flagReason = finalized.lengthExceeded
-            ? 'Output truncated due to length'
-            : finalized.localReplacementReason ?? hallucinationReason ?? finalized.emptyReason;
-
-          const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
-          yield { type: 'text', text: finalText };
+          yield { type: 'text', text: terminal.response.text };
           yield {
             type: 'done',
-            response: {
-              text: finalText,
-              tools_used: [...toolsUsed],
-              tool_executions: [...toolExecutions],
-              flagged: !!flagReason,
-              flag_reason: flagReason ?? undefined,
-              active_rule_ids: undefined,
-              config_version_id: configVersionId ?? undefined,
-              model_execution: finalized.emptyReason
-                ? localModelExecution('no_provider_response', this.modelProvider.id, effectiveModel)
-                : finalized.localReplacementReason
-                  ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-                : providerModelExecution(
-                    currentResponse,
-                    this.modelProvider.id,
-                    effectiveModel,
-                    modelFallbackReason,
-                  ),
-              timing: {
-                system_prompt_ms: systemPromptMs,
-                total_llm_ms: totalLlmMs,
-                total_tool_execution_ms: totalToolExecutionMs,
-                iterations: iteration,
-              },
-              usage: streamUsage,
-              capacity: { certification_reserve_used: certificationReserveUsed },
-            },
+            response: terminal.response,
           };
           return;
         }
@@ -2731,6 +2808,26 @@ export class AddieClaudeClient {
       logger.warn('Addie Stream: Hit max tool iterations');
       totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
       const maxIterUsage = toAddieUsage(modelLoop.usage);
+      const terminal = buildTerminalAddieResponse({
+        kind: 'max_iterations',
+        userMessage,
+        rawText: logicalText,
+        toolsUsed,
+        toolExecutions,
+        requestedProvider: this.modelProvider.id,
+        requestedModel: effectiveModel,
+        fallbackReason: modelFallbackReason,
+        lastProviderModel,
+        configVersionId,
+        usage: maxIterUsage,
+        timing: {
+          system_prompt_ms: systemPromptMs,
+          total_llm_ms: totalLlmMs,
+          total_tool_execution_ms: totalToolExecutionMs,
+          iterations: modelLoop.limit,
+        },
+        certificationReserveUsed,
+      });
       // Charge the tokens consumed up to the max-iteration wall —
       // the API calls happened regardless of whether we converged.
       if (operationalExecution && options?.costScope) {
@@ -2740,47 +2837,16 @@ export class AddieClaudeClient {
           maxIterUsage,
         );
       }
-      const finalizedMaxIter = finalizeAssistantText(
-        userMessage,
-        logicalText || "I'm having trouble completing that request. Could you try rephrasing?",
-        toolExecutions,
-      );
-      if (finalizedMaxIter.lengthExceeded) {
+      if (terminal.finalized.lengthExceeded) {
         logger.error(
-          { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: finalizedMaxIter.text.length, localCapExceeded: true },
+          { event: 'addie_response_truncated', source: 'processMessageStream', originalLength: logicalText.length, deliveredLength: terminal.response.text.length, localCapExceeded: true },
           'Addie Stream: Max-iteration response exceeded output cap',
         );
       }
-      yield { type: 'text', text: finalizedMaxIter.text };
+      yield { type: 'text', text: terminal.response.text };
       yield {
         type: 'done',
-        response: {
-          text: finalizedMaxIter.text,
-          tools_used: [...toolsUsed],
-          tool_executions: [...toolExecutions],
-          flagged: true,
-          flag_reason: 'Max tool iterations reached',
-          active_rule_ids: undefined,
-          config_version_id: configVersionId ?? undefined,
-          model_execution: finalizedMaxIter.localReplacementReason
-            ? localModelExecution('canned_response', this.modelProvider.id, effectiveModel)
-            : logicalText && lastProviderModel
-            ? providerModelExecution(
-                { provider: this.modelProvider.id, model: lastProviderModel },
-                this.modelProvider.id,
-                effectiveModel,
-                modelFallbackReason,
-              )
-            : localModelExecution('canned_response', this.modelProvider.id, effectiveModel),
-          timing: {
-            system_prompt_ms: systemPromptMs,
-            total_llm_ms: totalLlmMs,
-            total_tool_execution_ms: totalToolExecutionMs,
-            iterations: modelLoop.limit,
-          },
-          usage: maxIterUsage,
-          capacity: { certification_reserve_used: certificationReserveUsed },
-        },
+        response: terminal.response,
       };
     } catch (error) {
       if (isIsolatedExecution(options)) {
