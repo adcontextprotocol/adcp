@@ -10,8 +10,63 @@ on:
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
+  verify-release:
+    name: Verify release inputs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      relevant: ${{ steps.release-relevance.outputs.relevant }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Detect release-relevant push
+        id: release-relevance
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
+          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            echo "Release-relevant files changed."
+            exit 0
+          fi
+
+          echo "relevant=false" >> "$GITHUB_OUTPUT"
+          echo "No release-relevant changes detected; skipping release job body."
+
+      - name: Install Dependencies
+        if: steps.release-relevance.outputs.relevant == 'true'
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Verify current storyboard coverage
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x')
+        run: npm run test:storyboards
+
+      - name: Verify 3.0 storyboard compatibility
+        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
+        run: npm run test:storyboards:3.0-compat
+        env:
+          ADCP_RELEASE_BASE_REF: 3.0.x
+
   release:
     name: Release
+    needs: verify-release
+    if: needs.verify-release.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # id-token: write lets cosign request a Sigstore OIDC token from the
     # Actions runner during `npm run version` — this is what binds the
@@ -21,12 +76,15 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      # Mint a GitHub App installation token so events triggered by this
-      # workflow (push to changeset-release/<branch>, release: published)
-      # FIRE downstream workflows. GITHUB_TOKEN-triggered events are
-      # silently dropped by GitHub's recursion-blocking rule, which used to
-      # leave the Version Packages PR with stuck-pending CI and skip the
-      # release-docs snapshot. Closes #3417.
+      # Mint the GitHub App installation token only after the long-running
+      # verification job succeeds. Installation tokens expire after one hour;
+      # keeping verification in this job previously let the token expire
+      # before Changesets could update the Version Packages PR.
+      #
+      # The App token also ensures events triggered by this workflow (push to
+      # changeset-release/<branch>, release: published) FIRE downstream
+      # workflows. GITHUB_TOKEN-triggered events are silently dropped by
+      # GitHub's recursion-blocking rule. Closes #3417.
       - name: Mint AAO Release Bot installation token
         id: app-token
         uses: actions/create-github-app-token@v3.2.0
@@ -48,50 +106,17 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
-      - name: Detect release-relevant push
-        id: release-relevance
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="v${VERSION}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
-          changed_files="$(git show --format= --name-only --no-renames "${GITHUB_SHA}")"
-          if grep -Eq '^(\.changeset/|package(-lock)?[.]json$|dist/(schemas|compliance|protocol)/|static/(schemas|compliance)/source/|server/src/training-agent/|scripts/(build-schemas[.]cjs|build-compliance[.]cjs|build-protocol-tarball[.]cjs|sign-protocol-tarball[.]sh|run-storyboards-([^/]+[.]sh|isolated[.]mjs))|[.]github/workflows/(release|training-agent-storyboards)[.]yml$)' <<< "${changed_files}"; then
-            echo "relevant=true" >> "$GITHUB_OUTPUT"
-            echo "Release-relevant files changed."
-            exit 0
-          fi
-
-          echo "relevant=false" >> "$GITHUB_OUTPUT"
-          echo "No release-relevant changes detected; skipping release job body."
-
       - name: Install cosign
-        if: steps.release-relevance.outputs.relevant == 'true'
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: 'v2.4.1'
 
       - name: Install Dependencies
-        if: steps.release-relevance.outputs.relevant == 'true'
         run: npm ci
         env:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
-      - name: Verify current storyboard coverage
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x')
-        run: npm run test:storyboards
-
-      - name: Verify 3.0 storyboard compatibility
-        if: steps.release-relevance.outputs.relevant == 'true' && (github.ref_name == 'main' || github.ref_name == '3.1.x' || github.ref_name == '3.0.x')
-        run: npm run test:storyboards:3.0-compat
-        env:
-          ADCP_RELEASE_BASE_REF: 3.0.x
-
       - name: Detect committed release artifacts
-        if: steps.release-relevance.outputs.relevant == 'true'
         id: release-artifacts
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -155,7 +180,7 @@ jobs:
           echo "Release PR #${pr_number} has ${approved_count} human approval(s) on final head ${head_sha}."
 
       - name: Create Release Pull Request or Tag Release
-        if: steps.release-relevance.outputs.relevant == 'true' && steps.release-artifacts.outputs.has_release_artifacts != 'true'
+        if: steps.release-artifacts.outputs.has_release_artifacts != 'true'
         id: changesets
         # v2 understands the Changesets v3 `.changeset/pre/` archive. This is
         # v2.1.0, pinned to the contract verified at:
