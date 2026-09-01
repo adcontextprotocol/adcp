@@ -30,6 +30,8 @@ Only call this task when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capab
 
 Identity resolution is identical to [`sync_principal`](/docs/protocol/sync_principal): the seller resolves the stable authenticated principal from transport and ignores every request-body field for identity and authorization. The request body carries no parameters beyond the protocol envelope.
 
+For RFC 9421 signed callers, that stable identity is the canonical URL of the exactly matched operator `brand.json` `agents[]` entry after publication and key verification. Rotation to another key authorized for the same canonical Agent URL preserves the principal; a domain, JWKS URI, or key never replaces the Agent URL as the subject.
+
 ## Results
 
 | `result.kind` | Meaning |

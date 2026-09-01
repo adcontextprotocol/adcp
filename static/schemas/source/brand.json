@@ -832,7 +832,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "Agent endpoint URL (MCP or A2A). Callers comparing a brand's declared agent URL against another value (e.g., resolving 'is this the agent that signed this artifact?' or matching against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
+          "description": "Agent endpoint URL (MCP or A2A). Callers comparing a brand's declared agent URL against another value (e.g., resolving 'is this the agent that signed this artifact?' or matching against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. After the publication chain and an authorized request-signing key verify, this exact entry's canonical URL is the stable Agent identity input for principal mapping; the domain, JWKS URI, kid, and key material are credential or trust facts beneath it, not the Agent identity. See docs/reference/url-canonicalization."
         },
         "id": {
           "type": "string",

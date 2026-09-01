@@ -37,6 +37,7 @@ After all eight steps, comparison is byte-for-byte. Implementations MUST NOT app
 | Surface | Comparison | Reference |
 |---|---|---|
 | Request signing | `@target-uri` canonical output signed and verified | [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer) |
+| Signed-Agent identity | Candidate Agent URL vs operator `brand.json` `agents[].url`; the verified canonical URL is the stable Agent subject | [Agent key publication](/docs/building/by-layer/L1/security#agent-key-publication) |
 | TMP seller authorization | `seller_agent.agent_url` vs `authorized_agents[].url` | [TMP Sync-Time Validation](/docs/trusted-match/specification#sync-time-validation) |
 | TMP provider resolution | `ProviderEntry.agent_url` vs router's registered provider endpoint | [TMP Product Integration](/docs/trusted-match/specification#product-integration) |
 | `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](https://adcontextprotocol.org/schemas/v3/adagents.json) |
