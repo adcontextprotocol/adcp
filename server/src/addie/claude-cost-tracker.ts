@@ -1,9 +1,9 @@
 /**
- * Per-user Anthropic API cost cap (#2790).
+ * Per-user Addie model API cost cap (#2790).
  *
  * Tool-call frequency limits (#2784, #2789) bound OUR external API
  * spend (Google Docs, Gemini, Slack) but don't bound Anthropic spend.
- * Each Addie turn is a Claude API call, and an attacker with a
+ * Each Addie turn is a paid model API call, and an attacker with a
  * compromised account can keep a session running that stays under
  * the tool-call cap while steadily burning dollars on Claude.
  *
@@ -64,6 +64,11 @@ import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { TIER_PRESERVING_STATUSES } from '../db/organization-db.js';
 import { costUsdMicros, type ClaudeUsage } from './claude-pricing.js';
+import {
+  hasCompleteModelUsage,
+  resolveModelCostPricing,
+} from './model-cost-pricing.js';
+import type { ModelProviderId, ModelUsage } from './model-providers/model-provider.js';
 import { SYSTEM_USER_IDS } from './system-identities.js';
 import type { MemberContext } from './member-context.js';
 
@@ -135,6 +140,8 @@ export type UserTier = CappedTier | 'aao_team';
 
 export interface CostCheckResult {
   ok: boolean;
+  /** No exact reviewed rate exists for the requested provider/model pair. */
+  pricingUnsupported?: boolean;
   /** Cents spent in the current UTC calendar day for the user (rounded from micros). */
   spentCents?: number;
   /** Remaining USD in the budget, floored to 2 decimals. 0 when blocked. */
@@ -159,7 +166,7 @@ export interface CostTrackerStore {
   /** Sum of cost_usd_micros for `key` recorded since the start of the current UTC calendar day. */
   sumSinceUtcMidnight(key: string): Promise<{ totalMicros: number }>;
   /** Persist one charge. */
-  record(key: string, costMicros: number, model: string, usage: ClaudeUsage): Promise<void>;
+  record(key: string, costMicros: number, event: CostEvent): Promise<void>;
   claimCertificationLease(key: string, leaseId: string): Promise<boolean>;
   renewCertificationLease(key: string, leaseId: string): Promise<boolean>;
   releaseCertificationLease(key: string, leaseId: string): Promise<void>;
@@ -186,11 +193,21 @@ class PostgresStore implements CostTrackerStore {
     return { totalMicros: Number(row.total_micros ?? 0) };
   }
 
-  async record(key: string, costMicros: number, model: string, usage: ClaudeUsage): Promise<void> {
+  async record(key: string, costMicros: number, event: CostEvent): Promise<void> {
     await query(
-      `INSERT INTO addie_token_cost_events (scope_key, cost_usd_micros, model, tokens_input, tokens_output)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [key, costMicros, model, usage.input_tokens, usage.output_tokens],
+      `INSERT INTO addie_token_cost_events
+         (scope_key, cost_usd_micros, provider, model, tokens_input, tokens_output, tokens_cache_creation, tokens_cache_read)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        key,
+        costMicros,
+        event.provider,
+        event.model,
+        event.usage.inputTokens,
+        event.usage.outputTokens,
+        event.usage.cacheWriteTokens ?? null,
+        event.usage.cacheReadTokens ?? null,
+      ],
     );
   }
 
@@ -270,8 +287,22 @@ class InMemoryStore implements CostTrackerStore {
 
 let store: CostTrackerStore = new PostgresStore();
 
+/** Canonical provider/model/usage identity for one live cost event. */
+export interface CostEvent {
+  provider: ModelProviderId;
+  model: string;
+  usage: ModelUsage;
+}
+
+function isCurrentPricing(
+  pricing: ReturnType<typeof resolveModelCostPricing>,
+): pricing is NonNullable<ReturnType<typeof resolveModelCostPricing>> {
+  return pricing !== null
+    && (pricing.validBefore === null || Date.now() < pricing.validBefore.getTime());
+}
+
 /**
- * Check whether a user has budget for another Claude call. Returns
+ * Check whether a user has budget for another model call. Returns
  * `{ ok: true }` when allowed. System users and callers without a
  * userId are always allowed — those paths represent system automation
  * or unauthenticated anonymous use that isn't a per-user concern.
@@ -282,8 +313,22 @@ let store: CostTrackerStore = new PostgresStore();
 export async function checkCostCap(
   userId: string | null | undefined,
   tier: UserTier,
-  options?: { certificationReserveUsd?: number },
+  options?: {
+    certificationReserveUsd?: number;
+    selection?: Pick<CostEvent, 'provider' | 'model'>;
+  },
 ): Promise<CostCheckResult> {
+  const pricing = options?.selection
+    ? resolveModelCostPricing(options.selection.provider, options.selection.model)
+    : null;
+  // Preserve Anthropic's established conservative Fable fallback for an
+  // unlisted model. Alternate providers never borrow that rate: they require
+  // an exact, currently reviewed provider/model rate before live dispatch.
+  if (options?.selection
+    && options.selection.provider !== 'anthropic'
+    && !isCurrentPricing(pricing)) {
+    return { ok: false, tier, pricingUnsupported: true };
+  }
   if (!userId) return { ok: true };
   if (SYSTEM_USER_IDS.has(userId)) return { ok: true };
   if (tier === 'aao_team') return { ok: true, tier };
@@ -342,6 +387,23 @@ export async function checkCostCap(
   };
 }
 
+/**
+ * Admit a live model call only when its provider/model pair has an exact,
+ * reviewed rate. This intentionally runs before the normal scope exemptions:
+ * an uncapped system identity must not become a way to dispatch a model whose
+ * spend cannot be accounted for.
+ */
+export async function checkModelCostCap(
+  userId: string | null | undefined,
+  tier: UserTier,
+  selection: Pick<CostEvent, 'provider' | 'model'>,
+  options?: { certificationReserveUsd?: number },
+): Promise<CostCheckResult> {
+  const pricing = resolveModelCostPricing(selection.provider, selection.model);
+  if (!isCurrentPricing(pricing)) return { ok: false, tier, pricingUnsupported: true };
+  return checkCostCap(userId, tier, options);
+}
+
 export async function releaseCertificationReserve(
   userId: string | null | undefined,
   leaseId: string | undefined,
@@ -368,20 +430,92 @@ export async function renewCertificationReserve(
 }
 
 /**
- * Record an invocation's cost to the user's daily accumulator. Safe
- * to call without a userId (no-op) so the caller can always invoke
- * it post-response without branching.
+ * Record one live provider-normalized usage event. Unsupported provider/model
+ * pairs and incomplete usage are intentionally rejected rather than guessed;
+ * callers have already completed cost admission before dispatch. It is safe
+ * to call without a userId, which remains a no-op.
  */
+export async function recordModelCost(
+  userId: string | null | undefined,
+  event: CostEvent,
+): Promise<boolean> {
+  const pricing = resolveModelCostPricing(event.provider, event.model);
+  if (!hasCompleteModelUsage(event.usage) || (event.provider !== 'anthropic' && !isCurrentPricing(pricing))) {
+    logger.error(
+      { provider: event.provider, model: event.model },
+      'Refusing to record Addie model cost without exact pricing and complete normalized usage',
+    );
+    return false;
+  }
+  if (!userId || SYSTEM_USER_IDS.has(userId)) return true;
+  // The legacy Anthropic Fable fallback is intentionally retained for
+  // unlisted Anthropic response models. It cannot be reached by any other
+  // provider, which must have an exact reviewed rate above.
+  const micros = isCurrentPricing(pricing)
+    ? pricing.estimateCostMicros(event.usage)
+    : costUsdMicros(event.model, {
+        input_tokens: event.usage.inputTokens,
+        output_tokens: event.usage.outputTokens,
+        cache_creation_input_tokens: event.usage.cacheWriteTokens,
+        cache_read_input_tokens: event.usage.cacheReadTokens,
+      });
+  try {
+    await store.record(userId, micros, event);
+    return true;
+  } catch (err) {
+    // Accounting failures shouldn't block the user's response — the call
+    // already happened. Keep the existing documented tolerance while logging
+    // enough provenance for operations to diagnose the missing event.
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(
+      { error: message, userId, provider: event.provider, model: event.model, micros },
+      'Failed to record Addie model cost event',
+    );
+    return false;
+  }
+}
+
+/**
+ * Backwards-compatible overload for callers/tests that still supply
+ * Anthropic SDK-shaped usage. The event overload is the live delivery seam.
+ */
+export async function recordCost(
+  userId: string | null | undefined,
+  event: CostEvent,
+): Promise<void>;
 export async function recordCost(
   userId: string | null | undefined,
   model: string,
   usage: ClaudeUsage,
+): Promise<void>;
+export async function recordCost(
+  userId: string | null | undefined,
+  model: string | CostEvent,
+  usage?: ClaudeUsage,
 ): Promise<void> {
+  if (typeof model !== 'string') {
+    await recordModelCost(userId, model);
+    return;
+  }
+  if (!usage) return;
   if (!userId) return;
   if (SYSTEM_USER_IDS.has(userId)) return;
   const micros = costUsdMicros(model, usage);
   try {
-    await store.record(userId, micros, model, usage);
+    await store.record(userId, micros, {
+      provider: 'anthropic',
+      model,
+      usage: {
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        ...(usage.cache_creation_input_tokens !== undefined && {
+          cacheWriteTokens: usage.cache_creation_input_tokens,
+        }),
+        ...(usage.cache_read_input_tokens !== undefined && {
+          cacheReadTokens: usage.cache_read_input_tokens,
+        }),
+      },
+    });
   } catch (err) {
     // Accounting failures shouldn't block the user's response —
     // the call already happened and a dropped accounting row is
@@ -398,6 +532,9 @@ export async function recordCost(
  * understands what happened.
  */
 export function formatCapExceededMessage(result: CostCheckResult): string {
+  if (result.pricingUnsupported) {
+    return 'This conversation model is temporarily unavailable while its usage accounting is configured.';
+  }
   if (result.reserveBusy) {
     return 'A certification completion reply is already processing. Please wait a moment and reload this conversation.';
   }

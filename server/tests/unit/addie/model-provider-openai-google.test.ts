@@ -15,6 +15,7 @@ import {
   type GoogleGenerateContentTransport,
 } from '../../../src/addie/model-providers/google-generate-content-provider.js';
 import {
+  UnexpectedModelIdentityError,
   UnsupportedModelCapabilityError,
   type ModelRequest,
 } from '../../../src/addie/model-providers/model-provider.js';
@@ -327,6 +328,17 @@ describe('OpenAIResponsesProvider', () => {
     await expect(collectModelResponse(
       provider.respond(request(OPENAI_ROUTER_MODEL), { stream: true }),
     )).rejects.toBeInstanceOf(UnsupportedModelCapabilityError);
+  });
+
+  it('rejects a non-dated returned Google model suffix', async () => {
+    const transport: GoogleGenerateContentTransport = {
+      models: { generateContent: vi.fn().mockResolvedValue(googleResponse({
+        modelVersion: 'gemini-3.7-flash-preview',
+      })) },
+    };
+    const provider = new GoogleGenerateContentProvider('unused', transport);
+    await expect(collectModelResponse(provider.respond(request(GOOGLE_ROUTER_MODEL))))
+      .rejects.toBeInstanceOf(UnexpectedModelIdentityError);
   });
 
   it('omits unavailable optional cache usage fields', () => {

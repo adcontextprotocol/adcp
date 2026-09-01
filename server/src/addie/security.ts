@@ -43,6 +43,7 @@ function findSafeOutputBoundary(text: string, maxLength: number): number {
 
   let lastSentenceBoundary = -1;
   let lastWhitespaceBoundary = -1;
+  let lastLineBoundary = -1;
   let pendingSentenceBoundary: number | null = null;
   let skipUntil = 0;
 
@@ -205,6 +206,7 @@ function findSafeOutputBoundary(text: string, maxLength: number): number {
         pendingSentenceBoundary = null;
       }
       if (index > 0) lastWhitespaceBoundary = index;
+      if (/[\r\n]/u.test(grapheme)) lastLineBoundary = end;
     } else if (
       pendingSentenceBoundary !== null
       && SENTENCE_CLOSERS.has(grapheme)
@@ -245,7 +247,12 @@ function findSafeOutputBoundary(text: string, maxLength: number): number {
   if (lastSentenceBoundary >= minimumUsefulSentenceBoundary) {
     return lastSentenceBoundary;
   }
-  return Math.max(lastSentenceBoundary, lastWhitespaceBoundary);
+  // A line boundary is still Markdown-neutral, and avoids cutting an outline
+  // or deck list after its marker (for example, a trailing `-`). Only use an
+  // in-line whitespace boundary when there is no later complete line.
+  return lastLineBoundary >= 0
+    ? Math.max(lastSentenceBoundary, lastLineBoundary)
+    : Math.max(lastSentenceBoundary, lastWhitespaceBoundary);
 }
 
 function truncateAtGraphemeBoundary(text: string, maxLength: number): string {

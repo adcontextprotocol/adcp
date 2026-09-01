@@ -128,12 +128,12 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v7');
-    expect(FIXED_TRACE_SUITE).toHaveLength(11);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v8');
+    expect(FIXED_TRACE_SUITE).toHaveLength(12);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
-      'tool_error', 'prompt_injection', 'date_sensitive', 'truncation', 'provider_degradation',
+      'tool_error', 'prompt_injection', 'date_sensitive', 'truncation', 'long_form_incident', 'provider_degradation',
     ]));
     expect(FIXED_TRACE_SUITE.every((trace) => trace.privacy === 'synthetic')).toBe(true);
     const serialized = JSON.stringify(FIXED_TRACE_SUITE);
@@ -164,8 +164,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 11,
-      observed: 11,
+      expected: 12,
+      observed: 12,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -176,11 +176,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 11);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.01);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 12);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.0105);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 8,
+      complete: 9,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -329,7 +329,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 11, observed: 3, omitted: 8, complete: false });
+    expect(summary).toMatchObject({ expected: 12, observed: 3, omitted: 9, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

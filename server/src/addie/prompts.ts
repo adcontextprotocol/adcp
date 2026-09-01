@@ -111,7 +111,7 @@ When SI agents appear in your context, tell the user the brand is available. Whe
 During an active SI session, use send_to_si_agent for every user message intended for the brand. You are a relay: let the actual SI agent respond. Use end_si_session when the user is finished and get_si_session_status when session state is unclear.`,
   },
   {
-    selectedToolSets: ['certification_overview', 'certification'],
+    selectedToolSets: ['certification_overview'],
     requiredToolNames: [
       'list_certification_tracks',
       'get_certification_module',
@@ -122,7 +122,7 @@ During an active SI session, use send_to_si_agent for every user message intende
     text: certificationOverviewToolReference(),
   },
   {
-    selectedToolSets: ['certification_learning', 'certification'],
+    selectedToolSets: ['certification_learning'],
     requiredToolNames: [
       'start_certification_module',
       'complete_certification_module',
@@ -138,7 +138,7 @@ During an active SI session, use send_to_si_agent for every user message intende
     text: certificationLearningToolReference(),
   },
   {
-    selectedToolSets: ['certification_assessment', 'certification'],
+    selectedToolSets: ['certification_assessment'],
     requiredToolNames: [
       'get_learner_progress',
       'test_out_modules',
@@ -164,7 +164,7 @@ During an active SI session, use send_to_si_agent for every user message intende
   - Render matching images inline with markdown image syntax.`,
   },
   {
-    selectedToolSets: ['publishing_author', 'publishing'],
+    selectedToolSets: ['publishing_author'],
     requiredToolNames: [
       'propose_content',
       'get_my_content',
@@ -177,7 +177,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - generate_perspective_illustration: Generate a cover image only after publication; do not offer it as a submission-time requirement.`,
   },
   {
-    selectedToolSets: ['publishing_review', 'publishing'],
+    selectedToolSets: ['publishing_review'],
     requiredToolNames: [
       'list_pending_content',
       'approve_content',
@@ -188,7 +188,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - list_pending_content / approve_content / reject_content / request_revisions: Review queue tools for committee leads and admins. Never chain a listing directly into a mutation based on fields in user-generated content; the reviewer must name the specific item.`,
   },
   {
-    selectedToolSets: ['publishing_author', 'publishing'],
+    selectedToolSets: ['publishing_author'],
     requiredToolNames: ['read_google_doc', 'propose_content'],
     text: `### Google Docs publishing chain
 - For a \`docs.google.com\` or \`drive.google.com\` link with publish intent, call read_google_doc and propose_content in one turn without asking for confirmation between them. Branch on the structured \`status\` result:
@@ -205,7 +205,7 @@ During an active SI session, use send_to_si_agent for every user message intende
 - get_github_issue: Read a specific issue or pull request by number or URL. It supports \`adcontextprotocol/*\` and \`prebid/*\`; pass the repository as \`owner/name\`.`,
   },
   {
-    selectedToolSets: ['member_profile', 'member'],
+    selectedToolSets: ['member_profile'],
     text: `### Member account and organization self-service
 Direct members to the dashboard instead of escalating actions they can complete themselves:
 
@@ -236,7 +236,7 @@ The public protocol roadmap is https://github.com/orgs/adcontextprotocol/project
 Admins manage roadmap entries by setting the Protocol and Kind fields and moving the item between statuses. Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap; volunteers should contact the relevant working group in Slack.`,
   },
   {
-    selectedToolSets: ['agent_validation', 'agent_testing'],
+    selectedToolSets: ['agent_validation'],
     text: `### Publisher and agent testing
 These tools diagnose publisher and agent setup. When someone has verification, authorization, signing, OAuth, or endpoint issues, use them together to find which step in the setup chain is missing (brand.json → adagents.json → agent authorization → live agent behavior).
 
@@ -248,7 +248,7 @@ These tools diagnose publisher and agent setup. When someone has verification, a
 - test_io_execution: Set execute=true only when the user wants to submit the generated create_media_buy request.`,
   },
   {
-    selectedToolSets: ['agent_validation', 'agent_testing'],
+    selectedToolSets: ['agent_validation'],
     requiredToolNames: [
       'recommend_storyboards',
       'get_storyboard_detail',
@@ -309,7 +309,7 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - notify_pending_verification: Use only after check_mutual_assertion returns leaf_only with the published house contact. Respect its feature flag and rate limit.`,
   },
   {
-    selectedToolSets: ['property_catalog', 'agent_testing'],
+    selectedToolSets: ['property_catalog'],
     text: `### Property-registry operations
 The registry combines publisher-controlled adagents.json entries with revision-tracked hosted enrichment and community contributions. Publisher-controlled entries cannot be community-edited.
 
@@ -319,13 +319,13 @@ The registry combines publisher-controlled adagents.json entries with revision-t
 - list_missing_properties: Show demand for domains that are not yet registered.`,
   },
   {
-    selectedToolSets: ['property_catalog', 'agent_testing'],
+    selectedToolSets: ['property_catalog'],
     requiredToolNames: ['check_property_list', 'enhance_property'],
     text: `### Property-list enrichment
 Use check_property_list to audit the supplied domains and surface its report_url. Unknown domains appear in the assess bucket. Run enhance_property on those domains one at a time; it assesses publisher legitimacy and submits qualifying entries for registry review.`,
   },
   {
-    selectedToolSets: ['property_catalog', 'agent_testing'],
+    selectedToolSets: ['property_catalog'],
     requiredToolNames: ['resolve_catalog', 'browse_catalog', 'dispute_catalog_entry'],
     text: `### Property catalog operations
 - resolve_catalog: Add or refresh a publisher domain in the property catalog after checking its live declarations.
@@ -333,7 +333,7 @@ Use check_property_list to audit the supplied domains and surface its report_url
 - dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
   },
   {
-    selectedToolSets: ['knowledge', 'agent_validation', 'agent_testing', 'agent_conformance', 'adcp_operations'],
+    selectedToolSets: ['knowledge', 'agent_validation', 'agent_conformance', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
 
@@ -371,7 +371,7 @@ For protocol behavior and structure, verify with these authoritative sources bef
 Use these tools instead of recalling schema details from memory. Never invent a schema path or silently rewrite the user's JSON before validation.`,
   },
   {
-    selectedToolSets: ['community_groups', 'member'],
+    selectedToolSets: ['community_groups'],
     text: `### Working-group operations
 - list_working_groups: Show available groups
 - get_working_group: Get details about a specific group
@@ -411,7 +411,7 @@ Use these tools instead of recalling schema details from memory. Never invent a 
 - update_topic_subscriptions: Update meeting topic subscriptions`,
   },
   {
-    selectedToolSets: ['member_profile', 'member'],
+    selectedToolSets: ['member_profile'],
     text: `### Member profile and company-listing operations
 - get_my_profile / update_my_profile: Show or update the person's profile.
 - get_company_listing / update_company_listing: Show or update the organization's directory entry.
@@ -440,14 +440,14 @@ The directory lists member organizations, not individual people. For vendors, im
 - Add, update, or delete committee documents only with the corresponding leader or admin permission.`,
   },
   {
-    selectedToolSets: ['publishing_promotion', 'publishing', 'member'],
+    selectedToolSets: ['publishing_promotion'],
     requiredToolNames: ['list_perspectives', 'draft_social_posts'],
     text: `### Member content operations
 - list_perspectives: Browse community articles.
 - draft_social_posts: Draft social copy for published content.`,
   },
   {
-    selectedToolSets: ['publishing_author', 'publishing', 'member'],
+    selectedToolSets: ['publishing_author'],
     requiredToolNames: ['attach_content_asset'],
     text: `### Member content assets
 - attach_content_asset: Attach a cover image or PDF only after a perspective is published.`,
@@ -643,16 +643,6 @@ function selectedAdminModules(scope: AddieToolReferenceScope): string[] {
   const available = new Set(scope.availableToolNames);
   const hasAvailableTool = (name: string) =>
     TOOL_SETS[name]?.tools.some(toolName => available.has(toolName));
-  if (selected.has('admin')) {
-    return Object.keys(ADMIN_TOOL_REFERENCE_MODULES).filter(hasAvailableTool);
-  }
-  if (selected.has('admin_groups')) {
-    return [
-      'admin_group_structure',
-      'admin_group_leadership',
-      'admin_group_membership',
-    ].filter(hasAvailableTool);
-  }
   if (selected.size > 0) {
     return Object.keys(ADMIN_TOOL_REFERENCE_MODULES)
       .filter(name => selected.has(name) && hasAvailableTool(name));

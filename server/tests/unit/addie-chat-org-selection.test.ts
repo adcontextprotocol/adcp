@@ -12,6 +12,10 @@ const siMocks = vi.hoisted(() => ({
   formatContext: vi.fn(),
 }));
 
+const siHostMocks = vi.hoisted(() => ({
+  hasCachedSiSession: vi.fn(),
+}));
+
 const directoryMocks = vi.hoisted(() => ({
   createHandlers: vi.fn(),
 }));
@@ -47,6 +51,12 @@ vi.mock('../../src/addie/mcp/directory-tools.js', () => ({
     directoryMocks.createHandlers(context);
     return new Map([['list_agents', async () => JSON.stringify({ scoped: true })]]);
   },
+}));
+
+vi.mock('../../src/addie/mcp/si-host-tools.js', () => ({
+  SI_HOST_TOOLS: [],
+  createSiHostToolHandlers: () => new Map(),
+  hasCachedSiSession: siHostMocks.hasCachedSiSession,
 }));
 
 vi.mock('../../src/db/certification-db.js', () => ({
@@ -96,6 +106,8 @@ describe('prepareRequestWithMemberTools organization selection', () => {
     siMocks.retrieve.mockReset();
     siMocks.retrieve.mockResolvedValue({ agents: [], retrieval_time_ms: 0 });
     siMocks.formatContext.mockReset();
+    siHostMocks.hasCachedSiSession.mockReset();
+    siHostMocks.hasCachedSiSession.mockReturnValue(false);
     directoryMocks.createHandlers.mockClear();
   });
 
@@ -157,7 +169,7 @@ describe('mounted Addie web-thread ownership', () => {
     })()),
   } as any;
 
-  function app() {
+  function app(router?: any) {
     const instance = express();
     instance.use(express.json());
     instance.use((req, _res, next) => {
@@ -170,7 +182,7 @@ describe('mounted Addie web-thread ownership', () => {
         : {};
       next();
     });
-    instance.use('/api/addie/chat', createAddieChatRouter({ chatClient }).apiRouter);
+    instance.use('/api/addie/chat', createAddieChatRouter({ chatClient, router }).apiRouter);
     return instance;
   }
 
@@ -243,6 +255,75 @@ describe('mounted Addie web-thread ownership', () => {
       expect(processMessage.mock.calls[0]?.[0]).toBe(message);
     },
   );
+
+  it('uses identical routed tools and prompt modules for authenticated JSON and streaming requests', async () => {
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockResolvedValue({
+        action: 'respond',
+        tool_sets: ['directory'],
+        confidence: 'high',
+        reason: 'directory lookup',
+        decision_method: 'llm',
+      }),
+    };
+    chatClient.processMessage.mockClear();
+    chatClient.processMessageStream.mockClear();
+
+    await request(app(router))
+      .post('/api/addie/chat')
+      .set('x-test-user-id', 'user_123')
+      .send({ message: 'Find an agent' })
+      .expect(200);
+    await request(app(router))
+      .post('/api/addie/chat/stream')
+      .set('x-test-user-id', 'user_123')
+      .send({ message: 'Find an agent' })
+      .expect(200);
+
+    const jsonTools = chatClient.processMessage.mock.calls[0]?.[2]?.tools.map((tool: { name: string }) => tool.name);
+    const jsonOptions = chatClient.processMessage.mock.calls[0]?.[4];
+    const streamTools = chatClient.processMessageStream.mock.calls[0]?.[2]?.tools.map((tool: { name: string }) => tool.name);
+    const streamOptions = chatClient.processMessageStream.mock.calls[0]?.[3];
+
+    expect(jsonTools).toEqual(streamTools);
+    expect(jsonOptions.selectedToolSetNames).toEqual(['directory', 'knowledge']);
+    expect(streamOptions.selectedToolSetNames).toEqual(jsonOptions.selectedToolSetNames);
+    expect(streamOptions.allowedToolNames).toEqual(jsonOptions.allowedToolNames);
+  });
+
+  it.each([
+    ['JSON', '/api/addie/chat', chatClient.processMessage, 4],
+    ['streaming', '/api/addie/chat/stream', chatClient.processMessageStream, 3],
+  ])('keeps sponsored-intelligence routing scoped to the external thread id on %s', async (
+    _label,
+    path,
+    processMessage,
+    optionsArgument,
+  ) => {
+    const conversationId = '11111111-1111-4111-8111-111111111111';
+    const router = {
+      quickMatch: vi.fn().mockReturnValue(null),
+      route: vi.fn().mockResolvedValue({
+        action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'test', decision_method: 'llm',
+      }),
+    };
+    siHostMocks.hasCachedSiSession.mockReturnValue(true);
+    threadMocks.getThreadByExternalId.mockResolvedValue({
+      thread_id: 'thread-internal-id', user_type: 'workos', user_id: 'user_123', message_count: 1,
+    });
+    processMessage.mockClear();
+
+    await request(app(router))
+      .post(path)
+      .set('x-test-user-id', 'user_123')
+      .send({ message: 'Continue SI work', conversation_id: conversationId })
+      .expect(200);
+
+    expect(siHostMocks.hasCachedSiSession).toHaveBeenCalledWith(conversationId);
+    expect(processMessage.mock.calls[0]?.[optionsArgument]?.selectedToolSetNames)
+      .toEqual(['directory', 'knowledge', 'sponsored_intelligence']);
+  });
 
   it('issues an HttpOnly owner capability cookie when an anonymous POST creates a thread', async () => {
     const response = await request(app())

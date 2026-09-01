@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   checkCostCap,
+  checkModelCostCap,
   recordCost,
+  recordModelCost,
   formatCapExceededMessage,
   releaseCertificationReserve,
   resolveUserTier,
@@ -148,6 +150,121 @@ describe('recordCost', () => {
     // Sonnet: 10_000*3 + 5000*15 = 105_000 micros
     // Total = 140_000 micros = $0.14 = 14 cents
     expect(result.spentCents).toBe(14);
+  });
+});
+
+describe('provider-neutral live cost accounting', () => {
+  it('admits and records a reviewed Anthropic model with the established price', async () => {
+    const admission = await checkModelCostCap('u-live-anthropic', 'member_free', {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+    });
+    expect(admission.ok).toBe(true);
+
+    expect(await recordModelCost('u-live-anthropic', {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      usage: { inputTokens: 10_000, outputTokens: 5_000 },
+    })).toBe(true);
+
+    expect((await checkCostCap('u-live-anthropic', 'member_free')).spentCents).toBe(11);
+  });
+
+  it('admits and records the explicit reviewed Gemini price against the same daily cap', async () => {
+    const admission = await checkModelCostCap('u-live-gemini', 'anonymous', {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+    });
+    expect(admission.ok).toBe(true);
+
+    expect(await recordModelCost('u-live-gemini', {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      usage: { inputTokens: 4_000_000, outputTokens: 0 },
+    })).toBe(true);
+
+    expect((await checkCostCap('u-live-gemini', 'anonymous')).ok).toBe(false);
+  });
+
+  it('records an explicitly accepted dated Gemini revision at its canonical reviewed rate', async () => {
+    // The Google provider contract accepts dated response model revisions for
+    // this configured router model. They must resolve to the same reviewed
+    // rate used by admission, while the exact returned identifier is retained.
+    expect(await recordModelCost('u-live-gemini-revision', {
+      provider: 'google',
+      model: 'gemini-3.7-flash-20260801',
+      usage: { inputTokens: 1_000_000, outputTokens: 0 },
+    })).toBe(true);
+
+    expect((await checkCostCap('u-live-gemini-revision', 'member_free')).spentCents).toBe(75);
+  });
+
+  it('rejects unreviewed same-family model suffixes rather than guessing their rate', async () => {
+    const selection = { provider: 'google' as const, model: 'gemini-3.7-flash-preview' };
+    await expect(checkModelCostCap('u-unreviewed-suffix', 'member_free', selection))
+      .resolves.toMatchObject({ ok: false, pricingUnsupported: true });
+    expect(await recordModelCost('u-unreviewed-suffix', {
+      ...selection,
+      usage: { inputTokens: 1_000, outputTokens: 1_000 },
+    })).toBe(false);
+  });
+
+  it('rejects unknown provider/model pairs before admission and does not record them', async () => {
+    const selection = { provider: 'openai', model: 'gpt-unreviewed' } as const;
+    const admission = await checkModelCostCap('u-unknown-provider', 'member_free', selection);
+    expect(admission).toMatchObject({ ok: false, pricingUnsupported: true });
+    await expect(checkModelCostCap('u-unknown-model', 'member_free', {
+      provider: 'google',
+      model: 'gemini-unreviewed',
+    })).resolves.toMatchObject({ ok: false, pricingUnsupported: true });
+    expect(await recordModelCost('u-unknown-provider', {
+      ...selection,
+      usage: { inputTokens: 1_000, outputTokens: 1_000 },
+    })).toBe(false);
+    expect((await checkCostCap('u-unknown-provider', 'member_free')).spentCents).toBe(0);
+  });
+
+  it('rejects incomplete normalized usage without silently recording zero cost', async () => {
+    expect(await recordModelCost('u-incomplete-usage', {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      usage: { inputTokens: 1_000 } as never,
+    })).toBe(false);
+    expect((await checkCostCap('u-incomplete-usage', 'member_free')).spentCents).toBe(0);
+  });
+
+  it('fails closed when the reviewed Gemini price expires', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2027-01-01T00:00:00.000Z'));
+    try {
+      const event = {
+        provider: 'google' as const,
+        model: 'gemini-3.7-flash',
+        usage: { inputTokens: 1_000, outputTokens: 0 },
+      };
+      await expect(checkModelCostCap('u-expired-gemini', 'member_free', event))
+        .resolves.toMatchObject({ ok: false, pricingUnsupported: true });
+      await expect(recordModelCost('u-expired-gemini', event)).resolves.toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('accumulates Anthropic and Gemini spend in one user/day budget', async () => {
+    await recordModelCost('u-mixed-provider', {
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      usage: { inputTokens: 1_000_000, outputTokens: 0 },
+    });
+    await recordModelCost('u-mixed-provider', {
+      provider: 'google',
+      model: 'gemini-3.7-flash',
+      usage: { inputTokens: 1_000_000, outputTokens: 0 },
+    });
+
+    const result = await checkCostCap('u-mixed-provider', 'member_free');
+    expect(result.spentCents).toBe(375);
+    expect(result.remainingUsd).toBeCloseTo(1.25, 4);
   });
 });
 

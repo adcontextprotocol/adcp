@@ -24,6 +24,11 @@ import { validateNormalizedModelResponse } from './events.js';
 
 export const GOOGLE_ROUTER_MODEL = 'gemini-3.7-flash';
 
+/** Provider-returned dated revisions accepted for the frozen router model. */
+export function isGoogleRouterModelRevision(model: string): boolean {
+  return model === GOOGLE_ROUTER_MODEL || /^gemini-3\.7-flash-\d{8}$/.test(model);
+}
+
 export interface GoogleGenerateContentTransport {
   models: {
     generateContent(
@@ -405,7 +410,7 @@ export class GoogleGenerateContentProvider implements ModelProvider {
       { signal: options.signal },
     );
     const normalized = normalizeGoogleResponse(response);
-    if (normalized.model !== request.model && !normalized.model.startsWith(`${request.model}-`)) {
+    if (!isGoogleRouterModelRevision(normalized.model)) {
       throw new UnexpectedModelIdentityError('google', request.model, normalized.model);
     }
     yield { type: 'response_start', provider: this.id, model: normalized.model, id: normalized.id };

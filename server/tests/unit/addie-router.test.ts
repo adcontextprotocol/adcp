@@ -577,51 +577,6 @@ describe('getToolSetDescriptionsForRouter', () => {
   });
 });
 
-// ============================================================================
-// Admin tool set contains committee/working group leadership tools
-// ============================================================================
-
-describe('TOOL_SETS.admin', () => {
-  const adminSet = TOOL_SETS.admin;
-
-  it('should exist and be marked adminOnly', () => {
-    expect(adminSet).toBeDefined();
-    expect(adminSet.adminOnly).toBe(true);
-  });
-
-  it('should include committee leadership tools', () => {
-    expect(adminSet.tools).toContain('add_committee_leader');
-    expect(adminSet.tools).toContain('remove_committee_leader');
-    expect(adminSet.tools).toContain('list_committee_leaders');
-  });
-
-  it('should include working group tools', () => {
-    expect(adminSet.tools).toContain('list_working_groups');
-    expect(adminSet.tools).toContain('get_working_group');
-    expect(adminSet.tools).toContain('rename_working_group');
-  });
-
-  it('should include engagement analytics tools', () => {
-    expect(adminSet.tools).toContain('query_admin_analytics');
-    expect(adminSet.tools).not.toContain('list_users_by_engagement');
-    expect(adminSet.tools).not.toContain('get_member_search_analytics');
-  });
-
-  it('should include working group membership tools', () => {
-    expect(adminSet.tools).toContain('add_working_group_member');
-    expect(adminSet.tools).toContain('remove_working_group_member');
-  });
-
-  it('should be hidden as a compatibility-only surface', () => {
-    expect(adminSet.routerVisible).toBe(false);
-    expect(adminSet.description).toMatch(/compatibility/i);
-  });
-});
-
-// ============================================================================
-// getToolsForSets — admin gating
-// ============================================================================
-
 describe('getToolsForSets', () => {
   it('should include always-available tools even with empty set selection', () => {
     const tools = getToolsForSets([], false);
@@ -662,14 +617,14 @@ describe('getToolsForSets', () => {
   });
 
   it('should block admin tools for non-admin users', () => {
-    const tools = getToolsForSets(['admin'], false);
+    const tools = getToolsForSets(['admin_group_leadership'], false);
     // Non-admin requesting admin set should get only always-available tools
     expect(tools).not.toContain('add_committee_leader');
     expect(tools).not.toContain('list_escalations');
   });
 
   it('should include admin tools for admin users', () => {
-    const tools = getToolsForSets(['admin'], true);
+    const tools = getToolsForSets(['admin_group_leadership'], true);
     expect(tools).toContain('add_committee_leader');
     expect(tools).toContain('remove_committee_leader');
     expect(tools).toContain('list_escalations');
@@ -1400,11 +1355,11 @@ describeWithApi('AddieRouter.route (LLM)', () => {
   });
 
   describe('admin tool routing', () => {
-    it('should route admin commands to admin set', async () => {
+    it('should route admin leadership commands to the bounded admin group-leadership set', async () => {
       const plan = await routeAsAdmin('add <@U12345|Paarth Sharma - YAHOO> as leader of media buy working group');
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
-        expect(plan.tool_sets).toContain('admin');
+        expect(plan.tool_sets).toContain('admin_group_leadership');
       }
     }, 15000);
 

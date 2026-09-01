@@ -1,4 +1,4 @@
-import { SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
+import { getValidToolSetNames, SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
 
 export type SlackToolSource = 'dm' | 'mention' | 'channel';
 export type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
@@ -77,6 +77,7 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
 
   const selected = input.routerAvailable
     ? [...(input.routerSelectedSets ?? [])]
+      .filter((name) => getValidToolSetNames(input.isAdmin).has(name))
     : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
 
   // Direct conversations must always retain Addie's authoritative docs and
@@ -97,6 +98,12 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
 
   return selected;
 }
+
+/**
+ * Delivery-neutral name for the bounded direct-interaction selection policy.
+ * Slack retains its established export while web chat shares the exact policy.
+ */
+export const selectRoutedToolSets = selectSlackToolSets;
 
 /** Normalize Slack conversation privacy, including DM shapes that omit is_private. */
 export function resolveSlackChannelPrivacy(channel: {

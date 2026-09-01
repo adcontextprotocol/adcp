@@ -64,6 +64,12 @@ export const SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS = [
 ] as const;
 
 /**
+ * Direct chat may combine a primary and a closely related follow-up domain,
+ * but never receives an unbounded router-selected union.
+ */
+export const MAX_DIRECT_ROUTED_TOOL_SET_COUNT = 2;
+
+/**
  * Tools excluded from ALWAYS_AVAILABLE in public channels
  * to prevent enrollment pitching where it doesn't belong
  */
@@ -154,54 +160,6 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
   ],
 } as const;
 
-const LEGACY_ADMIN_BILLING_TOOLS = [
-  "list_pending_invoices",
-  "get_account",
-  "resend_invoice",
-  "update_billing_email",
-];
-
-const LEGACY_ADMIN_OUTREACH_TOOLS = [
-  "get_outreach_stats",
-  "get_outreach_history",
-  "send_outreach",
-  "lookup_person",
-  "get_action_items",
-  "create_contact",
-];
-
-/** Exact pre-split group surface retained for already-routed plans. */
-export const LEGACY_ADMIN_GROUP_TOOLS = [
-  "create_chapter",
-  "list_chapters",
-  "create_industry_gathering",
-  "list_industry_gatherings",
-  "list_working_groups",
-  "get_working_group",
-  "add_committee_leader",
-  "remove_committee_leader",
-  "list_committee_leaders",
-  "add_working_group_member",
-  "remove_working_group_member",
-  "rename_working_group",
-];
-
-/**
- * Exact compatibility union for plans created before the admin-domain split.
- * It is deliberately hidden from new router prompts and validation.
- */
-export const LEGACY_ADMIN_TOOLS = [
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_events,
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_prospects,
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_feeds,
-  ...LEGACY_ADMIN_GROUP_TOOLS,
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_organizations,
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_workflows,
-  ...ADMIN_DOMAIN_TOOL_SETS.admin_brands,
-  ...LEGACY_ADMIN_BILLING_TOOLS,
-  ...LEGACY_ADMIN_OUTREACH_TOOLS,
-];
-
 /** Bounded member account/profile surface for new router plans. */
 export const MEMBER_PROFILE_TOOLS = [
   "get_my_profile",
@@ -226,12 +184,6 @@ export const COMMUNITY_GROUP_TOOLS = [
   "create_working_group_post",
   "bookmark_resource",
   "list_committee_documents",
-] as const;
-
-const LEGACY_MEMBER_CONTENT_TOOLS = [
-  "list_perspectives",
-  "attach_content_asset",
-  "draft_social_posts",
 ] as const;
 
 /** Author-owned submission, document import, asset, and cover-image workflow. */
@@ -294,48 +246,6 @@ export const CERTIFICATION_ASSESSMENT_TOOLS = [
   "call_adcp_task",
 ] as const;
 
-/** Exact pre-split certification surface retained for already-routed plans. */
-export const LEGACY_CERTIFICATION_TOOLS = [
-  "list_certification_tracks",
-  "get_certification_module",
-  "start_certification_module",
-  "complete_certification_module",
-  "get_learner_progress",
-  "test_out_modules",
-  "start_certification_exam",
-  "complete_certification_exam",
-  "check_credentials",
-  "checkpoint_teaching_progress",
-  "get_build_phase_instructions",
-  "save_learner_feedback",
-  "set_my_name",
-  "find_membership_products",
-  "call_adcp_task",
-] as const;
-
-/** Exact pre-split publishing surface retained for already-routed plans. */
-export const LEGACY_PUBLISHING_TOOLS = [
-  "propose_content",
-  "get_my_content",
-  "list_pending_content",
-  "approve_content",
-  "reject_content",
-  "request_revisions",
-  "read_google_doc",
-  "check_illustration_status",
-  "generate_perspective_illustration",
-  "list_perspectives",
-  "attach_content_asset",
-  "draft_social_posts",
-] as const;
-
-/** Exact compatibility union for plans created before the member-domain split. */
-export const LEGACY_MEMBER_TOOLS = [
-  ...MEMBER_PROFILE_TOOLS,
-  ...COMMUNITY_GROUP_TOOLS,
-  ...LEGACY_MEMBER_CONTENT_TOOLS,
-];
-
 /** Bounded publisher and agent implementation validation surface. */
 export const AGENT_VALIDATION_TOOLS = [
   "validate_adagents",
@@ -364,12 +274,6 @@ export const PROPERTY_CATALOG_TOOLS = [
   "browse_catalog",
   "dispute_catalog_entry",
 ] as const;
-
-/** Exact compatibility union for plans created before the agent/property split. */
-export const LEGACY_AGENT_TESTING_TOOLS = [
-  ...AGENT_VALIDATION_TOOLS,
-  ...PROPERTY_CATALOG_TOOLS,
-];
 
 /**
  * Tool set definitions
@@ -426,17 +330,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [...COMMUNITY_GROUP_TOOLS],
   },
 
-  // Compatibility only: a plan already carrying the old `member` set can
-  // finish without losing profile, group, or member-content tools. New router
-  // prompts select the bounded member_profile, community_groups, or publishing
-  // domains instead.
-  member: {
-    name: "member",
-    description: "Legacy monolithic member compatibility surface",
-    tools: [...LEGACY_MEMBER_TOOLS],
-    routerVisible: false,
-  },
-
   directory: {
     name: "directory",
     // NOTE: This tool set is a superset of DIRECTORY_TOOLS in directory-tools.ts.
@@ -488,16 +381,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     description:
       'Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.',
     tools: [...PROPERTY_CATALOG_TOOLS],
-  },
-
-  // Compatibility only: a plan already carrying the old `agent_testing` set
-  // can finish without losing agent-validation or property-catalog tools. New
-  // router prompts select the bounded domains above.
-  agent_testing: {
-    name: "agent_testing",
-    description: "Legacy combined agent-testing and property-catalog compatibility surface",
-    tools: [...LEGACY_AGENT_TESTING_TOOLS],
-    routerVisible: false,
   },
 
   agent_conformance: {
@@ -569,15 +452,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     description:
       "Browse published community perspectives and draft social posts promoting published content",
     tools: [...PUBLISHING_PROMOTION_TOOLS],
-  },
-
-  // Compatibility only: plans already carrying the mixed publishing set can
-  // finish, while new router prompts choose an author, review, or promotion domain.
-  publishing: {
-    name: "publishing",
-    description: "Legacy mixed publishing compatibility surface",
-    tools: [...LEGACY_PUBLISHING_TOOLS],
-    routerVisible: false,
   },
 
   github: {
@@ -754,26 +628,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
-  // Compatibility only: plans already carrying the mixed group set can
-  // finish, while new router prompts choose one bounded group domain.
-  admin_groups: {
-    name: "admin_groups",
-    description: "Legacy mixed admin group compatibility surface",
-    tools: [...LEGACY_ADMIN_GROUP_TOOLS],
-    adminOnly: true,
-    routerVisible: false,
-  },
-
-  // Compatibility only: a plan already carrying the old `admin` set can
-  // finish without losing tools, but new router prompts cannot select it.
-  admin: {
-    name: "admin",
-    description: "Legacy monolithic admin compatibility surface",
-    tools: [...LEGACY_ADMIN_TOOLS],
-    adminOnly: true,
-    routerVisible: false,
-  },
-
   outreach: {
     name: "outreach",
     description:
@@ -818,15 +672,6 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [...CERTIFICATION_ASSESSMENT_TOOLS],
   },
 
-  // Compatibility only: plans already carrying the mixed certification set
-  // can finish, while new routing and active-session selection use a bounded
-  // overview, learning, or assessment domain.
-  certification: {
-    name: "certification",
-    description: "Legacy mixed certification compatibility surface",
-    tools: [...LEGACY_CERTIFICATION_TOOLS],
-    routerVisible: false,
-  },
 };
 
 /**
@@ -835,6 +680,19 @@ export const TOOL_SETS: Record<string, ToolSet> = {
 export function getToolsInSet(setName: string): string[] {
   const set = TOOL_SETS[setName];
   return set ? set.tools : [];
+}
+
+/**
+ * The explicit read-only surface available when a direct-chat router result
+ * cannot be trusted. This deliberately excludes the normal "always" tools:
+ * several of those write user preferences, create escalations, or resolve
+ * admin work and are appropriate only after a valid route has been selected.
+ */
+export function getSafeReadOnlyFallbackTools(): string[] {
+  return Array.from(new Set([
+    ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS.flatMap(getToolsInSet),
+    'web_search',
+  ]));
 }
 
 /**
