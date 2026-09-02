@@ -264,10 +264,14 @@ test('model-context pruning removes only unreachable root definitions', () => {
   const source = {
     type: 'object',
     properties: {
-      kept: { $ref: '#/$defs/Kept' },
+      kept: { $ref: '#/$defs/Kept/$defs/Local' },
     },
     $defs: {
-      Kept: { $ref: '#/$defs/Nested' },
+      Kept: {
+        $defs: {
+          Local: { $ref: '#/$defs/Nested' },
+        },
+      },
       Nested: { type: 'string' },
       Removed: { type: 'integer' },
     },
@@ -275,10 +279,14 @@ test('model-context pruning removes only unreachable root definitions', () => {
   assert.deepEqual(pruneUnusedRootDefinitions(source), {
     type: 'object',
     properties: {
-      kept: { $ref: '#/$defs/Kept' },
+      kept: { $ref: '#/$defs/Kept/$defs/Local' },
     },
     $defs: {
-      Kept: { $ref: '#/$defs/Nested' },
+      Kept: {
+        $defs: {
+          Local: { $ref: '#/$defs/Nested' },
+        },
+      },
       Nested: { type: 'string' },
     },
   });

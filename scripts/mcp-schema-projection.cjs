@@ -935,7 +935,7 @@ function pruneUnusedRootDefinitions(schema) {
   if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) return pruned;
 
   const reachable = new Set();
-  function visit(value) {
+  function visit(value, skipRootDefinitions = false) {
     if (!value || typeof value !== 'object') return;
     if (typeof value.$ref === 'string' && value.$ref.startsWith('#/$defs/')) {
       const encodedName = value.$ref.slice('#/$defs/'.length).split('/')[0];
@@ -946,11 +946,11 @@ function pruneUnusedRootDefinitions(schema) {
       }
     }
     for (const [key, child] of Object.entries(value)) {
-      if (key !== '$defs') visit(child);
+      if (!skipRootDefinitions || key !== '$defs') visit(child);
     }
   }
 
-  visit(pruned);
+  visit(pruned, true);
   if (reachable.size === 0) delete pruned.$defs;
   else {
     pruned.$defs = Object.fromEntries(
