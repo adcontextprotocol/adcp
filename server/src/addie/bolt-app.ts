@@ -28,7 +28,7 @@ import type {
 } from '@slack/bolt/dist/Assistant';
 import type { Router } from 'express';
 import { createLogger } from '../logger.js';
-import { deliverAndRecordDirectMessage } from './direct-message-delivery.js';
+import { deliverAndRecordDirectMessage, prepareSlackDirectMessagePost } from './direct-message-delivery.js';
 
 const logger = createLogger('addie-bolt-app');
 import { sanitizeSpeakerName } from './prompts.js';
@@ -4055,6 +4055,11 @@ async function handleDirectMessage(
   const assistantFlagged = response.flagged || outputValidation.flagged;
   const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
   const boltClient = boltApp.client;
+  const directMessagePost = prepareSlackDirectMessagePost({
+    channelId,
+    threadTs: replyThreadTs,
+    text: outputValidation.sanitized,
+  });
   const assistantMessage = {
     thread_id: thread.thread_id,
     role: 'assistant' as const,
@@ -4093,11 +4098,7 @@ async function handleDirectMessage(
     assistantFlagged,
     flagReason: [inputValidation.reason, flagReason].filter(Boolean).join('; '),
     dependencies: {
-      postMessage: () => boltClient.chat.postMessage({
-        channel: channelId,
-        text: wrapUrlsForSlack(outputValidation.sanitized),
-        thread_ts: replyThreadTs,
-      }),
+      postMessage: () => boltClient.chat.postMessage(directMessagePost),
       addMessage: (message) => threadService.addMessage(message),
       flagThread: (threadId, reason) => threadService.flagThread(threadId, reason),
     },
