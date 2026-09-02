@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v9';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v10';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -74,10 +74,12 @@ export interface FixedTraceCase {
     action: RouterAction;
     toolSets: ReadonlyArray<string>;
   };
+  /** Provider-visible tool surface and inert synthetic responses for this trace. */
   toolFixtures: ReadonlyArray<FixedTraceToolFixture>;
   expectation: {
     terminalStatuses: ReadonlyArray<FixedTraceTerminalStatus>;
     requiredTools: ReadonlyArray<string>;
+    /** Request-permitted tools, which can be a strict subset of toolFixtures. */
     allowedTools: ReadonlyArray<string>;
     forbiddenTools: ReadonlyArray<string>;
     mutationAuthorization: 'none' | 'confirmed';
@@ -305,8 +307,8 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     expectation: {
       terminalStatuses: ['complete'],
       requiredTools: ['schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions'],
-      allowedTools: ['schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings', 'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting', 'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee', 'update_topic_subscriptions', 'manage_committee_topics'],
-      forbiddenTools: [],
+      allowedTools: ['schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions'],
+      forbiddenTools: ['cancel_meeting', 'cancel_meeting_series', 'update_meeting', 'manage_committee_topics'],
       mutationAuthorization: 'confirmed',
       requiredTextAny: [['scheduled'], ['attendee'], ['RSVP'], ['topic subscriptions']],
       maxWords: 180,
