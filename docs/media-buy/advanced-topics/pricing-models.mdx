@@ -456,6 +456,8 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
     "daypart": "morning_commute",
     "duration_hours": 4,
     "sov_percentage": 25,
+    "slot_span": 2,
+    "loop_position": "adjacent_to_content_break",
     "estimated_impressions": 120000
   }
 }
@@ -464,7 +466,9 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
 **Billing**: Fixed cost for the entire campaign period regardless of delivery volume.
 
 **DOOH parameters** (`parameters.type: "dooh"`):
-- `sov_percentage`: Guaranteed share of voice as a percentage (0-100)
+- `sov_percentage`: Guaranteed time share as a percentage (0-100). Compare it with reported `dooh_metrics.sov_achieved` by dividing `sov_percentage` by 100.
+- `slot_span`: Number of consecutive loop slots in this seller-packaged offer. It guarantees contiguity, but not position unless `loop_position` is present.
+- `loop_position`: Seller-defined loop-position label, such as `any`, `first`, `last`, or `adjacent_to_content_break`. The vocabulary is open; buyers accept unknown values as opaque, with no position guarantee they understand.
 - `loop_duration_seconds`: Deprecated compatibility copy of the placement's `dooh_placement_attributes.loop_duration_seconds`. New integrations read the placement-level value; when both are present they must agree. Offers with different loop durations use distinct placements or products rather than pricing-option-specific copies.
 - `min_plays_per_hour`: Minimum guaranteed plays per hour
 - `venue_package`: Named collection of screens
@@ -473,6 +477,13 @@ Revenue share is channel-independent. Affiliate is the immediate use case, but s
 - `estimated_impressions`: Audience impression estimate (informational, not a delivery guarantee)
 
 Sponsorship flat_rate options omit `parameters` — the fixed price covers the placement without DOOH-specific constraints.
+
+Share of voice is always duration-weighted. For a loop with segment durations
+of 10, 10, 20, and 40 seconds, reserving the first two consecutive segments is
+20 / 80 = 25% SOV, not 2 / 4 = 50%. On equal-duration loops, time share and
+slot-count share produce the same result. Delivery reports use the corresponding
+0.0-1.0 scale, so a contracted `sov_percentage` of `25` is reconciled against
+`dooh_metrics.sov_achieved` of `0.25`.
 
 ---
 
