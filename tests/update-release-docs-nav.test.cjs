@@ -191,6 +191,49 @@ function sampleConfig() {
     assert.ok(strings.includes('dist/docs/3.0.1/old'));
   });
 
+  test('retargets clean-route aliases with an existing default snapshot', () => {
+    const config = sampleConfig();
+    config.navigation.versions[0].groups = [
+      {
+        group: 'Getting Started',
+        pages: [
+          'dist/docs/3.0.0/intro',
+          'dist/docs/3.0.0/quickstart',
+        ],
+      },
+    ];
+    config.redirects = [
+      {
+        source: '/docs/intro',
+        destination: '/dist/docs/3.0.0/intro',
+        permanent: false,
+      },
+      {
+        source: '/unrelated',
+        destination: '/docs/faq',
+      },
+    ];
+
+    updateDocsConfig(config, '3.0.1', '3.0');
+
+    assert.deepEqual(config.redirects, [
+      {
+        source: '/docs/intro',
+        destination: '/dist/docs/3.0.1/intro',
+        permanent: false,
+      },
+      {
+        source: '/unrelated',
+        destination: '/docs/faq',
+      },
+      {
+        source: '/docs/quickstart',
+        destination: '/dist/docs/3.0.1/quickstart',
+        permanent: false,
+      },
+    ]);
+  });
+
   test('adds a new version from the first entry when no default is marked', () => {
     const config = sampleConfig();
     delete config.navigation.versions[0].default;

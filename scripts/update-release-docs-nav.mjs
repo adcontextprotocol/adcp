@@ -51,6 +51,54 @@ function mapStrings(value, mapper) {
   return value;
 }
 
+function collectStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(collectStrings);
+  if (value && typeof value === 'object') {
+    return Object.values(value).flatMap(collectStrings);
+  }
+  return [];
+}
+
+function snapshotAlias(page) {
+  const match = /^dist\/docs\/[^/]+\/(.+)$/.exec(page);
+  if (!match) return undefined;
+  return {
+    source: `/docs/${match[1]}`,
+    destination: `/${page}`,
+  };
+}
+
+function updateDefaultSnapshotAliases(config, previousGroups, updatedGroups) {
+  const previousSources = new Set(
+    collectStrings(previousGroups).map(snapshotAlias).filter(Boolean).map(({ source }) => source)
+  );
+  const desiredAliases = new Map(
+    collectStrings(updatedGroups)
+      .map(snapshotAlias)
+      .filter(Boolean)
+      .map((alias) => [alias.source, alias])
+  );
+
+  if (!Array.isArray(config.redirects)) config.redirects = [];
+  config.redirects = config.redirects.filter(
+    (redirect) => !previousSources.has(redirect?.source) || desiredAliases.has(redirect.source)
+  );
+
+  const redirectsBySource = new Map(
+    config.redirects.map((redirect) => [redirect?.source, redirect])
+  );
+  for (const alias of desiredAliases.values()) {
+    const existing = redirectsBySource.get(alias.source);
+    if (existing) {
+      existing.destination = alias.destination;
+      existing.permanent = false;
+    } else {
+      config.redirects.push({ ...alias, permanent: false });
+    }
+  }
+}
+
 function pinOpenApiSources(value, releaseVersion) {
   if (Array.isArray(value)) {
     return value.map((item) => pinOpenApiSources(item, releaseVersion));
@@ -207,6 +255,7 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   const existingIndex = versions.findIndex((entry) => entry.version === majorMinor);
   if (existingIndex >= 0) {
     const entry = clone(versions[existingIndex]);
+    const previousGroups = clone(entry.groups);
     entry.groups = mapStrings(entry.groups, (value) =>
       retargetExistingPath(releaseVersion, value)
     );
@@ -215,6 +264,9 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
       entry.groups = flattenVersionGroups(entry.groups);
     }
     versions[existingIndex] = entry;
+    if (entry.default) {
+      updateDefaultSnapshotAliases(config, previousGroups, entry.groups);
+    }
     updatePrereleaseBanner(config, releaseVersion, majorMinor);
     updateReleaseStoryAliases(config, releaseVersion);
     return {
