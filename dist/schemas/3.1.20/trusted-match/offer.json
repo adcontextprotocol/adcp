@@ -38,6 +38,8 @@
       }
     }
   },
-  "required": ["package_id"],
+  "required": [
+    "package_id"
+  ],
   "additionalProperties": true
 }

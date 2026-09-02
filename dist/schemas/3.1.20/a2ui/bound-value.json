@@ -13,7 +13,9 @@
           "description": "Static string value"
         }
       },
-      "required": ["literalString"],
+      "required": [
+        "literalString"
+      ],
       "additionalProperties": false
     },
     {
@@ -25,7 +27,9 @@
           "description": "Static number value"
         }
       },
-      "required": ["literalNumber"],
+      "required": [
+        "literalNumber"
+      ],
       "additionalProperties": false
     },
     {
@@ -37,7 +41,9 @@
           "description": "Static boolean value"
         }
       },
-      "required": ["literalBoolean"],
+      "required": [
+        "literalBoolean"
+      ],
       "additionalProperties": false
     },
     {
@@ -49,7 +55,9 @@
           "description": "JSON pointer path to value in data model (e.g., '/products/0/title')"
         }
       },
-      "required": ["path"],
+      "required": [
+        "path"
+      ],
       "additionalProperties": false
     },
     {
@@ -63,7 +71,10 @@
           "type": "string"
         }
       },
-      "required": ["literalString", "path"],
+      "required": [
+        "literalString",
+        "path"
+      ],
       "additionalProperties": false
     }
   ]

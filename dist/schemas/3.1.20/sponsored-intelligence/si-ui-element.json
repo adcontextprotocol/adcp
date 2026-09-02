@@ -8,7 +8,16 @@
   "properties": {
     "type": {
       "type": "string",
-      "enum": ["text", "link", "image", "product_card", "carousel", "action_button", "app_handoff", "integration_actions"],
+      "enum": [
+        "text",
+        "link",
+        "image",
+        "product_card",
+        "carousel",
+        "action_button",
+        "app_handoff",
+        "integration_actions"
+      ],
       "description": "Component type"
     },
     "data": {
@@ -17,118 +26,238 @@
       "additionalProperties": true
     }
   },
-  "required": ["type"],
+  "required": [
+    "type"
+  ],
   "additionalProperties": true,
   "allOf": [
     {
-      "if": { "properties": { "type": { "const": "text" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "text"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "message": { "type": "string", "description": "Text message content" }
+              "message": {
+                "type": "string",
+                "description": "Text message content"
+              }
             },
-            "required": ["message"]
+            "required": [
+              "message"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "link" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "link"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "url": { "type": "string", "format": "uri", "description": "Link URL" },
-              "label": { "type": "string", "description": "Link text" },
-              "preview": { "type": "boolean", "description": "Show link preview" }
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Link URL"
+              },
+              "label": {
+                "type": "string",
+                "description": "Link text"
+              },
+              "preview": {
+                "type": "boolean",
+                "description": "Show link preview"
+              }
             },
-            "required": ["url", "label"]
+            "required": [
+              "url",
+              "label"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "image" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "image"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "url": { "type": "string", "format": "uri", "description": "Image URL" },
-              "alt": { "type": "string", "description": "Alt text" },
-              "caption": { "type": "string", "description": "Image caption" }
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Image URL"
+              },
+              "alt": {
+                "type": "string",
+                "description": "Alt text"
+              },
+              "caption": {
+                "type": "string",
+                "description": "Image caption"
+              }
             },
-            "required": ["url", "alt"]
+            "required": [
+              "url",
+              "alt"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "product_card" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "product_card"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "title": { "type": "string", "description": "Product title" },
-              "subtitle": { "type": "string", "description": "Product subtitle" },
-              "price": { "type": "string", "description": "Price display string" },
-              "image_url": { "type": "string", "format": "uri", "description": "Product image" },
-              "description": { "type": "string", "description": "Product description" },
-              "badge": { "type": "string", "description": "Badge text (e.g., 'Free Upgrade')" },
+              "title": {
+                "type": "string",
+                "description": "Product title"
+              },
+              "subtitle": {
+                "type": "string",
+                "description": "Product subtitle"
+              },
+              "price": {
+                "type": "string",
+                "description": "Price display string"
+              },
+              "image_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Product image"
+              },
+              "description": {
+                "type": "string",
+                "description": "Product description"
+              },
+              "badge": {
+                "type": "string",
+                "description": "Badge text (e.g., 'Free Upgrade')"
+              },
               "cta": {
                 "type": "object",
                 "properties": {
-                  "label": { "type": "string" },
-                  "action": { "type": "string" }
+                  "label": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "type": "string"
+                  }
                 }
               }
             },
-            "required": ["title", "price"]
+            "required": [
+              "title",
+              "price"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "carousel" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "carousel"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "title": { "type": "string", "description": "Carousel title" },
+              "title": {
+                "type": "string",
+                "description": "Carousel title"
+              },
               "items": {
                 "type": "array",
                 "description": "Carousel items (product cards or images)",
-                "items": { "type": "object" }
+                "items": {
+                  "type": "object"
+                }
               }
             },
-            "required": ["items"]
+            "required": [
+              "items"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "action_button" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "action_button"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "properties": {
-              "label": { "type": "string", "description": "Button label" },
-              "action": { "type": "string", "description": "Action identifier (e.g., 'acp_checkout')" },
-              "payload": { "type": "object", "description": "Action payload" }
+              "label": {
+                "type": "string",
+                "description": "Button label"
+              },
+              "action": {
+                "type": "string",
+                "description": "Action identifier (e.g., 'acp_checkout')"
+              },
+              "payload": {
+                "type": "object",
+                "description": "Action payload"
+              }
             },
-            "required": ["label", "action"]
+            "required": [
+              "label",
+              "action"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "type": { "const": "app_handoff" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "app_handoff"
+          }
+        }
+      },
       "then": {
         "properties": {
           "apps": {
@@ -137,9 +266,16 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "app_id": { "type": "string" },
-                "deep_link": { "type": "string" },
-                "url": { "type": "string", "format": "uri" }
+                "app_id": {
+                  "type": "string"
+                },
+                "deep_link": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string",
+                  "format": "uri"
+                }
               }
             }
           }
@@ -147,7 +283,13 @@
       }
     },
     {
-      "if": { "properties": { "type": { "const": "integration_actions" } } },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "integration_actions"
+          }
+        }
+      },
       "then": {
         "properties": {
           "data": {
@@ -161,7 +303,10 @@
                   "properties": {
                     "type": {
                       "type": "string",
-                      "enum": ["mcp", "a2a"],
+                      "enum": [
+                        "mcp",
+                        "a2a"
+                      ],
                       "description": "Integration type"
                     },
                     "label": {
@@ -178,11 +323,16 @@
                       "description": "URL for the integration endpoint"
                     }
                   },
-                  "required": ["type", "label"]
+                  "required": [
+                    "type",
+                    "label"
+                  ]
                 }
               }
             },
-            "required": ["actions"]
+            "required": [
+              "actions"
+            ]
           }
         }
       }

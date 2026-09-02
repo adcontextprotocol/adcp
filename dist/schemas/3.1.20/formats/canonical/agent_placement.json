@@ -3,7 +3,11 @@
   "$id": "/schemas/3.1.20/formats/canonical/agent_placement.json",
   "title": "Canonical Format: Agent Placement (AI-surface sponsored placement)",
   "description": "**3.2-track canonical.** The structural shape (algorithmic composition + brand-context input + optional offering/landing_page) is captured here so adopters can declare against it in 3.1 catalogs, but the **mention-level tracking contract is intentionally underspecified for 3.1**: no normative macro vocabulary, no postback shape, no cross-surface dedup model. Adopters claiming `agent_placement` in 3.1 ship private tracking integrations and SHOULD leave `experimental: true` on the product declaration that references this canonical; buyer agents MUST treat agent_placement attribution as adapter-defined until the 3.2 tracking-macro spec lands. The canonical promotes to a normatively-buyer-callable surface in 3.2 (or later) once the tracking contract is specified.\n\nSponsored placement integrated into an AI-surface's response to a user. Buyer supplies a `BrandRef` (resolving brand.json for context), an optional `offering_ref` to focus the mention on a specific offering, and an optional `landing_page_url` the surface MAY attach as a citation. The surface (LLM, voice assistant, sponsored-search ranker) composes a natural-language mention, sponsored card, or audio snippet within its response to a user query. **Composition is algorithmic** — the agent chooses phrasing and presentation. Output asset_type varies by surface: `text` for chat UIs and sponsored search snippets; `audio` (synthesized) for voice assistants; `card` for structured AI-surface result cards. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering — but see the 3.2-track note above; the wire shape of these events is not yet specified. Distinct from `si_chat` (which is the user-converses-with-brand's-agent pattern — brand owns the conversational surface) and from `sponsored_placement` (retail-media catalog-driven). Parallels `sponsored_placement` structurally: both are surface-composed placements; agent_placement is for AI/agentic surfaces, sponsored_placement is for retail media.",
-  "allOf": [{ "$ref": "/schemas/3.1.20/formats/canonical/_base.json" }],
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.20/formats/canonical/_base.json"
+    }
+  ],
   "properties": {
     "experimental": {
       "default": true,
@@ -15,14 +19,26 @@
     },
     "slots": {
       "default": [
-        { "asset_group_id": "offering_ref", "asset_type": "text", "required": false },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+        {
+          "asset_group_id": "offering_ref",
+          "asset_type": "text",
+          "required": false
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": false
+        }
       ],
       "description": "agent_placement has minimal buyer-shipped slots — the surface composes the rendered output from brand context (resolved via the manifest's top-level `brand` BrandRef) plus optional offering_ref and landing_page_url assets. None of these assets are rendered verbatim by the buyer; the agent chooses how to use them."
     },
     "output_modality": {
       "type": "string",
-      "enum": ["text", "audio", "card"],
+      "enum": [
+        "text",
+        "audio",
+        "card"
+      ],
       "description": "How the surface presents the mention. `text` = inline text (chat, search snippet). `audio` = TTS-synthesized voice. `card` = structured card with optional image + text."
     },
     "max_mention_length_chars": {
@@ -45,7 +61,9 @@
     },
     "tone_constraints": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "**Advisory only.** Buyer-declared brand-voice preferences the surface SHOULD honor (e.g., ['formal', 'no_superlatives']). LLM/agentic surfaces have no protocol-level mechanism to verify enforcement — adopters that need hard guarantees should rely on brand.json voice declarations and post-mention review rather than this field. Future revisions may tie this to a structured tone vocabulary; for now treat as free-text guidance."
     },
     "disclosure_required": {

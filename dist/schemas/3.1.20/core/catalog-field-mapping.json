@@ -23,7 +23,12 @@
     "transform": {
       "type": "string",
       "description": "Named transform to apply to the feed field value before writing to the catalog schema. See transform-specific parameters (format, timezone, by, separator).",
-      "enum": ["date", "divide", "boolean", "split"]
+      "enum": [
+        "date",
+        "divide",
+        "boolean",
+        "split"
+      ]
     },
     "format": {
       "type": "string",
@@ -51,8 +56,22 @@
     }
   },
   "allOf": [
-    { "not": { "required": ["feed_field", "value"] } },
-    { "not": { "required": ["catalog_field", "asset_group_id"] } }
+    {
+      "not": {
+        "required": [
+          "feed_field",
+          "value"
+        ]
+      }
+    },
+    {
+      "not": {
+        "required": [
+          "catalog_field",
+          "asset_group_id"
+        ]
+      }
+    }
   ],
   "additionalProperties": true,
   "examples": [

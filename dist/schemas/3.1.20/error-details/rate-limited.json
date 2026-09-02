@@ -19,7 +19,11 @@
     },
     "scope": {
       "type": "string",
-      "enum": ["account", "tool", "global"],
+      "enum": [
+        "account",
+        "tool",
+        "global"
+      ],
       "description": "What the limit applies to"
     }
   },

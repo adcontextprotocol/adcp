@@ -122,8 +122,16 @@
           "deployments"
         ],
         "anyOf": [
-          { "required": ["signal_ref"] },
-          { "required": ["signal_id"] }
+          {
+            "required": [
+              "signal_ref"
+            ]
+          },
+          {
+            "required": [
+              "signal_id"
+            ]
+          }
         ],
         "additionalProperties": true
       }

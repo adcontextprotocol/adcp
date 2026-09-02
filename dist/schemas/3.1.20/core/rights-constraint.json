@@ -23,7 +23,10 @@
           "description": "Agent identifier"
         }
       },
-      "required": ["url", "id"]
+      "required": [
+        "url",
+        "id"
+      ]
     },
     "valid_from": {
       "type": "string",
@@ -70,7 +73,11 @@
     },
     "approval_status": {
       "type": "string",
-      "enum": ["pending", "approved", "rejected"],
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
       "description": "Approval status from the rights holder at manifest creation time (snapshot, not a live value)"
     },
     "verification_url": {
@@ -82,6 +89,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["rights_id", "rights_agent", "uses"],
+  "required": [
+    "rights_id",
+    "rights_agent",
+    "uses"
+  ],
   "additionalProperties": true
 }

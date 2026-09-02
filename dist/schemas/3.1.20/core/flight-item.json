@@ -23,7 +23,9 @@
           "description": "City name (e.g., 'Amsterdam', 'New York')."
         }
       },
-      "required": ["airport_code"],
+      "required": [
+        "airport_code"
+      ],
       "additionalProperties": false
     },
     "destination": {
@@ -40,7 +42,9 @@
           "description": "City name."
         }
       },
-      "required": ["airport_code"],
+      "required": [
+        "airport_code"
+      ],
       "additionalProperties": false
     },
     "airline": {
@@ -95,32 +99,60 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["flight_id", "origin", "destination"],
+  "required": [
+    "flight_id",
+    "origin",
+    "destination"
+  ],
   "additionalProperties": true,
   "examples": [
     {
       "description": "Direct transatlantic route",
       "data": {
         "flight_id": "ams-jfk-summer",
-        "origin": { "airport_code": "AMS", "city": "Amsterdam" },
-        "destination": { "airport_code": "JFK", "city": "New York" },
+        "origin": {
+          "airport_code": "AMS",
+          "city": "Amsterdam"
+        },
+        "destination": {
+          "airport_code": "JFK",
+          "city": "New York"
+        },
         "airline": "KLM",
-        "price": { "amount": 449, "currency": "EUR" },
+        "price": {
+          "amount": 449,
+          "currency": "EUR"
+        },
         "description": "Direct flights from Amsterdam to New York, daily departures.",
         "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
         "url": "https://acmeair.com/flights/ams-jfk",
-        "tags": ["direct", "transatlantic"]
+        "tags": [
+          "direct",
+          "transatlantic"
+        ]
       }
     },
     {
       "description": "Budget European route",
       "data": {
         "flight_id": "bcn-lis-q4",
-        "origin": { "airport_code": "BCN", "city": "Barcelona" },
-        "destination": { "airport_code": "LIS", "city": "Lisbon" },
-        "price": { "amount": 39, "currency": "EUR" },
+        "origin": {
+          "airport_code": "BCN",
+          "city": "Barcelona"
+        },
+        "destination": {
+          "airport_code": "LIS",
+          "city": "Lisbon"
+        },
+        "price": {
+          "amount": 39,
+          "currency": "EUR"
+        },
         "url": "https://acmeair.com/flights/bcn-lis",
-        "tags": ["budget", "short-haul"]
+        "tags": [
+          "budget",
+          "short-haul"
+        ]
       }
     }
   ]

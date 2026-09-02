@@ -97,7 +97,10 @@
             "description": "How the collections are related"
           }
         },
-        "required": ["collection_id", "relationship"],
+        "required": [
+          "collection_id",
+          "relationship"
+        ],
         "additionalProperties": false
       }
     },
@@ -105,6 +108,9 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["collection_id", "name"],
+  "required": [
+    "collection_id",
+    "name"
+  ],
   "additionalProperties": true
 }

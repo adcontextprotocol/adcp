@@ -4,7 +4,12 @@
   "title": "Feature Check Status",
   "description": "Per-feature evaluation outcome in content standards checks. For the two-outcome overall record verdict, see binary-verdict.",
   "type": "string",
-  "enum": ["passed", "failed", "warning", "unevaluated"],
+  "enum": [
+    "passed",
+    "failed",
+    "warning",
+    "unevaluated"
+  ],
   "enumDescriptions": {
     "passed": "Feature met the applicable content standard",
     "failed": "Feature did not meet the applicable content standard",

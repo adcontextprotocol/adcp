@@ -24,12 +24,18 @@
             "description": "The identifier value"
           }
         },
-        "required": ["type", "value"],
+        "required": [
+          "type",
+          "value"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
     }
   },
-  "required": ["publisher_domain", "identifiers"],
+  "required": [
+    "publisher_domain",
+    "identifiers"
+  ],
   "additionalProperties": true
 }

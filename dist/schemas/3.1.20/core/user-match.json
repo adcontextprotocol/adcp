@@ -20,7 +20,10 @@
             "description": "Universal ID value"
           }
         },
-        "required": ["type", "value"],
+        "required": [
+          "type",
+          "value"
+        ],
         "additionalProperties": true
       },
       "minItems": 1
@@ -56,11 +59,32 @@
     }
   },
   "anyOf": [
-    { "required": ["uids"] },
-    { "required": ["hashed_email"] },
-    { "required": ["hashed_phone"] },
-    { "required": ["click_id"] },
-    { "required": ["client_ip", "client_user_agent"] }
+    {
+      "required": [
+        "uids"
+      ]
+    },
+    {
+      "required": [
+        "hashed_email"
+      ]
+    },
+    {
+      "required": [
+        "hashed_phone"
+      ]
+    },
+    {
+      "required": [
+        "click_id"
+      ]
+    },
+    {
+      "required": [
+        "client_ip",
+        "client_user_agent"
+      ]
+    }
   ],
   "additionalProperties": true
 }

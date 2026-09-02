@@ -61,6 +61,8 @@
       "uniqueItems": true
     }
   },
-  "required": ["catalog_type"],
+  "required": [
+    "catalog_type"
+  ],
   "additionalProperties": true
 }

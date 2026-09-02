@@ -4,7 +4,15 @@
   "title": "AdCP Protocol",
   "description": "AdCP protocols for task categorization — referenced by tasks-list-request, webhook payloads, and other task-lifecycle surfaces. Values are kebab-case. This enum shares the same axis as supported_protocols (see /schemas/protocol/get-adcp-capabilities-response.json), which uses snake_case on the wire. Compliance testing support is declared via the `capabilities.compliance_testing` block, not as a protocol value.",
   "type": "string",
-  "enum": ["media-buy", "signals", "governance", "creative", "brand", "sponsored-intelligence", "measurement"],
+  "enum": [
+    "media-buy",
+    "signals",
+    "governance",
+    "creative",
+    "brand",
+    "sponsored-intelligence",
+    "measurement"
+  ],
   "enumDescriptions": {
     "media-buy": "Campaign creation, package management, delivery optimization, and conversion tracking",
     "signals": "Audience signal discovery and activation",

@@ -7,7 +7,13 @@
   "properties": {
     "vast_version": {
       "type": "string",
-      "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
+      "enum": [
+        "2.0",
+        "3.0",
+        "4.0",
+        "4.1",
+        "4.2"
+      ],
       "description": "Required VAST version"
     }
   },

@@ -27,7 +27,9 @@
           "additionalProperties": true
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": true
     },
     "timestamp": {
@@ -36,6 +38,10 @@
       "description": "When the action occurred"
     }
   },
-  "required": ["surfaceId", "componentId", "action"],
+  "required": [
+    "surfaceId",
+    "componentId",
+    "action"
+  ],
   "additionalProperties": true
 }

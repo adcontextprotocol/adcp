@@ -23,7 +23,9 @@
             "$ref": "/schemas/3.1.20/core/forecast-point.json"
           },
           {
-            "required": ["dimensions"],
+            "required": [
+              "dimensions"
+            ],
             "properties": {
               "dimensions": {
                 "contains": {
@@ -33,11 +35,15 @@
                       "const": "signal"
                     }
                   },
-                  "required": ["kind"]
+                  "required": [
+                    "kind"
+                  ]
                 }
               },
               "metrics": {
-                "required": ["coverage_rate"]
+                "required": [
+                  "coverage_rate"
+                ]
               }
             }
           }
@@ -60,7 +66,12 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["inventory", "product", "account", "custom"],
+          "enum": [
+            "inventory",
+            "product",
+            "account",
+            "custom"
+          ],
           "description": "Denominator family for the coverage forecast."
         },
         "label": {
@@ -96,17 +107,26 @@
           "description": "Historical or planned date window used to compute the denominator."
         }
       },
-      "required": ["kind", "label"],
+      "required": [
+        "kind",
+        "label"
+      ],
       "additionalProperties": true
     },
     "bucket_semantics": {
       "type": "string",
-      "enum": ["exclusive", "overlapping"],
+      "enum": [
+        "exclusive",
+        "overlapping"
+      ],
       "description": "'exclusive' means the returned signal-value buckets do not overlap with each other. 'overlapping' means one impression or user can appear in multiple returned buckets, so coverage_rate values may sum above 1.0. This field describes overlap among returned buckets; bucket_completeness declares whether the returned buckets cover the full denominator."
     },
     "bucket_completeness": {
       "type": "string",
-      "enum": ["complete", "partial"],
+      "enum": [
+        "complete",
+        "partial"
+      ],
       "description": "'complete' means the returned buckets cover the declared denominator. For complete + exclusive forecasts, count metrics and coverage_rate values can be treated as a full partition, subject to metric additivity rules. 'partial' means omitted denominator share represents undisclosed, other, or unsupported buckets; buyers MUST NOT infer totals by summing returned points."
     },
     "generated_at": {
@@ -123,7 +143,14 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["points", "forecast_range_unit", "method", "scope", "bucket_semantics", "bucket_completeness"],
+  "required": [
+    "points",
+    "forecast_range_unit",
+    "method",
+    "scope",
+    "bucket_semantics",
+    "bucket_completeness"
+  ],
   "allOf": [
     {
       "if": {
@@ -135,15 +162,21 @@
                 "const": "product"
               }
             },
-            "required": ["kind"]
+            "required": [
+              "kind"
+            ]
           }
         },
-        "required": ["scope"]
+        "required": [
+          "scope"
+        ]
       },
       "then": {
         "properties": {
           "scope": {
-            "required": ["product_id"]
+            "required": [
+              "product_id"
+            ]
           }
         }
       }

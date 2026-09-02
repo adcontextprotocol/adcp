@@ -20,7 +20,13 @@
     "model": {
       "type": "string",
       "description": "Pricing model for this offer",
-      "enum": ["cpm", "cpc", "cpcv", "cpa", "flat"]
+      "enum": [
+        "cpm",
+        "cpc",
+        "cpcv",
+        "cpa",
+        "flat"
+      ]
     }
   },
   "required": [

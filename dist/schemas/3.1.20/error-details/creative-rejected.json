@@ -17,7 +17,9 @@
     },
     "reasons": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Specific reasons the creative was rejected"
     }
   },

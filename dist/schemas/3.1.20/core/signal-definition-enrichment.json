@@ -16,7 +16,9 @@
     "policy_categories": {
       "type": "array",
       "description": "Policy categories this signal is sensitive for.",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1
     },
     "taxonomy": {
@@ -57,7 +59,9 @@
                 }
               }
             },
-            "required": ["id"],
+            "required": [
+              "id"
+            ],
             "additionalProperties": false
           }
         },
@@ -83,16 +87,26 @@
                 }
               }
             },
-            "required": ["value", "taxonomy_value_id"],
+            "required": [
+              "value",
+              "taxonomy_value_id"
+            ],
             "additionalProperties": false
           }
         },
         "parent_match_behavior": {
           "type": "string",
-          "enum": ["exact_only", "descendants_supported", "unknown"]
+          "enum": [
+            "exact_only",
+            "descendants_supported",
+            "unknown"
+          ]
         }
       },
-      "required": ["ref", "values"],
+      "required": [
+        "ref",
+        "values"
+      ],
       "additionalProperties": false
     },
     "segmentation_criteria": {
@@ -131,7 +145,13 @@
     },
     "methodology": {
       "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"]
+      "enum": [
+        "observed",
+        "declared",
+        "derived",
+        "inferred",
+        "modeled"
+      ]
     },
     "audience_expansion": {
       "type": "boolean"
@@ -141,11 +161,29 @@
     },
     "refresh_cadence": {
       "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "enum": [
+        "intra_day",
+        "daily",
+        "weekly",
+        "monthly",
+        "bi_monthly",
+        "quarterly",
+        "bi_annually",
+        "annually"
+      ]
     },
     "lookback_window": {
       "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"]
+      "enum": [
+        "intra_day",
+        "daily",
+        "weekly",
+        "monthly",
+        "bi_monthly",
+        "quarterly",
+        "bi_annually",
+        "annually"
+      ]
     },
     "onboarder": {
       "type": "object",
@@ -155,7 +193,18 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "enum": [
+              "name",
+              "address",
+              "email",
+              "postal",
+              "lat_long",
+              "mobile_id",
+              "cookie_id",
+              "ip",
+              "customer_id",
+              "phone"
+            ]
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -166,10 +215,17 @@
         },
         "pre_onboarding_precision_level": {
           "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "enum": [
+            "individual",
+            "household",
+            "business",
+            "geography"
+          ]
         }
       },
-      "required": ["match_keys"],
+      "required": [
+        "match_keys"
+      ],
       "additionalProperties": false
     },
     "countries": {
@@ -190,7 +246,12 @@
     },
     "art9_basis": {
       "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "enum": [
+        "explicit_consent",
+        "manifestly_made_public",
+        "substantial_public_interest",
+        "vital_interests"
+      ],
       "description": "Data provider's declared GDPR Article 9 basis for the underlying signal definition when special-category data is involved and Article 9 applies, projected into this get_signals response row when requested. Sellers and federating agents that pass through another provider's signal MUST NOT substitute their own Article 9 basis for the provider-declared basis."
     },
     "modeling": {
@@ -198,21 +259,35 @@
       "properties": {
         "method": {
           "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "enum": [
+            "lookalike",
+            "supervised",
+            "embedding",
+            "rules"
+          ]
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "enum": [
+                "first_party_crm",
+                "panel",
+                "declared_survey",
+                "transactional",
+                "behavioral"
+              ]
             },
             "provider_signed": {
               "type": "boolean",
               "description": "Provider assertion that the seed source carries a signed attestation. Consumers MUST NOT treat this boolean alone as cryptographic proof."
             }
           },
-          "required": ["type", "provider_signed"],
+          "required": [
+            "type",
+            "provider_signed"
+          ],
           "additionalProperties": false
         },
         "training_data_jurisdictions": {
@@ -225,13 +300,22 @@
         },
         "ai_act_risk_class": {
           "type": "string",
-          "enum": ["minimal", "limited", "high_risk"]
+          "enum": [
+            "minimal",
+            "limited",
+            "high_risk"
+          ]
         },
         "disclosure": {
           "$ref": "/schemas/3.1.20/core/signal-modeling-disclosure.json"
         }
       },
-      "required": ["method", "seed_source", "training_data_jurisdictions", "ai_act_risk_class"],
+      "required": [
+        "method",
+        "seed_source",
+        "training_data_jurisdictions",
+        "ai_act_risk_class"
+      ],
       "additionalProperties": false
     },
     "data_subject_rights": {
@@ -252,11 +336,17 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "enum": [
+                    "access",
+                    "erasure",
+                    "objection"
+                  ]
                 }
               }
             },
-            "required": ["rights"]
+            "required": [
+              "rights"
+            ]
           },
           "items": {
             "type": "object",
@@ -265,7 +355,13 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "enum": [
+                    "access",
+                    "rectification",
+                    "erasure",
+                    "portability",
+                    "objection"
+                  ]
                 },
                 "minItems": 1,
                 "uniqueItems": true
@@ -293,10 +389,20 @@
                 }
               }
             },
-            "required": ["rights"],
+            "required": [
+              "rights"
+            ],
             "anyOf": [
-              { "required": ["url"] },
-              { "required": ["email"] }
+              {
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "required": [
+                  "email"
+                ]
+              }
             ],
             "additionalProperties": false
           }
@@ -312,7 +418,9 @@
           "pattern": "^https://"
         }
       },
-      "required": ["channels"],
+      "required": [
+        "channels"
+      ],
       "additionalProperties": false
     },
     "last_updated": {

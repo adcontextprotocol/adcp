@@ -11,7 +11,13 @@
     },
     "objective": {
       "type": "string",
-      "enum": ["awareness", "consideration", "conversion", "retention", "engagement"],
+      "enum": [
+        "awareness",
+        "consideration",
+        "conversion",
+        "retention",
+        "engagement"
+      ],
       "description": "Campaign objective that guides creative tone and call-to-action strategy"
     },
     "tone": {
@@ -104,7 +110,9 @@
                 "description": "How long the disclosure must persist during content playback or display. When omitted, the creative agent should use the most restrictive persistence mode supported by the target format."
               }
             },
-            "required": ["text"],
+            "required": [
+              "text"
+            ],
             "additionalProperties": true
           },
           "minItems": 1
@@ -121,6 +129,8 @@
       "additionalProperties": true
     }
   },
-  "required": ["name"],
+  "required": [
+    "name"
+  ],
   "additionalProperties": true
 }

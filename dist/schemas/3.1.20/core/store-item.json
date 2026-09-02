@@ -30,7 +30,10 @@
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },
-      "required": ["lat", "lng"],
+      "required": [
+        "lat",
+        "lng"
+      ],
       "additionalProperties": false
     },
     "address": {
@@ -82,7 +85,15 @@
       "type": "object",
       "description": "Operating hours. Keys are ISO day names (monday–sunday), values are time ranges.",
       "propertyNames": {
-        "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        "enum": [
+          "monday",
+          "tuesday",
+          "wednesday",
+          "thursday",
+          "friday",
+          "saturday",
+          "sunday"
+        ]
       },
       "additionalProperties": {
         "type": "string",
@@ -101,7 +112,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["store_id", "name", "location"],
+  "required": [
+    "store_id",
+    "name",
+    "location"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -109,7 +124,10 @@
       "data": {
         "store_id": "amsterdam-flagship",
         "name": "Amsterdam Flagship",
-        "location": { "lat": 52.3676, "lng": 4.9041 },
+        "location": {
+          "lat": 52.3676,
+          "lng": 4.9041
+        },
         "address": {
           "street": "Kalverstraat 1",
           "city": "Amsterdam",
@@ -121,13 +139,19 @@
           {
             "catchment_id": "walk",
             "label": "10-min walk",
-            "travel_time": { "value": 10, "unit": "min" },
+            "travel_time": {
+              "value": 10,
+              "unit": "min"
+            },
             "transport_mode": "walking"
           },
           {
             "catchment_id": "drive",
             "label": "15-min drive",
-            "travel_time": { "value": 15, "unit": "min" },
+            "travel_time": {
+              "value": 15,
+              "unit": "min"
+            },
             "transport_mode": "driving"
           }
         ],
@@ -142,7 +166,10 @@
           "saturday": "10:00-18:00",
           "sunday": "12:00-17:00"
         },
-        "tags": ["flagship", "pickup"]
+        "tags": [
+          "flagship",
+          "pickup"
+        ]
       }
     },
     {
@@ -150,7 +177,10 @@
       "data": {
         "store_id": "warehouse-east",
         "name": "East Warehouse Store",
-        "location": { "lat": 52.2942, "lng": 4.9581 },
+        "location": {
+          "lat": 52.2942,
+          "lng": 4.9581
+        },
         "address": {
           "street": "Industrieweg 42",
           "city": "Amstelveen",
@@ -161,10 +191,17 @@
         "catchments": [
           {
             "catchment_id": "local",
-            "radius": { "value": 10, "unit": "km" }
+            "radius": {
+              "value": 10,
+              "unit": "km"
+            }
           }
         ],
-        "tags": ["warehouse", "pickup", "parking"]
+        "tags": [
+          "warehouse",
+          "pickup",
+          "parking"
+        ]
       }
     },
     {
@@ -172,7 +209,10 @@
       "data": {
         "store_id": "brooklyn-heights",
         "name": "Brooklyn Heights",
-        "location": { "lat": 40.6960, "lng": -73.9936 },
+        "location": {
+          "lat": 40.696,
+          "lng": -73.9936
+        },
         "address": {
           "street": "100 Atlantic Ave",
           "city": "Brooklyn",
@@ -186,7 +226,30 @@
             "label": "Primary trade area",
             "geometry": {
               "type": "Polygon",
-              "coordinates": [[[-74.01, 40.68], [-73.97, 40.68], [-73.97, 40.71], [-74.01, 40.71], [-74.01, 40.68]]]
+              "coordinates": [
+                [
+                  [
+                    -74.01,
+                    40.68
+                  ],
+                  [
+                    -73.97,
+                    40.68
+                  ],
+                  [
+                    -73.97,
+                    40.71
+                  ],
+                  [
+                    -74.01,
+                    40.71
+                  ],
+                  [
+                    -74.01,
+                    40.68
+                  ]
+                ]
+              ]
             }
           }
         ]

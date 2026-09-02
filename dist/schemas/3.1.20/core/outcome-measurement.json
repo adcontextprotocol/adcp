@@ -23,7 +23,11 @@
       ]
     },
     "window": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/core/duration.json"
+        }
+      ],
       "description": "Attribution window as a structured duration (e.g., {\"interval\": 30, \"unit\": \"days\"})."
     },
     "reporting": {

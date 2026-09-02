@@ -49,10 +49,21 @@
             "type": "object",
             "description": "Text block (paragraph, heading, etc.)",
             "properties": {
-              "type": { "type": "string", "const": "text" },
+              "type": {
+                "type": "string",
+                "const": "text"
+              },
               "role": {
                 "type": "string",
-                "enum": ["title", "paragraph", "heading", "caption", "quote", "list_item", "description"],
+                "enum": [
+                  "title",
+                  "paragraph",
+                  "heading",
+                  "caption",
+                  "quote",
+                  "list_item",
+                  "description"
+                ],
                 "description": "Role of this text in the document. Use 'title' for the main artifact title, 'description' for summaries."
               },
               "content": {
@@ -62,7 +73,12 @@
               },
               "content_format": {
                 "type": "string",
-                "enum": ["text/plain", "text/markdown", "text/html", "application/json"],
+                "enum": [
+                  "text/plain",
+                  "text/markdown",
+                  "text/html",
+                  "application/json"
+                ],
                 "description": "MIME type indicating how to parse the content field. Default: text/plain.",
                 "default": "text/plain"
               },
@@ -81,13 +97,19 @@
                 "description": "Provenance for this text block, overrides artifact-level provenance"
               }
             },
-            "required": ["type", "content"]
+            "required": [
+              "type",
+              "content"
+            ]
           },
           {
             "type": "object",
             "description": "Image asset",
             "properties": {
-              "type": { "type": "string", "const": "image" },
+              "type": {
+                "type": "string",
+                "const": "image"
+              },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -118,13 +140,19 @@
                 "description": "Provenance for this image, overrides artifact-level provenance"
               }
             },
-            "required": ["type", "url"]
+            "required": [
+              "type",
+              "url"
+            ]
           },
           {
             "type": "object",
             "description": "Video asset",
             "properties": {
-              "type": { "type": "string", "const": "video" },
+              "type": {
+                "type": "string",
+                "const": "video"
+              },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -145,13 +173,23 @@
               },
               "transcript_format": {
                 "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "enum": [
+                  "text/plain",
+                  "text/markdown",
+                  "application/json"
+                ],
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
               "transcript_source": {
                 "type": "string",
-                "enum": ["original_script", "subtitles", "closed_captions", "dub", "generated"],
+                "enum": [
+                  "original_script",
+                  "subtitles",
+                  "closed_captions",
+                  "dub",
+                  "generated"
+                ],
                 "description": "How the transcript was generated"
               },
               "thumbnail_url": {
@@ -164,13 +202,19 @@
                 "description": "Provenance for this video, overrides artifact-level provenance"
               }
             },
-            "required": ["type", "url"]
+            "required": [
+              "type",
+              "url"
+            ]
           },
           {
             "type": "object",
             "description": "Audio asset",
             "properties": {
-              "type": { "type": "string", "const": "audio" },
+              "type": {
+                "type": "string",
+                "const": "audio"
+              },
               "url": {
                 "type": "string",
                 "format": "uri",
@@ -191,13 +235,21 @@
               },
               "transcript_format": {
                 "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "enum": [
+                  "text/plain",
+                  "text/markdown",
+                  "application/json"
+                ],
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
               "transcript_source": {
                 "type": "string",
-                "enum": ["original_script", "closed_captions", "generated"],
+                "enum": [
+                  "original_script",
+                  "closed_captions",
+                  "generated"
+                ],
                 "description": "How the transcript was generated"
               },
               "provenance": {
@@ -205,7 +257,10 @@
                 "description": "Provenance for this audio, overrides artifact-level provenance"
               }
             },
-            "required": ["type", "url"]
+            "required": [
+              "type",
+              "url"
+            ]
           }
         ]
       }
@@ -240,7 +295,9 @@
         "json_ld": {
           "type": "array",
           "description": "JSON-LD structured data (schema.org)",
-          "items": { "type": "object" }
+          "items": {
+            "type": "object"
+          }
         }
       },
       "additionalProperties": true
@@ -278,7 +335,11 @@
       "additionalProperties": true
     }
   },
-  "required": ["property_rid", "artifact_id", "assets"],
+  "required": [
+    "property_rid",
+    "artifact_id",
+    "assets"
+  ],
   "additionalProperties": true,
   "$defs": {
     "asset_access": {
@@ -292,22 +353,34 @@
           "type": "object",
           "description": "Bearer token authentication",
           "properties": {
-            "method": { "type": "string", "const": "bearer_token" },
+            "method": {
+              "type": "string",
+              "const": "bearer_token"
+            },
             "token": {
               "type": "string",
               "description": "OAuth2 bearer token for Authorization header"
             }
           },
-          "required": ["method", "token"]
+          "required": [
+            "method",
+            "token"
+          ]
         },
         {
           "type": "object",
           "description": "Service account authentication (GCP, AWS)",
           "properties": {
-            "method": { "type": "string", "const": "service_account" },
+            "method": {
+              "type": "string",
+              "const": "service_account"
+            },
             "provider": {
               "type": "string",
-              "enum": ["gcp", "aws"],
+              "enum": [
+                "gcp",
+                "aws"
+              ],
               "description": "Cloud provider"
             },
             "credentials": {
@@ -316,15 +389,23 @@
               "additionalProperties": true
             }
           },
-          "required": ["method", "provider"]
+          "required": [
+            "method",
+            "provider"
+          ]
         },
         {
           "type": "object",
           "description": "Pre-signed URL (credentials embedded in URL)",
           "properties": {
-            "method": { "type": "string", "const": "signed_url" }
+            "method": {
+              "type": "string",
+              "const": "signed_url"
+            }
           },
-          "required": ["method"]
+          "required": [
+            "method"
+          ]
         }
       ]
     }

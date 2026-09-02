@@ -29,7 +29,11 @@
           "description": "Signal identifier within the data provider's catalog (e.g., 'likely_ev_buyers', 'income_100k_plus')"
         }
       },
-      "required": ["source", "data_provider_domain", "id"],
+      "required": [
+        "source",
+        "data_provider_domain",
+        "id"
+      ],
       "additionalProperties": true
     },
     {
@@ -52,7 +56,11 @@
           "description": "Signal identifier within the agent's signal set (e.g., 'custom_auto_intenders')"
         }
       },
-      "required": ["source", "agent_url", "id"],
+      "required": [
+        "source",
+        "agent_url",
+        "id"
+      ],
       "additionalProperties": true
     }
   ]

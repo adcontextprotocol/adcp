@@ -37,7 +37,10 @@
       "minimum": 0
     },
     "completion_rate": {
-      "type": ["number", "null"],
+      "type": [
+        "number",
+        "null"
+      ],
       "description": "Completion rate (completed_views/impressions). Null indicates the metric is not applicable to this package/buy (e.g. completion rate on a non-video buy).",
       "minimum": 0,
       "maximum": 1
@@ -146,7 +149,11 @@
       "minimum": 0
     },
     "reach_unit": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/enums/reach-unit.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/enums/reach-unit.json"
+        }
+      ],
       "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
     },
     "reach_window": {
@@ -155,23 +162,44 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["cumulative", "period", "rolling"],
+          "enum": [
+            "cumulative",
+            "period",
+            "rolling"
+          ],
           "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
         },
         "period": {
-          "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/3.1.20/core/duration.json"
+            }
+          ],
           "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
         }
       },
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "allOf": [
         {
           "if": {
-            "properties": { "kind": { "enum": ["period", "rolling"] } },
-            "required": ["kind"]
+            "properties": {
+              "kind": {
+                "enum": [
+                  "period",
+                  "rolling"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
           },
           "then": {
-            "required": ["period"]
+            "required": [
+              "period"
+            ]
           }
         }
       ],
@@ -183,7 +211,10 @@
       "minimum": 0
     },
     "quartile_data": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Audio/video quartile completion data. Null indicates the metric is not applicable to this package/buy (e.g. quartile data on a non-video buy).",
       "properties": {
         "q1_views": {
@@ -414,7 +445,9 @@
     }
   },
   "dependencies": {
-    "reach": ["reach_unit"]
+    "reach": [
+      "reach_unit"
+    ]
   },
   "additionalProperties": true
 }

@@ -7,7 +7,10 @@
   "properties": {
     "kind": {
       "type": "string",
-      "enum": ["publisher_ref", "seller_inline"],
+      "enum": [
+        "publisher_ref",
+        "seller_inline"
+      ],
       "description": "Placement structure discriminator. `publisher_ref` identifies a placement by `{publisher_domain, placement_id}` and resolves public metadata from the named publisher's adagents.json placement declarations; `seller_inline` identifies buyer-facing placement metadata defined inline by the sales agent (still in the named publisher namespace when `publisher_domain` is present, or the seller's own namespace in legacy single-publisher contexts)."
     },
     "placement_id": {
@@ -30,7 +33,10 @@
     },
     "mode": {
       "type": "string",
-      "enum": ["targetable", "included"],
+      "enum": [
+        "targetable",
+        "included"
+      ],
       "description": "Required product-level relationship to this placement. `targetable` means the buyer may reference this placement_id when assigning creatives or otherwise selecting placements within the product. `included` means the placement is part of the product's public delivery composition but the buyer cannot cherry-pick it by placement_id. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit `mode` and treat them as targetable; after that date buyers SHOULD fail closed. Seller-private delivery objects MUST NOT be exposed here; keep those mappings in seller-internal systems."
     },
     "tags": {
@@ -102,10 +108,14 @@
   "$comment": "The anyOf(name OR publisher_domain) is a schema-local proxy for the cross-document invariant: publisher-referenced placements can omit name only because {publisher_domain, placement_id} resolves to an adagents.json placement that supplies the name. Seller-inline placements carry name directly.",
   "anyOf": [
     {
-      "required": ["name"]
+      "required": [
+        "name"
+      ]
     },
     {
-      "required": ["publisher_domain"]
+      "required": [
+        "publisher_domain"
+      ]
     }
   ],
   "allOf": [
@@ -113,33 +123,63 @@
       "$comment": "Public product placements must not leak seller-private delivery mapping fields. Consumers that detect this leak should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT for monitoring.",
       "not": {
         "anyOf": [
-          { "required": ["visibility"] },
-          { "required": ["source"] },
-          { "required": ["origin"] },
-          { "required": ["delivery_mappings"] }
+          {
+            "required": [
+              "visibility"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "origin"
+            ]
+          },
+          {
+            "required": [
+              "delivery_mappings"
+            ]
+          }
         ]
       }
     },
     {
       "if": {
         "properties": {
-          "kind": { "type": "string", "const": "publisher_ref" }
+          "kind": {
+            "type": "string",
+            "const": "publisher_ref"
+          }
         },
-        "required": ["kind"]
+        "required": [
+          "kind"
+        ]
       },
       "then": {
-        "required": ["publisher_domain"]
+        "required": [
+          "publisher_domain"
+        ]
       }
     },
     {
       "if": {
         "properties": {
-          "kind": { "type": "string", "const": "seller_inline" }
+          "kind": {
+            "type": "string",
+            "const": "seller_inline"
+          }
         },
-        "required": ["kind"]
+        "required": [
+          "kind"
+        ]
       },
       "then": {
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
       }
     }
   ],

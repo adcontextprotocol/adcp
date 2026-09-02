@@ -81,7 +81,11 @@
     "status": {
       "type": "string",
       "description": "Provider lifecycle status. Active providers receive requests. Inactive providers are skipped entirely. Draining providers stop receiving new requests but in-flight requests complete normally.",
-      "enum": ["active", "inactive", "draining"],
+      "enum": [
+        "active",
+        "inactive",
+        "draining"
+      ],
       "default": "active"
     }
   },
@@ -90,15 +94,42 @@
     "endpoint"
   ],
   "if": {
-    "properties": { "identity_match": { "const": true } },
-    "required": ["identity_match"]
+    "properties": {
+      "identity_match": {
+        "const": true
+      }
+    },
+    "required": [
+      "identity_match"
+    ]
   },
   "then": {
-    "required": ["countries", "uid_types"]
+    "required": [
+      "countries",
+      "uid_types"
+    ]
   },
   "anyOf": [
-    { "properties": { "context_match": { "const": true } }, "required": ["context_match"] },
-    { "properties": { "identity_match": { "const": true } }, "required": ["identity_match"] }
+    {
+      "properties": {
+        "context_match": {
+          "const": true
+        }
+      },
+      "required": [
+        "context_match"
+      ]
+    },
+    {
+      "properties": {
+        "identity_match": {
+          "const": true
+        }
+      },
+      "required": [
+        "identity_match"
+      ]
+    }
   ],
   "additionalProperties": false
 }

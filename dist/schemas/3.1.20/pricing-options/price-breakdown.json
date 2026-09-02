@@ -58,10 +58,21 @@
             "maxLength": 256
           }
         },
-        "required": ["kind", "name"],
+        "required": [
+          "kind",
+          "name"
+        ],
         "oneOf": [
-          { "required": ["rate"] },
-          { "required": ["amount"] }
+          {
+            "required": [
+              "rate"
+            ]
+          },
+          {
+            "required": [
+              "amount"
+            ]
+          }
         ],
         "additionalProperties": true
       },
@@ -69,6 +80,9 @@
       "maxItems": 20
     }
   },
-  "required": ["list_price", "adjustments"],
+  "required": [
+    "list_price",
+    "adjustments"
+  ],
   "additionalProperties": true
 }

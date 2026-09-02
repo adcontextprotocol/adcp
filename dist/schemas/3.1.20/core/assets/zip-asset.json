@@ -26,7 +26,9 @@
     },
     "allowed_inner_extensions": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "File extensions permitted inside the zip (e.g., ['html', 'css', 'js', 'png', 'jpg', 'svg', 'webp', 'json', 'woff2']). Receivers may reject zips containing other extensions."
     },
     "backup_image_url": {
@@ -80,7 +82,15 @@
         "url": "https://cdn.acme.example/creatives/spring-300x250-html5.zip",
         "max_file_size_kb": 200,
         "entry_point": "index.html",
-        "allowed_inner_extensions": ["html", "css", "js", "png", "jpg", "svg", "json"],
+        "allowed_inner_extensions": [
+          "html",
+          "css",
+          "js",
+          "png",
+          "jpg",
+          "svg",
+          "json"
+        ],
         "backup_image_url": "https://cdn.acme.example/creatives/spring-300x250-backup.jpg",
         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       }

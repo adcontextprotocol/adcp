@@ -4,7 +4,16 @@
   "title": "Forecast Range Unit",
   "description": "Describes how to interpret the points array in a DeliveryForecast — what axis the curve represents",
   "type": "string",
-  "enum": ["spend", "availability", "reach_freq", "weekly", "daily", "clicks", "conversions", "package"],
+  "enum": [
+    "spend",
+    "availability",
+    "reach_freq",
+    "weekly",
+    "daily",
+    "clicks",
+    "conversions",
+    "package"
+  ],
   "enumDescriptions": {
     "spend": "Points at ascending budget levels. Standard budget curve showing how delivery metrics scale with spend. Default when field is omitted.",
     "availability": "Each point represents total available inventory for the requested targeting and dates. Budget is omitted — metrics express what exists, not what a given spend level buys. Use metrics.spend to express the estimated cost. Typical for guaranteed and direct-sold inventory where the forecast is an availability check.",

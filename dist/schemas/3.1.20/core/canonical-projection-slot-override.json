@@ -4,7 +4,10 @@
   "title": "Canonical Projection Slot Override",
   "description": "A single slot override used when projecting a legacy named format to a v2 canonical ProductFormatDeclaration. The override replaces the canonical format's default slot with an asset-group-vocabulary entry.",
   "type": "object",
-  "required": ["asset_group_id", "asset_type"],
+  "required": [
+    "asset_group_id",
+    "asset_type"
+  ],
   "properties": {
     "asset_group_id": {
       "type": "string",

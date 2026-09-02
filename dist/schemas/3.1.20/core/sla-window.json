@@ -9,13 +9,21 @@
       "type": "string",
       "description": "Maximum time from when the buyer issues the action to when the seller acknowledges receipt (mode-appropriate: synchronous response for self_serve, tolerance decision for conditional_self_serve, or queue ack for requires_approval). ISO 8601 duration.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
-      "examples": ["PT5M", "PT4H", "P1D"]
+      "examples": [
+        "PT5M",
+        "PT4H",
+        "P1D"
+      ]
     },
     "completion_max": {
       "type": "string",
       "description": "Maximum time from buyer issuing the action to the seller completing it (mutation applied, proposal finalized, approval resolved). ISO 8601 duration.",
       "pattern": "^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$",
-      "examples": ["PT1H", "PT24H", "P2D"]
+      "examples": [
+        "PT1H",
+        "PT24H",
+        "P2D"
+      ]
     }
   },
   "additionalProperties": false

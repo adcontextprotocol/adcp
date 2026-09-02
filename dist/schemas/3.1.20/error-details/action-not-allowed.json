@@ -22,6 +22,9 @@
       "uniqueItems": true
     }
   },
-  "required": ["attempted_action", "reason"],
+  "required": [
+    "attempted_action",
+    "reason"
+  ],
   "additionalProperties": true
 }

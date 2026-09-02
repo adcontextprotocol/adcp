@@ -49,7 +49,10 @@
             "description": "Package within the media buy this artifact relates to"
           }
         },
-        "required": ["artifact", "delivered_at"]
+        "required": [
+          "artifact",
+          "delivered_at"
+        ]
       }
     },
     "pagination": {
@@ -74,6 +77,12 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["idempotency_key", "media_buy_id", "batch_id", "timestamp", "artifacts"],
+  "required": [
+    "idempotency_key",
+    "media_buy_id",
+    "batch_id",
+    "timestamp",
+    "artifacts"
+  ],
   "additionalProperties": true
 }

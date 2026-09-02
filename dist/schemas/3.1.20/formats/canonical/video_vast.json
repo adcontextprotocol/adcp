@@ -3,18 +3,34 @@
   "$id": "/schemas/3.1.20/formats/canonical/video_vast.json",
   "title": "Canonical Format: VAST Video",
   "description": "VAST-tag-delivered video creative. Slot: `vast_tag` (vast asset, URL or inline XML, VAST 2.x-4.x). Tracking model: VAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `expand`, `collapse`, `fullscreen`, `creativeView`, `clickTracking`, `error`. VPAID interactivity via `vpaid_enabled: true` flag. SIMID extensions for interactive video supported as VAST extensions. Orientation is a parameter (vertical / horizontal / square). Distinct from `video_hosted` (direct file with external tracking).",
-  "allOf": [{ "$ref": "/schemas/3.1.20/formats/canonical/_base.json" }],
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.20/formats/canonical/_base.json"
+    }
+  ],
   "properties": {
     "slots": {
       "default": [
-        { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+        {
+          "asset_group_id": "vast_tag",
+          "asset_type": "vast",
+          "required": true
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": false
+        }
       ],
       "description": "Default slots for video_vast canonical. Buyer ships a VAST tag (URL or inline XML, VAST 2.x-4.x) plus an optional clickthrough URL (which falls back to the VAST `ClickThrough` element when omitted). Tracking events are inherent to VAST and don't require explicit slots."
     },
     "orientation": {
       "type": "string",
-      "enum": ["vertical", "horizontal", "square"]
+      "enum": [
+        "vertical",
+        "horizontal",
+        "square"
+      ]
     },
     "aspect_ratio": {
       "type": "string",
@@ -22,7 +38,13 @@
     },
     "vast_version": {
       "type": "string",
-      "enum": ["2.0", "3.0", "4.0", "4.1", "4.2"],
+      "enum": [
+        "2.0",
+        "3.0",
+        "4.0",
+        "4.1",
+        "4.2"
+      ],
       "description": "Required VAST version."
     },
     "vpaid_enabled": {
@@ -31,7 +53,10 @@
     },
     "vpaid_version": {
       "type": "string",
-      "enum": ["1.0", "2.0"]
+      "enum": [
+        "1.0",
+        "2.0"
+      ]
     },
     "simid_supported": {
       "type": "boolean",
@@ -39,7 +64,10 @@
     },
     "duration_ms_range": {
       "type": "array",
-      "items": { "type": "integer", "minimum": 0 },
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
       "minItems": 2,
       "maxItems": 2,
       "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship. SDKs SHOULD lint a warning when both fields ship."
@@ -49,10 +77,22 @@
       "minimum": 1,
       "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
     },
-    "min_width": { "type": "integer", "minimum": 1 },
-    "max_width": { "type": "integer", "minimum": 1 },
-    "min_height": { "type": "integer", "minimum": 1 },
-    "max_height": { "type": "integer", "minimum": 1 },
+    "min_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "min_height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_height": {
+      "type": "integer",
+      "minimum": 1
+    },
     "linear_required": {
       "type": "boolean",
       "description": "Whether the VAST creative must be linear (non-skippable in-stream)."

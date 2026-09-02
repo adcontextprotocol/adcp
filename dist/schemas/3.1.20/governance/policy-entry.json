@@ -12,7 +12,10 @@
     },
     "source": {
       "type": "string",
-      "enum": ["registry", "inline"],
+      "enum": [
+        "registry",
+        "inline"
+      ],
       "default": "inline",
       "description": "Origin of this policy. 'registry' = published to the shared AdCP policy registry with full regulatory metadata. 'inline' = authored bespoke for a specific standards configuration, plan, or portfolio. Defaults to 'inline'. Governance agents MUST set 'registry' when publishing to the registry. Within AdCP *task* payloads (every `$ref` to this schema in a request or response), the field is always 'inline' — registry entries are served by the policy registry API, not embedded in task traffic. The x-entity annotation on `policy_id` assumes the task-payload invariant; if a future task schema adopts registry-publishing, split the annotation accordingly (see issue #2685)."
     },
@@ -44,7 +47,9 @@
     },
     "jurisdictions": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means the policy is not jurisdiction-specific."
     },
     "region_aliases": {
@@ -52,22 +57,30 @@
       "description": "Named groups of jurisdictions for convenience (e.g., {\"EU\": [\"AT\",\"BE\",\"BG\",...]}). Governance agents expand aliases when matching against a plan's target jurisdictions.",
       "additionalProperties": {
         "type": "array",
-        "items": { "type": "string" }
+        "items": {
+          "type": "string"
+        }
       }
     },
     "policy_categories": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Regulatory categories this policy belongs to (e.g., [\"children_directed\", \"age_restricted\"]). Used for automatic matching against a campaign plan's declared policy_categories. A single policy can belong to multiple categories."
     },
     "channels": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/channels.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/channels.json"
+      },
       "description": "Advertising channels this policy applies to. If omitted or null, the policy applies to all channels."
     },
     "governance_domains": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/governance-domain.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/governance-domain.json"
+      },
       "description": "Governance sub-domains this policy applies to. Determines which types of governance agents can declare registry:{policy_id} features. For example, a policy with domains [\"creative\", \"property\"] can be declared as a feature by both creative and property governance agents."
     },
     "effective_date": {
@@ -104,12 +117,16 @@
       "properties": {
         "pass": {
           "type": "array",
-          "items": { "$ref": "#/$defs/exemplar" },
+          "items": {
+            "$ref": "#/$defs/exemplar"
+          },
           "description": "Scenarios that comply with this policy."
         },
         "fail": {
           "type": "array",
-          "items": { "$ref": "#/$defs/exemplar" },
+          "items": {
+            "$ref": "#/$defs/exemplar"
+          },
           "description": "Scenarios that violate this policy."
         }
       },
@@ -119,7 +136,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["policy_id", "enforcement", "policy"],
+  "required": [
+    "policy_id",
+    "enforcement",
+    "policy"
+  ],
   "additionalProperties": false,
   "$defs": {
     "exemplar": {
@@ -134,7 +155,10 @@
           "description": "Why this scenario passes or fails the policy."
         }
       },
-      "required": ["scenario", "explanation"],
+      "required": [
+        "scenario",
+        "explanation"
+      ],
       "additionalProperties": false
     }
   }

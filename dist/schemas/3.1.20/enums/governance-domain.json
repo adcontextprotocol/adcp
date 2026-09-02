@@ -4,5 +4,10 @@
   "title": "Governance Domain",
   "description": "Governance sub-domains that a registry policy applies to. Used to indicate which types of governance agents can evaluate this policy.",
   "type": "string",
-  "enum": ["campaign", "property", "creative", "content_standards"]
+  "enum": [
+    "campaign",
+    "property",
+    "creative",
+    "content_standards"
+  ]
 }

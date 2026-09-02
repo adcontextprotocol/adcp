@@ -8,7 +8,10 @@
       "type": "object",
       "description": "Maps an individual format asset to a catalog item field via dot-notation path.",
       "properties": {
-        "kind": { "type": "string", "const": "scalar" },
+        "kind": {
+          "type": "string",
+          "const": "scalar"
+        },
         "asset_id": {
           "type": "string",
           "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
@@ -21,14 +24,21 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["kind", "asset_id", "catalog_field"],
+      "required": [
+        "kind",
+        "asset_id",
+        "catalog_field"
+      ],
       "additionalProperties": true
     },
     "AssetPoolBinding": {
       "type": "object",
       "description": "Maps an individual format asset to a typed asset pool on the catalog item (e.g., images_landscape, images_vertical, logo). The format slot receives the first item in the pool.",
       "properties": {
-        "kind": { "type": "string", "const": "asset_pool" },
+        "kind": {
+          "type": "string",
+          "const": "asset_pool"
+        },
         "asset_id": {
           "type": "string",
           "description": "The asset_id from the format's assets array. Identifies which individual template slot this binding applies to."
@@ -41,7 +51,11 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["kind", "asset_id", "asset_group_id"],
+      "required": [
+        "kind",
+        "asset_id",
+        "asset_group_id"
+      ],
       "additionalProperties": true
     }
   },
@@ -49,13 +63,20 @@
     "propertyName": "kind"
   },
   "oneOf": [
-    { "$ref": "#/definitions/ScalarBinding" },
-    { "$ref": "#/definitions/AssetPoolBinding" },
+    {
+      "$ref": "#/definitions/ScalarBinding"
+    },
+    {
+      "$ref": "#/definitions/AssetPoolBinding"
+    },
     {
       "type": "object",
       "description": "A format repeatable_group where each repetition corresponds to one catalog item. Iterates the group over catalog items in catalog item order.",
       "properties": {
-        "kind": { "type": "string", "const": "catalog_group" },
+        "kind": {
+          "type": "string",
+          "const": "catalog_group"
+        },
         "format_group_id": {
           "type": "string",
           "description": "The asset_group_id of a repeatable_group in the format's assets array."
@@ -73,8 +94,12 @@
               "propertyName": "kind"
             },
             "oneOf": [
-              { "$ref": "#/definitions/ScalarBinding" },
-              { "$ref": "#/definitions/AssetPoolBinding" }
+              {
+                "$ref": "#/definitions/ScalarBinding"
+              },
+              {
+                "$ref": "#/definitions/AssetPoolBinding"
+              }
             ]
           },
           "minItems": 1
@@ -83,7 +108,11 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["kind", "format_group_id", "catalog_item"],
+      "required": [
+        "kind",
+        "format_group_id",
+        "catalog_item"
+      ],
       "additionalProperties": true
     }
   ],
@@ -127,9 +156,21 @@
         "format_group_id": "slide",
         "catalog_item": true,
         "per_item_bindings": [
-          { "kind": "scalar",     "asset_id": "title", "catalog_field": "name" },
-          { "kind": "scalar",     "asset_id": "price", "catalog_field": "price.amount" },
-          { "kind": "asset_pool", "asset_id": "image", "asset_group_id": "images_landscape" }
+          {
+            "kind": "scalar",
+            "asset_id": "title",
+            "catalog_field": "name"
+          },
+          {
+            "kind": "scalar",
+            "asset_id": "price",
+            "catalog_field": "price.amount"
+          },
+          {
+            "kind": "asset_pool",
+            "asset_id": "image",
+            "asset_group_id": "images_landscape"
+          }
         ]
       }
     }

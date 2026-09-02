@@ -37,6 +37,8 @@
       "minimum": 1
     }
   },
-  "required": ["selection_group"],
+  "required": [
+    "selection_group"
+  ],
   "additionalProperties": true
 }

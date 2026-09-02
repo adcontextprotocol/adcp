@@ -26,7 +26,9 @@
           "description": "Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google')"
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": true
     },
     "human_oversight": {
@@ -58,7 +60,13 @@
         },
         "role": {
           "type": "string",
-          "enum": ["creator", "advertiser", "agency", "platform", "tool"],
+          "enum": [
+            "creator",
+            "advertiser",
+            "agency",
+            "platform",
+            "tool"
+          ],
           "description": "Role of the declaring party in the supply chain",
           "enumDescriptions": {
             "creator": "The party that created or generated the content",
@@ -69,7 +77,9 @@
           }
         }
       },
-      "required": ["role"],
+      "required": [
+        "role"
+      ],
       "additionalProperties": true
     },
     "declared_at": {
@@ -92,7 +102,9 @@
           "description": "URL to the C2PA manifest store for this content"
         }
       },
-      "required": ["manifest_url"],
+      "required": [
+        "manifest_url"
+      ],
       "additionalProperties": true
     },
     "embedded_provenance": {
@@ -129,7 +141,9 @@
                 "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
               }
             },
-            "required": ["agent_url"],
+            "required": [
+              "agent_url"
+            ],
             "additionalProperties": false
           },
           "embedded_at": {
@@ -138,7 +152,10 @@
             "description": "When the provenance data was embedded (ISO 8601)"
           }
         },
-        "required": ["method", "provider"],
+        "required": [
+          "method",
+          "provider"
+        ],
         "additionalProperties": true
       }
     },
@@ -172,7 +189,9 @@
                 "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
               }
             },
-            "required": ["agent_url"],
+            "required": [
+              "agent_url"
+            ],
             "additionalProperties": false
           },
           "c2pa_action": {
@@ -185,7 +204,10 @@
             "description": "When the watermark was applied (ISO 8601)"
           }
         },
-        "required": ["media_type", "provider"],
+        "required": [
+          "media_type",
+          "provider"
+        ],
         "additionalProperties": true
       }
     },
@@ -249,13 +271,18 @@
                 "additionalProperties": true
               }
             },
-            "required": ["country", "regulation"],
+            "required": [
+              "country",
+              "regulation"
+            ],
             "additionalProperties": true
           },
           "minItems": 1
         }
       },
-      "required": ["required"],
+      "required": [
+        "required"
+      ],
       "additionalProperties": true
     },
     "verification": {
@@ -276,7 +303,12 @@
           },
           "result": {
             "type": "string",
-            "enum": ["authentic", "ai_generated", "ai_modified", "inconclusive"],
+            "enum": [
+              "authentic",
+              "ai_generated",
+              "ai_modified",
+              "inconclusive"
+            ],
             "description": "Verification outcome"
           },
           "confidence": {
@@ -291,7 +323,10 @@
             "description": "URL to the full verification report"
           }
         },
-        "required": ["verified_by", "result"],
+        "required": [
+          "verified_by",
+          "result"
+        ],
         "additionalProperties": true
       }
     },

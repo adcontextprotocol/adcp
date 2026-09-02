@@ -7,7 +7,9 @@
   "properties": {
     "daast_version": {
       "type": "string",
-      "enum": ["1.0"],
+      "enum": [
+        "1.0"
+      ],
       "description": "Required DAAST version. DAAST 1.0 is the current IAB standard."
     }
   },

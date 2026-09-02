@@ -32,6 +32,8 @@
       }
     }
   },
-  "required": ["expected_breaks"],
+  "required": [
+    "expected_breaks"
+  ],
   "additionalProperties": true
 }

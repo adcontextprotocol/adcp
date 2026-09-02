@@ -60,14 +60,30 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["px", "fraction", "inches", "cm", "mm", "pt"],
+          "enum": [
+            "px",
+            "fraction",
+            "inches",
+            "cm",
+            "mm",
+            "pt"
+          ],
           "description": "'px' = absolute pixels from asset top-left. 'fraction' = proportional to asset dimensions (0.0 = edge, 1.0 = opposite edge). 'inches', 'cm', 'mm', 'pt' (1/72 inch) = physical units for print overlays, measured from asset top-left."
         }
       },
-      "required": ["x", "y", "width", "height", "unit"],
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height",
+        "unit"
+      ],
       "additionalProperties": false
     }
   },
-  "required": ["id", "bounds"],
+  "required": [
+    "id",
+    "bounds"
+  ],
   "additionalProperties": false
 }

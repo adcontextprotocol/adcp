@@ -22,8 +22,17 @@
     }
   },
   "anyOf": [
-    { "required": ["mid"] },
-    { "required": ["low", "high"] }
+    {
+      "required": [
+        "mid"
+      ]
+    },
+    {
+      "required": [
+        "low",
+        "high"
+      ]
+    }
   ],
   "additionalProperties": true
 }

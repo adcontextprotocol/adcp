@@ -10,37 +10,63 @@
       "description": "Pool of headline text variants for the surface to choose from.",
       "asset_type": "text",
       "typical_use": "Multiple short headline copy variants (Google PMax/RDA, Meta promoted_offerings, etc.)",
-      "aliases": ["headline", "title", "tagline", "headline_text"]
+      "aliases": [
+        "headline",
+        "title",
+        "tagline",
+        "headline_text"
+      ]
     },
     "long_headlines": {
       "description": "Pool of longer headline text variants (typically 60-90 chars) used by responsive formats that render in placements with more available text space.",
       "asset_type": "text",
       "typical_use": "Google Responsive Display Ads / Performance Max / Demand Gen — render alongside short `headlines` when the placement supports a longer headline string. Distinct from `headlines` (short, ≤30 chars typical).",
-      "aliases": ["long_headline_pool", "extended_headlines"]
+      "aliases": [
+        "long_headline_pool",
+        "extended_headlines"
+      ]
     },
     "descriptions": {
       "description": "Pool of body description text variants.",
       "asset_type": "text",
       "typical_use": "Body-copy variants for surfaces that pick the best combination.",
-      "aliases": ["description", "body", "body_text", "text", "content"]
+      "aliases": [
+        "description",
+        "body",
+        "body_text",
+        "text",
+        "content"
+      ]
     },
     "images_landscape": {
       "description": "Pool of landscape-orientation images (1.91:1 or 16:9 typical).",
       "asset_type": "image",
       "typical_use": "Hero images for landscape-format placements (Meta feed, LinkedIn feed, Google display).",
-      "aliases": ["image", "hero_image", "landscape_image", "banner_image"]
+      "aliases": [
+        "image",
+        "hero_image",
+        "landscape_image",
+        "banner_image"
+      ]
     },
     "images_vertical": {
       "description": "Pool of vertical-orientation images (9:16 typical).",
       "asset_type": "image",
       "typical_use": "Hero images for stories, reels, and other vertical placements (Snap, TikTok, Meta Stories, Pinterest).",
-      "aliases": ["vertical_image", "story_image", "portrait_image"]
+      "aliases": [
+        "vertical_image",
+        "story_image",
+        "portrait_image"
+      ]
     },
     "images_square": {
       "description": "Pool of square-orientation images (1:1).",
       "asset_type": "image",
       "typical_use": "Feed-context images, profile-style placements, square carousel cards.",
-      "aliases": ["square_image", "feed_image"]
+      "aliases": [
+        "square_image",
+        "feed_image"
+      ]
     },
     "logo": {
       "description": "Brand logo asset (typically 1:1 or 2:1). When the logo comes from brand.json, select from `logos[]` using the format slot's `logo_slots` hint, the asset's `logos[].slots[]`, and `visual_guidelines.logo_usage_rules[]`. `asset_group_id: \"logo\"` names the creative manifest slot; logo slots name the renderer-facing placements where a brand logo variant is appropriate.",
@@ -59,13 +85,21 @@
           "logos[].variant"
         ]
       },
-      "aliases": ["brand_logo", "logo_image"]
+      "aliases": [
+        "brand_logo",
+        "logo_image"
+      ]
     },
     "video": {
       "description": "Pool of video assets.",
       "asset_type": "video",
       "typical_use": "Video creative for video placements; orientation determined by platform constraints.",
-      "aliases": ["video_file", "hero_video", "video_asset", "video_main"]
+      "aliases": [
+        "video_file",
+        "hero_video",
+        "video_asset",
+        "video_main"
+      ]
     },
     "video_vertical": {
       "description": "Pool of vertical-orientation video (9:16).",
@@ -81,7 +115,12 @@
       "description": "Audio asset.",
       "asset_type": "audio",
       "typical_use": "Audio ads for streaming, podcasts, broadcast radio.",
-      "aliases": ["audio_file", "hero_audio", "audio_asset", "audio_main"]
+      "aliases": [
+        "audio_file",
+        "hero_audio",
+        "audio_asset",
+        "audio_main"
+      ]
     },
     "companion_image": {
       "description": "Image displayed alongside an audio asset.",
@@ -107,43 +146,67 @@
       "description": "Single headline string rendered verbatim on the creative (no pool / no per-render selection).",
       "asset_type": "text",
       "typical_use": "Native in-feed units, content-recommendation widgets, single-creative display ads where exactly one headline is rendered. IAB OpenRTB Native 1.2 Title Asset (type 1). Distinct from `headlines` (pool of variants for algorithmic surfaces that pick combinations) — `title` is one fixed string the renderer always uses.",
-      "aliases": ["headline"]
+      "aliases": [
+        "headline"
+      ]
     },
     "main_image": {
       "description": "Primary image asset rendered as the visual focal point of the creative.",
       "asset_type": "image",
       "typical_use": "Native in-feed units, content-recommendation widgets (the large thumbnail above the headline), single-image display creative. IAB OpenRTB Native 1.2 Image Asset type 3 (Main). Common sizes: 1200×627 (1.91:1), 1080×1080 (1:1), 1080×1350 (4:5).",
-      "aliases": ["image_main", "hero_image"]
+      "aliases": [
+        "image_main",
+        "hero_image"
+      ]
     },
     "icon": {
       "description": "Small square brand or app icon rendered alongside the main image.",
       "asset_type": "image",
       "typical_use": "App-install native units (app icon), publisher native cards (brand icon), content-recommendation widgets (source publisher icon). IAB OpenRTB Native 1.2 Image Asset type 1 (Icon). Typical size: 80×80 or 100×100, square aspect ratio.",
-      "aliases": ["icon_image", "brand_icon"]
+      "aliases": [
+        "icon_image",
+        "brand_icon"
+      ]
     },
     "advertiser_name": {
       "description": "Plain-text name of the advertiser running the creative (rendered with the unit).",
       "asset_type": "text",
       "typical_use": "Native in-feed units, content-recommendation widgets, sponsored-content cards. Maps to the IAB OpenRTB Native 1.2 `sponsoredBy` field — the renderer pairs this with `sponsored_label` (e.g., '<sponsored_label> by <advertiser_name>'). Required on most native surfaces for transparency.",
-      "aliases": ["sponsor_name", "brand_name_native"]
+      "aliases": [
+        "sponsor_name",
+        "brand_name_native"
+      ]
     },
     "sponsored_label": {
       "description": "Disclosure label that identifies the unit as sponsored / promoted / advertising content (e.g., \"Sponsored\", \"Promoted\", \"Ad\").",
       "asset_type": "text",
       "typical_use": "Native in-feed units, content-recommendation widgets. The renderer pairs this with `advertiser_name` to surface the IAB-required disclosure. Default value typically \"Sponsored\" or \"Ad\"; sellers may localize.",
-      "aliases": ["disclosure_label", "ad_label"]
+      "aliases": [
+        "disclosure_label",
+        "ad_label"
+      ]
     },
     "cards": {
       "description": "Per-item carousel card array.",
       "asset_type": "object",
       "typical_use": "Carousel slides on Meta, TikTok, Pinterest, LinkedIn, Reddit. Each card carries its own image/video, headline, and link.",
-      "aliases": ["carousel_cards", "slides", "carousel_items", "carousel_slides"]
+      "aliases": [
+        "carousel_cards",
+        "slides",
+        "carousel_items",
+        "carousel_slides"
+      ]
     },
     "cta": {
       "description": "Call-to-action button label or text.",
       "asset_type": "text",
       "typical_use": "CTA button on display/video/social ad creative (e.g., \"Shop Now\", \"Learn More\"). Most products narrow to a fixed enum via `cta_values`; this canonical entry names the slot itself.",
-      "aliases": ["cta_text", "call_to_action", "action_text", "button_text"]
+      "aliases": [
+        "cta_text",
+        "call_to_action",
+        "action_text",
+        "button_text"
+      ]
     },
     "price": {
       "description": "Product price slot rendered on the creative — the regular (non-discounted) price.",
@@ -154,7 +217,10 @@
       "description": "Visible URL or domain string shown above/below the headline on native units (does not need to match the click destination).",
       "asset_type": "text",
       "typical_use": "Native in-feed and content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native). IAB OpenRTB Native 1.2 Data Asset type 11. The actual click destination lives on `landing_page_url`; `display_url` is presentation-only.",
-      "aliases": ["visible_url", "displayed_domain"]
+      "aliases": [
+        "visible_url",
+        "displayed_domain"
+      ]
     },
     "rating": {
       "description": "Star or score rating rendered on the creative (e.g., \"4.5/5\", \"4.5 stars\").",
@@ -165,7 +231,11 @@
       "description": "Required legal disclaimer or fine print.",
       "asset_type": "text",
       "typical_use": "Pharma, financial services, alcohol, sweepstakes — non-optional in regulated verticals. Receivers may render at reduced size below the primary creative.",
-      "aliases": ["legal_text", "fine_print", "legal_disclaimer"]
+      "aliases": [
+        "legal_text",
+        "fine_print",
+        "legal_disclaimer"
+      ]
     },
     "phone_number": {
       "description": "Phone number for click-to-call placements (E.164 preferred).",
@@ -186,7 +256,10 @@
       "description": "Sale / discounted price rendered alongside the original `price` slot (e.g., struck-through original + sale price).",
       "asset_type": "text",
       "typical_use": "Retail / e-commerce native showing a discount or promotion. IAB OpenRTB Native 1.2 Data Asset type 7. Pair with `price` (regular price) and optionally `promo_code`.",
-      "aliases": ["sale_price", "discount_price"]
+      "aliases": [
+        "sale_price",
+        "discount_price"
+      ]
     },
     "address": {
       "description": "Physical address rendered on the creative (e.g., for local-business or click-to-visit placements).",
@@ -197,19 +270,31 @@
       "description": "Secondary descriptive copy rendered below the primary `body_text` (extended description).",
       "asset_type": "text",
       "typical_use": "Long-form native units where the renderer accepts a second descriptive paragraph (Yahoo Native long-form, content-recommendation extended cards). IAB OpenRTB Native 1.2 Data Asset type 10 (\"desc2\").",
-      "aliases": ["desc2", "body_text_2", "secondary_description"]
+      "aliases": [
+        "desc2",
+        "body_text_2",
+        "secondary_description"
+      ]
     },
     "promo_code": {
       "description": "Promotional / offer code rendered on the creative.",
       "asset_type": "text",
       "typical_use": "Retail / promo creative carrying a coupon code (e.g., \"SAVE20\"). Distinct from offering metadata; this is the rendered text.",
-      "aliases": ["offer_code", "coupon_code", "discount_code"]
+      "aliases": [
+        "offer_code",
+        "coupon_code",
+        "discount_code"
+      ]
     },
     "subtitle_file": {
       "description": "Subtitle / closed-caption file for video assets.",
       "asset_type": "url",
       "typical_use": "WebVTT or SRT URL paired with a `video` slot. Required by accessibility-strict products; recommended for most video formats.",
-      "aliases": ["caption_file", "captions", "subtitles"]
+      "aliases": [
+        "caption_file",
+        "captions",
+        "subtitles"
+      ]
     },
     "source_catalog": {
       "description": "Catalog asset reference for catalog-driven products.",
@@ -220,13 +305,21 @@
       "description": "Reference to an already-published post that the seller resolves and serves after authorization/review.",
       "asset_type": "published_post",
       "typical_use": "Boosted/sponsored post products on social, creator, or publisher-owned feeds. Use this when the buyer ships an existing post URL or platform post ID instead of uploaded media bytes.",
-      "aliases": ["post", "organic_post", "social_post", "source_post"]
+      "aliases": [
+        "post",
+        "organic_post",
+        "social_post",
+        "source_post"
+      ]
     },
     "hero_asset": {
       "description": "Optional buyer-supplied hero/banner asset alongside a catalog reference.",
       "asset_type": "image",
       "typical_use": "Pinterest Collection, Snap Collection, Amazon SB Product Collection — buyer supplies a hero image; surface composes catalog tiles below it.",
-      "aliases": ["hero_banner", "collection_hero"]
+      "aliases": [
+        "hero_banner",
+        "collection_hero"
+      ]
     },
     "landing_page_url": {
       "description": "Click-through destination URL for the ad.",
@@ -251,13 +344,20 @@
       "description": "Renderer-fired impression tracker URL. Maps to `pixel_tracker` asset on any web-rendered canonical (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus non-VAST events on video_hosted/audio_hosted); maps to `url` asset with `url_type: \"tracker_pixel\"` on VAST/DAAST formats (per the VAST `<Impression>` boundary documented on vast_tracker).",
       "asset_type": "pixel_tracker",
       "typical_use": "Measurement vendor impression pixel that the seller's renderer fires at serve time. For VAST/DAAST formats use the url-asset shape instead.",
-      "aliases": ["imp_tracker", "impression_pixel", "imp_url"]
+      "aliases": [
+        "imp_tracker",
+        "impression_pixel",
+        "imp_url"
+      ]
     },
     "click_tracker": {
       "description": "Renderer-fired click tracker URL on native formats. Distinct from `landing_page_url` (the destination); click_tracker is a measurement hop that fires when the user clicks but doesn't navigate the user there.",
       "asset_type": "pixel_tracker",
       "typical_use": "IAB OpenRTB Native `link.clicktrackers[]` — measurement vendor URLs that fire on click in addition to the landing navigation.",
-      "aliases": ["click_pixel", "click_measurement_url"]
+      "aliases": [
+        "click_pixel",
+        "click_measurement_url"
+      ]
     },
     "viewability_tracker": {
       "description": "Renderer-fired viewability tracker URL (MRC viewable, video-viewable). One per viewability event the buyer's measurement vendor wants to track.",
@@ -268,19 +368,31 @@
       "description": "Verbatim text the seller's production reads, dubs, or transforms into the rendered output.",
       "asset_type": "text",
       "typical_use": "Podcast host-read products (host reads buyer's script verbatim), TTS audio synthesis, video voiceover. Distinct from `creative_brief` (looser talking-points style guidance).",
-      "aliases": ["script_text", "host_script", "voiceover_script"]
+      "aliases": [
+        "script_text",
+        "host_script",
+        "voiceover_script"
+      ]
     },
     "creative_brief": {
       "description": "Talking points, brand context, and creative direction for seller-side or generative production.",
       "asset_type": "brief",
       "typical_use": "Generative AI products (text-to-image, text-to-video), brief-driven podcast host-reads (host has discretion within brief), creative-template platforms. Distinct from `script` (verbatim wording) — `creative_brief` gives the producer creative latitude.",
-      "aliases": ["brief", "creative_direction", "talking_points"]
+      "aliases": [
+        "brief",
+        "creative_direction",
+        "talking_points"
+      ]
     },
     "video_brief": {
       "description": "Structured per-segment generation brief for generative video products.",
       "asset_type": "object",
       "typical_use": "Generative video products (Veo/Sora/Runway-class). Carries `segments[]` where each entry declares order, duration_ms, prompt, optional voiceover and caption. See /schemas/creative/video-brief.json for the typed structure. Distinct from `creative_brief` (free-form text); `video_brief` is the structured timed-prompt form.",
-      "aliases": ["scenes", "storyboard", "shot_brief"]
+      "aliases": [
+        "scenes",
+        "storyboard",
+        "shot_brief"
+      ]
     },
     "voice_id": {
       "description": "Voice selection from a format-defined enum or registered voice catalog.",
@@ -296,7 +408,12 @@
       "description": "Reference asset (image) providing per-creative visual style guidance for generative production. Distinct from brand.json — brand.json carries declarative brand-level style (hex colors, voice descriptions, logo asset, tagline) that's stable across campaigns; `style_reference` carries a per-creative reference image (\"make it look like THIS\") that ships in the manifest. For pure brand-style consistency, the manifest's BrandRef resolving brand.json suffices and `style_reference` isn't needed.",
       "asset_type": "image",
       "typical_use": "Image-to-image variation (MidJourney --sref, Adobe Firefly structure/style reference), style transfer, reusing a hero shot's lighting/composition for new creative. Buyer supplies a reference image; seller's generative pipeline produces output matching the visual style.",
-      "aliases": ["reference_image", "style_image", "inspiration_image", "structure_reference"]
+      "aliases": [
+        "reference_image",
+        "style_image",
+        "inspiration_image",
+        "structure_reference"
+      ]
     },
     "starter_assets": {
       "description": "Pool of reference assets the seller uses as a starting point for transformation or variation.",

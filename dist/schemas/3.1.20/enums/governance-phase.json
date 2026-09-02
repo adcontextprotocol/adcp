@@ -4,5 +4,9 @@
   "title": "Governance Phase",
   "description": "The phase of the governed action's lifecycle that triggered the governance check.",
   "type": "string",
-  "enum": ["purchase", "modification", "delivery"]
+  "enum": [
+    "purchase",
+    "modification",
+    "delivery"
+  ]
 }

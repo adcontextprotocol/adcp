@@ -20,7 +20,15 @@
     "unit": {
       "type": "string",
       "description": "Unit of the value. Free-form to accommodate heterogeneous vendor metrics (e.g., 'score', 'seconds', 'persons', 'gCO2e', 'USD', 'lift_percent', 'index'). When populated inline, SHOULD match the vendor's published unit.",
-      "examples": ["score", "seconds", "persons", "gCO2e", "USD", "lift_percent", "index"]
+      "examples": [
+        "score",
+        "seconds",
+        "persons",
+        "gCO2e",
+        "USD",
+        "lift_percent",
+        "index"
+      ]
     },
     "measurable_impressions": {
       "$ref": "/schemas/3.1.20/core/forecast-range.json",
@@ -32,15 +40,27 @@
       "additionalProperties": true
     }
   },
-  "required": ["vendor", "metric_id", "value"],
+  "required": [
+    "vendor",
+    "metric_id",
+    "value"
+  ],
   "additionalProperties": false,
   "examples": [
     {
-      "vendor": { "domain": "attentionvendor.example" },
+      "vendor": {
+        "domain": "attentionvendor.example"
+      },
       "metric_id": "attention_units",
-      "value": { "low": 3.8, "mid": 4.2, "high": 4.6 },
+      "value": {
+        "low": 3.8,
+        "mid": 4.2,
+        "high": 4.6
+      },
       "unit": "score",
-      "measurable_impressions": { "mid": 800000 }
+      "measurable_impressions": {
+        "mid": 800000
+      }
     }
   ]
 }

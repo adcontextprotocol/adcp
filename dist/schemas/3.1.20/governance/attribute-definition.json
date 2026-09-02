@@ -30,7 +30,9 @@
           },
           "jurisdictions": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "ISO 3166-1 alpha-2 codes where this regulation applies."
           },
           "summary": {
@@ -38,23 +40,32 @@
             "description": "How this regulation defines or restricts the attribute."
           }
         },
-        "required": ["name", "summary"],
+        "required": [
+          "name",
+          "summary"
+        ],
         "additionalProperties": false
       }
     },
     "includes": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Specific data types that fall within this category (e.g., for health_data: 'medical conditions', 'disability status', 'prescription history', 'inferred health from behavioral signals')."
     },
     "excludes": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Data types that might seem related but are explicitly outside this category. Helps with boundary cases."
     },
     "signal_patterns": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Common signal naming or tagging patterns that indicate this attribute (e.g., 'health:', 'condition_', 'diagnosis_'). Data providers and governance agents use these as hints when signals lack explicit restricted_attributes declarations."
     },
     "guidance": {
@@ -62,6 +73,10 @@
       "description": "Implementation notes. Covers edge cases, inferred vs. declared data, and common pitfalls."
     }
   },
-  "required": ["attribute_id", "name", "description"],
+  "required": [
+    "attribute_id",
+    "name",
+    "description"
+  ],
   "additionalProperties": false
 }

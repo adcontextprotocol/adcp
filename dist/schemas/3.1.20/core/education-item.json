@@ -27,12 +27,24 @@
     },
     "degree_type": {
       "type": "string",
-      "enum": ["certificate", "associate", "bachelor", "master", "doctorate", "professional", "bootcamp"],
+      "enum": [
+        "certificate",
+        "associate",
+        "bachelor",
+        "master",
+        "doctorate",
+        "professional",
+        "bootcamp"
+      ],
       "description": "Type of credential awarded."
     },
     "level": {
       "type": "string",
-      "enum": ["beginner", "intermediate", "advanced"],
+      "enum": [
+        "beginner",
+        "intermediate",
+        "advanced"
+      ],
       "description": "Difficulty or prerequisite level."
     },
     "price": {
@@ -54,7 +66,11 @@
     },
     "modality": {
       "type": "string",
-      "enum": ["online", "in_person", "hybrid"],
+      "enum": [
+        "online",
+        "in_person",
+        "hybrid"
+      ],
       "description": "Delivery format."
     },
     "location": {
@@ -91,7 +107,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["program_id", "name", "school"],
+  "required": [
+    "program_id",
+    "name",
+    "school"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -104,14 +124,21 @@
         "subject": "computer-science",
         "degree_type": "master",
         "level": "advanced",
-        "price": { "amount": 2314, "currency": "EUR", "period": "year" },
+        "price": {
+          "amount": 2314,
+          "currency": "EUR",
+          "period": "year"
+        },
         "duration": "2 years",
         "start_date": "2025-09-01",
         "language": "en",
         "modality": "in_person",
         "location": "Amsterdam, NL",
         "url": "https://www.uva.nl/programmes/masters/computer-science",
-        "tags": ["stem", "research"]
+        "tags": [
+          "stem",
+          "research"
+        ]
       }
     },
     {
@@ -124,11 +151,17 @@
         "subject": "marketing",
         "degree_type": "certificate",
         "level": "beginner",
-        "price": { "amount": 499, "currency": "USD" },
+        "price": {
+          "amount": 499,
+          "currency": "USD"
+        },
         "duration": "8 weeks",
         "modality": "online",
         "url": "https://academy.acme.com/digital-marketing",
-        "tags": ["self-paced", "career-change"]
+        "tags": [
+          "self-paced",
+          "career-change"
+        ]
       }
     }
   ]

@@ -31,7 +31,11 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["model", "cpm", "currency"],
+      "required": [
+        "model",
+        "cpm",
+        "currency"
+      ],
       "additionalProperties": true
     },
     {
@@ -63,7 +67,11 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["model", "percent", "currency"],
+      "required": [
+        "model",
+        "percent",
+        "currency"
+      ],
       "additionalProperties": true
     },
     {
@@ -82,7 +90,12 @@
         },
         "period": {
           "type": "string",
-          "enum": ["monthly", "quarterly", "annual", "campaign"],
+          "enum": [
+            "monthly",
+            "quarterly",
+            "annual",
+            "campaign"
+          ],
           "description": "Billing period for the flat fee."
         },
         "currency": {
@@ -94,7 +107,12 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["model", "amount", "period", "currency"],
+      "required": [
+        "model",
+        "amount",
+        "period",
+        "currency"
+      ],
       "additionalProperties": true
     },
     {
@@ -124,7 +142,12 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["model", "unit", "unit_price", "currency"],
+      "required": [
+        "model",
+        "unit",
+        "unit_price",
+        "currency"
+      ],
       "additionalProperties": true
     },
     {
@@ -163,7 +186,11 @@
           "$ref": "/schemas/3.1.20/core/ext.json"
         }
       },
-      "required": ["model", "description", "metadata"],
+      "required": [
+        "model",
+        "description",
+        "metadata"
+      ],
       "additionalProperties": true
     }
   ]

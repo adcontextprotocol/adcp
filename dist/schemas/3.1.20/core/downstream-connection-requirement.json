@@ -11,7 +11,11 @@
     },
     "connection_type": {
       "type": "string",
-      "enum": ["advertiser_account", "publisher_identity", "post_authorization"],
+      "enum": [
+        "advertiser_account",
+        "publisher_identity",
+        "post_authorization"
+      ],
       "description": "Kind of downstream connection required. `advertiser_account` is the platform account used to buy/manage ads. `publisher_identity` is the creator, page, channel, organization, or profile that owns source posts. `post_authorization` is a post-scoped grant when the platform authorizes individual posts instead of, or in addition to, the owning identity."
     },
     "required_for": {
@@ -19,19 +23,38 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "examples": ["list_creatives", "sync_creatives", "create_media_buy", "get_media_buy_delivery", "get_creative_delivery"]
+        "examples": [
+          "list_creatives",
+          "sync_creatives",
+          "create_media_buy",
+          "get_media_buy_delivery",
+          "get_creative_delivery"
+        ]
       },
       "uniqueItems": true,
       "description": "Concrete AdCP protocol operation names that require this downstream connection. Sellers SHOULD include this in product declarations when the requirement is known ahead of time, and in AUTHORIZATION_REQUIRED details when it explains the failed operation. Prefer specific operation names such as `list_creatives`, `sync_creatives`, `create_media_buy`, `get_media_buy_delivery`, or `get_creative_delivery` over broad category labels such as `reporting`."
     },
     "scope": {
       "type": "string",
-      "enum": ["account", "identity", "post", "unknown"],
+      "enum": [
+        "account",
+        "identity",
+        "post",
+        "unknown"
+      ],
       "description": "Granularity of the downstream grant."
     },
     "status": {
       "type": "string",
-      "enum": ["connected", "missing", "pending", "expired", "revoked", "not_required", "unknown"],
+      "enum": [
+        "connected",
+        "missing",
+        "pending",
+        "expired",
+        "revoked",
+        "not_required",
+        "unknown"
+      ],
       "description": "Current seller-observed state for this downstream connection when known. Product declarations MAY omit status or use `unknown`; AUTHORIZATION_REQUIRED details SHOULD use `missing`, `expired`, or `revoked` for the connection that blocked the call."
     },
     "connection_id": {
@@ -86,21 +109,38 @@
       "description": "Expiration time for the downstream grant, when known."
     }
   },
-  "required": ["connection_type"],
+  "required": [
+    "connection_type"
+  ],
   "allOf": [
     {
       "if": {
         "properties": {
           "status": {
-            "enum": ["missing", "pending", "expired", "revoked"]
+            "enum": [
+              "missing",
+              "pending",
+              "expired",
+              "revoked"
+            ]
           }
         },
-        "required": ["status"]
+        "required": [
+          "status"
+        ]
       },
       "then": {
         "anyOf": [
-          { "required": ["provider"] },
-          { "required": ["authorization_url"] }
+          {
+            "required": [
+              "provider"
+            ]
+          },
+          {
+            "required": [
+              "authorization_url"
+            ]
+          }
         ]
       }
     }
@@ -110,14 +150,21 @@
     {
       "provider": "social.example",
       "connection_type": "advertiser_account",
-      "required_for": ["sync_creatives", "create_media_buy"],
+      "required_for": [
+        "sync_creatives",
+        "create_media_buy"
+      ],
       "scope": "account",
       "status": "connected"
     },
     {
       "provider": "social.example",
       "connection_type": "publisher_identity",
-      "required_for": ["list_creatives", "sync_creatives", "create_media_buy"],
+      "required_for": [
+        "list_creatives",
+        "sync_creatives",
+        "create_media_buy"
+      ],
       "scope": "identity",
       "status": "missing",
       "resource_ref": {

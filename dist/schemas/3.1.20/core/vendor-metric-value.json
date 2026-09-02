@@ -20,7 +20,15 @@
     "unit": {
       "type": "string",
       "description": "Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics (e.g., `score`, `seconds`, `persons`, `gCO2e`, `USD`, `lift_percent`). When the value is monetary, use the ISO 4217 code (e.g., `USD`, `EUR`); for non-monetary, use whatever the vendor publishes. Optional on every row — the canonical unit lives at the vendor's measurement-agent metric definition (`brand.json` `agents[type='measurement']`). When sellers populate it inline they SHOULD match the vendor's published unit; buyers MAY resolve from the vendor's measurement agent when this field is absent.",
-      "examples": ["score", "seconds", "persons", "gCO2e", "USD", "lift_percent", "index"]
+      "examples": [
+        "score",
+        "seconds",
+        "persons",
+        "gCO2e",
+        "USD",
+        "lift_percent",
+        "index"
+      ]
     },
     "measurable_impressions": {
       "type": "number",
@@ -34,24 +42,34 @@
       "additionalProperties": true
     }
   },
-  "required": ["vendor", "metric_id", "value"],
+  "required": [
+    "vendor",
+    "metric_id",
+    "value"
+  ],
   "additionalProperties": false,
   "examples": [
     {
-      "vendor": { "domain": "attentionvendor.example" },
+      "vendor": {
+        "domain": "attentionvendor.example"
+      },
       "metric_id": "attention_units",
       "value": 4.2,
       "unit": "score",
       "measurable_impressions": 8000
     },
     {
-      "vendor": { "domain": "emissionsvendor.example" },
+      "vendor": {
+        "domain": "emissionsvendor.example"
+      },
       "metric_id": "gco2e_per_impression",
       "value": 0.85,
       "unit": "gCO2e"
     },
     {
-      "vendor": { "domain": "panelmeasurement.example" },
+      "vendor": {
+        "domain": "panelmeasurement.example"
+      },
       "metric_id": "demographic_reach",
       "value": 1500000,
       "unit": "persons",

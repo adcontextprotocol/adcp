@@ -32,7 +32,11 @@
     },
     "condition": {
       "type": "string",
-      "enum": ["new", "used", "certified_pre_owned"],
+      "enum": [
+        "new",
+        "used",
+        "certified_pre_owned"
+      ],
       "description": "Vehicle condition."
     },
     "vin": {
@@ -54,26 +58,51 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["km", "mi"],
+          "enum": [
+            "km",
+            "mi"
+          ],
           "description": "Distance unit."
         }
       },
-      "required": ["value", "unit"],
+      "required": [
+        "value",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "body_style": {
       "type": "string",
-      "enum": ["sedan", "suv", "truck", "coupe", "convertible", "wagon", "van", "hatchback"],
+      "enum": [
+        "sedan",
+        "suv",
+        "truck",
+        "coupe",
+        "convertible",
+        "wagon",
+        "van",
+        "hatchback"
+      ],
       "description": "Vehicle body style."
     },
     "transmission": {
       "type": "string",
-      "enum": ["automatic", "manual", "cvt"],
+      "enum": [
+        "automatic",
+        "manual",
+        "cvt"
+      ],
       "description": "Transmission type."
     },
     "fuel_type": {
       "type": "string",
-      "enum": ["gasoline", "diesel", "electric", "hybrid", "plug_in_hybrid"],
+      "enum": [
+        "gasoline",
+        "diesel",
+        "electric",
+        "hybrid",
+        "plug_in_hybrid"
+      ],
       "description": "Fuel or powertrain type."
     },
     "exterior_color": {
@@ -101,7 +130,10 @@
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },
-      "required": ["lat", "lng"],
+      "required": [
+        "lat",
+        "lng"
+      ],
       "additionalProperties": false
     },
     "image_url": {
@@ -134,7 +166,13 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["vehicle_id", "title", "make", "model", "year"],
+  "required": [
+    "vehicle_id",
+    "title",
+    "make",
+    "model",
+    "year"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -146,7 +184,10 @@
         "model": "Civic",
         "year": 2024,
         "trim": "EX",
-        "price": { "amount": 28500, "currency": "USD" },
+        "price": {
+          "amount": 28500,
+          "currency": "USD"
+        },
         "condition": "new",
         "body_style": "sedan",
         "transmission": "cvt",
@@ -154,7 +195,9 @@
         "exterior_color": "Lunar Silver Metallic",
         "image_url": "https://images.acmemotors.com/civic-ex-2024.jpg",
         "url": "https://acmemotors.com/inventory/civic-001",
-        "tags": ["new-arrival"]
+        "tags": [
+          "new-arrival"
+        ]
       }
     },
     {
@@ -165,14 +208,23 @@
         "make": "Tesla",
         "model": "Model Y",
         "year": 2022,
-        "price": { "amount": 38900, "currency": "USD" },
+        "price": {
+          "amount": 38900,
+          "currency": "USD"
+        },
         "condition": "used",
         "vin": "5YJYGDEE4NF123456",
-        "mileage": { "value": 28000, "unit": "mi" },
+        "mileage": {
+          "value": 28000,
+          "unit": "mi"
+        },
         "body_style": "suv",
         "fuel_type": "electric",
         "url": "https://acmemotors.com/inventory/my-042",
-        "tags": ["low-mileage", "one-owner"]
+        "tags": [
+          "low-mileage",
+          "one-owner"
+        ]
       }
     }
   ]

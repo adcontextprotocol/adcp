@@ -91,13 +91,18 @@
           "description": "What kind of derivative content this is"
         }
       },
-      "required": ["installment_id", "type"],
+      "required": [
+        "installment_id",
+        "type"
+      ],
       "additionalProperties": false
     },
     "ext": {
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["installment_id"],
+  "required": [
+    "installment_id"
+  ],
   "additionalProperties": true
 }

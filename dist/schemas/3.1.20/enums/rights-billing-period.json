@@ -4,5 +4,12 @@
   "title": "Rights Billing Period",
   "description": "Billing period for brand rights pricing",
   "type": "string",
-  "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "one_time"]
+  "enum": [
+    "daily",
+    "weekly",
+    "monthly",
+    "quarterly",
+    "annual",
+    "one_time"
+  ]
 }

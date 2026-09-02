@@ -7,14 +7,24 @@
   "properties": {
     "role": {
       "type": "string",
-      "enum": ["clickthrough", "landing_page", "impression_tracker", "click_tracker", "viewability_tracker", "third_party_tracker"],
+      "enum": [
+        "clickthrough",
+        "landing_page",
+        "impression_tracker",
+        "click_tracker",
+        "viewability_tracker",
+        "third_party_tracker"
+      ],
       "description": "Purpose this URL slot serves in the format — distinct from `url_type` on the manifest-side asset (which declares the receiver's invocation mechanism). A slot can be `click_tracker` (purpose) and accept a `tracker_pixel` (mechanism) URL, or `clickthrough` (purpose) and accept a `clickthrough` (mechanism) URL. Complements `asset_role` (human-readable label) by providing a machine-readable enum and serves as the receiver's fallback signal when a manifest URL asset omits `url_type`."
     },
     "protocols": {
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["https", "http"]
+        "enum": [
+          "https",
+          "http"
+        ]
       },
       "description": "Allowed URL protocols. HTTPS is recommended for all ad URLs."
     },

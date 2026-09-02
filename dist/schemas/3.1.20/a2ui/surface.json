@@ -31,6 +31,9 @@
       "additionalProperties": true
     }
   },
-  "required": ["surfaceId", "components"],
+  "required": [
+    "surfaceId",
+    "components"
+  ],
   "additionalProperties": true
 }

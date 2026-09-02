@@ -15,19 +15,25 @@
     },
     "countries_all": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "ISO 3166-1 alpha-2 country codes. Standards apply in ALL listed countries (AND logic)."
     },
     "channels_any": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/channels.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/channels.json"
+      },
       "minItems": 1,
       "description": "Advertising channels. Standards apply to ANY of the listed channels (OR logic)."
     },
     "languages_any": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "BCP 47 language tags (e.g., 'en', 'de', 'fr'). Standards apply to content in ANY of these languages (OR logic). Content in unlisted languages is not covered by these standards."
     },
@@ -45,12 +51,16 @@
       "properties": {
         "pass": {
           "type": "array",
-          "items": { "$ref": "/schemas/3.1.20/content-standards/artifact.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/content-standards/artifact.json"
+          },
           "description": "Artifacts that pass the content standards"
         },
         "fail": {
           "type": "array",
-          "items": { "$ref": "/schemas/3.1.20/content-standards/artifact.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/content-standards/artifact.json"
+          },
           "description": "Artifacts that fail the content standards"
         }
       }
@@ -67,5 +77,7 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["standards_id"]
+  "required": [
+    "standards_id"
+  ]
 }

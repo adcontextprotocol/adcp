@@ -15,7 +15,12 @@
     },
     "status": {
       "type": "string",
-      "enum": ["compliant", "non_compliant", "not_covered", "unidentified"],
+      "enum": [
+        "compliant",
+        "non_compliant",
+        "not_covered",
+        "unidentified"
+      ],
       "description": "Validation status: compliant (in list), non_compliant (not in list), not_covered (identifier recognized but no data available), unidentified (identifier type not resolvable by this governance agent)"
     },
     "impressions": {
@@ -72,7 +77,10 @@
             "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
           }
         },
-        "required": ["feature_id", "status"],
+        "required": [
+          "feature_id",
+          "status"
+        ],
         "additionalProperties": false
       }
     },
@@ -84,6 +92,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["identifier", "status", "impressions"],
+  "required": [
+    "identifier",
+    "status",
+    "impressions"
+  ],
   "additionalProperties": false
 }

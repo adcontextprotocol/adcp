@@ -13,7 +13,9 @@
           "x-entity": "account"
         }
       },
-      "required": ["account_id"],
+      "required": [
+        "account_id"
+      ],
       "additionalProperties": false
     },
     {
@@ -34,14 +36,36 @@
           "default": false
         }
       },
-      "required": ["brand", "operator"],
+      "required": [
+        "brand",
+        "operator"
+      ],
       "additionalProperties": false
     }
   ],
   "examples": [
-    { "account_id": "acc_acme_001" },
-    { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com" },
-    { "brand": { "domain": "nova-brands.com", "brand_id": "spark" }, "operator": "pinnacle-media.com" },
-    { "brand": { "domain": "acme-corp.com" }, "operator": "acme-corp.com", "sandbox": true }
+    {
+      "account_id": "acc_acme_001"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com"
+    },
+    {
+      "brand": {
+        "domain": "nova-brands.com",
+        "brand_id": "spark"
+      },
+      "operator": "pinnacle-media.com"
+    },
+    {
+      "brand": {
+        "domain": "acme-corp.com"
+      },
+      "operator": "acme-corp.com",
+      "sandbox": true
+    }
   ]
 }

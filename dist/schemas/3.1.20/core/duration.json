@@ -12,10 +12,19 @@
     },
     "unit": {
       "type": "string",
-      "enum": ["seconds", "minutes", "hours", "days", "campaign"],
+      "enum": [
+        "seconds",
+        "minutes",
+        "hours",
+        "days",
+        "campaign"
+      ],
       "description": "Time unit. 'seconds' for sub-minute precision. 'campaign' spans the full campaign flight."
     }
   },
-  "required": ["interval", "unit"],
+  "required": [
+    "interval",
+    "unit"
+  ],
   "additionalProperties": false
 }

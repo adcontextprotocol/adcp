@@ -4,7 +4,11 @@
   "title": "Forecast Method",
   "description": "Method used to produce a delivery forecast",
   "type": "string",
-  "enum": ["estimate", "modeled", "guaranteed"],
+  "enum": [
+    "estimate",
+    "modeled",
+    "guaranteed"
+  ],
   "enumDescriptions": {
     "estimate": "Rough approximation based on historical averages or heuristics. No delivery commitment.",
     "modeled": "Forecast derived from platform-specific predictive models or historical data. Publisher uses this to set expectations but does not guarantee delivery.",

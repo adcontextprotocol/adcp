@@ -19,6 +19,9 @@
       "description": "URL to this person's brand.json entry. Enables buyer agents to evaluate the talent's brand identity and associations."
     }
   },
-  "required": ["role", "name"],
+  "required": [
+    "role",
+    "name"
+  ],
   "additionalProperties": true
 }

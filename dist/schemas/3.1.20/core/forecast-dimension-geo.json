@@ -32,12 +32,22 @@
       "description": "Human-readable geographic name (e.g., 'United States', 'California', 'New York DMA')."
     }
   },
-  "required": ["kind", "geo_level", "geo_code"],
+  "required": [
+    "kind",
+    "geo_level",
+    "geo_code"
+  ],
   "allOf": [
     {
       "if": {
-        "properties": { "geo_level": { "const": "country" } },
-        "required": ["geo_level"]
+        "properties": {
+          "geo_level": {
+            "const": "country"
+          }
+        },
+        "required": [
+          "geo_level"
+        ]
       },
       "then": {
         "properties": {
@@ -49,16 +59,30 @@
         },
         "not": {
           "anyOf": [
-            { "required": ["system"] },
-            { "required": ["country"] }
+            {
+              "required": [
+                "system"
+              ]
+            },
+            {
+              "required": [
+                "country"
+              ]
+            }
           ]
         }
       }
     },
     {
       "if": {
-        "properties": { "geo_level": { "const": "region" } },
-        "required": ["geo_level"]
+        "properties": {
+          "geo_level": {
+            "const": "region"
+          }
+        },
+        "required": [
+          "geo_level"
+        ]
       },
       "then": {
         "properties": {
@@ -70,42 +94,81 @@
         },
         "not": {
           "anyOf": [
-            { "required": ["system"] },
-            { "required": ["country"] }
+            {
+              "required": [
+                "system"
+              ]
+            },
+            {
+              "required": [
+                "country"
+              ]
+            }
           ]
         }
       }
     },
     {
       "if": {
-        "properties": { "geo_level": { "const": "metro" } },
-        "required": ["geo_level"]
+        "properties": {
+          "geo_level": {
+            "const": "metro"
+          }
+        },
+        "required": [
+          "geo_level"
+        ]
       },
       "then": {
         "properties": {
-          "system": { "$ref": "/schemas/3.1.20/enums/metro-system.json" }
+          "system": {
+            "$ref": "/schemas/3.1.20/enums/metro-system.json"
+          }
         },
-        "required": ["system"],
-        "not": { "required": ["country"] }
+        "required": [
+          "system"
+        ],
+        "not": {
+          "required": [
+            "country"
+          ]
+        }
       }
     },
     {
       "if": {
-        "properties": { "geo_level": { "const": "postal_area" } },
-        "required": ["geo_level"]
+        "properties": {
+          "geo_level": {
+            "const": "postal_area"
+          }
+        },
+        "required": [
+          "geo_level"
+        ]
       },
       "then": {
         "anyOf": [
           {
             "$ref": "/schemas/3.1.20/core/postal-country-system.json",
-            "required": ["country", "system"]
+            "required": [
+              "country",
+              "system"
+            ]
           },
           {
             "properties": {
-              "system": { "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json" }
+              "system": {
+                "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json"
+              }
             },
-            "required": ["system"],
-            "not": { "required": ["country"] }
+            "required": [
+              "system"
+            ],
+            "not": {
+              "required": [
+                "country"
+              ]
+            }
           }
         ]
       }

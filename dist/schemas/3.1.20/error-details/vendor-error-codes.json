@@ -26,17 +26,29 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "description": { "type": "string" },
+                "description": {
+                  "type": "string"
+                },
                 "recovery": {
                   "type": "string",
-                  "enum": ["transient", "correctable", "terminal"]
+                  "enum": [
+                    "transient",
+                    "correctable",
+                    "terminal"
+                  ]
                 }
               },
-              "required": ["description", "recovery"]
+              "required": [
+                "description",
+                "recovery"
+              ]
             }
           }
         },
-        "required": ["name", "codes"]
+        "required": [
+          "name",
+          "codes"
+        ]
       }
     }
   }

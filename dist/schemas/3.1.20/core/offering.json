@@ -90,7 +90,10 @@
                 "minItems": 1
               }
             },
-            "required": ["system", "values"],
+            "required": [
+              "system",
+              "values"
+            ],
             "additionalProperties": true
           },
           "minItems": 1
@@ -124,7 +127,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["offering_id", "name"],
+  "required": [
+    "offering_id",
+    "name"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -137,8 +143,16 @@
         "valid_from": "2025-01-01T00:00:00Z",
         "valid_to": "2025-03-31T23:59:59Z",
         "checkout_url": "https://vendor.example.com/signup",
-        "keywords": ["carbon", "sustainability", "measurement", "emissions"],
-        "categories": ["measurement", "sustainability"]
+        "keywords": [
+          "carbon",
+          "sustainability",
+          "measurement",
+          "emissions"
+        ],
+        "categories": [
+          "measurement",
+          "sustainability"
+        ]
       }
     },
     {
@@ -148,8 +162,16 @@
         "name": "Enterprise DSP Platform",
         "description": "Full-featured demand-side platform for enterprise advertisers",
         "landing_url": "https://thetradedesk.com/enterprise",
-        "keywords": ["dsp", "programmatic", "rtb", "ctv"],
-        "categories": ["programmatic", "dsp"]
+        "keywords": [
+          "dsp",
+          "programmatic",
+          "rtb",
+          "ctv"
+        ],
+        "categories": [
+          "programmatic",
+          "dsp"
+        ]
       }
     },
     {
@@ -160,8 +182,12 @@
         "description": "Full-time head chef position at our Amsterdam location",
         "landing_url": "https://careers.acme.com/vacancies/42",
         "geo_targets": {
-          "countries": ["NL"],
-          "regions": ["NL-NH"]
+          "countries": [
+            "NL"
+          ],
+          "regions": [
+            "NL-NH"
+          ]
         }
       }
     },
@@ -177,23 +203,42 @@
             "asset_group_id": "headlines",
             "asset_type": "text",
             "items": [
-              {"asset_type": "text", "content": "Shop the Summer Sale"},
-              {"asset_type": "text", "content": "50% Off Everything"},
-              {"asset_type": "text", "content": "Summer Savings Event"}
+              {
+                "asset_type": "text",
+                "content": "Shop the Summer Sale"
+              },
+              {
+                "asset_type": "text",
+                "content": "50% Off Everything"
+              },
+              {
+                "asset_type": "text",
+                "content": "Summer Savings Event"
+              }
             ]
           },
           {
             "asset_group_id": "images_landscape",
             "asset_type": "image",
             "items": [
-              {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.com/hero.jpg",
+                "width": 1200,
+                "height": 628
+              }
             ]
           },
           {
             "asset_group_id": "images_square",
             "asset_type": "image",
             "items": [
-              {"asset_type": "image", "url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+              {
+                "asset_type": "image",
+                "url": "https://cdn.acme.com/sq.jpg",
+                "width": 600,
+                "height": 600
+              }
             ]
           }
         ]

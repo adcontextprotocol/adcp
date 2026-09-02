@@ -4,5 +4,10 @@
   "title": "Audio Channel Layout",
   "description": "Audio channel configuration for audio and video assets",
   "type": "string",
-  "enum": ["mono", "stereo", "5.1", "7.1"]
+  "enum": [
+    "mono",
+    "stereo",
+    "5.1",
+    "7.1"
+  ]
 }

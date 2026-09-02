@@ -26,7 +26,11 @@
     },
     "coverage_status": {
       "type": "string",
-      "enum": ["covered", "not_covered", "pending"],
+      "enum": [
+        "covered",
+        "not_covered",
+        "pending"
+      ],
       "description": "Whether this property is covered by this governance agent: covered (has data), not_covered (not measured), pending (measurement in progress)"
     },
     "last_evaluated": {
@@ -38,6 +42,9 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["property", "coverage_status"],
+  "required": [
+    "property",
+    "coverage_status"
+  ],
   "additionalProperties": false
 }

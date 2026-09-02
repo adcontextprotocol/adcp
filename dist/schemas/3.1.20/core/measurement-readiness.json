@@ -36,6 +36,8 @@
       "description": "Seller explanation of the readiness assessment, recommendations for improvement, or context about what the buyer needs to change."
     }
   },
-  "required": ["status"],
+  "required": [
+    "status"
+  ],
   "additionalProperties": true
 }

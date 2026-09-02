@@ -57,10 +57,14 @@
             "const": "watch_milestone"
           }
         },
-        "required": ["event_type"]
+        "required": [
+          "event_type"
+        ]
       },
       "then": {
-        "required": ["custom_data"],
+        "required": [
+          "custom_data"
+        ],
         "properties": {
           "custom_data": {
             "allOf": [
@@ -70,10 +74,14 @@
               {
                 "anyOf": [
                   {
-                    "required": ["progress_percent"]
+                    "required": [
+                      "progress_percent"
+                    ]
                   },
                   {
-                    "required": ["progress_seconds"]
+                    "required": [
+                      "progress_seconds"
+                    ]
                   }
                 ]
               }
@@ -83,6 +91,10 @@
       }
     }
   ],
-  "required": ["event_id", "event_type", "event_time"],
+  "required": [
+    "event_id",
+    "event_type",
+    "event_time"
+  ],
   "additionalProperties": true
 }

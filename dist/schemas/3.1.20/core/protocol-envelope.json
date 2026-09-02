@@ -64,8 +64,16 @@
   "additionalProperties": true,
   "not": {
     "anyOf": [
-      { "required": ["task_status"] },
-      { "required": ["response_status"] }
+      {
+        "required": [
+          "task_status"
+        ]
+      },
+      {
+        "required": [
+          "response_status"
+        ]
+      }
     ]
   },
   "examples": [
@@ -84,7 +92,7 @@
               "description": "Premium connected TV inventory across California",
               "pricing": {
                 "model": "cpm",
-                "amount": 45.0,
+                "amount": 45,
                 "currency": "USD"
               }
             }
@@ -110,7 +118,9 @@
           }
         },
         "payload": {
-          "account": { "account_id": "acct_123" }
+          "account": {
+            "account_id": "acct_123"
+          }
         }
       }
     },

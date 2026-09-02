@@ -24,7 +24,10 @@
           "stage": {
             "type": "string",
             "description": "Stage identifier. Standard values: 'draft' (needs seller processing), 'final' (production-ready).",
-            "examples": ["draft", "final"]
+            "examples": [
+              "draft",
+              "final"
+            ]
           },
           "lead_days": {
             "type": "integer",
@@ -36,7 +39,10 @@
             "description": "What the seller needs at this stage"
           }
         },
-        "required": ["stage", "lead_days"],
+        "required": [
+          "stage",
+          "lead_days"
+        ],
         "additionalProperties": true
       },
       "minItems": 1

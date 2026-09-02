@@ -9,7 +9,10 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["GET", "POST"]
+        "enum": [
+          "GET",
+          "POST"
+        ]
       },
       "description": "Allowed HTTP methods"
     }

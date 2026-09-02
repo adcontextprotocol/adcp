@@ -18,6 +18,9 @@
       "description": "Source of the feature data (e.g., app_store_privacy_label, tcf_string)"
     }
   },
-  "required": ["feature_id", "value"],
+  "required": [
+    "feature_id",
+    "value"
+  ],
   "additionalProperties": false
 }

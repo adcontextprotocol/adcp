@@ -36,7 +36,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["asset_group_id", "asset_type"],
+  "required": [
+    "asset_group_id",
+    "asset_type"
+  ],
   "additionalProperties": true,
   "examples": [
     {

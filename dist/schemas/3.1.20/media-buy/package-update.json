@@ -31,7 +31,9 @@
     "start_time": {
       "type": "string",
       "format": "date-time",
-      "not": { "const": "asap" },
+      "not": {
+        "const": "asap"
+      },
       "description": "Updated flight start date/time for this package in ISO 8601 format. Must fall within the media buy's date range."
     },
     "end_time": {
@@ -93,7 +95,10 @@
             "description": "Per-keyword bid price. Inherits currency and max_bid interpretation from the package's pricing option."
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -113,7 +118,10 @@
             "$ref": "/schemas/3.1.20/enums/match-type.json"
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -133,7 +141,10 @@
             "$ref": "/schemas/3.1.20/enums/match-type.json"
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -153,7 +164,10 @@
             "$ref": "/schemas/3.1.20/enums/match-type.json"
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -186,13 +200,41 @@
   ],
   "not": {
     "anyOf": [
-      { "required": ["product_id"] },
-      { "required": ["format_ids"] },
-      { "required": ["format_option_refs"] },
-      { "required": ["format_kind"] },
-      { "required": ["params"] },
-      { "required": ["capability_ids"] },
-      { "required": ["pricing_option_id"] }
+      {
+        "required": [
+          "product_id"
+        ]
+      },
+      {
+        "required": [
+          "format_ids"
+        ]
+      },
+      {
+        "required": [
+          "format_option_refs"
+        ]
+      },
+      {
+        "required": [
+          "format_kind"
+        ]
+      },
+      {
+        "required": [
+          "params"
+        ]
+      },
+      {
+        "required": [
+          "capability_ids"
+        ]
+      },
+      {
+        "required": [
+          "pricing_option_id"
+        ]
+      }
     ]
   },
   "additionalProperties": true

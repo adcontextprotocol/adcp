@@ -15,7 +15,12 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["percent_remaining", "full_commitment", "fixed_fee", "none"],
+          "enum": [
+            "percent_remaining",
+            "full_commitment",
+            "fixed_fee",
+            "none"
+          ],
           "description": "Fee calculation method. 'percent_remaining': percentage of remaining uncommitted spend. 'full_commitment': buyer owes the full committed budget regardless of delivery. 'fixed_fee': flat monetary amount. 'none': no financial fee (cancellation with notice is free)."
         },
         "rate": {
@@ -30,28 +35,53 @@
           "description": "Fixed fee amount in the buy's currency. Required when type is 'fixed_fee'."
         }
       },
-      "required": ["type"],
+      "required": [
+        "type"
+      ],
       "allOf": [
         {
           "$comment": "rate quantifies a percent_remaining fee; without it the cancellation cost is undefined.",
           "if": {
-            "properties": { "type": { "const": "percent_remaining" } },
-            "required": ["type"]
+            "properties": {
+              "type": {
+                "const": "percent_remaining"
+              }
+            },
+            "required": [
+              "type"
+            ]
           },
-          "then": { "required": ["rate"] }
+          "then": {
+            "required": [
+              "rate"
+            ]
+          }
         },
         {
           "$comment": "amount quantifies a fixed_fee; without it the cancellation cost is undefined.",
           "if": {
-            "properties": { "type": { "const": "fixed_fee" } },
-            "required": ["type"]
+            "properties": {
+              "type": {
+                "const": "fixed_fee"
+              }
+            },
+            "required": [
+              "type"
+            ]
           },
-          "then": { "required": ["amount"] }
+          "then": {
+            "required": [
+              "amount"
+            ]
+          }
         }
       ],
       "additionalProperties": true
     }
   },
-  "required": ["notice_period", "cancellation_fee"],
+  "required": [
+    "notice_period",
+    "cancellation_fee"
+  ],
   "additionalProperties": true
 }

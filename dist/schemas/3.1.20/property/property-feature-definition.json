@@ -19,7 +19,11 @@
     },
     "type": {
       "type": "string",
-      "enum": ["binary", "quantitative", "categorical"],
+      "enum": [
+        "binary",
+        "quantitative",
+        "categorical"
+      ],
       "description": "The type of values this feature produces: binary (true/false), quantitative (numeric range), categorical (enumerated values)"
     },
     "range": {
@@ -35,7 +39,10 @@
           "description": "Maximum value"
         }
       },
-      "required": ["min", "max"],
+      "required": [
+        "min",
+        "max"
+      ],
       "additionalProperties": false
     },
     "allowed_values": {
@@ -79,6 +86,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["feature_id", "name", "type", "methodology_url"],
+  "required": [
+    "feature_id",
+    "name",
+    "type",
+    "methodology_url"
+  ],
   "additionalProperties": false
 }

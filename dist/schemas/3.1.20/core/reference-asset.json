@@ -28,6 +28,9 @@
       "description": "Human-readable description of the asset and how it should inform creative generation"
     }
   },
-  "required": ["url", "role"],
+  "required": [
+    "url",
+    "role"
+  ],
   "additionalProperties": true
 }

@@ -60,7 +60,10 @@
             "minItems": 1
           }
         },
-        "required": ["system", "values"],
+        "required": [
+          "system",
+          "values"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -84,7 +87,10 @@
             "minItems": 1
           }
         },
-        "required": ["system", "values"],
+        "required": [
+          "system",
+          "values"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -191,7 +197,9 @@
           "minItems": 1
         }
       },
-      "required": ["min"],
+      "required": [
+        "min"
+      ],
       "additionalProperties": false
     },
     "device_platform": {
@@ -245,7 +253,9 @@
             "minItems": 1
           }
         },
-        "required": ["catalog_id"],
+        "required": [
+          "catalog_id"
+        ],
         "additionalProperties": true
       },
       "minItems": 1
@@ -285,7 +295,10 @@
                 "$ref": "/schemas/3.1.20/enums/travel-time-unit.json"
               }
             },
-            "required": ["value", "unit"],
+            "required": [
+              "value",
+              "unit"
+            ],
             "additionalProperties": false
           },
           "transport_mode": {
@@ -306,7 +319,10 @@
                 "description": "Distance unit."
               }
             },
-            "required": ["value", "unit"],
+            "required": [
+              "value",
+              "unit"
+            ],
             "additionalProperties": false
           },
           "geometry": {
@@ -315,7 +331,10 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["Polygon", "MultiPolygon"],
+                "enum": [
+                  "Polygon",
+                  "MultiPolygon"
+                ],
                 "description": "GeoJSON geometry type."
               },
               "coordinates": {
@@ -323,7 +342,10 @@
                 "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
               }
             },
-            "required": ["type", "coordinates"],
+            "required": [
+              "type",
+              "coordinates"
+            ],
             "additionalProperties": false
           },
           "ext": {
@@ -332,29 +354,64 @@
         },
         "oneOf": [
           {
-            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "required": [
+              "lat",
+              "lng",
+              "travel_time",
+              "transport_mode"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["radius"] },
-                { "required": ["geometry"] }
+                {
+                  "required": [
+                    "radius"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
               ]
             }
           },
           {
-            "required": ["lat", "lng", "radius"],
+            "required": [
+              "lat",
+              "lng",
+              "radius"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["geometry"] }
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
               ]
             }
           },
           {
-            "required": ["geometry"],
+            "required": [
+              "geometry"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["radius"] }
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "radius"
+                  ]
+                }
               ]
             }
           }
@@ -392,7 +449,10 @@
             "description": "Per-keyword bid price, denominated in the same currency as the package's pricing option. Overrides the package-level bid_price for this keyword. Inherits the max_bid interpretation from the pricing option: when max_bid is true, this is the keyword's bid ceiling; when false, this is the exact bid. If omitted, the package bid_price applies."
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -412,7 +472,10 @@
             "$ref": "/schemas/3.1.20/enums/match-type.json"
           }
         },
-        "required": ["keyword", "match_type"],
+        "required": [
+          "keyword",
+          "match_type"
+        ],
         "additionalProperties": false
       },
       "minItems": 1

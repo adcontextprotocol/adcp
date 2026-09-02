@@ -41,49 +41,97 @@
       "allOf": [
         {
           "if": {
-            "properties": { "geo_level": { "const": "country" } },
-            "required": ["geo_level"]
+            "properties": {
+              "geo_level": {
+                "const": "country"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
-                { "required": ["system"] },
-                { "required": ["country"] }
+                {
+                  "required": [
+                    "system"
+                  ]
+                },
+                {
+                  "required": [
+                    "country"
+                  ]
+                }
               ]
             }
           }
         },
         {
           "if": {
-            "properties": { "geo_level": { "const": "region" } },
-            "required": ["geo_level"]
+            "properties": {
+              "geo_level": {
+                "const": "region"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
           },
           "then": {
             "not": {
               "anyOf": [
-                { "required": ["system"] },
-                { "required": ["country"] }
+                {
+                  "required": [
+                    "system"
+                  ]
+                },
+                {
+                  "required": [
+                    "country"
+                  ]
+                }
               ]
             }
           }
         },
         {
           "if": {
-            "properties": { "geo_level": { "const": "metro" } },
-            "required": ["geo_level"]
+            "properties": {
+              "geo_level": {
+                "const": "metro"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
           },
           "then": {
             "properties": {
-              "system": { "$ref": "/schemas/3.1.20/enums/metro-system.json" }
+              "system": {
+                "$ref": "/schemas/3.1.20/enums/metro-system.json"
+              }
             },
-            "required": ["system"],
-            "not": { "required": ["country"] }
+            "required": [
+              "system"
+            ],
+            "not": {
+              "required": [
+                "country"
+              ]
+            }
           }
         },
         {
           "if": {
-            "properties": { "geo_level": { "const": "postal_area" } },
-            "required": ["geo_level"]
+            "properties": {
+              "geo_level": {
+                "const": "postal_area"
+              }
+            },
+            "required": [
+              "geo_level"
+            ]
           },
           "then": {
             "anyOf": [
@@ -92,10 +140,18 @@
               },
               {
                 "properties": {
-                  "system": { "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json" }
+                  "system": {
+                    "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json"
+                  }
                 },
-                "required": ["system"],
-                "not": { "required": ["country"] }
+                "required": [
+                  "system"
+                ],
+                "not": {
+                  "required": [
+                    "country"
+                  ]
+                }
               }
             ]
           }

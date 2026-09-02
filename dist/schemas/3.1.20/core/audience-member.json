@@ -34,7 +34,10 @@
             "description": "Universal ID value"
           }
         },
-        "required": ["type", "value"],
+        "required": [
+          "type",
+          "value"
+        ],
         "additionalProperties": true
       },
       "minItems": 1
@@ -43,11 +46,25 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["external_id"],
+  "required": [
+    "external_id"
+  ],
   "anyOf": [
-    { "required": ["hashed_email"] },
-    { "required": ["hashed_phone"] },
-    { "required": ["uids"] }
+    {
+      "required": [
+        "hashed_email"
+      ]
+    },
+    {
+      "required": [
+        "hashed_phone"
+      ]
+    },
+    {
+      "required": [
+        "uids"
+      ]
+    }
   ],
   "additionalProperties": true
 }

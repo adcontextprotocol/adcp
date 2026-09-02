@@ -14,6 +14,8 @@
       }
     }
   },
-  "required": ["supported_metrics"],
+  "required": [
+    "supported_metrics"
+  ],
   "additionalProperties": true
 }

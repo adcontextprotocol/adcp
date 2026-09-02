@@ -23,10 +23,14 @@
       "patternProperties": {
         "^[a-z0-9_]+$": {
           "oneOf": [
-            { "$ref": "/schemas/3.1.20/core/assets/asset-union.json" },
+            {
+              "$ref": "/schemas/3.1.20/core/assets/asset-union.json"
+            },
             {
               "type": "array",
-              "items": { "$ref": "/schemas/3.1.20/core/assets/asset-union.json" },
+              "items": {
+                "$ref": "/schemas/3.1.20/core/assets/asset-union.json"
+              },
               "minItems": 1
             }
           ]
@@ -66,22 +70,42 @@
   ],
   "not": {
     "anyOf": [
-      { "required": ["capability_id"] },
-      { "required": ["capability_ref"] }
+      {
+        "required": [
+          "capability_id"
+        ]
+      },
+      {
+        "required": [
+          "capability_ref"
+        ]
+      }
     ]
   },
   "oneOf": [
     {
       "title": "Legacy manifest (named-format reference)",
       "description": "Manifest references a named format via the structured `format_id` object. The legacy named-format path remains supported through 4.x.",
-      "required": ["format_id"],
-      "not": { "required": ["format_kind"] }
+      "required": [
+        "format_id"
+      ],
+      "not": {
+        "required": [
+          "format_kind"
+        ]
+      }
     },
     {
       "title": "3.1+ manifest (canonical format kind)",
       "description": "Manifest declares which canonical format it targets via `format_kind` (e.g., `image`). This 3.1+ canonical-format path was introduced by RFC #3305.",
-      "required": ["format_kind"],
-      "not": { "required": ["format_id"] }
+      "required": [
+        "format_kind"
+      ],
+      "not": {
+        "required": [
+          "format_id"
+        ]
+      }
     }
   ],
   "additionalProperties": true

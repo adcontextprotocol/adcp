@@ -8,7 +8,10 @@
     "stage": {
       "type": "string",
       "description": "Submission stage identifier. Use 'draft' for materials that need seller processing and 'final' for production-ready assets. Sellers may define additional stages.",
-      "examples": ["draft", "final"]
+      "examples": [
+        "draft",
+        "final"
+      ]
     },
     "due_at": {
       "type": "string",
@@ -20,6 +23,9 @@
       "description": "What the seller needs at this stage (e.g., 'Talking points and brand guidelines', 'Press-ready PDF with bleed')"
     }
   },
-  "required": ["stage", "due_at"],
+  "required": [
+    "stage",
+    "due_at"
+  ],
   "additionalProperties": true
 }

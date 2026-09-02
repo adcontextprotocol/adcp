@@ -30,10 +30,21 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["value_type", "value"],
+      "required": [
+        "value_type",
+        "value"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -64,10 +75,21 @@
           "minItems": 1
         }
       },
-      "required": ["value_type", "values"],
+      "required": [
+        "value_type",
+        "values"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -98,10 +120,20 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided. Should be <= signal's range.max if defined."
         }
       },
-      "required": ["value_type"],
+      "required": [
+        "value_type"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     }

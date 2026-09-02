@@ -63,6 +63,9 @@
       "description": "Number of collections in the resolved list (at time of last resolution)"
     }
   },
-  "required": ["list_id", "name"],
+  "required": [
+    "list_id",
+    "name"
+  ],
   "additionalProperties": false
 }

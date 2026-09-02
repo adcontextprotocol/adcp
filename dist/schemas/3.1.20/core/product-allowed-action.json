@@ -36,6 +36,9 @@
       "description": "Optional pointer into buy-terms negotiation (forward-references the buy-terms namespace landing via separate RFC). When present, the named term governs cancellation policy, makegoods, or other commercial remedies tied to this action. Schema accepts any string for now and will tighten to a structured reference when the buy-terms RFC ships."
     }
   },
-  "required": ["action", "modes"],
+  "required": [
+    "action",
+    "modes"
+  ],
   "additionalProperties": false
 }

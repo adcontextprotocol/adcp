@@ -31,8 +31,13 @@
       "type": "array",
       "items": {
         "anyOf": [
-          { "$ref": "/schemas/3.1.20/enums/universal-macro.json" },
-          { "type": "string", "description": "Custom or publisher-specific macro name" }
+          {
+            "$ref": "/schemas/3.1.20/enums/universal-macro.json"
+          },
+          {
+            "type": "string",
+            "description": "Custom or publisher-specific macro name"
+          }
         ]
       },
       "description": "Universal macros that can be passed to webhook (e.g., DEVICE_TYPE, COUNTRY). See docs/creative/universal-macros.mdx for full list."
@@ -41,8 +46,13 @@
       "type": "array",
       "items": {
         "anyOf": [
-          { "$ref": "/schemas/3.1.20/enums/universal-macro.json" },
-          { "type": "string", "description": "Custom or publisher-specific macro name" }
+          {
+            "$ref": "/schemas/3.1.20/enums/universal-macro.json"
+          },
+          {
+            "type": "string",
+            "description": "Custom or publisher-specific macro name"
+          }
         ]
       },
       "description": "Universal macros that must be provided for webhook to function"

@@ -9,7 +9,11 @@
       "type": "string",
       "maxLength": 128,
       "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
-      "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
+      "examples": [
+        "Primetime",
+        "Morning Drive",
+        "Large Format Transit"
+      ]
     },
     "budget": {
       "type": "number",
@@ -29,30 +33,70 @@
       "type": "object",
       "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
       "properties": {
-        "audience_size": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "reach": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "frequency": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "impressions": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "clicks": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "spend": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "views": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "completed_views": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "grps": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "engagements": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "follows": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "saves": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "profile_visits": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "measured_impressions": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "downloads": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
-        "plays": { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
+        "audience_size": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "reach": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "frequency": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "impressions": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "clicks": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "spend": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "views": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "completed_views": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "grps": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "engagements": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "follows": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "saves": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "profile_visits": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "measured_impressions": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "downloads": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
+        "plays": {
+          "$ref": "/schemas/3.1.20/core/forecast-range.json"
+        },
         "coverage_rate": {
           "allOf": [
-            { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
+            {
+              "$ref": "/schemas/3.1.20/core/forecast-range.json"
+            },
             {
               "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
+                "low": {
+                  "maximum": 1
+                },
+                "mid": {
+                  "maximum": 1
+                },
+                "high": {
+                  "maximum": 1
+                }
               }
             }
           ],
@@ -81,12 +125,20 @@
         },
         "viewable_rate": {
           "allOf": [
-            { "$ref": "/schemas/3.1.20/core/forecast-range.json" },
+            {
+              "$ref": "/schemas/3.1.20/core/forecast-range.json"
+            },
             {
               "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
+                "low": {
+                  "maximum": 1
+                },
+                "mid": {
+                  "maximum": 1
+                },
+                "high": {
+                  "maximum": 1
+                }
               }
             }
           ],
@@ -103,13 +155,37 @@
       },
       "additionalProperties": true,
       "anyOf": [
-        { "not": { "anyOf": [
-          { "required": ["measurable_impressions"] },
-          { "required": ["viewable_impressions"] },
-          { "required": ["viewable_rate"] },
-          { "required": ["viewed_seconds"] }
-        ] } },
-        { "required": ["standard"] }
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "measurable_impressions"
+                ]
+              },
+              {
+                "required": [
+                  "viewable_impressions"
+                ]
+              },
+              {
+                "required": [
+                  "viewable_rate"
+                ]
+              },
+              {
+                "required": [
+                  "viewed_seconds"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "standard"
+          ]
+        }
       ]
     },
     "vendor_metric_values": {
@@ -120,6 +196,8 @@
       }
     }
   },
-  "required": ["metrics"],
+  "required": [
+    "metrics"
+  ],
   "additionalProperties": true
 }

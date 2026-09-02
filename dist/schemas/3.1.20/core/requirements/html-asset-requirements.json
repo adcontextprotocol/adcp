@@ -12,7 +12,12 @@
     },
     "sandbox": {
       "type": "string",
-      "enum": ["none", "iframe", "safeframe", "fencedframe"],
+      "enum": [
+        "none",
+        "iframe",
+        "safeframe",
+        "fencedframe"
+      ],
       "default": "none",
       "description": "Sandbox environment the HTML must be compatible with. 'none' = direct DOM access, 'iframe' = standard iframe isolation, 'safeframe' = IAB SafeFrame container, 'fencedframe' = Privacy Sandbox fenced frame"
     },

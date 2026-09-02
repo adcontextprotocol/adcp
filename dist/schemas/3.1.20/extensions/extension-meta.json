@@ -48,12 +48,22 @@
     },
     "required": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Required properties within the extension data"
     },
     "additionalProperties": {
       "description": "Whether additional properties are allowed in the extension data"
     }
   },
-  "required": ["$schema", "$id", "title", "description", "valid_from", "type", "properties"]
+  "required": [
+    "$schema",
+    "$id",
+    "title",
+    "description",
+    "valid_from",
+    "type",
+    "properties"
+  ]
 }

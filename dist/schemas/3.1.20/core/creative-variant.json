@@ -39,7 +39,10 @@
                   "description": "Artifact identifier within the property"
                 }
               },
-              "required": ["property_id", "artifact_id"],
+              "required": [
+                "property_id",
+                "artifact_id"
+              ],
               "additionalProperties": false
             },
             "ext": {

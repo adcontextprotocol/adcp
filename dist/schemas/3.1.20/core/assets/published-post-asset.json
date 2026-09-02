@@ -55,7 +55,14 @@
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["authorized", "pending", "expired", "revoked", "not_required", "unknown"],
+          "enum": [
+            "authorized",
+            "pending",
+            "expired",
+            "revoked",
+            "not_required",
+            "unknown"
+          ],
           "description": "Current seller-observed authorization state. `authorized`: seller can serve the referenced post. `pending`: additional creator/account action is required. `expired` or `revoked`: authorization previously existed but no longer permits serving. `not_required`: the seller can legally and technically serve without a separate identity authorization. `unknown`: seller has not checked or cannot disclose the state."
         },
         "checked_at": {
@@ -78,7 +85,9 @@
           "description": "Human-readable instructions for completing or restoring authorization."
         }
       },
-      "required": ["status"],
+      "required": [
+        "status"
+      ],
       "additionalProperties": true
     },
     "provenance": {
@@ -90,8 +99,16 @@
     "asset_type"
   ],
   "anyOf": [
-    { "required": ["post_url"] },
-    { "required": ["platform_post_id"] }
+    {
+      "required": [
+        "post_url"
+      ]
+    },
+    {
+      "required": [
+        "platform_post_id"
+      ]
+    }
   ],
   "additionalProperties": true
 }

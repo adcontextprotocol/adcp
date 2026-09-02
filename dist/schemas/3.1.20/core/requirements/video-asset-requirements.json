@@ -44,7 +44,13 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["mp4", "webm", "mov", "avi", "mkv"]
+        "enum": [
+          "mp4",
+          "webm",
+          "mov",
+          "avi",
+          "mkv"
+        ]
       },
       "description": "Accepted video container formats"
     },
@@ -52,7 +58,14 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["h264", "h265", "vp8", "vp9", "av1", "prores"]
+        "enum": [
+          "h264",
+          "h265",
+          "vp8",
+          "vp9",
+          "av1",
+          "prores"
+        ]
       },
       "description": "Accepted video codecs"
     },
@@ -113,7 +126,16 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["aac", "pcm", "ac3", "eac3", "mp3", "opus", "vorbis", "flac"]
+        "enum": [
+          "aac",
+          "pcm",
+          "ac3",
+          "eac3",
+          "mp3",
+          "opus",
+          "vorbis",
+          "flac"
+        ]
       },
       "description": "Accepted audio codecs (e.g., ['aac', 'pcm', 'ac3'])"
     },

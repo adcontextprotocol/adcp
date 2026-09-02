@@ -6,7 +6,11 @@
   "type": "object",
   "properties": {
     "suppress": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/core/duration.json"
+        }
+      ],
       "description": "Cooldown period between consecutive exposures to the same entity. Prevents back-to-back ad delivery (e.g. {\"interval\": 60, \"unit\": \"minutes\"} for a 1-hour cooldown). Preferred over suppress_minutes."
     },
     "suppress_minutes": {
@@ -20,23 +24,50 @@
       "minimum": 1
     },
     "per": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/enums/reach-unit.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/enums/reach-unit.json"
+        }
+      ],
       "description": "Entity granularity for impression counting. Required when max_impressions is set."
     },
     "window": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/core/duration.json"
+        }
+      ],
       "description": "Time window for the max_impressions cap (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Required when max_impressions is set."
     }
   },
   "anyOf": [
-    { "required": ["suppress"] },
-    { "required": ["suppress_minutes"] },
-    { "required": ["max_impressions"] }
+    {
+      "required": [
+        "suppress"
+      ]
+    },
+    {
+      "required": [
+        "suppress_minutes"
+      ]
+    },
+    {
+      "required": [
+        "max_impressions"
+      ]
+    }
   ],
   "dependencies": {
-    "max_impressions": ["per", "window"],
-    "per": ["max_impressions"],
-    "window": ["max_impressions"]
+    "max_impressions": [
+      "per",
+      "window"
+    ],
+    "per": [
+      "max_impressions"
+    ],
+    "window": [
+      "max_impressions"
+    ]
   },
   "additionalProperties": true
 }

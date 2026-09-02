@@ -23,8 +23,16 @@
       "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
       "items": {
         "allOf": [
-          { "$ref": "/schemas/3.1.20/core/publisher-property-selector.json" },
-          { "not": { "required": ["publisher_domains"] } }
+          {
+            "$ref": "/schemas/3.1.20/core/publisher-property-selector.json"
+          },
+          {
+            "not": {
+              "required": [
+                "publisher_domains"
+              ]
+            }
+          }
         ]
       },
       "minItems": 1
@@ -232,7 +240,19 @@
           "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — declare vendor-attested attention/quality metrics via `vendor_metric_optimization.supported_metrics[]` with an explicit vendor binding instead. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind.",
           "items": {
             "type": "string",
-            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+            "enum": [
+              "clicks",
+              "views",
+              "completed_views",
+              "viewed_seconds",
+              "attention_seconds",
+              "attention_score",
+              "engagements",
+              "follows",
+              "saves",
+              "profile_visits",
+              "reach"
+            ]
           },
           "minItems": 1
         },
@@ -257,11 +277,16 @@
           "description": "Target kinds available for metric goals on this product. Values match target.kind on the optimization goal. Only these target kinds are accepted — goals with unlisted target kinds will be rejected. When omitted, buyers can set target-less metric goals (maximize volume within budget) but cannot set specific targets.",
           "items": {
             "type": "string",
-            "enum": ["cost_per", "threshold_rate"]
+            "enum": [
+              "cost_per",
+              "threshold_rate"
+            ]
           }
         }
       },
-      "required": ["supported_metrics"],
+      "required": [
+        "supported_metrics"
+      ],
       "additionalProperties": true
     },
     "vendor_metric_optimization": {
@@ -339,7 +364,9 @@
           "minimum": 0
         }
       },
-      "required": ["submitted_count"]
+      "required": [
+        "submitted_count"
+      ]
     },
     "brief_relevance": {
       "type": "string",
@@ -392,7 +419,9 @@
         "carousel_images": {
           "type": "array",
           "description": "Additional images for a swipeable carousel below the hero.",
-          "items": { "$ref": "/schemas/3.1.20/core/assets/image-asset.json" }
+          "items": {
+            "$ref": "/schemas/3.1.20/core/assets/image-asset.json"
+          }
         },
         "title": {
           "type": "string",
@@ -407,10 +436,19 @@
           "description": "Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration: 30s'). Each item is a labeled fact about the product.",
           "items": {
             "type": "object",
-            "required": ["label", "value"],
+            "required": [
+              "label",
+              "value"
+            ],
             "properties": {
-              "label": { "type": "string", "maxLength": 60 },
-              "value": { "type": "string", "maxLength": 200 }
+              "label": {
+                "type": "string",
+                "maxLength": 60
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 200
+              }
             },
             "additionalProperties": true
           }
@@ -474,7 +512,9 @@
             "$ref": "/schemas/3.1.20/enums/response-type.json"
           },
           "minItems": 1,
-          "default": ["activation"]
+          "default": [
+            "activation"
+          ]
         },
         "dynamic_brands": {
           "type": "boolean",
@@ -520,20 +560,34 @@
                 "minItems": 1
               }
             },
-            "required": ["agent_url"],
+            "required": [
+              "agent_url"
+            ],
             "if": {
-              "properties": { "identity_match": { "const": true } },
-              "required": ["identity_match"]
+              "properties": {
+                "identity_match": {
+                  "const": true
+                }
+              },
+              "required": [
+                "identity_match"
+              ]
             },
             "then": {
-              "required": ["agent_url", "countries", "uid_types"]
+              "required": [
+                "agent_url",
+                "countries",
+                "uid_types"
+              ]
             },
             "additionalProperties": true
           },
           "minItems": 1
         }
       },
-      "required": ["context_match"],
+      "required": [
+        "context_match"
+      ],
       "additionalProperties": true
     },
     "material_submission": {
@@ -581,8 +635,16 @@
       "description": "Products with package-level signal targeting options or rules MUST declare the signal targeting surface explicitly.",
       "if": {
         "anyOf": [
-          { "required": ["signal_targeting_options"] },
-          { "required": ["signal_targeting_rules"] }
+          {
+            "required": [
+              "signal_targeting_options"
+            ]
+          },
+          {
+            "required": [
+              "signal_targeting_rules"
+            ]
+          }
         ]
       },
       "then": {
@@ -591,7 +653,9 @@
             "const": true
           }
         },
-        "required": ["signal_targeting_allowed"]
+        "required": [
+          "signal_targeting_allowed"
+        ]
       }
     }
   ],
@@ -599,12 +663,16 @@
     {
       "title": "Legacy Product (named-format reference)",
       "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). This is the legacy named-format path; it remains supported through 4.x.",
-      "required": ["format_ids"]
+      "required": [
+        "format_ids"
+      ]
     },
     {
       "title": "3.1+ Product (format-option declarations)",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. This is the 3.1+ format-option path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
-      "required": ["format_options"]
+      "required": [
+        "format_options"
+      ]
     }
   ],
   "additionalProperties": true

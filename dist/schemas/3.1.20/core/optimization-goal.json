@@ -11,14 +11,33 @@
       "type": "object",
       "description": "Optimize for a seller-tracked delivery metric. No event source required — the seller tracks these natively.",
       "properties": {
-        "kind": { "type": "string", "const": "metric" },
+        "kind": {
+          "type": "string",
+          "const": "metric"
+        },
         "metric": {
           "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
+          "enum": [
+            "clicks",
+            "views",
+            "completed_views",
+            "viewed_seconds",
+            "attention_seconds",
+            "attention_score",
+            "engagements",
+            "follows",
+            "saves",
+            "profile_visits",
+            "reach"
+          ],
           "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression — reported back via `delivery-metrics.viewability.viewed_seconds`, governed by the viewability `standard`). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel follows, or free channel/feed subscribes; paid subscriptions use event_type: subscribe), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks'). **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — these have no industry-graduated definition (DoubleVerify, IAS, Adelaide, TVision, Lumen each define them differently) and cannot be meaningfully optimized for without a vendor binding. Use `kind: 'vendor_metric'` with an explicit `vendor` and `metric_id` instead — that path binds the goal to a specific measurement vendor and reconciles to the same `(vendor, metric_id)` key in delivery's `vendor_metric_values[]`. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind."
         },
         "reach_unit": {
-          "allOf": [{ "$ref": "/schemas/3.1.20/enums/reach-unit.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/3.1.20/enums/reach-unit.json"
+            }
+          ],
           "description": "Unit for reach measurement. Required when metric is 'reach'. Must be a value declared in the product's metric_optimization.supported_reach_units."
         },
         "target_frequency": {
@@ -36,14 +55,28 @@
               "description": "Frequency at which an entity is considered saturated within the window. Impressions toward entities at or above this threshold are treated as lower-value. When both min and max are present, max must be greater than or equal to min. When omitted, the seller determines the saturation point."
             },
             "window": {
-              "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+              "allOf": [
+                {
+                  "$ref": "/schemas/3.1.20/core/duration.json"
+                }
+              ],
               "description": "Time window over which frequency is measured (e.g. {\"interval\": 7, \"unit\": \"days\"} or {\"interval\": 1, \"unit\": \"campaign\"} for the full flight). Weekly windows are typical for brand campaigns; daily windows suit high-cadence direct response."
             }
           },
-          "required": ["window"],
+          "required": [
+            "window"
+          ],
           "anyOf": [
-            { "required": ["min"] },
-            { "required": ["max"] }
+            {
+              "required": [
+                "min"
+              ]
+            },
+            {
+              "required": [
+                "max"
+              ]
+            }
           ],
           "additionalProperties": true
         },
@@ -62,20 +95,40 @@
               "type": "object",
               "description": "Target cost per unit of the metric (e.g., cost per click, cost per completed view).",
               "properties": {
-                "kind": { "type": "string", "const": "cost_per" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency" }
+                "kind": {
+                  "type": "string",
+                  "const": "cost_per"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Target cost per metric unit in the buy currency"
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             },
             {
               "type": "object",
               "description": "Minimum per-impression rate for this metric. The metric defines the units: proportions for count metrics (e.g., 0.001 for 0.1% CTR, 0.70 for 70% viewability), seconds for duration metrics (e.g., 3.0 for 3s in view), or score for score metrics.",
               "properties": {
-                "kind": { "type": "string", "const": "threshold_rate" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views), seconds (viewed_seconds, attention_seconds), or score (attention_score)." }
+                "kind": {
+                  "type": "string",
+                  "const": "threshold_rate"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Minimum per-impression value. Units depend on the metric: proportion (clicks, views, completed_views), seconds (viewed_seconds, attention_seconds), or score (attention_score)."
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             }
           ]
@@ -86,14 +139,20 @@
           "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
         }
       },
-      "required": ["kind", "metric"],
+      "required": [
+        "kind",
+        "metric"
+      ],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Optimize for advertiser-tracked conversion events. Requires event sources registered via sync_event_sources.",
       "properties": {
-        "kind": { "type": "string", "const": "event" },
+        "kind": {
+          "type": "string",
+          "const": "event"
+        },
         "event_sources": {
           "type": "array",
           "description": "Event source and type pairs that feed this goal. Each entry identifies a source and event type to include. When the seller supports multi_source_event_dedup (declared in get_adcp_capabilities), they deduplicate by event_id across all entries — the same business event from multiple sources counts once, using value_field and value_factor from the first matching entry. When multi_source_event_dedup is false or absent, buyers should use a single entry per goal; the seller will use only the first entry. All event sources must be configured via sync_event_sources.",
@@ -123,7 +182,10 @@
                 "description": "Multiplier the seller must apply to value_field before aggregation. Use -1 for refund events (negate the value), 0.01 for values in cents, -0.01 for refunds in cents. A value of 0 zeroes out this source's value contribution (the source still counts for event dedup). Defaults to 1. This is not passed as a parameter to underlying platform APIs — the seller applies it when computing aggregated value metrics."
               }
             },
-            "required": ["event_source_id", "event_type"],
+            "required": [
+              "event_source_id",
+              "event_type"
+            ],
             "additionalProperties": true
           },
           "minItems": 1
@@ -138,35 +200,64 @@
               "type": "object",
               "description": "Target cost per conversion event (after deduplication across event_sources).",
               "properties": {
-                "kind": { "type": "string", "const": "cost_per" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per event in the buy currency" }
+                "kind": {
+                  "type": "string",
+                  "const": "cost_per"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Target cost per event in the buy currency"
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             },
             {
               "type": "object",
               "description": "Target return per unit of ad spend, calculated as sum(value_field * value_factor) / spend across all deduplicated events. Requires value_field on at least one event_sources entry.",
               "properties": {
-                "kind": { "type": "string", "const": "per_ad_spend" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)" }
+                "kind": {
+                  "type": "string",
+                  "const": "per_ad_spend"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Target return ratio (e.g., 4.0 means $4 of value per $1 spent)"
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             },
             {
               "type": "object",
               "description": "Maximize total conversion value within budget, without a specific return ratio target. Steers spend toward higher-value conversions rather than maximizing conversion count. Requires value_field on at least one event_sources entry.",
               "properties": {
-                "kind": { "type": "string", "const": "maximize_value" }
+                "kind": {
+                  "type": "string",
+                  "const": "maximize_value"
+                }
               },
-              "required": ["kind"],
+              "required": [
+                "kind"
+              ],
               "additionalProperties": true
             }
           ]
         },
         "attribution_window": {
-          "allOf": [{ "$ref": "/schemas/3.1.20/core/attribution-window.json" }],
+          "allOf": [
+            {
+              "$ref": "/schemas/3.1.20/core/attribution-window.json"
+            }
+          ],
           "description": "Attribution window for this optimization goal — references the canonical `attribution-window` shape (post_click, post_view, model). Values must match an option declared in the seller's `conversion_tracking.attribution_windows` capability. Sellers MUST reject windows not in their declared capabilities. When the entire field is omitted, the seller uses their default window."
         },
         "priority": {
@@ -175,14 +266,20 @@
           "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
         }
       },
-      "required": ["kind", "event_sources"],
+      "required": [
+        "kind",
+        "event_sources"
+      ],
       "additionalProperties": true
     },
     {
       "type": "object",
       "description": "Optimize for a vendor-attested measurement metric. Use when the metric has no graduated industry-standard definition and must be reconciled to a specific vendor — e.g., attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics. The vendor + metric_id pair binds buyer→seller→vendor end-to-end: the seller's bidding stack steers toward this specific vendor's measurement, and delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key. Three preconditions for goal acceptance: (1) Discovery — the `metric_id` SHOULD appear in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` `agents[type='measurement']`). Sellers SHOULD verify against a cached snapshot of the vendor's capability response; staleness handling is implementation-defined. SHOULD this minor while measurement-vendor adoption of AdCP-conformant capability publication catches up; tightens to MUST at the next minor. (2) Capability — the `(vendor, metric_id)` pair MUST appear in the product's `vendor_metric_optimization.supported_metrics[]`, and the goal's `target.kind` MUST appear in that entry's `supported_targets`. (3) Reporting coherence — the package's `committed_metrics[]` MUST include a matching `{ scope: 'vendor', vendor, metric_id }` entry. Sellers MUST reject goals failing the capability or reporting-coherence preconditions. Optimization without committed reporting is unverifiable and is therefore disallowed at the wire level. Precondition checks are seller-runtime; the schema's `required` only validates structural presence of `kind`, `vendor`, and `metric_id`.",
       "properties": {
-        "kind": { "type": "string", "const": "vendor_metric" },
+        "kind": {
+          "type": "string",
+          "const": "vendor_metric"
+        },
         "vendor": {
           "$ref": "/schemas/3.1.20/core/brand-ref.json",
           "description": "Vendor that defines and computes this metric. Same shape as `vendor_metric_values.vendor`, `reporting_capabilities.vendor_metrics[].vendor`, and `vendor_metric_optimization.supported_metrics[].vendor` — symmetric across discovery, capability, commitment, optimization, and reporting surfaces."
@@ -201,20 +298,40 @@
               "type": "object",
               "description": "Target cost per unit of the vendor metric (e.g., cost per attention-second).",
               "properties": {
-                "kind": { "type": "string", "const": "cost_per" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency. Units of the metric are vendor-defined." }
+                "kind": {
+                  "type": "string",
+                  "const": "cost_per"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Target cost per metric unit in the buy currency. Units of the metric are vendor-defined."
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             },
             {
               "type": "object",
               "description": "Minimum per-impression value for this vendor metric (e.g., attention_score ≥ 70).",
               "properties": {
-                "kind": { "type": "string", "const": "threshold_rate" },
-                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units of the metric are vendor-defined." }
+                "kind": {
+                  "type": "string",
+                  "const": "threshold_rate"
+                },
+                "value": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "description": "Minimum per-impression value. Units of the metric are vendor-defined."
+                }
               },
-              "required": ["kind", "value"],
+              "required": [
+                "kind",
+                "value"
+              ],
               "additionalProperties": true
             }
           ]
@@ -225,7 +342,11 @@
           "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
         }
       },
-      "required": ["kind", "vendor", "metric_id"],
+      "required": [
+        "kind",
+        "vendor",
+        "metric_id"
+      ],
       "additionalProperties": true
     }
   ]

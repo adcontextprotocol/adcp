@@ -40,11 +40,19 @@
           },
           "audience": {
             "type": "string",
-            "enum": ["buyer", "data_subject", "regulator", "public"],
+            "enum": [
+              "buyer",
+              "data_subject",
+              "regulator",
+              "public"
+            ],
             "description": "Primary audience for this disclosure entry."
           }
         },
-        "required": ["country", "regulation"],
+        "required": [
+          "country",
+          "regulation"
+        ],
         "additionalProperties": false
       }
     },
@@ -54,17 +62,25 @@
       "description": "Optional provider notes on how the disclosure should be interpreted. Informational only; buyers should not branch programmatically on this text."
     }
   },
-  "required": ["required"],
+  "required": [
+    "required"
+  ],
   "allOf": [
     {
       "if": {
         "properties": {
-          "required": { "const": true }
+          "required": {
+            "const": true
+          }
         },
-        "required": ["required"]
+        "required": [
+          "required"
+        ]
       },
       "then": {
-        "required": ["jurisdictions"]
+        "required": [
+          "jurisdictions"
+        ]
       }
     }
   ],

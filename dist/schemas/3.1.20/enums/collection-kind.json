@@ -4,7 +4,12 @@
   "title": "Collection Kind",
   "description": "What kind of content program a collection represents. Determines how installments should be interpreted by buyer agents.",
   "type": "string",
-  "enum": ["series", "publication", "event_series", "rotation"],
+  "enum": [
+    "series",
+    "publication",
+    "event_series",
+    "rotation"
+  ],
   "enumDescriptions": {
     "series": "TV or podcast program; installments are episodes",
     "publication": "Print or newsletter title; installments are issues",

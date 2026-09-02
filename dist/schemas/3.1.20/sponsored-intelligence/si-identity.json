@@ -19,7 +19,13 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["name", "email", "shipping_address", "phone", "locale"]
+        "enum": [
+          "name",
+          "email",
+          "shipping_address",
+          "phone",
+          "locale"
+        ]
       },
       "description": "What data was consented to share"
     },
@@ -64,11 +70,21 @@
           "type": "object",
           "description": "User's shipping address for accurate pricing",
           "properties": {
-            "street": { "type": "string" },
-            "city": { "type": "string" },
-            "state": { "type": "string" },
-            "postal_code": { "type": "string" },
-            "country": { "type": "string" }
+            "street": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "postal_code": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string"
+            }
           },
           "additionalProperties": true
         }
@@ -81,6 +97,8 @@
       "x-entity": "si_session"
     }
   },
-  "required": ["consent_granted"],
+  "required": [
+    "consent_granted"
+  ],
   "additionalProperties": true
 }

@@ -19,7 +19,13 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["mp3", "aac", "wav", "ogg", "flac"]
+        "enum": [
+          "mp3",
+          "aac",
+          "wav",
+          "ogg",
+          "flac"
+        ]
       },
       "description": "Accepted audio file formats"
     },
@@ -40,7 +46,10 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["mono", "stereo"]
+        "enum": [
+          "mono",
+          "stereo"
+        ]
       },
       "description": "Accepted audio channel configurations"
     },

@@ -38,7 +38,18 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg", "avif", "tiff", "pdf", "eps"]
+        "enum": [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "svg",
+          "avif",
+          "tiff",
+          "pdf",
+          "eps"
+        ]
       },
       "description": "Accepted image file formats"
     },
@@ -59,24 +70,47 @@
               "description": "Same bleed on all four sides"
             }
           },
-          "required": ["uniform"],
+          "required": [
+            "uniform"
+          ],
           "additionalProperties": false
         },
         {
           "properties": {
-            "top": { "type": "number", "minimum": 0 },
-            "right": { "type": "number", "minimum": 0 },
-            "bottom": { "type": "number", "minimum": 0 },
-            "left": { "type": "number", "minimum": 0 }
+            "top": {
+              "type": "number",
+              "minimum": 0
+            },
+            "right": {
+              "type": "number",
+              "minimum": 0
+            },
+            "bottom": {
+              "type": "number",
+              "minimum": 0
+            },
+            "left": {
+              "type": "number",
+              "minimum": 0
+            }
           },
-          "required": ["top", "right", "bottom", "left"],
+          "required": [
+            "top",
+            "right",
+            "bottom",
+            "left"
+          ],
           "additionalProperties": false
         }
       ]
     },
     "color_space": {
       "type": "string",
-      "enum": ["rgb", "cmyk", "grayscale"],
+      "enum": [
+        "rgb",
+        "cmyk",
+        "grayscale"
+      ],
       "description": "Required color space. Print typically requires CMYK."
     },
     "max_file_size_kb": {
@@ -103,7 +137,15 @@
       "description": "Maximum weight in grams for the finished physical piece (print inserts, flyers). Affects postage calculations and production constraints. Only applicable to print channels."
     }
   },
-  "if": { "required": ["min_dpi"] },
-  "then": { "required": ["unit"] },
+  "if": {
+    "required": [
+      "min_dpi"
+    ]
+  },
+  "then": {
+    "required": [
+      "unit"
+    ]
+  },
   "additionalProperties": true
 }

@@ -26,12 +26,17 @@
           },
           "direction": {
             "type": "string",
-            "enum": ["maximize", "minimize"],
+            "enum": [
+              "maximize",
+              "minimize"
+            ],
             "default": "maximize",
             "description": "Sort direction for this feature: `maximize` ranks higher feature values first (e.g. creative_quality_score), `minimize` ranks lower values first (e.g. predicted_cpa)."
           }
         },
-        "required": ["feature_id"],
+        "required": [
+          "feature_id"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -51,7 +56,9 @@
           "description": "Optional canonical feature_id the producing agent SHOULD request against this agent. When present it SHOULD match the agent's `accepted_verifiers[].feature_id` or be omitted; when absent the seller selects a feature at evaluation time. Resolves selector ambiguity exactly as the provenance verify_agent.feature_id does."
         }
       },
-      "required": ["agent_url"],
+      "required": [
+        "agent_url"
+      ],
       "additionalProperties": false
     },
     "eval_budget": {

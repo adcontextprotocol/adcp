@@ -39,7 +39,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["status", "task_id"],
+  "required": [
+    "status",
+    "task_id"
+  ],
   "additionalProperties": true,
   "not": {
     "anyOf": [

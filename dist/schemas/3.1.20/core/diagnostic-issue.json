@@ -7,7 +7,11 @@
   "properties": {
     "severity": {
       "type": "string",
-      "enum": ["error", "warning", "info"],
+      "enum": [
+        "error",
+        "warning",
+        "info"
+      ],
       "description": "'error': blocks optimization until resolved. 'warning': optimization works but effectiveness is reduced. 'info': suggestion for improvement."
     },
     "message": {
@@ -15,6 +19,9 @@
       "description": "Human/agent-readable description of the issue and how to resolve it."
     }
   },
-  "required": ["severity", "message"],
+  "required": [
+    "severity",
+    "message"
+  ],
   "additionalProperties": true
 }

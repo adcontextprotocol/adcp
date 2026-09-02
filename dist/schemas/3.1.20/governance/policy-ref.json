@@ -20,6 +20,8 @@
       "additionalProperties": true
     }
   },
-  "required": ["policy_id"],
+  "required": [
+    "policy_id"
+  ],
   "additionalProperties": false
 }

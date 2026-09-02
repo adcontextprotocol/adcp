@@ -31,7 +31,11 @@
           "minItems": 1
         }
       },
-      "required": ["selection_type", "publisher_domain", "tags"],
+      "required": [
+        "selection_type",
+        "publisher_domain",
+        "tags"
+      ],
       "additionalProperties": false
     },
     {
@@ -58,7 +62,11 @@
           "minItems": 1
         }
       },
-      "required": ["selection_type", "publisher_domain", "property_ids"],
+      "required": [
+        "selection_type",
+        "publisher_domain",
+        "property_ids"
+      ],
       "additionalProperties": false
     },
     {
@@ -80,7 +88,10 @@
           "minItems": 1
         }
       },
-      "required": ["selection_type", "identifiers"],
+      "required": [
+        "selection_type",
+        "identifiers"
+      ],
       "additionalProperties": false
     }
   ]

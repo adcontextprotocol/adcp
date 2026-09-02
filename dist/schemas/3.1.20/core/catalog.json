@@ -94,7 +94,9 @@
       "minItems": 1
     }
   },
-  "required": ["type"],
+  "required": [
+    "type"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -159,16 +161,25 @@
       "data": {
         "catalog_id": "gmc-primary",
         "type": "product",
-        "ids": ["SKU-12345", "SKU-67890"]
+        "ids": [
+          "SKU-12345",
+          "SKU-67890"
+        ]
       }
     },
     {
       "description": "Product catalog with GTIN cross-retailer matching and attribution",
       "data": {
         "type": "product",
-        "gtins": ["00013000006040", "00013000006057"],
+        "gtins": [
+          "00013000006040",
+          "00013000006057"
+        ],
         "content_id_type": "gtin",
-        "conversion_events": ["purchase", "add_to_cart"]
+        "conversion_events": [
+          "purchase",
+          "add_to_cart"
+        ]
       }
     },
     {
@@ -181,16 +192,25 @@
           {
             "store_id": "amsterdam-flagship",
             "name": "Amsterdam Flagship",
-            "location": { "lat": 52.3676, "lng": 4.9041 },
+            "location": {
+              "lat": 52.3676,
+              "lng": 4.9041
+            },
             "catchments": [
               {
                 "catchment_id": "walk",
-                "travel_time": { "value": 10, "unit": "min" },
+                "travel_time": {
+                  "value": 10,
+                  "unit": "min"
+                },
                 "transport_mode": "walking"
               },
               {
                 "catchment_id": "drive",
-                "travel_time": { "value": 15, "unit": "min" },
+                "travel_time": {
+                  "value": 15,
+                  "unit": "min"
+                },
                 "transport_mode": "driving"
               }
             ]

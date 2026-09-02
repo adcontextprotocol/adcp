@@ -25,7 +25,10 @@
     },
     "method": {
       "type": "string",
-      "enum": ["img", "js"],
+      "enum": [
+        "img",
+        "js"
+      ],
       "default": "img",
       "description": "How the tracker URL is invoked at serve time:\n- `img` — fired as an image pixel (HTTP GET with `<img>`-like semantics; no JS execution)\n- `js` — fired as a script include (renderer evaluates the URL's response as JavaScript)\n\nMatches IAB OpenRTB Native 1.2 method enum (1=img, 2=js). `js` MUST only be used by sellers whose renderer supports JavaScript trackers; sellers without JS-tracker support MUST reject `method: js` declarations at sync_creatives time with `CREATIVE_REJECTED` carrying the reason."
     },
@@ -51,14 +54,26 @@
   "allOf": [
     {
       "if": {
-        "properties": { "event": { "const": "custom" } },
-        "required": ["event"]
+        "properties": {
+          "event": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "event"
+        ]
       },
       "then": {
-        "required": ["custom_event_name"]
+        "required": [
+          "custom_event_name"
+        ]
       },
       "else": {
-        "not": { "required": ["custom_event_name"] }
+        "not": {
+          "required": [
+            "custom_event_name"
+          ]
+        }
       }
     }
   ],

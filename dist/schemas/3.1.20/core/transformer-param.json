@@ -11,12 +11,22 @@
     },
     "type": {
       "type": "string",
-      "enum": ["string", "number", "integer", "boolean"],
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean"
+      ],
       "description": "JSON type of the value the buyer supplies for this field."
     },
     "value_source": {
       "type": "string",
-      "enum": ["inline", "range", "enumerable", "free_text"],
+      "enum": [
+        "inline",
+        "range",
+        "enumerable",
+        "free_text"
+      ],
       "description": "Where the legal values come from. `inline` — a small closed set listed in `allowed_values` (e.g. mastering_preset). `range` — a numeric interval bounded by `minimum`/`maximum` (e.g. speaking_rate). `enumerable` — an account-scoped, dynamic set (e.g. voices, including custom/cloned ones) resolved per-credential; values appear in `options[]` only when expanded. `free_text` — an open buyer-authored string with no closed/enumerable set (e.g. a negative_prompt or style note for a generative agent); `type` MUST be `string` and `allowed_values`/`minimum`/`maximum`/`options`/`options_cursor` MUST be absent. NOTE: a transformer-param MUST NOT be a generation-count knob (sample_count/n/num_images/count) — output count is owned by `max_variants`/`max_creatives`, never config."
     },
     "max_length": {
@@ -57,7 +67,9 @@
             "additionalProperties": true
           }
         },
-        "required": ["value"],
+        "required": [
+          "value"
+        ],
         "additionalProperties": true
       }
     },
@@ -78,28 +90,92 @@
       "description": "Human-readable explanation of what this knob does."
     }
   },
-  "required": ["field", "type", "value_source"],
+  "required": [
+    "field",
+    "type",
+    "value_source"
+  ],
   "additionalProperties": true,
   "allOf": [
     {
-      "if": { "properties": { "value_source": { "const": "inline" } }, "required": ["value_source"] },
-      "then": { "required": ["allowed_values"] }
-    },
-    {
-      "if": { "properties": { "value_source": { "const": "range" } }, "required": ["value_source"] },
-      "then": { "required": ["minimum", "maximum"] }
-    },
-    {
-      "if": { "properties": { "value_source": { "const": "free_text" } }, "required": ["value_source"] },
+      "if": {
+        "properties": {
+          "value_source": {
+            "const": "inline"
+          }
+        },
+        "required": [
+          "value_source"
+        ]
+      },
       "then": {
-        "properties": { "type": { "const": "string" } },
+        "required": [
+          "allowed_values"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "value_source": {
+            "const": "range"
+          }
+        },
+        "required": [
+          "value_source"
+        ]
+      },
+      "then": {
+        "required": [
+          "minimum",
+          "maximum"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "value_source": {
+            "const": "free_text"
+          }
+        },
+        "required": [
+          "value_source"
+        ]
+      },
+      "then": {
+        "properties": {
+          "type": {
+            "const": "string"
+          }
+        },
         "not": {
           "anyOf": [
-            { "required": ["allowed_values"] },
-            { "required": ["minimum"] },
-            { "required": ["maximum"] },
-            { "required": ["options"] },
-            { "required": ["options_cursor"] }
+            {
+              "required": [
+                "allowed_values"
+              ]
+            },
+            {
+              "required": [
+                "minimum"
+              ]
+            },
+            {
+              "required": [
+                "maximum"
+              ]
+            },
+            {
+              "required": [
+                "options"
+              ]
+            },
+            {
+              "required": [
+                "options_cursor"
+              ]
+            }
           ]
         }
       }
@@ -113,8 +189,23 @@
       "default": "sara",
       "description": "Narration voice, including account-specific custom/cloned voices.",
       "options": [
-        { "value": "isaac", "label": "Isaac", "metadata": { "language": "en-US", "gender": "male", "provider": "audiostack" } },
-        { "value": "ceo_clone_2026", "label": "CEO (custom)", "metadata": { "language": "en-US", "custom": true } }
+        {
+          "value": "isaac",
+          "label": "Isaac",
+          "metadata": {
+            "language": "en-US",
+            "gender": "male",
+            "provider": "audiostack"
+          }
+        },
+        {
+          "value": "ceo_clone_2026",
+          "label": "CEO (custom)",
+          "metadata": {
+            "language": "en-US",
+            "custom": true
+          }
+        }
       ],
       "options_cursor": "eyJvZmZzZXQiOjI1fQ=="
     },
@@ -122,7 +213,11 @@
       "field": "mastering_preset",
       "type": "string",
       "value_source": "inline",
-      "allowed_values": ["broadcast", "podcast", "music"],
+      "allowed_values": [
+        "broadcast",
+        "podcast",
+        "music"
+      ],
       "default": "broadcast",
       "description": "Audio mastering profile applied to the final mix."
     },
@@ -131,8 +226,8 @@
       "type": "number",
       "value_source": "range",
       "minimum": 0.5,
-      "maximum": 2.0,
-      "default": 1.0,
+      "maximum": 2,
+      "default": 1,
       "description": "Narration speed multiplier."
     },
     {

@@ -18,7 +18,12 @@
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP", "JPY"]
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
     },
     "fixed_price": {
       "type": "number",
@@ -37,11 +42,18 @@
     "parameters": {
       "type": "object",
       "description": "Time-based pricing parameters",
-      "required": ["time_unit"],
+      "required": [
+        "time_unit"
+      ],
       "properties": {
         "time_unit": {
           "type": "string",
-          "enum": ["hour", "day", "week", "month"],
+          "enum": [
+            "hour",
+            "day",
+            "week",
+            "month"
+          ],
           "description": "The time unit for pricing. Total cost = fixed_price × number of time_units in the campaign flight."
         },
         "min_duration": {
@@ -75,6 +87,11 @@
       "uniqueItems": true
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency",
+    "parameters"
+  ],
   "additionalProperties": true
 }

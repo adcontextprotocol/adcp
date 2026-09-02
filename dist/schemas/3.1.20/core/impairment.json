@@ -12,7 +12,13 @@
     },
     "resource_type": {
       "type": "string",
-      "enum": ["audience", "creative", "catalog_item", "event_source", "property"],
+      "enum": [
+        "audience",
+        "creative",
+        "catalog_item",
+        "event_source",
+        "property"
+      ],
       "description": "The kind of upstream dependency that transitioned to an offline state. Values are drawn from the x-entity vocabulary (see core/x-entity-types.json) and identify a buyer-referenced object with its own lifecycle that the seller can take offline. This is the subset of x-entity types for which a media buy's serving depends on the resource — not a new typology, just the impairment-relevant slice."
     },
     "resource_id": {
@@ -21,14 +27,18 @@
     },
     "package_ids": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1,
       "description": "Packages within this media buy whose delivery is degraded by the impairment. MUST list at least one package — cosmetic effects that do not degrade any package's ability to serve MUST NOT be reported as impairments."
     },
     "transition": {
       "type": "object",
       "description": "The resource-level status transition that triggered this impairment.",
-      "required": ["to"],
+      "required": [
+        "to"
+      ],
       "properties": {
         "from": {
           "type": "string",

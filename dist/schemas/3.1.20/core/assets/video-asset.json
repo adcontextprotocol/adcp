@@ -61,22 +61,42 @@
     },
     "color_space": {
       "type": "string",
-      "enum": ["rec709", "rec2020", "rec2100", "srgb", "dci_p3"],
+      "enum": [
+        "rec709",
+        "rec2020",
+        "rec2100",
+        "srgb",
+        "dci_p3"
+      ],
       "description": "Color space of the video"
     },
     "hdr_format": {
       "type": "string",
-      "enum": ["sdr", "hdr10", "hdr10_plus", "hlg", "dolby_vision"],
+      "enum": [
+        "sdr",
+        "hdr10",
+        "hdr10_plus",
+        "hlg",
+        "dolby_vision"
+      ],
       "description": "HDR format if applicable, or 'sdr' for standard dynamic range"
     },
     "chroma_subsampling": {
       "type": "string",
-      "enum": ["4:2:0", "4:2:2", "4:4:4"],
+      "enum": [
+        "4:2:0",
+        "4:2:2",
+        "4:4:4"
+      ],
       "description": "Chroma subsampling format"
     },
     "video_bit_depth": {
       "type": "integer",
-      "enum": [8, 10, 12],
+      "enum": [
+        8,
+        10,
+        12
+      ],
       "description": "Video bit depth"
     },
     "gop_interval_seconds": {
@@ -107,7 +127,11 @@
     },
     "audio_bit_depth": {
       "type": "integer",
-      "enum": [16, 24, 32],
+      "enum": [
+        16,
+        24,
+        32
+      ],
       "description": "Audio bit depth"
     },
     "audio_bitrate_kbps": {

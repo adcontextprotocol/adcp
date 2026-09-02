@@ -4,7 +4,10 @@
   "title": "Card Asset",
   "description": "A single card in a multi-card creative (image_carousel, future composed carousels). Carries: `media` (an image OR video asset), optional `headline` (short text), optional `description` (longer text), optional `cta` (call-to-action label), optional `landing_page_url` (url asset with `url_type: \"clickthrough\"`).\n\nCovers the multi-card patterns across Meta carousel, Pinterest sponsored pin, Snap Collection, TikTok carousel, and AI-surface result cards. The two-field text shape (`headline` + `description`) reflects how almost every adopter splits short labels from longer copy; Pinterest pin description and Meta per-card description both go in `description`.\n\nUsed as the array element type for the `cards` slot on image_carousel canonicals. Adopters MUST NOT invent per-card key conventions like `card_0_headline` / `cards.0.headline` — the manifest's `assets.cards` value is an array of card-asset objects, period. Per-card platform extensions (e.g., Meta-specific carousel attributes, Pinterest rich-pin metadata, Snap Collection price tags) attach via the `platform_extensions` field, never via inline non-canonical keys.",
   "type": "object",
-  "required": ["asset_type", "media"],
+  "required": [
+    "asset_type",
+    "media"
+  ],
   "properties": {
     "asset_type": {
       "type": "string",
@@ -14,10 +17,16 @@
     "media": {
       "description": "The card's primary visual asset. Either an `image` or `video` asset, matching the parent format's `allowed_card_media_asset_types` parameter.",
       "oneOf": [
-        { "$ref": "/schemas/3.1.20/core/assets/image-asset.json" },
-        { "$ref": "/schemas/3.1.20/core/assets/video-asset.json" }
+        {
+          "$ref": "/schemas/3.1.20/core/assets/image-asset.json"
+        },
+        {
+          "$ref": "/schemas/3.1.20/core/assets/video-asset.json"
+        }
       ],
-      "discriminator": { "propertyName": "asset_type" }
+      "discriminator": {
+        "propertyName": "asset_type"
+      }
     },
     "headline": {
       "type": "string",
@@ -38,7 +47,9 @@
     "platform_extensions": {
       "type": "array",
       "description": "Per-card platform-specific extensions (URI+digest references). Same hosting model as format-level platform_extensions. Use this for Meta carousel-card attributes, Pinterest pin overrides, etc. — NEVER inline non-canonical keys on the card object directly.",
-      "items": { "$ref": "/schemas/3.1.20/core/platform-extension-ref.json" }
+      "items": {
+        "$ref": "/schemas/3.1.20/core/platform-extension-ref.json"
+      }
     },
     "provenance": {
       "$ref": "/schemas/3.1.20/core/provenance.json",

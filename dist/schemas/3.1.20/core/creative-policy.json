@@ -67,7 +67,9 @@
             "uniqueItems": true
           }
         },
-        "required": ["agent_url"],
+        "required": [
+          "agent_url"
+        ],
         "additionalProperties": false
       }
     }

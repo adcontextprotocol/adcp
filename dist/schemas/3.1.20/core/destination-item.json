@@ -47,12 +47,23 @@
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },
-      "required": ["lat", "lng"],
+      "required": [
+        "lat",
+        "lng"
+      ],
       "additionalProperties": false
     },
     "destination_type": {
       "type": "string",
-      "enum": ["beach", "mountain", "urban", "cultural", "adventure", "wellness", "cruise"],
+      "enum": [
+        "beach",
+        "mountain",
+        "urban",
+        "cultural",
+        "adventure",
+        "wellness",
+        "cruise"
+      ],
       "description": "Destination category."
     },
     "price": {
@@ -95,7 +106,10 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["destination_id", "name"],
+  "required": [
+    "destination_id",
+    "name"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -107,13 +121,23 @@
         "city": "Barcelona",
         "region": "Catalonia",
         "country": "ES",
-        "location": { "lat": 41.3874, "lng": 2.1686 },
+        "location": {
+          "lat": 41.3874,
+          "lng": 2.1686
+        },
         "destination_type": "urban",
-        "price": { "amount": 399, "currency": "EUR" },
+        "price": {
+          "amount": 399,
+          "currency": "EUR"
+        },
         "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
         "url": "https://acmetravel.com/destinations/barcelona",
         "rating": 4.7,
-        "tags": ["city-break", "beach", "culture"]
+        "tags": [
+          "city-break",
+          "beach",
+          "culture"
+        ]
       }
     },
     {
@@ -123,11 +147,21 @@
         "name": "Swiss Alps — Interlaken",
         "description": "Gateway to the Jungfrau region with paragliding, hiking, and glacier views.",
         "country": "CH",
-        "location": { "lat": 46.6863, "lng": 7.8632 },
+        "location": {
+          "lat": 46.6863,
+          "lng": 7.8632
+        },
         "destination_type": "adventure",
-        "price": { "amount": 799, "currency": "CHF" },
+        "price": {
+          "amount": 799,
+          "currency": "CHF"
+        },
         "url": "https://acmetravel.com/destinations/interlaken",
-        "tags": ["adventure", "mountains", "winter-sports"]
+        "tags": [
+          "adventure",
+          "mountains",
+          "winter-sports"
+        ]
       }
     }
   ]

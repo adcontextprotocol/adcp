@@ -30,7 +30,9 @@
           },
           "jurisdictions": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "ISO 3166-1 alpha-2 codes where this framework applies."
           },
           "summary": {
@@ -39,11 +41,17 @@
           },
           "policy_ids": {
             "type": "array",
-            "items": { "type": "string", "x-entity": "governance_registry_policy" },
+            "items": {
+              "type": "string",
+              "x-entity": "governance_registry_policy"
+            },
             "description": "Registry policy IDs that implement this framework."
           }
         },
-        "required": ["name", "summary"],
+        "required": [
+          "name",
+          "summary"
+        ],
         "additionalProperties": false
       }
     },
@@ -61,7 +69,9 @@
     },
     "industries": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Industries where this category commonly applies (e.g., 'pharmaceutical' for age_restricted). Governance agents MAY suggest relevant categories when a plan's brand industry matches but no policy_categories are declared."
     },
     "guidance": {
@@ -70,10 +80,16 @@
     },
     "related_categories": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Categories that frequently co-occur (e.g., 'children_directed' often appears with 'age_restricted')."
     }
   },
-  "required": ["category_id", "name", "description"],
+  "required": [
+    "category_id",
+    "name",
+    "description"
+  ],
   "additionalProperties": false
 }

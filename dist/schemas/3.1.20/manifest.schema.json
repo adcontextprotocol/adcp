@@ -4,7 +4,14 @@
   "title": "AdCP Manifest",
   "description": "Machine-readable registry of every AdCP tool, error code, and specialism for a given AdCP version. SDKs consume this artifact at codegen time to derive their tool/error tables instead of hand-transcribing the spec. Replaces three categories of drift documented in adcp#3725: hand-rolled tool-by-protocol arrays, hand-classified error recovery, and hand-listed specialism→tool mappings.",
   "type": "object",
-  "required": ["adcp_version", "generated_at", "tools", "error_codes", "error_code_policy", "specialisms"],
+  "required": [
+    "adcp_version",
+    "generated_at",
+    "tools",
+    "error_codes",
+    "error_code_policy",
+    "specialisms"
+  ],
   "additionalProperties": false,
   "properties": {
     "$schema": {
@@ -27,7 +34,13 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["protocol", "mutating", "request_schema", "response_schema", "async_response_schemas"],
+        "required": [
+          "protocol",
+          "mutating",
+          "request_schema",
+          "response_schema",
+          "async_response_schemas"
+        ],
         "additionalProperties": false,
         "properties": {
           "protocol": {
@@ -65,12 +78,16 @@
           "async_response_schemas": {
             "type": "array",
             "description": "Paths to the tool's async response variants (typically -submitted, -working, -input-required). Empty array if the tool has no async surface. Buyer agents MUST handle every entry — a tool with async_response_schemas non-empty can return any of these from a non-final task state.",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "specialisms": {
             "type": "array",
             "description": "Specialism IDs that include this tool in their required_tools (or via inherited scenarios). Lets SDKs answer \"if I claim specialism X, which tools must I implement?\" without re-deriving from the compliance cache.",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "added_in": {
             "type": "string",
@@ -86,12 +103,19 @@
     "error_code_policy": {
       "type": "object",
       "description": "How SDKs should handle codes outside the standard set. The error vocabulary is open: sellers MAY return platform-specific codes that aren't in `error_codes`. Agents MUST fall back to `default_unknown_recovery` for unknown codes — they SHOULD NOT throw or treat unknown codes as malformed responses.",
-      "required": ["default_unknown_recovery", "note"],
+      "required": [
+        "default_unknown_recovery",
+        "note"
+      ],
       "additionalProperties": false,
       "properties": {
         "default_unknown_recovery": {
           "type": "string",
-          "enum": ["correctable", "transient", "terminal"],
+          "enum": [
+            "correctable",
+            "transient",
+            "terminal"
+          ],
           "description": "The recovery classification an agent MUST apply to a code that is not present in this manifest's `error_codes` block. `transient` is the safe default — unknown codes from a non-conforming seller should be retried with backoff, not classified as fatal."
         },
         "note": {
@@ -106,12 +130,20 @@
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
-        "required": ["recovery", "description", "suggestion"],
+        "required": [
+          "recovery",
+          "description",
+          "suggestion"
+        ],
         "additionalProperties": false,
         "properties": {
           "recovery": {
             "type": "string",
-            "enum": ["correctable", "transient", "terminal"],
+            "enum": [
+              "correctable",
+              "transient",
+              "terminal"
+            ],
             "description": "How the caller should respond. correctable: fix the request and retry. transient: retry with backoff. terminal: no autonomous recovery — operator intervention required."
           },
           "description": {
@@ -134,7 +166,11 @@
       "description": "Every storyboard specialism declared in static/compliance/source/specialisms/, keyed by specialism ID. Lets SDKs declare which specialisms they implement and verify their tool surface covers the required tools.",
       "additionalProperties": {
         "type": "object",
-        "required": ["protocol", "entry_point_tools", "exercised_tools"],
+        "required": [
+          "protocol",
+          "entry_point_tools",
+          "exercised_tools"
+        ],
         "additionalProperties": false,
         "properties": {
           "protocol": {
@@ -148,12 +184,16 @@
           "entry_point_tools": {
             "type": "array",
             "description": "The minimal contract: tools the spec asserts an implementer MUST ship to claim this specialism. Sourced from index.yaml's `required_tools` field. An agent declaring this specialism in its capabilities MUST respond to every tool listed here.",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
           "exercised_tools": {
             "type": "array",
             "description": "The full surface the conformance kit will call: union of entry_point_tools, the specialism's own phases[].steps[].task, and every linked scenario's tasks. An agent declaring this specialism MUST be prepared to handle every call here, even though some are inherited via storyboard scenarios rather than declared in `required_tools`. Use this set to size your tool registration, not entry_point_tools.",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

@@ -18,7 +18,11 @@
       "$ref": "/schemas/3.1.20/enums/media-buy-status.json"
     },
     "health": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/enums/media-buy-health.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/enums/media-buy-health.json"
+        }
+      ],
       "default": "ok",
       "description": "Aggregate health based on open impairments[]. Orthogonal to status — a paused, pending, or active buy can each be impaired. Defaults to 'ok' when impairments[] is empty."
     },
@@ -34,14 +38,20 @@
       "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
     },
     "confirmed_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
       "description": "ISO 8601 timestamp when the seller committed to this media buy. May be null until seller commitment occurs in deferred/manual approval flows. Once populated, remains stable through later pause, resume, activation, completion, cancellation, and reporting transitions."
     },
     "cancellation": {
       "type": "object",
       "description": "Cancellation metadata. Present only when status is 'canceled'.",
-      "required": ["canceled_at", "canceled_by"],
+      "required": [
+        "canceled_at",
+        "canceled_by"
+      ],
       "properties": {
         "canceled_at": {
           "type": "string",
@@ -112,7 +122,9 @@
             "type": "null"
           }
         },
-        "required": ["confirmed_at"]
+        "required": [
+          "confirmed_at"
+        ]
       },
       "then": {
         "not": {
@@ -121,13 +133,17 @@
               "const": "active"
             }
           },
-          "required": ["status"]
+          "required": [
+            "status"
+          ]
         },
         "properties": {
           "packages": {
             "items": {
               "not": {
-                "required": ["committed_metrics"]
+                "required": [
+                  "committed_metrics"
+                ]
               }
             }
           }

@@ -38,5 +38,8 @@
       "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
     }
   },
-  "required": ["url", "authorized_for"]
+  "required": [
+    "url",
+    "authorized_for"
+  ]
 }

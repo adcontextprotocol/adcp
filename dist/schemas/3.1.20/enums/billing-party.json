@@ -4,7 +4,11 @@
   "title": "Billing Party",
   "description": "Which party the seller invoices for an account. Determines the billing entity and invoicing flow.",
   "type": "string",
-  "enum": ["operator", "agent", "advertiser"],
+  "enum": [
+    "operator",
+    "agent",
+    "advertiser"
+  ],
   "enumDescriptions": {
     "operator": "Seller invoices the operator — agency or brand buying direct",
     "agent": "Agent consolidates billing across brands and is invoiced by the seller",

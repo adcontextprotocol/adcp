@@ -27,6 +27,9 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["identifier", "impressions"],
+  "required": [
+    "identifier",
+    "impressions"
+  ],
   "additionalProperties": false
 }

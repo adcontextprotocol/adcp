@@ -52,7 +52,11 @@
           "description": "ISO 8601 timestamp when this metric became part of the contract. Day-1 commitments use `create_media_buy.confirmed_at`; mid-flight additions use the time the amendment was accepted."
         }
       },
-      "required": ["scope", "metric_id", "committed_at"],
+      "required": [
+        "scope",
+        "metric_id",
+        "committed_at"
+      ],
       "additionalProperties": false
     },
     {
@@ -76,7 +80,12 @@
           "description": "ISO 8601 timestamp when this vendor metric became part of the contract."
         }
       },
-      "required": ["scope", "vendor", "metric_id", "committed_at"],
+      "required": [
+        "scope",
+        "vendor",
+        "metric_id",
+        "committed_at"
+      ],
       "additionalProperties": false
     }
   ]

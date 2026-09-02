@@ -16,14 +16,20 @@
             "const": "requires_activation"
           }
         },
-        "required": ["activation_status"]
+        "required": [
+          "activation_status"
+        ]
       },
       "then": {
-        "required": ["signal_agent_segment_id"]
+        "required": [
+          "signal_agent_segment_id"
+        ]
       }
     }
   ],
-  "required": ["signal_ref"],
+  "required": [
+    "signal_ref"
+  ],
   "properties": {
     "signal_agent_segment_id": {
       "type": "string",

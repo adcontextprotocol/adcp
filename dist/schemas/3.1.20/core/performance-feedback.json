@@ -92,7 +92,10 @@
               "additionalProperties": false
             }
           },
-          "required": ["scope", "metric_id"],
+          "required": [
+            "scope",
+            "metric_id"
+          ],
           "additionalProperties": false
         },
         {
@@ -111,7 +114,11 @@
               "description": "Identifier for the metric within the vendor's vocabulary."
             }
           },
-          "required": ["scope", "vendor", "metric_id"],
+          "required": [
+            "scope",
+            "vendor",
+            "metric_id"
+          ],
           "additionalProperties": false
         }
       ]

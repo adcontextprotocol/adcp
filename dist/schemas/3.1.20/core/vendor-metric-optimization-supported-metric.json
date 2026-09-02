@@ -19,10 +19,16 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "enum": ["cost_per", "threshold_rate"]
+        "enum": [
+          "cost_per",
+          "threshold_rate"
+        ]
       }
     }
   },
-  "required": ["vendor", "metric_id"],
+  "required": [
+    "vendor",
+    "metric_id"
+  ],
   "additionalProperties": false
 }

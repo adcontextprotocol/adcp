@@ -47,12 +47,22 @@
     },
     "property_type": {
       "type": "string",
-      "enum": ["house", "apartment", "condo", "townhouse", "land", "commercial"],
+      "enum": [
+        "house",
+        "apartment",
+        "condo",
+        "townhouse",
+        "land",
+        "commercial"
+      ],
       "description": "Type of property."
     },
     "listing_type": {
       "type": "string",
-      "enum": ["for_sale", "for_rent"],
+      "enum": [
+        "for_sale",
+        "for_rent"
+      ],
       "description": "Whether the property is for sale or rent."
     },
     "bedrooms": {
@@ -76,11 +86,17 @@
         },
         "unit": {
           "type": "string",
-          "enum": ["sqft", "sqm"],
+          "enum": [
+            "sqft",
+            "sqm"
+          ],
           "description": "Area unit."
         }
       },
-      "required": ["value", "unit"],
+      "required": [
+        "value",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "description": {
@@ -104,7 +120,10 @@
           "description": "Longitude in decimal degrees (WGS 84)."
         }
       },
-      "required": ["lat", "lng"],
+      "required": [
+        "lat",
+        "lng"
+      ],
       "additionalProperties": false
     },
     "image_url": {
@@ -145,7 +164,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["listing_id", "title", "address"],
+  "required": [
+    "listing_id",
+    "title",
+    "address"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -160,18 +183,30 @@
           "postal_code": "1017 KE",
           "country": "NL"
         },
-        "price": { "amount": 650000, "currency": "EUR" },
+        "price": {
+          "amount": 650000,
+          "currency": "EUR"
+        },
         "property_type": "apartment",
         "listing_type": "for_sale",
         "bedrooms": 3,
         "bathrooms": 1,
-        "area": { "value": 95, "unit": "sqm" },
-        "location": { "lat": 52.3667, "lng": 4.8833 },
+        "area": {
+          "value": 95,
+          "unit": "sqm"
+        },
+        "location": {
+          "lat": 52.3667,
+          "lng": 4.8833
+        },
         "image_url": "https://images.acmerealty.com/jordaan-3br/hero.jpg",
         "url": "https://acmerealty.com/listings/ams-jordaan-3br",
         "neighborhood": "Jordaan",
         "year_built": 1920,
-        "tags": ["canal-view", "renovated"]
+        "tags": [
+          "canal-view",
+          "renovated"
+        ]
       }
     },
     {
@@ -186,13 +221,20 @@
           "postal_code": "11201",
           "country": "US"
         },
-        "price": { "amount": 3200, "currency": "USD", "period": "month" },
+        "price": {
+          "amount": 3200,
+          "currency": "USD",
+          "period": "month"
+        },
         "property_type": "apartment",
         "listing_type": "for_rent",
         "bedrooms": 2,
         "bathrooms": 1,
         "url": "https://acmerealty.com/listings/bklyn-2br-rental",
-        "tags": ["doorman", "laundry"]
+        "tags": [
+          "doorman",
+          "laundry"
+        ]
       }
     }
   ]

@@ -53,7 +53,12 @@
           "pattern": "^[A-Z]{2}$"
         }
       },
-      "required": ["street", "city", "postal_code", "country"],
+      "required": [
+        "street",
+        "city",
+        "postal_code",
+        "country"
+      ],
       "additionalProperties": false
     },
     "contacts": {
@@ -64,7 +69,12 @@
         "properties": {
           "role": {
             "type": "string",
-            "enum": ["billing", "legal", "creative", "general"],
+            "enum": [
+              "billing",
+              "legal",
+              "creative",
+              "general"
+            ],
             "enumDescriptions": {
               "billing": "Accounts payable and invoice queries",
               "legal": "Contract and compliance matters",
@@ -88,7 +98,9 @@
             "maxLength": 30
           }
         },
-        "required": ["role"],
+        "required": [
+          "role"
+        ],
         "additionalProperties": false
       },
       "maxItems": 10
@@ -124,14 +136,18 @@
           "maxLength": 30
         }
       },
-      "required": ["account_holder"],
+      "required": [
+        "account_holder"
+      ],
       "additionalProperties": false
     },
     "ext": {
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["legal_name"],
+  "required": [
+    "legal_name"
+  ],
   "additionalProperties": false,
   "examples": [
     {

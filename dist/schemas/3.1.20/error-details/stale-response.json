@@ -4,7 +4,10 @@
   "title": "Stale Response Details",
   "description": "Recommended `error.details` shape for STALE_RESPONSE errors. Emitted alongside a populated success payload when the seller served cached data past its freshness target because an upstream or sub-agent fetch failed. Lets buyer agents dispatch on cache age and identify the stale upstream without parsing prose. One details entry per affected upstream — when multiple upstreams are stale, the seller emits one STALE_RESPONSE error per upstream rather than aggregating.",
   "type": "object",
-  "required": ["served_from_cache", "cache_age_seconds"],
+  "required": [
+    "served_from_cache",
+    "cache_age_seconds"
+  ],
   "properties": {
     "served_from_cache": {
       "type": "boolean",

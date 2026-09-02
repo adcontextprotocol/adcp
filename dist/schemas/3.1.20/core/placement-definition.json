@@ -67,7 +67,9 @@
             "type": "object",
             "title": "Format option reference",
             "description": "Reference an entry in the file's top-level `formats[]` by `format_option_id`. Resolved at validation time. additionalProperties: true so placement-local fields (display_name, etc.) carry through without forcing a full inline declaration.",
-            "required": ["format_option_id"],
+            "required": [
+              "format_option_id"
+            ],
             "properties": {
               "format_option_id": {
                 "type": "string",
@@ -131,10 +133,14 @@
   ],
   "anyOf": [
     {
-      "required": ["property_ids"]
+      "required": [
+        "property_ids"
+      ]
     },
     {
-      "required": ["property_tags"]
+      "required": [
+        "property_tags"
+      ]
     }
   ],
   "allOf": [
@@ -142,11 +148,31 @@
       "$comment": "adagents.json placements are public catalog declarations. If a file exposes private seller delivery fields here, validators should surface PRIVATE_FIELD_IN_PUBLIC_PLACEMENT so monitoring can distinguish data leaks from generic schema failures.",
       "not": {
         "anyOf": [
-          { "required": ["visibility"] },
-          { "required": ["source"] },
-          { "required": ["origin"] },
-          { "required": ["delivery_mappings"] },
-          { "required": ["format_ids"] }
+          {
+            "required": [
+              "visibility"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "origin"
+            ]
+          },
+          {
+            "required": [
+              "delivery_mappings"
+            ]
+          },
+          {
+            "required": [
+              "format_ids"
+            ]
+          }
         ]
       }
     }

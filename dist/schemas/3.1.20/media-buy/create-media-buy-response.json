@@ -41,7 +41,10 @@
           "description": "DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead. Top-level `status` here collides with the envelope TaskStatus on flat-serialized MCP wire (see adcontextprotocol/adcp#4895). Buyers consuming 3.1+ responses MUST prefer `media_buy_status` when present; sellers MAY emit both during the deprecation window but MUST emit identical values when doing so — divergent emission is a conformance violation."
         },
         "confirmed_at": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "format": "date-time",
           "description": "ISO 8601 timestamp when this media buy was committed by the seller. Stable after it is set; do not update on later pause/resume/status/reporting transitions. May be null in deferred or manual-approval flows until seller commitment occurs."
         },
@@ -111,7 +114,9 @@
                 "type": "null"
               }
             },
-            "required": ["confirmed_at"]
+            "required": [
+              "confirmed_at"
+            ]
           },
           "then": {
             "not": {
@@ -122,7 +127,9 @@
                       "const": "active"
                     }
                   },
-                  "required": ["media_buy_status"]
+                  "required": [
+                    "media_buy_status"
+                  ]
                 },
                 {
                   "properties": {
@@ -130,7 +137,9 @@
                       "const": "active"
                     }
                   },
-                  "required": ["status"]
+                  "required": [
+                    "status"
+                  ]
                 }
               ]
             },
@@ -138,7 +147,9 @@
               "packages": {
                 "items": {
                   "not": {
-                    "required": ["committed_metrics"]
+                    "required": [
+                      "committed_metrics"
+                    ]
                   }
                 }
               }

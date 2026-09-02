@@ -28,14 +28,21 @@
         "overlays": {
           "type": "array",
           "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., video player controls, publisher logos). Creative agents should avoid placing critical content (CTAs, logos, key copy) within overlay bounds.",
-          "items": { "$ref": "/schemas/3.1.20/core/overlay.json" }
+          "items": {
+            "$ref": "/schemas/3.1.20/core/overlay.json"
+          }
         },
         "asset_group_id": {
           "type": "string",
           "description": "Optional canonical asset_group_id this slot fills, drawn from /schemas/core/asset-group-vocabulary.json. Lets buyers and migration tools resolve v1 author-invented slot names (e.g., `click_url`) to canonical names (e.g., `landing_page_url`). Validators MAY soft-warn when a v1 slot's asset_id is a known alias but no asset_group_id is declared."
         }
       },
-      "required": ["item_type", "asset_id", "asset_type", "required"]
+      "required": [
+        "item_type",
+        "asset_id",
+        "asset_type",
+        "required"
+      ]
     },
     "baseGroupAsset": {
       "type": "object",
@@ -60,10 +67,16 @@
         "overlays": {
           "type": "array",
           "description": "Publisher-controlled elements rendered on top of buyer content at this asset's position (e.g., carousel navigation arrows, slide indicators). Creative agents should avoid placing critical content within overlay bounds.",
-          "items": { "$ref": "/schemas/3.1.20/core/overlay.json" }
+          "items": {
+            "$ref": "/schemas/3.1.20/core/overlay.json"
+          }
         }
       },
-      "required": ["asset_id", "asset_type", "required"]
+      "required": [
+        "asset_id",
+        "asset_type",
+        "required"
+      ]
     }
   },
   "properties": {
@@ -209,149 +222,295 @@
           {
             "title": "IndividualImageAsset",
             "description": "Image asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "image" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "image"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualVideoAsset",
             "description": "Video asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "video" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "video"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualAudioAsset",
             "description": "Audio asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "audio" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "audio"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualTextAsset",
             "description": "Text asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "text" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "text"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualMarkdownAsset",
             "description": "Markdown asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "markdown" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "markdown"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualHtmlAsset",
             "description": "HTML asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "html" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "html"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualCssAsset",
             "description": "CSS asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "css" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "css"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualJavaScriptAsset",
             "description": "JavaScript asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "javascript" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "javascript"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualZipAsset",
             "description": "Zip-bundled asset (HTML5 banner bundles, etc.)",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "zip" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "zip"
+              }
             }
           },
           {
             "title": "IndividualVastAsset",
             "description": "VAST asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "vast" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "vast"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualDaastAsset",
             "description": "DAAST asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "daast" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "daast"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualUrlAsset",
             "description": "URL asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "url" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "url"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualWebhookAsset",
             "description": "Webhook asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "webhook" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "webhook"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json"
+              }
             }
           },
           {
             "title": "IndividualBriefAsset",
             "description": "Brief asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "brief" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "brief"
+              }
             }
           },
           {
             "title": "IndividualCatalogAsset",
             "description": "Catalog asset",
-            "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
+            "allOf": [
+              {
+                "$ref": "#/$defs/baseIndividualAsset"
+              }
+            ],
             "properties": {
-              "item_type": { "const": "individual" },
-              "asset_type": { "const": "catalog" },
-              "requirements": { "$ref": "/schemas/3.1.20/core/requirements/catalog-requirements.json" }
+              "item_type": {
+                "const": "individual"
+              },
+              "asset_type": {
+                "const": "catalog"
+              },
+              "requirements": {
+                "$ref": "/schemas/3.1.20/core/requirements/catalog-requirements.json"
+              }
             }
           },
           {
@@ -402,137 +561,272 @@
                     {
                       "title": "GroupImageAsset",
                       "description": "Image asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "image" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "image"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupVideoAsset",
                       "description": "Video asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "video" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "video"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupAudioAsset",
                       "description": "Audio asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "audio" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "audio"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupTextAsset",
                       "description": "Text asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "text" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "text"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupMarkdownAsset",
                       "description": "Markdown asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "markdown" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "markdown"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupHtmlAsset",
                       "description": "HTML asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "html" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "html"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupCssAsset",
                       "description": "CSS asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "css" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "css"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupJavaScriptAsset",
                       "description": "JavaScript asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "javascript" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "javascript"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupZipAsset",
                       "description": "Zip-bundled asset in group (HTML5 banner bundles, etc.)",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "zip" }
+                        "asset_type": {
+                          "const": "zip"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupVastAsset",
                       "description": "VAST asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "vast" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "vast"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupDaastAsset",
                       "description": "DAAST asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "daast" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "daast"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupUrlAsset",
                       "description": "URL asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "url" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "url"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     },
                     {
                       "title": "GroupWebhookAsset",
                       "description": "Webhook asset in group",
-                      "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/baseGroupAsset"
+                        }
+                      ],
                       "properties": {
-                        "asset_type": { "const": "webhook" },
-                        "requirements": { "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json" }
+                        "asset_type": {
+                          "const": "webhook"
+                        },
+                        "requirements": {
+                          "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json"
+                        }
                       },
-                      "required": ["asset_type"]
+                      "required": [
+                        "asset_type"
+                      ]
                     }
                   ]
                 }
               }
             },
-            "required": ["item_type", "asset_group_id", "required", "min_count", "max_count", "assets"]
+            "required": [
+              "item_type",
+              "asset_group_id",
+              "required",
+              "min_count",
+              "max_count",
+              "assets"
+            ]
           }
         ]
       }
@@ -547,8 +841,13 @@
       "description": "List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUSTER, DEVICE_ID). Used for validation and developer tooling. See docs/creative/universal-macros.mdx for full documentation.",
       "items": {
         "anyOf": [
-          { "$ref": "/schemas/3.1.20/enums/universal-macro.json" },
-          { "type": "string", "description": "Custom or publisher-specific macro name" }
+          {
+            "$ref": "/schemas/3.1.20/enums/universal-macro.json"
+          },
+          {
+            "type": "string",
+            "description": "Custom or publisher-specific macro name"
+          }
         ]
       }
     },
@@ -601,7 +900,9 @@
           "description": "When true, all assets with x-accessibility fields must include those fields. For inspectable assets (image, video, audio), this means providing accessibility metadata like alt_text or captions. For opaque assets (HTML, JavaScript), this means providing self-declared accessibility properties."
         }
       },
-      "required": ["wcag_level"]
+      "required": [
+        "wcag_level"
+      ]
     },
     "supported_disclosure_positions": {
       "type": "array",
@@ -632,7 +933,10 @@
             "uniqueItems": true
           }
         },
-        "required": ["position", "persistence"],
+        "required": [
+          "position",
+          "persistence"
+        ],
         "additionalProperties": true
       },
       "minItems": 1
@@ -692,10 +996,14 @@
   "allOf": [
     {
       "if": {
-        "required": ["canonical_parameters"]
+        "required": [
+          "canonical_parameters"
+        ]
       },
       "then": {
-        "required": ["canonical"],
+        "required": [
+          "canonical"
+        ],
         "properties": {
           "canonical_parameters": {
             "type": "object",

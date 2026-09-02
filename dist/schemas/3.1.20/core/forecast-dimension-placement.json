@@ -19,6 +19,9 @@
       "description": "Human-readable placement name, useful when the buyer has not resolved the placement catalog."
     }
   },
-  "required": ["kind", "placement_ref"],
+  "required": [
+    "kind",
+    "placement_ref"
+  ],
   "additionalProperties": false
 }

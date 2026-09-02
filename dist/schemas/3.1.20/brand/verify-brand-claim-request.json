@@ -40,11 +40,16 @@
               "description": "When the caller observed the leaf's claim."
             }
           },
-          "required": ["subsidiary_domain"],
+          "required": [
+            "subsidiary_domain"
+          ],
           "additionalProperties": true
         }
       },
-      "required": ["claim_type", "claim"],
+      "required": [
+        "claim_type",
+        "claim"
+      ],
       "additionalProperties": true
     },
     {
@@ -72,11 +77,16 @@
               "format": "date-time"
             }
           },
-          "required": ["parent_domain"],
+          "required": [
+            "parent_domain"
+          ],
           "additionalProperties": true
         }
       },
-      "required": ["claim_type", "claim"],
+      "required": [
+        "claim_type",
+        "claim"
+      ],
       "additionalProperties": true
     },
     {
@@ -96,16 +106,42 @@
               "properties": {
                 "type": {
                   "type": "string",
-                  "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"]
+                  "enum": [
+                    "website",
+                    "mobile_app",
+                    "ctv_app",
+                    "desktop_app",
+                    "dooh",
+                    "podcast",
+                    "radio",
+                    "streaming_audio"
+                  ]
                 },
-                "identifier": { "type": "string" },
+                "identifier": {
+                  "type": "string"
+                },
                 "store": {
                   "type": "string",
-                  "enum": ["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]
+                  "enum": [
+                    "apple",
+                    "google",
+                    "amazon",
+                    "roku",
+                    "fire_tv",
+                    "samsung",
+                    "lg",
+                    "vizio",
+                    "other"
+                  ]
                 },
-                "region": { "type": "string" }
+                "region": {
+                  "type": "string"
+                }
               },
-              "required": ["type", "identifier"],
+              "required": [
+                "type",
+                "identifier"
+              ],
               "additionalProperties": true
             },
             "use_case": {
@@ -114,11 +150,16 @@
               "description": "Optional caller-declared use case. The agent MAY scope its answer."
             }
           },
-          "required": ["property"],
+          "required": [
+            "property"
+          ],
           "additionalProperties": true
         }
       },
-      "required": ["claim_type", "claim"],
+      "required": [
+        "claim_type",
+        "claim"
+      ],
       "additionalProperties": true
     },
     {
@@ -147,18 +188,27 @@
             },
             "countries": {
               "type": "array",
-              "items": { "type": "string", "minLength": 2, "maxLength": 2 }
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 2
+              }
             },
             "use_case": {
               "type": "string",
               "maxLength": 100
             }
           },
-          "required": ["mark"],
+          "required": [
+            "mark"
+          ],
           "additionalProperties": true
         }
       },
-      "required": ["claim_type", "claim"],
+      "required": [
+        "claim_type",
+        "claim"
+      ],
       "additionalProperties": true
     }
   ]

@@ -53,7 +53,10 @@
           "properties": {
             "human_oversight": {
               "type": "string",
-              "enum": ["edited", "directed"],
+              "enum": [
+                "edited",
+                "directed"
+              ],
               "description": "Human oversight level declared by the creative provenance."
             },
             "disclosure_required": {
@@ -62,12 +65,20 @@
               "description": "Disclosure-required claim declared by the creative provenance."
             }
           },
-          "required": ["human_oversight", "disclosure_required"],
+          "required": [
+            "human_oversight",
+            "disclosure_required"
+          ],
           "additionalProperties": false
         },
         "observed_value": {
           "description": "Verifier observation relevant to the claim, when applicable.",
-          "type": ["boolean", "number", "string", "null"]
+          "type": [
+            "boolean",
+            "number",
+            "string",
+            "null"
+          ]
         },
         "confidence": {
           "type": "number",
@@ -81,7 +92,10 @@
           "description": "Buyer-nominated verifier URL when the seller or orchestrator used a different on-list governance agent."
         }
       },
-      "required": ["agent_url", "claimed_value"],
+      "required": [
+        "agent_url",
+        "claimed_value"
+      ],
       "additionalProperties": false
     },
     "ext": {

@@ -43,7 +43,11 @@
     },
     "bit_depth": {
       "type": "integer",
-      "enum": [16, 24, 32],
+      "enum": [
+        16,
+        24,
+        32
+      ],
       "description": "Bit depth"
     },
     "bitrate_kbps": {

@@ -23,14 +23,37 @@
           "pattern": "^[a-zA-Z0-9_-]+$"
         }
       },
-      "required": ["scope", "signal_id"],
+      "required": [
+        "scope",
+        "signal_id"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["data_provider_domain"] },
-          { "required": ["signal_source_url"] },
-          { "required": ["agent_url"] },
-          { "required": ["source"] },
-          { "required": ["id"] }
+          {
+            "required": [
+              "data_provider_domain"
+            ]
+          },
+          {
+            "required": [
+              "signal_source_url"
+            ]
+          },
+          {
+            "required": [
+              "agent_url"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          }
         ]
       },
       "additionalProperties": true
@@ -55,13 +78,33 @@
           "pattern": "^[a-zA-Z0-9_-]+$"
         }
       },
-      "required": ["scope", "data_provider_domain", "signal_id"],
+      "required": [
+        "scope",
+        "data_provider_domain",
+        "signal_id"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["agent_url"] },
-          { "required": ["signal_source_url"] },
-          { "required": ["source"] },
-          { "required": ["id"] }
+          {
+            "required": [
+              "agent_url"
+            ]
+          },
+          {
+            "required": [
+              "signal_source_url"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          }
         ]
       },
       "additionalProperties": true
@@ -86,13 +129,33 @@
           "pattern": "^[a-zA-Z0-9_-]+$"
         }
       },
-      "required": ["scope", "signal_source_url", "signal_id"],
+      "required": [
+        "scope",
+        "signal_source_url",
+        "signal_id"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["data_provider_domain"] },
-          { "required": ["agent_url"] },
-          { "required": ["source"] },
-          { "required": ["id"] }
+          {
+            "required": [
+              "data_provider_domain"
+            ]
+          },
+          {
+            "required": [
+              "agent_url"
+            ]
+          },
+          {
+            "required": [
+              "source"
+            ]
+          },
+          {
+            "required": [
+              "id"
+            ]
+          }
         ]
       },
       "additionalProperties": true

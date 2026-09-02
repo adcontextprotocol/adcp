@@ -4,7 +4,11 @@
   "title": "Match Type",
   "description": "Keyword targeting match type. broad: ads may serve on queries semantically related to the keyword. phrase: ads serve when the query contains the keyword phrase. exact: ads serve only when the query matches the keyword exactly.",
   "type": "string",
-  "enum": ["broad", "phrase", "exact"],
+  "enum": [
+    "broad",
+    "phrase",
+    "exact"
+  ],
   "enumDescriptions": {
     "broad": "Ads may serve on queries semantically related to the keyword",
     "phrase": "Ads serve when the query contains the keyword phrase in order",

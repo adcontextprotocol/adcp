@@ -14,11 +14,18 @@
         },
         "variant": {
           "type": "string",
-          "enum": ["body", "heading", "caption", "label"],
+          "enum": [
+            "body",
+            "heading",
+            "caption",
+            "label"
+          ],
           "default": "body"
         }
       },
-      "required": ["text"]
+      "required": [
+        "text"
+      ]
     },
     "Button": {
       "type": "object",
@@ -44,18 +51,27 @@
               }
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "variant": {
           "type": "string",
-          "enum": ["primary", "secondary", "text"],
+          "enum": [
+            "primary",
+            "secondary",
+            "text"
+          ],
           "default": "primary"
         },
         "disabled": {
           "$ref": "/schemas/3.1.20/a2ui/bound-value.json"
         }
       },
-      "required": ["label", "action"]
+      "required": [
+        "label",
+        "action"
+      ]
     },
     "Link": {
       "type": "object",
@@ -75,7 +91,10 @@
           "default": true
         }
       },
-      "required": ["label", "url"]
+      "required": [
+        "label",
+        "url"
+      ]
     },
     "Image": {
       "type": "object",
@@ -98,7 +117,10 @@
           "description": "Image height in pixels"
         }
       },
-      "required": ["src", "alt"]
+      "required": [
+        "src",
+        "alt"
+      ]
     },
     "Card": {
       "type": "object",
@@ -124,7 +146,9 @@
           "type": "object",
           "description": "Action to trigger on card click",
           "properties": {
-            "name": { "type": "string" },
+            "name": {
+              "type": "string"
+            },
             "context": {
               "type": "object",
               "additionalProperties": {
@@ -132,15 +156,21 @@
               }
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "children": {
           "type": "array",
           "description": "Child component IDs",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       },
-      "required": ["title"]
+      "required": [
+        "title"
+      ]
     },
     "ProductCard": {
       "type": "object",
@@ -173,7 +203,9 @@
         "action": {
           "type": "object",
           "properties": {
-            "name": { "type": "string" },
+            "name": {
+              "type": "string"
+            },
             "context": {
               "type": "object",
               "additionalProperties": {
@@ -181,10 +213,15 @@
               }
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         }
       },
-      "required": ["title", "price"]
+      "required": [
+        "title",
+        "price"
+      ]
     },
     "List": {
       "type": "object",
@@ -203,7 +240,9 @@
               "description": "ID of component to use as template"
             }
           },
-          "required": ["componentId"]
+          "required": [
+            "componentId"
+          ]
         },
         "emptyMessage": {
           "$ref": "/schemas/3.1.20/a2ui/bound-value.json",
@@ -211,11 +250,18 @@
         },
         "layout": {
           "type": "string",
-          "enum": ["vertical", "horizontal", "grid"],
+          "enum": [
+            "vertical",
+            "horizontal",
+            "grid"
+          ],
           "default": "vertical"
         }
       },
-      "required": ["items", "template"]
+      "required": [
+        "items",
+        "template"
+      ]
     },
     "Row": {
       "type": "object",
@@ -224,7 +270,9 @@
         "children": {
           "type": "array",
           "description": "Child component IDs",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "gap": {
           "type": "string",
@@ -233,16 +281,29 @@
         },
         "align": {
           "type": "string",
-          "enum": ["start", "center", "end", "stretch"],
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
           "default": "center"
         },
         "justify": {
           "type": "string",
-          "enum": ["start", "center", "end", "between", "around"],
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "between",
+            "around"
+          ],
           "default": "start"
         }
       },
-      "required": ["children"]
+      "required": [
+        "children"
+      ]
     },
     "Column": {
       "type": "object",
@@ -251,7 +312,9 @@
         "children": {
           "type": "array",
           "description": "Child component IDs",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "gap": {
           "type": "string",
@@ -260,11 +323,18 @@
         },
         "align": {
           "type": "string",
-          "enum": ["start", "center", "end", "stretch"],
+          "enum": [
+            "start",
+            "center",
+            "end",
+            "stretch"
+          ],
           "default": "stretch"
         }
       },
-      "required": ["children"]
+      "required": [
+        "children"
+      ]
     },
     "IntegrationAction": {
       "type": "object",
@@ -272,7 +342,10 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["mcp", "a2a"],
+          "enum": [
+            "mcp",
+            "a2a"
+          ],
           "description": "Integration type"
         },
         "label": {
@@ -289,7 +362,10 @@
           "default": false
         }
       },
-      "required": ["type", "label"]
+      "required": [
+        "type",
+        "label"
+      ]
     },
     "AppHandoff": {
       "type": "object",
@@ -301,14 +377,23 @@
           "additionalProperties": {
             "type": "object",
             "properties": {
-              "appId": { "type": "string" },
-              "deepLink": { "type": "string" },
-              "url": { "type": "string", "format": "uri" }
+              "appId": {
+                "type": "string"
+              },
+              "deepLink": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              }
             }
           }
         }
       },
-      "required": ["apps"]
+      "required": [
+        "apps"
+      ]
     }
   },
   "type": "object",

@@ -4,7 +4,14 @@
   "title": "Payment Terms",
   "description": "Standard payment terms for AdCP accounts",
   "type": "string",
-  "enum": ["net_15", "net_30", "net_45", "net_60", "net_90", "prepay"],
+  "enum": [
+    "net_15",
+    "net_30",
+    "net_45",
+    "net_60",
+    "net_90",
+    "prepay"
+  ],
   "enumDescriptions": {
     "net_15": "Payment due within 15 days of invoice",
     "net_30": "Payment due within 30 days of invoice",

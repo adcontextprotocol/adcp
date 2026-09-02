@@ -31,7 +31,9 @@
         {
           "title": "StandardScope",
           "type": "string",
-          "enum": ["attestation_verifier"],
+          "enum": [
+            "attestation_verifier"
+          ],
           "description": "Standard named scopes defined by the AdCP spec. `attestation_verifier` binds to the AAO Verified (Live) qualifier (a Media Buy Protocol flow — live observation requires real ad delivery) — the authorization mechanism itself is protocol-neutral, but this particular named scope is media-buy-specific."
         },
         {
@@ -48,6 +50,8 @@
       "default": false
     }
   },
-  "required": ["allowed_tasks"],
+  "required": [
+    "allowed_tasks"
+  ],
   "additionalProperties": true
 }

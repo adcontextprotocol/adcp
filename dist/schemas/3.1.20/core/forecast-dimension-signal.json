@@ -21,12 +21,20 @@
       "x-entity": "signal"
     },
     "signal_value": {
-      "type": ["string", "number", "boolean", "null"],
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ],
       "description": "Signal value bucket represented by this point. Use null with presence 'absent' to represent inventory where the signal is not present. Omit when the row describes any present value rather than one specific value."
     },
     "presence": {
       "type": "string",
-      "enum": ["present", "absent"],
+      "enum": [
+        "present",
+        "absent"
+      ],
       "description": "Whether the signal is present for this point. Use 'absent' for the explicit not-present bucket."
     },
     "signal_name": {
@@ -38,10 +46,21 @@
       "description": "Human-readable label for the signal value bucket."
     }
   },
-  "required": ["kind", "presence"],
+  "required": [
+    "kind",
+    "presence"
+  ],
   "anyOf": [
-    { "required": ["signal_ref"] },
-    { "required": ["signal_id"] }
+    {
+      "required": [
+        "signal_ref"
+      ]
+    },
+    {
+      "required": [
+        "signal_id"
+      ]
+    }
   ],
   "allOf": [
     {
@@ -51,7 +70,9 @@
             "const": "absent"
           }
         },
-        "required": ["presence"]
+        "required": [
+          "presence"
+        ]
       },
       "then": {
         "properties": {
@@ -59,7 +80,9 @@
             "type": "null"
           }
         },
-        "required": ["signal_value"]
+        "required": [
+          "signal_value"
+        ]
       }
     },
     {
@@ -69,12 +92,18 @@
             "const": "present"
           }
         },
-        "required": ["presence"]
+        "required": [
+          "presence"
+        ]
       },
       "then": {
         "properties": {
           "signal_value": {
-            "type": ["string", "number", "boolean"]
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
           }
         }
       }

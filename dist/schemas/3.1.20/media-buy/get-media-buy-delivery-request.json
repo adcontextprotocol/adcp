@@ -138,50 +138,99 @@
           "allOf": [
             {
               "if": {
-                "properties": { "geo_level": { "enum": ["country", "region"] } },
-                "required": ["geo_level"]
+                "properties": {
+                  "geo_level": {
+                    "enum": [
+                      "country",
+                      "region"
+                    ]
+                  }
+                },
+                "required": [
+                  "geo_level"
+                ]
               },
               "then": {
                 "not": {
                   "anyOf": [
-                    { "required": ["country"] },
-                    { "required": ["system"] }
+                    {
+                      "required": [
+                        "country"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "system"
+                      ]
+                    }
                   ]
                 }
               }
             },
             {
               "if": {
-                "properties": { "geo_level": { "const": "metro" } },
-                "required": ["geo_level"]
+                "properties": {
+                  "geo_level": {
+                    "const": "metro"
+                  }
+                },
+                "required": [
+                  "geo_level"
+                ]
               },
               "then": {
                 "anyOf": [
                   {
-                    "not": { "required": ["system"] }
+                    "not": {
+                      "required": [
+                        "system"
+                      ]
+                    }
                   },
                   {
                     "properties": {
-                      "system": { "$ref": "/schemas/3.1.20/enums/metro-system.json" }
+                      "system": {
+                        "$ref": "/schemas/3.1.20/enums/metro-system.json"
+                      }
                     },
-                    "required": ["system"]
+                    "required": [
+                      "system"
+                    ]
                   }
                 ],
-                "not": { "required": ["country"] }
+                "not": {
+                  "required": [
+                    "country"
+                  ]
+                }
               }
             },
             {
               "if": {
-                "properties": { "geo_level": { "const": "postal_area" } },
-                "required": ["geo_level"]
+                "properties": {
+                  "geo_level": {
+                    "const": "postal_area"
+                  }
+                },
+                "required": [
+                  "geo_level"
+                ]
               },
               "then": {
                 "anyOf": [
                   {
                     "not": {
                       "anyOf": [
-                        { "required": ["country"] },
-                        { "required": ["system"] }
+                        {
+                          "required": [
+                            "country"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "system"
+                          ]
+                        }
                       ]
                     }
                   },
@@ -190,10 +239,18 @@
                   },
                   {
                     "properties": {
-                      "system": { "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json" }
+                      "system": {
+                        "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json"
+                      }
                     },
-                    "required": ["system"],
-                    "not": { "required": ["country"] }
+                    "required": [
+                      "system"
+                    ],
+                    "not": {
+                      "required": [
+                        "country"
+                      ]
+                    }
                   }
                 ]
               }

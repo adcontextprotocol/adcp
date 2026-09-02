@@ -32,10 +32,22 @@
           "description": "Whether to include (true) or exclude (false) users matching this signal"
         }
       },
-      "required": ["type", "value_type", "value"],
+      "required": [
+        "type",
+        "value_type",
+        "value"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -71,10 +83,22 @@
           "minItems": 1
         }
       },
-      "required": ["type", "value_type", "values"],
+      "required": [
+        "type",
+        "value_type",
+        "values"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -110,10 +134,21 @@
           "description": "Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both are provided."
         }
       },
-      "required": ["type", "value_type"],
+      "required": [
+        "type",
+        "value_type"
+      ],
       "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
+        {
+          "required": [
+            "signal_ref"
+          ]
+        },
+        {
+          "required": [
+            "signal_id"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -137,7 +172,10 @@
           "description": "Optional grouping hint for the governance agent (e.g., 'demographic', 'behavioral', 'contextual', 'financial')"
         }
       },
-      "required": ["type", "description"],
+      "required": [
+        "type",
+        "description"
+      ],
       "additionalProperties": true
     }
   ]

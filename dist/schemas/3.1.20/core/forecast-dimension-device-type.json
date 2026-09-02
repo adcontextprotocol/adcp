@@ -15,6 +15,9 @@
       "description": "Device form factor for this forecast row."
     }
   },
-  "required": ["kind", "device_type"],
+  "required": [
+    "kind",
+    "device_type"
+  ],
   "additionalProperties": false
 }

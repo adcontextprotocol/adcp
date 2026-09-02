@@ -125,7 +125,10 @@
             "description": "Metro code within the system (e.g., '501' for NYC DMA)"
           }
         },
-        "required": ["system", "code"],
+        "required": [
+          "system",
+          "code"
+        ],
         "additionalProperties": false
       },
       "minItems": 1
@@ -212,7 +215,9 @@
                 "description": "When true, require this provider to support identity match."
               }
             },
-            "required": ["agent_url"],
+            "required": [
+              "agent_url"
+            ],
             "additionalProperties": true
           },
           "minItems": 1
@@ -252,54 +257,105 @@
             "description": "Optional classification system within the level. Use for a specific metro system (e.g., 'nielsen_dma'), native postal_area system (e.g., 'zip' with country 'US'), or deprecated legacy postal alias (e.g., 'us_zip'). Not applicable for country/region which use ISO standards."
           }
         },
-        "required": ["level"],
+        "required": [
+          "level"
+        ],
         "allOf": [
           {
             "if": {
-              "properties": { "level": { "enum": ["country", "region"] } },
-              "required": ["level"]
+              "properties": {
+                "level": {
+                  "enum": [
+                    "country",
+                    "region"
+                  ]
+                }
+              },
+              "required": [
+                "level"
+              ]
             },
             "then": {
               "not": {
                 "anyOf": [
-                  { "required": ["country"] },
-                  { "required": ["system"] }
+                  {
+                    "required": [
+                      "country"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "system"
+                    ]
+                  }
                 ]
               }
             }
           },
           {
             "if": {
-              "properties": { "level": { "const": "metro" } },
-              "required": ["level"]
+              "properties": {
+                "level": {
+                  "const": "metro"
+                }
+              },
+              "required": [
+                "level"
+              ]
             },
             "then": {
               "anyOf": [
                 {
-                  "not": { "required": ["system"] }
+                  "not": {
+                    "required": [
+                      "system"
+                    ]
+                  }
                 },
                 {
                   "properties": {
-                    "system": { "$ref": "/schemas/3.1.20/enums/metro-system.json" }
+                    "system": {
+                      "$ref": "/schemas/3.1.20/enums/metro-system.json"
+                    }
                   },
-                  "required": ["system"]
+                  "required": [
+                    "system"
+                  ]
                 }
               ],
-              "not": { "required": ["country"] }
+              "not": {
+                "required": [
+                  "country"
+                ]
+              }
             }
           },
           {
             "if": {
-              "properties": { "level": { "const": "postal_area" } },
-              "required": ["level"]
+              "properties": {
+                "level": {
+                  "const": "postal_area"
+                }
+              },
+              "required": [
+                "level"
+              ]
             },
             "then": {
               "anyOf": [
                 {
                   "not": {
                     "anyOf": [
-                      { "required": ["country"] },
-                      { "required": ["system"] }
+                      {
+                        "required": [
+                          "country"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "system"
+                        ]
+                      }
                     ]
                   }
                 },
@@ -308,10 +364,18 @@
                 },
                 {
                   "properties": {
-                    "system": { "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json" }
+                    "system": {
+                      "$ref": "/schemas/3.1.20/enums/legacy-postal-system.json"
+                    }
                   },
-                  "required": ["system"],
-                  "not": { "required": ["country"] }
+                  "required": [
+                    "system"
+                  ],
+                  "not": {
+                    "required": [
+                      "country"
+                    ]
+                  }
                 }
               ]
             }
@@ -388,7 +452,10 @@
                 "$ref": "/schemas/3.1.20/enums/travel-time-unit.json"
               }
             },
-            "required": ["value", "unit"],
+            "required": [
+              "value",
+              "unit"
+            ],
             "additionalProperties": false
           },
           "transport_mode": {
@@ -409,7 +476,10 @@
                 "description": "Distance unit"
               }
             },
-            "required": ["value", "unit"],
+            "required": [
+              "value",
+              "unit"
+            ],
             "additionalProperties": false
           },
           "geometry": {
@@ -418,7 +488,10 @@
             "properties": {
               "type": {
                 "type": "string",
-                "enum": ["Polygon", "MultiPolygon"],
+                "enum": [
+                  "Polygon",
+                  "MultiPolygon"
+                ],
                 "description": "GeoJSON geometry type"
               },
               "coordinates": {
@@ -426,35 +499,73 @@
                 "description": "GeoJSON coordinates array"
               }
             },
-            "required": ["type", "coordinates"],
+            "required": [
+              "type",
+              "coordinates"
+            ],
             "additionalProperties": false
           }
         },
         "oneOf": [
           {
-            "required": ["lat", "lng", "travel_time", "transport_mode"],
+            "required": [
+              "lat",
+              "lng",
+              "travel_time",
+              "transport_mode"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["radius"] },
-                { "required": ["geometry"] }
+                {
+                  "required": [
+                    "radius"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
               ]
             }
           },
           {
-            "required": ["lat", "lng", "radius"],
+            "required": [
+              "lat",
+              "lng",
+              "radius"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["geometry"] }
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "geometry"
+                  ]
+                }
               ]
             }
           },
           {
-            "required": ["geometry"],
+            "required": [
+              "geometry"
+            ],
             "not": {
               "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["radius"] }
+                {
+                  "required": [
+                    "travel_time"
+                  ]
+                },
+                {
+                  "required": [
+                    "radius"
+                  ]
+                }
               ]
             }
           }
@@ -480,9 +591,18 @@
       "minItems": 1,
       "uniqueItems": true,
       "examples": [
-        ["completed_views"],
-        ["completed_views", "completion_rate"],
-        ["impressions", "spend", "engagements"]
+        [
+          "completed_views"
+        ],
+        [
+          "completed_views",
+          "completion_rate"
+        ],
+        [
+          "impressions",
+          "spend",
+          "engagements"
+        ]
       ]
     },
     "required_vendor_metrics": {
@@ -501,16 +621,48 @@
           }
         },
         "anyOf": [
-          { "required": ["vendor"] },
-          { "required": ["metric_id"] }
+          {
+            "required": [
+              "vendor"
+            ]
+          },
+          {
+            "required": [
+              "metric_id"
+            ]
+          }
         ],
         "additionalProperties": false
       },
       "minItems": 1,
       "examples": [
-        [{ "vendor": { "domain": "attentionvendor.example" } }],
-        [{ "vendor": { "domain": "panelmeasurement.example" }, "metric_id": "demographic_reach" }],
-        [{ "vendor": { "domain": "attentionvendor.example" } }, { "vendor": { "domain": "secondattentionvendor.example" } }]
+        [
+          {
+            "vendor": {
+              "domain": "attentionvendor.example"
+            }
+          }
+        ],
+        [
+          {
+            "vendor": {
+              "domain": "panelmeasurement.example"
+            },
+            "metric_id": "demographic_reach"
+          }
+        ],
+        [
+          {
+            "vendor": {
+              "domain": "attentionvendor.example"
+            }
+          },
+          {
+            "vendor": {
+              "domain": "secondattentionvendor.example"
+            }
+          }
+        ]
       ]
     },
     "keywords": {
@@ -529,7 +681,9 @@
             "default": "broad"
           }
         },
-        "required": ["keyword"],
+        "required": [
+          "keyword"
+        ],
         "additionalProperties": false
       },
       "minItems": 1

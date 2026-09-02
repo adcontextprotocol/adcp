@@ -21,6 +21,8 @@
       "description": "When the series ends (ISO 8601)"
     }
   },
-  "required": ["total_installments"],
+  "required": [
+    "total_installments"
+  ],
   "additionalProperties": true
 }

@@ -24,6 +24,8 @@
       "description": "When the event ends (ISO 8601). Omit for single-day events."
     }
   },
-  "required": ["name"],
+  "required": [
+    "name"
+  ],
   "additionalProperties": true
 }

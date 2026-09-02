@@ -18,9 +18,13 @@
       "minLength": 1
     }
   },
-  "required": ["agent_url"],
+  "required": [
+    "agent_url"
+  ],
   "additionalProperties": false,
   "examples": [
-    { "agent_url": "https://agent.acme.example" }
+    {
+      "agent_url": "https://agent.acme.example"
+    }
   ]
 }

@@ -4,17 +4,41 @@
   "title": "Asset Requirements",
   "description": "Technical requirements for creative assets. The applicable schema is determined by the sibling asset_type field.",
   "anyOf": [
-    { "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json" },
-    { "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json" }
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/image-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/video-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/audio-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/text-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/markdown-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/html-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/css-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/javascript-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/vast-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/daast-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/url-asset-requirements.json"
+    },
+    {
+      "$ref": "/schemas/3.1.20/core/requirements/webhook-asset-requirements.json"
+    }
   ]
 }

@@ -36,11 +36,28 @@
         "selection_type"
       ],
       "allOf": [
-        { "not": { "required": ["publisher_domain", "publisher_domains"] } },
-        { "anyOf": [
-          { "required": ["publisher_domain"] },
-          { "required": ["publisher_domains"] }
-        ]}
+        {
+          "not": {
+            "required": [
+              "publisher_domain",
+              "publisher_domains"
+            ]
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "publisher_domain"
+              ]
+            },
+            {
+              "required": [
+                "publisher_domains"
+              ]
+            }
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -112,11 +129,28 @@
         "property_tags"
       ],
       "allOf": [
-        { "not": { "required": ["publisher_domain", "publisher_domains"] } },
-        { "anyOf": [
-          { "required": ["publisher_domain"] },
-          { "required": ["publisher_domains"] }
-        ]}
+        {
+          "not": {
+            "required": [
+              "publisher_domain",
+              "publisher_domains"
+            ]
+          }
+        },
+        {
+          "anyOf": [
+            {
+              "required": [
+                "publisher_domain"
+              ]
+            },
+            {
+              "required": [
+                "publisher_domains"
+              ]
+            }
+          ]
+        }
       ],
       "additionalProperties": true
     }

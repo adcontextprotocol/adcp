@@ -4,7 +4,10 @@
   "title": "Travel Time Unit",
   "description": "Time unit for isochrone (travel-time catchment) calculations.",
   "type": "string",
-  "enum": ["min", "hr"],
+  "enum": [
+    "min",
+    "hr"
+  ],
   "enumDescriptions": {
     "min": "Minutes",
     "hr": "Hours"

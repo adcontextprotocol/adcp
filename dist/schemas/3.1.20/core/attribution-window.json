@@ -6,11 +6,19 @@
   "type": "object",
   "properties": {
     "post_click": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/core/duration.json"
+        }
+      ],
       "description": "Post-click attribution window. Conversions occurring within this duration after a click are attributed to the ad."
     },
     "post_view": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/core/duration.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/core/duration.json"
+        }
+      ],
       "description": "Post-view attribution window. Conversions occurring within this duration after an ad impression (without click) are attributed to the ad."
     },
     "model": {

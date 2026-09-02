@@ -59,26 +59,147 @@
   },
   "enumMetadata": {
     "$comment": "Structured per-action metadata. Each entry carries `update_fields` (the `update_media_buy` request fields this action covers, as dotted paths rooted at the request body) and optional `rollup` for legacy coarse values that are superseded by finer-grained vocabulary. SDKs MUST consume this block to dispatch update_media_buy requests rather than parsing the field-mapping table in the update_media_buy task-reference doc; the doc is the human-readable mirror of this normative data. Deprecated values are marked at the top-level `x-deprecated-enum-values` (repo convention); SDKs and codegen MAY hide deprecated values from caller-facing surfaces when any value in the entry's `rollup` array is present in the same `available_actions[]` or `valid_actions[]` payload.",
-    "pause":                       { "update_fields": ["paused"] },
-    "resume":                      { "update_fields": ["paused"] },
-    "cancel":                      { "update_fields": ["canceled", "cancellation_reason"] },
-    "extend_flight":               { "update_fields": ["end_time", "packages[].end_time"] },
-    "shorten_flight":              { "update_fields": ["end_time", "packages[].end_time"] },
-    "update_flight_dates":         { "update_fields": ["start_time", "end_time", "packages[].start_time", "packages[].end_time"] },
-    "increase_budget":             { "update_fields": ["packages[].budget"] },
-    "decrease_budget":             { "update_fields": ["packages[].budget"] },
-    "reallocate_budget":           { "update_fields": ["packages[].budget"] },
-    "update_targeting":            { "update_fields": ["packages[].targeting_overlay", "packages[].keyword_targets_add", "packages[].keyword_targets_remove", "packages[].negative_keywords_add", "packages[].negative_keywords_remove"] },
-    "update_pacing":               { "update_fields": ["packages[].pacing"] },
-    "update_frequency_caps":       { "update_fields": ["packages[].targeting_overlay.frequency_cap"] },
-    "replace_creative":            { "update_fields": ["packages[].creatives"] },
-    "update_creative_assignments": { "update_fields": ["packages[].creative_assignments"] },
-    "remove_creative":             { "update_fields": ["packages[].creatives", "packages[].creative_assignments"] },
-    "add_packages":                { "update_fields": ["new_packages"] },
-    "remove_packages":             { "update_fields": ["packages[].canceled"] },
-    "update_budget":               { "update_fields": ["packages[].budget"], "rollup": ["increase_budget", "decrease_budget", "reallocate_budget"] },
-    "update_dates":                { "update_fields": ["start_time", "end_time", "packages[].start_time", "packages[].end_time"], "rollup": ["extend_flight", "shorten_flight", "update_flight_dates"] },
-    "update_packages":             { "update_fields": ["packages[]"], "rollup": ["update_targeting", "update_pacing", "update_frequency_caps", "reallocate_budget", "remove_packages"] },
-    "sync_creatives":              { "update_fields": ["packages[].creatives", "packages[].creative_assignments"], "rollup": ["replace_creative", "update_creative_assignments", "remove_creative"] }
+    "pause": {
+      "update_fields": [
+        "paused"
+      ]
+    },
+    "resume": {
+      "update_fields": [
+        "paused"
+      ]
+    },
+    "cancel": {
+      "update_fields": [
+        "canceled",
+        "cancellation_reason"
+      ]
+    },
+    "extend_flight": {
+      "update_fields": [
+        "end_time",
+        "packages[].end_time"
+      ]
+    },
+    "shorten_flight": {
+      "update_fields": [
+        "end_time",
+        "packages[].end_time"
+      ]
+    },
+    "update_flight_dates": {
+      "update_fields": [
+        "start_time",
+        "end_time",
+        "packages[].start_time",
+        "packages[].end_time"
+      ]
+    },
+    "increase_budget": {
+      "update_fields": [
+        "packages[].budget"
+      ]
+    },
+    "decrease_budget": {
+      "update_fields": [
+        "packages[].budget"
+      ]
+    },
+    "reallocate_budget": {
+      "update_fields": [
+        "packages[].budget"
+      ]
+    },
+    "update_targeting": {
+      "update_fields": [
+        "packages[].targeting_overlay",
+        "packages[].keyword_targets_add",
+        "packages[].keyword_targets_remove",
+        "packages[].negative_keywords_add",
+        "packages[].negative_keywords_remove"
+      ]
+    },
+    "update_pacing": {
+      "update_fields": [
+        "packages[].pacing"
+      ]
+    },
+    "update_frequency_caps": {
+      "update_fields": [
+        "packages[].targeting_overlay.frequency_cap"
+      ]
+    },
+    "replace_creative": {
+      "update_fields": [
+        "packages[].creatives"
+      ]
+    },
+    "update_creative_assignments": {
+      "update_fields": [
+        "packages[].creative_assignments"
+      ]
+    },
+    "remove_creative": {
+      "update_fields": [
+        "packages[].creatives",
+        "packages[].creative_assignments"
+      ]
+    },
+    "add_packages": {
+      "update_fields": [
+        "new_packages"
+      ]
+    },
+    "remove_packages": {
+      "update_fields": [
+        "packages[].canceled"
+      ]
+    },
+    "update_budget": {
+      "update_fields": [
+        "packages[].budget"
+      ],
+      "rollup": [
+        "increase_budget",
+        "decrease_budget",
+        "reallocate_budget"
+      ]
+    },
+    "update_dates": {
+      "update_fields": [
+        "start_time",
+        "end_time",
+        "packages[].start_time",
+        "packages[].end_time"
+      ],
+      "rollup": [
+        "extend_flight",
+        "shorten_flight",
+        "update_flight_dates"
+      ]
+    },
+    "update_packages": {
+      "update_fields": [
+        "packages[]"
+      ],
+      "rollup": [
+        "update_targeting",
+        "update_pacing",
+        "update_frequency_caps",
+        "reallocate_budget",
+        "remove_packages"
+      ]
+    },
+    "sync_creatives": {
+      "update_fields": [
+        "packages[].creatives",
+        "packages[].creative_assignments"
+      ],
+      "rollup": [
+        "replace_creative",
+        "update_creative_assignments",
+        "remove_creative"
+      ]
+    }
   }
 }

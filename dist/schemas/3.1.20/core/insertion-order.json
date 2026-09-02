@@ -39,7 +39,10 @@
               "maxLength": 3
             }
           },
-          "required": ["amount", "currency"]
+          "required": [
+            "amount",
+            "currency"
+          ]
         },
         "flight_start": {
           "type": "string",
@@ -54,7 +57,13 @@
         "payment_terms": {
           "type": "string",
           "description": "Payment terms",
-          "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
+          "enum": [
+            "net_30",
+            "net_60",
+            "net_90",
+            "prepaid",
+            "due_on_receipt"
+          ]
         }
       },
       "additionalProperties": true
@@ -74,6 +83,9 @@
       "description": "Whether the buyer must accept this IO before creating a media buy. When true, create_media_buy requires an io_acceptance referencing this io_id."
     }
   },
-  "required": ["io_id", "requires_signature"],
+  "required": [
+    "io_id",
+    "requires_signature"
+  ],
   "additionalProperties": true
 }

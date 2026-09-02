@@ -11,12 +11,16 @@
       "properties": {
         "countries": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "ISO 3166-1 alpha-2 country codes where ads will deliver."
         },
         "regions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "ISO 3166-2 subdivision codes where ads will deliver."
         }
       },
@@ -24,7 +28,9 @@
     },
     "channels": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/channels.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/channels.json"
+      },
       "description": "Channels the seller will deliver on."
     },
     "start_time": {
@@ -66,7 +72,9 @@
     "enforced_policies": {
       "type": "array",
       "description": "Registry policy IDs the seller will enforce for this delivery.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "ext": {
       "$ref": "/schemas/3.1.20/core/ext.json"

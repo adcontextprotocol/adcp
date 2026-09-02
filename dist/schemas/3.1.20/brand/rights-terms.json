@@ -6,8 +6,13 @@
   "x-status": "experimental",
   "type": "object",
   "properties": {
-    "pricing_option_id": { "type": "string" },
-    "amount": { "type": "number", "minimum": 0 },
+    "pricing_option_id": {
+      "type": "string"
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 0
+    },
     "currency": {
       "type": "string",
       "pattern": "^[A-Z]{3}$"
@@ -17,7 +22,9 @@
     },
     "uses": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/right-use.json" }
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/right-use.json"
+      }
     },
     "impression_cap": {
       "type": "integer",
@@ -39,7 +46,9 @@
       "type": "object",
       "description": "Exclusivity terms if applicable",
       "properties": {
-        "scope": { "type": "string" },
+        "scope": {
+          "type": "string"
+        },
         "countries": {
           "type": "array",
           "items": {
@@ -51,6 +60,11 @@
       "additionalProperties": true
     }
   },
-  "required": ["pricing_option_id", "amount", "currency", "uses"],
+  "required": [
+    "pricing_option_id",
+    "amount",
+    "currency",
+    "uses"
+  ],
   "additionalProperties": true
 }

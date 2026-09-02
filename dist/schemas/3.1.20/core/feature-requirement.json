@@ -25,7 +25,10 @@
     },
     "if_not_covered": {
       "type": "string",
-      "enum": ["exclude", "include"],
+      "enum": [
+        "exclude",
+        "include"
+      ],
       "default": "exclude",
       "description": "How to handle properties where this feature is not covered. 'exclude' (default): property is removed from the list. 'include': property passes this requirement (fail-open)."
     },
@@ -35,6 +38,8 @@
       "$comment": "x-entity deliberately omitted — a PolicyEntry reference can resolve to either a governance_registry_policy or a governance_inline_policy depending on the authorizing entry's source. See issue #2685."
     }
   },
-  "required": ["feature_id"],
+  "required": [
+    "feature_id"
+  ],
   "additionalProperties": false
 }

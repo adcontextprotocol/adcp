@@ -16,7 +16,10 @@
       "description": "Canonicalized echo of the agent_url that was looked up. Lowercase host, default port stripped, trailing slash on path component normalized — matches the canonicalization the SDK applies in `verify_agent_authorization`."
     },
     "directory_indexed_at": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time",
       "description": "When the directory last completed a refresh of any publisher in this result. Provenance anchor for the consumer's own cache. NULL on empty pages — there's no per-publisher anchor to report; consumers SHOULD treat a null value as 'no freshness assertion for this response' and not advance their own cache freshness."
     },
@@ -28,7 +31,10 @@
       }
     },
     "next_cursor": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Opaque pagination cursor. Absent or null on the terminal page. Stable across the directory's refresh cycle for the lifetime of the cursor."
     }
   },
@@ -61,7 +67,10 @@
           ]
         },
         "manager_domain": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Domain of the manager file that authorizes this publisher → agent edge. Required when `discovery_method` is `authoritative_location`, `adagents_authoritative`, or `ads_txt_managerdomain`. Null or absent when `discovery_method` is `direct`.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
@@ -77,7 +86,9 @@
         },
         "property_ids": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Canonical list of `property_id`s under THIS `publisher_domain` that the agent's selectors resolve to. Present iff the request included `?include=properties`; absent otherwise. The set is the same population `properties_authorized` counts, surfaced as IDs so consumers can run full set-diff against a federated fetch (count-equality is not set-equality — a publisher rotating N properties leaves the count unchanged but the set entirely different). Per-publisher scope; never network-wide. Order is unspecified; consumers should treat as a set."
         },
         "signing_keys_pinned": {
@@ -87,7 +98,10 @@
         "status": {
           "type": "string",
           "description": "Lifecycle state for this publisher → agent edge. v1: `authorized` (selector resolves to ≥ 1 property under this publisher) and `revoked` (this publisher_domain newly appears in a parent file's `revoked_publisher_domains[]`; emitted as a tombstone on the next sync after revocation lands, then dropped). Future states (`unbound`, `pending`) deferred — the directory does not have the crawler state to emit them honestly.",
-          "enum": ["authorized", "revoked"]
+          "enum": [
+            "authorized",
+            "revoked"
+          ]
         },
         "last_verified_at": {
           "type": "string",
@@ -100,14 +114,22 @@
           "if": {
             "properties": {
               "discovery_method": {
-                "enum": ["authoritative_location", "adagents_authoritative", "ads_txt_managerdomain"]
+                "enum": [
+                  "authoritative_location",
+                  "adagents_authoritative",
+                  "ads_txt_managerdomain"
+                ]
               }
             }
           },
           "then": {
-            "required": ["manager_domain"],
+            "required": [
+              "manager_domain"
+            ],
             "properties": {
-              "manager_domain": { "type": "string" }
+              "manager_domain": {
+                "type": "string"
+              }
             }
           }
         }

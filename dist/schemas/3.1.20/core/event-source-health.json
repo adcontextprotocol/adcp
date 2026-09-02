@@ -28,7 +28,10 @@
           "description": "Seller's name for this score (e.g., 'Event Quality Score', 'Event Match Quality')."
         }
       },
-      "required": ["score", "max_score"],
+      "required": [
+        "score",
+        "max_score"
+      ],
       "additionalProperties": true
     },
     "match_rate": {
@@ -60,6 +63,8 @@
       }
     }
   },
-  "required": ["status"],
+  "required": [
+    "status"
+  ],
   "additionalProperties": true
 }

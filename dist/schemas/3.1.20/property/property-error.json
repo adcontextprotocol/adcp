@@ -26,6 +26,9 @@
       "description": "Human-readable error message"
     }
   },
-  "required": ["code", "message"],
+  "required": [
+    "code",
+    "message"
+  ],
   "additionalProperties": false
 }

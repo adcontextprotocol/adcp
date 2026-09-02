@@ -31,7 +31,11 @@
           "minItems": 1
         }
       },
-      "required": ["country", "system", "values"],
+      "required": [
+        "country",
+        "system",
+        "values"
+      ],
       "additionalProperties": false
     },
     {
@@ -52,7 +56,10 @@
           "minItems": 1
         }
       },
-      "required": ["system", "values"],
+      "required": [
+        "system",
+        "values"
+      ],
       "additionalProperties": false
     }
   ]

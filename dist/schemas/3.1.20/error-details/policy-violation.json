@@ -17,7 +17,9 @@
     },
     "violated_rules": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Specific rules that were violated"
     }
   },

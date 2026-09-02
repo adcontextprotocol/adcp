@@ -97,11 +97,37 @@
       "minItems": 1,
       "examples": [
         [
-          { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
-          { "scope": "standard", "metric_id": "spend",           "committed_at": "2026-04-29T10:53:00Z" },
-          { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
-          { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
-          { "scope": "standard", "metric_id": "viewable_rate",   "qualifier": { "viewability_standard": "mrc" }, "committed_at": "2026-05-30T14:22:00Z" }
+          {
+            "scope": "standard",
+            "metric_id": "impressions",
+            "committed_at": "2026-04-29T10:53:00Z"
+          },
+          {
+            "scope": "standard",
+            "metric_id": "spend",
+            "committed_at": "2026-04-29T10:53:00Z"
+          },
+          {
+            "scope": "standard",
+            "metric_id": "completed_views",
+            "committed_at": "2026-04-29T10:53:00Z"
+          },
+          {
+            "scope": "vendor",
+            "vendor": {
+              "domain": "attentionvendor.example"
+            },
+            "metric_id": "attention_units",
+            "committed_at": "2026-04-29T10:53:00Z"
+          },
+          {
+            "scope": "standard",
+            "metric_id": "viewable_rate",
+            "qualifier": {
+              "viewability_standard": "mrc"
+            },
+            "committed_at": "2026-05-30T14:22:00Z"
+          }
         ]
       ]
     },
@@ -130,7 +156,9 @@
     "start_time": {
       "type": "string",
       "format": "date-time",
-      "not": { "const": "asap" },
+      "not": {
+        "const": "asap"
+      },
       "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Sellers SHOULD always include the resolved value in responses, even when inherited."
     },
     "end_time": {
@@ -151,7 +179,10 @@
     "cancellation": {
       "type": "object",
       "description": "Cancellation metadata. Present only when canceled is true.",
-      "required": ["canceled_at", "canceled_by"],
+      "required": [
+        "canceled_at",
+        "canceled_by"
+      ],
       "properties": {
         "canceled_at": {
           "type": "string",
@@ -197,7 +228,9 @@
     "package_id"
   ],
   "dependencies": {
-    "params": ["format_kind"]
+    "params": [
+      "format_kind"
+    ]
   },
   "additionalProperties": true
 }

@@ -15,7 +15,11 @@
       "description": "Cost per acquisition (conversion event)"
     },
     "event_type": {
-      "allOf": [{ "$ref": "/schemas/3.1.20/enums/event-type.json" }],
+      "allOf": [
+        {
+          "$ref": "/schemas/3.1.20/enums/event-type.json"
+        }
+      ],
       "description": "The conversion event type that triggers billing (e.g., purchase, lead, app_install)"
     },
     "custom_event_name": {
@@ -30,7 +34,12 @@
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP", "JPY"]
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
     },
     "fixed_price": {
       "type": "number",
@@ -55,6 +64,12 @@
       "uniqueItems": true
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "event_type", "currency", "fixed_price"],
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "event_type",
+    "currency",
+    "fixed_price"
+  ],
   "additionalProperties": true
 }

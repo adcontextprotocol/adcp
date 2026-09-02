@@ -54,12 +54,36 @@
   ],
   "not": {
     "anyOf": [
-      { "required": ["tmpx_providers"] },
-      { "required": ["tmpx"] },
-      { "required": ["tmpx_values"] },
-      { "required": ["tmpx_macros"] },
-      { "required": ["context"] },
-      { "required": ["ext"] }
+      {
+        "required": [
+          "tmpx_providers"
+        ]
+      },
+      {
+        "required": [
+          "tmpx"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_values"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_macros"
+        ]
+      },
+      {
+        "required": [
+          "context"
+        ]
+      },
+      {
+        "required": [
+          "ext"
+        ]
+      }
     ]
   },
   "additionalProperties": true

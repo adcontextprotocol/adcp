@@ -4,5 +4,10 @@
   "title": "Consent Basis",
   "description": "Common GDPR lawful bases relevant to advertising. Covers the Article 6(1) bases used in programmatic advertising contexts.",
   "type": "string",
-  "enum": ["consent", "legitimate_interest", "contract", "legal_obligation"]
+  "enum": [
+    "consent",
+    "legitimate_interest",
+    "contract",
+    "legal_obligation"
+  ]
 }

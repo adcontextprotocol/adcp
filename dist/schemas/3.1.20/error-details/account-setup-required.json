@@ -12,7 +12,9 @@
     },
     "setup_steps": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Steps remaining before the account is ready"
     }
   },

@@ -18,19 +18,45 @@
       "description": "The assets in this group. Each item carries an `asset_type` discriminator that selects the matching asset schema. Note: the group-level `asset_type` declares the expected type; individual items must also self-tag so validators can narrow errors. Intentionally excludes `brief-asset` and `catalog-asset` — those are campaign-input metadata types, not delivery-ready creative assets suitable for a pooled offering group. See core/assets/asset-union.json for the full asset-variant union.",
       "items": {
         "oneOf": [
-          { "$ref": "/schemas/3.1.20/core/assets/text-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/image-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/video-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/audio-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/url-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/html-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/markdown-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/vast-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/daast-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/css-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/javascript-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/zip-asset.json" },
-          { "$ref": "/schemas/3.1.20/core/assets/webhook-asset.json" }
+          {
+            "$ref": "/schemas/3.1.20/core/assets/text-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/image-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/video-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/audio-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/url-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/html-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/markdown-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/vast-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/daast-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/css-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/javascript-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/zip-asset.json"
+          },
+          {
+            "$ref": "/schemas/3.1.20/core/assets/webhook-asset.json"
+          }
         ],
         "discriminator": {
           "propertyName": "asset_type"
@@ -42,7 +68,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["asset_group_id", "asset_type", "items"],
+  "required": [
+    "asset_group_id",
+    "asset_type",
+    "items"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -51,9 +81,18 @@
         "asset_group_id": "headlines",
         "asset_type": "text",
         "items": [
-          {"asset_type": "text", "content": "Shop the Summer Sale"},
-          {"asset_type": "text", "content": "50% Off Everything"},
-          {"asset_type": "text", "content": "Summer Savings Event"}
+          {
+            "asset_type": "text",
+            "content": "Shop the Summer Sale"
+          },
+          {
+            "asset_type": "text",
+            "content": "50% Off Everything"
+          },
+          {
+            "asset_type": "text",
+            "content": "Summer Savings Event"
+          }
         ]
       }
     },
@@ -63,8 +102,18 @@
         "asset_group_id": "images_landscape",
         "asset_type": "image",
         "items": [
-          {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628},
-          {"asset_type": "image", "url": "https://cdn.acme.com/hero2.jpg", "width": 1200, "height": 628}
+          {
+            "asset_type": "image",
+            "url": "https://cdn.acme.com/hero.jpg",
+            "width": 1200,
+            "height": 628
+          },
+          {
+            "asset_type": "image",
+            "url": "https://cdn.acme.com/hero2.jpg",
+            "width": 1200,
+            "height": 628
+          }
         ]
       }
     }

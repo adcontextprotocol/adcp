@@ -54,6 +54,12 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["pricing_option_id", "model", "price", "currency", "uses"],
+  "required": [
+    "pricing_option_id",
+    "model",
+    "price",
+    "currency",
+    "uses"
+  ],
   "additionalProperties": true
 }

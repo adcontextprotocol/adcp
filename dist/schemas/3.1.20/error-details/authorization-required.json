@@ -41,7 +41,9 @@
         {
           "provider": "social.example",
           "connection_type": "publisher_identity",
-          "required_for": ["sync_creatives"],
+          "required_for": [
+            "sync_creatives"
+          ],
           "scope": "identity",
           "status": "missing",
           "resource_ref": {

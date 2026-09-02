@@ -83,7 +83,9 @@
             "description": "Brand name of this item"
           }
         },
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": true
       }
     },

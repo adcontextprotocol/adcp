@@ -4,7 +4,9 @@
   "title": "Video Brief",
   "description": "Structured per-segment generation brief for generative video products (Veo / Sora / Runway-class). Each `segments[]` entry declares a timed prompt the synthesis pipeline turns into a continuous shot — `order`, `duration_ms`, `prompt`, optional `vo` (voiceover line) and `caption` (on-screen text). This is a *generation* brief, not a creative-direction storyboard: there is no camera direction, shot type, mood, or reference-asset attachment. Buyers wanting to direct camera, lighting, or reference-image conditioning attach a `reference-asset.json` with `purpose: \"storyboard\"` separately — that's the visual-direction surface; video-brief is the structured prompt the model receives. Renamed from earlier `scenes` to call the shape what it is (a brief, not a scene-level production document).",
   "type": "object",
-  "required": ["segments"],
+  "required": [
+    "segments"
+  ],
   "properties": {
     "segments": {
       "type": "array",
@@ -12,7 +14,11 @@
       "description": "Ordered list of per-segment prompts that compose the generated video. The sum of `duration_ms` across segments should match the target video duration declared by the format declaration's `duration_ms_exact` or `duration_ms_range`.",
       "items": {
         "type": "object",
-        "required": ["order", "duration_ms", "prompt"],
+        "required": [
+          "order",
+          "duration_ms",
+          "prompt"
+        ],
         "properties": {
           "order": {
             "type": "integer",

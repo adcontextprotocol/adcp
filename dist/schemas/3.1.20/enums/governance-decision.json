@@ -4,7 +4,11 @@
   "title": "Governance Decision",
   "description": "Outcome of a governance check_governance call. Distinct from creative approval states (see creative-approval-status). 'conditions' is a flow-control value requiring the caller to re-call check_governance after adjusting parameters.",
   "type": "string",
-  "enum": ["approved", "denied", "conditions"],
+  "enum": [
+    "approved",
+    "denied",
+    "conditions"
+  ],
   "enumDescriptions": {
     "approved": "Proceed as planned — the action is governance-approved",
     "denied": "Do not proceed — the action is blocked by governance policy",

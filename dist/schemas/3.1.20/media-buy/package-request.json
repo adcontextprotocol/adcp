@@ -10,7 +10,9 @@
     }
   ],
   "not": {
-    "required": ["capability_ids"]
+    "required": [
+      "capability_ids"
+    ]
   },
   "properties": {
     "product_id": {
@@ -157,7 +159,10 @@
                 "additionalProperties": false
               }
             },
-            "required": ["scope", "metric_id"],
+            "required": [
+              "scope",
+              "metric_id"
+            ],
             "additionalProperties": false
           },
           {
@@ -176,7 +181,11 @@
                 "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
               }
             },
-            "required": ["scope", "vendor", "metric_id"],
+            "required": [
+              "scope",
+              "vendor",
+              "metric_id"
+            ],
             "additionalProperties": false
           }
         ]
@@ -219,7 +228,9 @@
     "pricing_option_id"
   ],
   "dependencies": {
-    "params": ["format_kind"]
+    "params": [
+      "format_kind"
+    ]
   },
   "additionalProperties": true
 }

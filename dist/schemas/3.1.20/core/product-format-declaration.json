@@ -4,8 +4,13 @@
   "title": "Product Format Declaration",
   "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, etc.). Optional `format_option_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), optional `publisher_domain` (namespace for the format option when it comes from a publisher adagents.json catalog), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.\n\n**Closed-set semantics (normative).** `format_options[]` is the closed set of accepted formats for this product. Sellers MUST reject `create_media_buy` requests targeting any `format_kind` (or format option reference) not present in this list — typically with `UNSUPPORTED_FEATURE` or a seller-specific code; the rejection is structural, not negotiable. `seller_preference` modulates *within* the accepted set (a soft ranking hint between equally-acceptable options), it is NOT an enforcement axis. A product wanting to say 'this format is the only one that works' lists exactly that one entry in `format_options[]`; everything else falls outside the set and is rejected by the closed-set rule.\n\n**Format matching vs satisfaction (normative).** Legacy named formats MUST be normalized to canonical declarations before comparison; do not exact-match raw `(agent_url, id)` pairs once a `format_id` has been projected through `canonical`, `v1_format_ref`, or the canonical mapping registry. Equivalence matching can treat a legacy fixed-size display ID and `format_kind: \"image\"` with matching `width`/`height` as the same underlying shape. Product satisfaction is stricter and directional: when this declaration specifies fixed constraints such as `width`, `height`, `duration_ms_exact`, or `duration_ms_range`, a buyer request or creative manifest MUST declare and satisfy those constraints. A broad request with no dimensions or duration does not satisfy a fixed-size or fixed-duration product; a broad product MAY accept a more specific creative unless another product constraint excludes it. Duration precedence is `duration_ms_exact` > `duration_ms_range`. Range constraints use containment: a range-based request satisfies this declaration only when every value it permits falls within this declaration's accepted range; overlap alone is insufficient. An exact value satisfies a range when the exact value falls inside the accepted interval. For hosted audio/video, a null range endpoint is unbounded: [null, 60000] means up to 60s, and [15000, null] means at least 15s; [null, null] is invalid because at least one endpoint must be bounded.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 12 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
   "type": "object",
-  "required": ["format_kind", "params"],
-  "discriminator": { "propertyName": "format_kind" },
+  "required": [
+    "format_kind",
+    "params"
+  ],
+  "discriminator": {
+    "propertyName": "format_kind"
+  },
   "properties": {
     "format_option_id": {
       "type": "string",
@@ -22,13 +27,19 @@
     },
     "applies_to_channels": {
       "type": "array",
-      "items": { "$ref": "/schemas/3.1.20/enums/channels.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/enums/channels.json"
+      },
       "uniqueItems": true,
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
     "seller_preference": {
       "type": "string",
-      "enum": ["preferred", "accepted", "discouraged"],
+      "enum": [
+        "preferred",
+        "accepted",
+        "discouraged"
+      ],
       "description": "Optional soft routing hint *within* a product's accepted set of formats — NOT an enforcement axis. `preferred` — seller actively recommends this format (often because of measurement, viewability, or render-quality differences); `accepted` — supported on equal footing with other format_options (default when omitted); `discouraged` — supported but suboptimal (e.g., legacy 3p-tag where the seller would prefer html5 for OM-SDK coverage). Buyer agents picking between format_options SHOULD respect seller preferences when their own constraints don't override.\n\n**Not an enforcement axis (normative).** `seller_preference` does NOT carry the meaning of 'this format won't work / required-only'. That case is structural: `format_options[]` IS the closed set of accepted formats; anything outside the list is rejected at `create_media_buy` regardless of preference. A seller that accepts only one format lists exactly that one entry — the structural fact does the enforcement work, no enum value needed. There is intentionally no `required` value; preference is bounded to *ranking within the already-accepted set*, not gating into it."
     },
     "canonical_formats_only": {
@@ -48,7 +59,9 @@
     "v1_format_ref": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "/schemas/3.1.20/core/format-id.json" },
+      "items": {
+        "$ref": "/schemas/3.1.20/core/format-id.json"
+      },
       "description": "Authoritative v2 → v1 link, expressed as an array of one or more v1 `format_id` ({agent_url, id}) values. Each entry asserts that this canonical-formats declaration IS the same underlying format as the referenced v1 named format. Always an array (single-ref is `[{...}]`) so the multi-size case below has a clean wire shape — adopters surveyed in the SDK implementor review pushed for this over the lossy single-ref form.\n\nThe v2 declaration's `params` MUST narrow (be compatible with) each referenced v1 format's `requirements` — see the 'Narrows — formal definition' section in canonical-formats.mdx. SDKs comparing dual-emitted shapes (`Product.format_ids[]` ⊇ entries from `v1_format_ref` AND `Product.format_options[]` carrying this declaration) treat the link as the authoritative pairing and run the narrowing check between this declaration and EACH referenced v1 format file's `requirements`.\n\n**Multi-size fan-out (normative).** When the declaration carries `params.sizes: [{w,h}, ...]` (multi-size flexible slot), sellers SHOULD carry one `v1_format_ref[]` entry per size, each pointing at the per-size v1 named format in the AAO catalog. Example: a multi-size image declaration with `sizes: [300x250, 728x90, 970x250]` SHOULD carry `v1_format_ref: [{aao, display_300x250_image}, {aao, display_728x90_image}, {aao, display_970x250_image}]`. v1-only buyers then see the product on all three sizes via the `format_ids[]` dual-emission. When `v1_format_ref[]` count < `sizes[]` count, SDKs MUST emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` on the response `errors[]` (advisory, alongside the partial-coverage v1 emit — NOT in place of it). SDKs MAY (non-normative) fan out automatically by catalog lookup when `v1_format_ref[]` has length 1 and `sizes[]` has length N — opt-in, requires catalog access; sellers asserting refs is the source of truth.\n\nMutually exclusive with `canonical_formats_only: true` — a declaration can EITHER assert no v1 projection (`canonical_formats_only: true`) OR link to v1 named formats (`v1_format_ref[]`), never both. When neither is present, SDKs fall back to the resolution order in `v1-canonical-mapping.json` (seller's explicit `canonical` field on the v1 file → registry glob → structural match → fail-closed).\n\nThis is the v2-side authoritative replacement for the v1-side `canonical_parameters` field on `format.json` (which is deprecated for 3.1, removed at 4.0). Sellers SHOULD prefer authoring v2 declarations with `v1_format_ref[]` over mirroring the v2 shape onto v1 files via `canonical_parameters`; the directional link (v2 declaration → v1 identifiers) is the same fact without the parallel-shape drift surface.\n\n**AAO-hosted convention (normative).** For IAB-standard formats (image dimensions, VAST/DAAST tags, standard third-party tags, HTML5 banner bundles), sellers SHOULD point each `v1_format_ref[].agent_url` at the AAO-hosted canonical agent URL `https://creative.adcontextprotocol.org` and use the registry-published id (e.g., `display_300x250_image`, `video_vast_30s`, `audio_standard_30s`, `display_300x250_html`, `display_js`). This converges the v1-wire namespace: every seller's IAB MREC points at the same `{agent_url, id}` pair, so v1-only buyers' allowlists work uniformly. Without this convention, every publisher's 300x250 ships with a different `v1_format_ref` (theirs vs nytimes.example vs cnn.example vs …) and the v1 wire fragments into per-publisher namespaces — exactly what canonical-formats was designed to eliminate.\n\nFor platform-specific formats (Meta Reels, TikTok Spark, Snap Spotlight, etc.), each `v1_format_ref[].agent_url` SHOULD point at the platform's own agent_url when the platform has adopted AdCP and publishes its own `adagents.json` with `formats[]`. When the platform has NOT adopted AdCP, sellers SHOULD point at the AAO community-registry mirror — `https://creative.adcontextprotocol.org/translated/<platform>` + `id: <platform-format-name>` (e.g., `https://creative.adcontextprotocol.org/translated/meta` + `id: meta_reels`). This keeps the v1 namespace converged across all sellers selling that platform's inventory until the platform owns its own adagents.json.\n\n**Platform-adoption cutover (normative).** When a platform adopts AdCP and publishes its own adagents.json, sellers MUST update `v1_format_ref[].agent_url` to the platform's adopted agent_url in the same minor release as the AAO mirror entry's `superseded_by` field goes live (see `static/schemas/source/adagents.json#superseded_by`). The AAO mirror entry SHOULD continue serving for ≥1 minor release after `superseded_by` is set, returning an advisory 'superseded' marker so v1 buyer allowlists keyed on the mirror URL get an explicit signal rather than a silent break. **Identity-confusion note**: the mirror URL is *format-shape namespace*, NOT seller identity. Inventory authorization always flows from `authorized_agents[]` + publisher signing keys; a buyer matching `v1_format_ref[].agent_url` against an allowlist is matching format-shape provenance, not seller identity.\n\n**Mirror domain migration (3.1).** Earlier drafts used `https://mirror.adcontextprotocol.org/translated/<platform>`. As of this release, the convention is `https://creative.adcontextprotocol.org/translated/<platform>` — sibling content under the AAO catalog domain we already host. Adopters who hardcoded the earlier mirror URL MUST migrate to the new path; the canonical-formats.mdx migration section documents the move. No transitional redirect is currently published (the earlier subdomain was never provisioned).\n\nFor seller-bespoke formats (a publisher's `acme_homepage_takeover` that doesn't fit IAB conventions), each `v1_format_ref[].agent_url` is the seller's own agent_url and the id is seller-namespaced. These won't appear in `v1-canonical-mapping.json`'s registry; they're seller-asserted only."
     },
     "format_schema": {
@@ -59,24 +72,53 @@
   "allOf": [
     {
       "if": {
-        "properties": { "format_kind": { "const": "custom" } },
-        "required": ["format_kind"]
+        "properties": {
+          "format_kind": {
+            "const": "custom"
+          }
+        },
+        "required": [
+          "format_kind"
+        ]
       },
       "then": {
-        "required": ["format_shape", "format_schema"],
+        "required": [
+          "format_shape",
+          "format_schema"
+        ],
         "anyOf": [
           {
-            "properties": { "canonical_formats_only": { "const": true } },
-            "required": ["canonical_formats_only"]
+            "properties": {
+              "canonical_formats_only": {
+                "const": true
+              }
+            },
+            "required": [
+              "canonical_formats_only"
+            ]
           },
-          { "required": ["v1_format_ref"] }
+          {
+            "required": [
+              "v1_format_ref"
+            ]
+          }
         ]
       },
       "else": {
-        "not": { "anyOf": [
-          { "required": ["format_shape"] },
-          { "required": ["format_schema"] }
-        ] }
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "format_shape"
+              ]
+            },
+            {
+              "required": [
+                "format_schema"
+              ]
+            }
+          ]
+        }
       }
     },
     {
@@ -84,17 +126,29 @@
       "not": {
         "allOf": [
           {
-            "properties": { "canonical_formats_only": { "const": true } },
-            "required": ["canonical_formats_only"]
+            "properties": {
+              "canonical_formats_only": {
+                "const": true
+              }
+            },
+            "required": [
+              "canonical_formats_only"
+            ]
           },
-          { "required": ["v1_format_ref"] }
+          {
+            "required": [
+              "v1_format_ref"
+            ]
+          }
         ]
       }
     },
     {
       "$comment": "Canonical-format product declarations use format_option_id; capability_id belongs only to creative-agent build capabilities.",
       "not": {
-        "required": ["capability_id"]
+        "required": [
+          "capability_id"
+        ]
       }
     }
   ],
@@ -102,111 +156,213 @@
     {
       "title": "Image Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "image" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/image.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "image"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/image.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "HTML5 Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "html5" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/html5.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "html5"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/html5.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Display Tag Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "display_tag" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/display_tag.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "display_tag"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/display_tag.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Image Carousel Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "image_carousel" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/image_carousel.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "image_carousel"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/image_carousel.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Hosted Video Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "video_hosted" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/video_hosted.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "video_hosted"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/video_hosted.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "VAST Video Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "video_vast" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/video_vast.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "video_vast"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/video_vast.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Hosted Audio Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "audio_hosted" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/audio_hosted.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "audio_hosted"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/audio_hosted.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "DAAST Audio Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "audio_daast" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/audio_daast.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "audio_daast"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/audio_daast.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Sponsored Placement Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "sponsored_placement" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/sponsored_placement.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "sponsored_placement"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/sponsored_placement.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Native In-Feed Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "native_in_feed" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/native_in_feed.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "native_in_feed"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/native_in_feed.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Responsive Creative Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "responsive_creative" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/responsive_creative.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "responsive_creative"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/responsive_creative.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Agent Placement Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "agent_placement" },
-        "params": { "$ref": "/schemas/3.1.20/formats/canonical/agent_placement.json" }
+        "format_kind": {
+          "type": "string",
+          "const": "agent_placement"
+        },
+        "params": {
+          "$ref": "/schemas/3.1.20/formats/canonical/agent_placement.json"
+        }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     },
     {
       "title": "Custom Format Declaration",
       "description": "Adopter-defined shape that doesn't fit the 12 canonicals. Requires `format_shape` (vocabulary-registered global pattern) and `format_schema` (URI+digest reference to a fetchable schema describing the actual params/slots). `params` shape is governed by the fetched schema rather than baked into AdCP — kept as `type: object` here with `additionalProperties: true` because the canonical schema validates dynamically post-fetch.",
       "properties": {
-        "format_kind": { "type": "string", "const": "custom" },
+        "format_kind": {
+          "type": "string",
+          "const": "custom"
+        },
         "params": {
           "type": "object",
           "additionalProperties": true,
           "description": "Custom shape's params. Validated against the schema fetched from `format_schema.uri` at the cached `format_schema.digest`."
         }
       },
-      "required": ["format_kind", "params"]
+      "required": [
+        "format_kind",
+        "params"
+      ]
     }
   ],
   "examples": [
@@ -217,19 +373,34 @@
         "params": {
           "orientation": "vertical",
           "aspect_ratio": "9:16",
-          "duration_ms_range": [3000, 90000],
+          "duration_ms_range": [
+            3000,
+            90000
+          ],
           "min_width": 1080,
           "min_height": 1920,
           "max_file_size_mb": 200,
-          "video_codecs": ["h264"],
-          "audio_codecs": ["aac"],
+          "video_codecs": [
+            "h264"
+          ],
+          "audio_codecs": [
+            "aac"
+          ],
           "headline_max_chars": 25,
           "primary_text_max_chars": 72,
           "captions": "recommended",
-          "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
+          "cta_values": [
+            "LEARN_MORE",
+            "SHOP_NOW",
+            "DOWNLOAD",
+            "SIGN_UP"
+          ],
           "composition_model": "deterministic",
           "platform_extensions": [
-            { "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel", "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2" }
+            {
+              "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel",
+              "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+            }
           ]
         }
       }
@@ -242,10 +413,18 @@
           "width": 300,
           "height": 250,
           "max_file_size_kb": 200,
-          "image_formats": ["jpg", "png", "gif"],
+          "image_formats": [
+            "jpg",
+            "png",
+            "gif"
+          ],
           "ssl_required": true,
           "composition_model": "deterministic",
-          "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
+          "cta_values": [
+            "LEARN_MORE",
+            "SHOP_NOW",
+            "GET_OFFER"
+          ]
         }
       }
     },
@@ -255,16 +434,33 @@
         "format_kind": "audio_hosted",
         "params": {
           "duration_ms_exact": 30000,
-          "audio_codecs": ["mp3", "aac"],
-          "audio_sample_rates": [44100, 48000],
-          "audio_channels": ["stereo"],
+          "audio_codecs": [
+            "mp3",
+            "aac"
+          ],
+          "audio_sample_rates": [
+            44100,
+            48000
+          ],
+          "audio_channels": [
+            "stereo"
+          ],
           "loudness_lufs": -16,
           "asset_source": "publisher_host_recorded",
           "buyer_asset_acceptance": "rejected",
           "composition_model": "deterministic",
           "slots": [
-            { "asset_group_id": "script", "required": true, "asset_type": "text", "max_chars": 800 },
-            { "asset_group_id": "offering_ref", "required": false, "asset_type": "text" }
+            {
+              "asset_group_id": "script",
+              "required": true,
+              "asset_type": "text",
+              "max_chars": 800
+            },
+            {
+              "asset_group_id": "offering_ref",
+              "required": false,
+              "asset_type": "text"
+            }
           ],
           "production_window_business_days": 7
         }
@@ -282,12 +478,24 @@
         },
         "format_option_id": "nytimes_homepage_takeover_premium",
         "display_name": "Homepage Takeover — Premium Sponsorship",
-        "applies_to_channels": ["display", "olv"],
+        "applies_to_channels": [
+          "display",
+          "olv"
+        ],
         "params": {
           "components": [
-            { "placement_type": "homepage_skin", "required": true },
-            { "placement_type": "preroll_video", "required": true },
-            { "placement_type": "sponsorship_lockup", "required": true }
+            {
+              "placement_type": "homepage_skin",
+              "required": true
+            },
+            {
+              "placement_type": "preroll_video",
+              "required": true
+            },
+            {
+              "placement_type": "sponsorship_lockup",
+              "required": true
+            }
           ],
           "exclusivity_window_hours": 24,
           "ssl_required": true

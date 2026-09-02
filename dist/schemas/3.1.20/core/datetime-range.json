@@ -16,6 +16,9 @@
       "description": "End timestamp (inclusive), ISO 8601"
     }
   },
-  "required": ["start", "end"],
+  "required": [
+    "start",
+    "end"
+  ],
   "additionalProperties": true
 }

@@ -24,6 +24,10 @@
       "description": "Human-readable audience segment name."
     }
   },
-  "required": ["kind", "audience_id", "audience_source"],
+  "required": [
+    "kind",
+    "audience_id",
+    "audience_source"
+  ],
   "additionalProperties": false
 }

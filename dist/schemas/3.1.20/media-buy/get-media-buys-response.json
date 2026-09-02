@@ -36,7 +36,10 @@
             "$ref": "/schemas/3.1.20/enums/media-buy-status.json"
           },
           "status_as_of": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "description": "ISO 8601 timestamp indicating when the seller last refreshed the returned media-buy-level `status` from its source of truth. Use this to interpret cached or rolled-up list statuses, especially for curator/storefront aggregators where one buyer-facing buy maps to multiple upstream legs. For rolled-up statuses, this timestamp MUST NOT be later than the oldest upstream status observation that could affect the returned roll-up, so it never overstates freshness. Omit or return null to make no freshness assertion; buyers MUST NOT infer that an omitted or null value means the status is live. This is distinct from `updated_at`, which records when the media buy was last modified."
           },
@@ -86,7 +89,10 @@
             "description": "ISO 8601 timestamp for creative upload deadline"
           },
           "confirmed_at": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "description": "ISO 8601 timestamp when the seller committed to this media buy. May be null until seller commitment occurs in deferred/manual approval flows. Once populated, remains stable through later pause, resume, activation, completion, cancellation, and reporting transitions."
           },
@@ -431,7 +437,9 @@
                 "package_id"
               ],
               "dependencies": {
-                "params": ["format_kind"]
+                "params": [
+                  "format_kind"
+                ]
               },
               "additionalProperties": true
             }
@@ -449,7 +457,9 @@
                   "type": "null"
                 }
               },
-              "required": ["confirmed_at"]
+              "required": [
+                "confirmed_at"
+              ]
             },
             "then": {
               "not": {
@@ -458,13 +468,17 @@
                     "const": "active"
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               },
               "properties": {
                 "packages": {
                   "items": {
                     "not": {
-                      "required": ["committed_metrics"]
+                      "required": [
+                        "committed_metrics"
+                      ]
                     }
                   }
                 }

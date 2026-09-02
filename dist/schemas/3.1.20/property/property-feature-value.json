@@ -8,9 +8,15 @@
     "value": {
       "description": "The feature value. Type depends on feature definition: boolean for binary, number for quantitative, string for categorical.",
       "oneOf": [
-        { "type": "boolean" },
-        { "type": "number" },
-        { "type": "string" }
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        }
       ]
     },
     "unit": {
@@ -46,6 +52,8 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["value"],
+  "required": [
+    "value"
+  ],
   "additionalProperties": false
 }

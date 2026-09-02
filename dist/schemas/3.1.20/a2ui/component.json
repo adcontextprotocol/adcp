@@ -24,6 +24,9 @@
       }
     }
   },
-  "required": ["id", "component"],
+  "required": [
+    "id",
+    "component"
+  ],
   "additionalProperties": true
 }

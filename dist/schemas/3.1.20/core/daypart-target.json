@@ -30,6 +30,10 @@
       "description": "Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime Time')"
     }
   },
-  "required": ["days", "start_hour", "end_hour"],
+  "required": [
+    "days",
+    "start_hour",
+    "end_hour"
+  ],
   "additionalProperties": false
 }

@@ -4,7 +4,12 @@
   "title": "Assessment Status",
   "description": "Standardized quality level for health and readiness assessments. Comparable across sellers — buyer agents should use this for cross-seller decisions.",
   "type": "string",
-  "enum": ["insufficient", "minimum", "good", "excellent"],
+  "enum": [
+    "insufficient",
+    "minimum",
+    "good",
+    "excellent"
+  ],
   "enumDescriptions": {
     "insufficient": "Setup incomplete or event quality too low — optimization cannot run",
     "minimum": "Functional but data quality limits optimization effectiveness",

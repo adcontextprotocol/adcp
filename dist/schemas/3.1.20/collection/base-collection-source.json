@@ -32,13 +32,19 @@
                 "description": "The identifier value"
               }
             },
-            "required": ["type", "value"],
+            "required": [
+              "type",
+              "value"
+            ],
             "additionalProperties": false
           },
           "minItems": 1
         }
       },
-      "required": ["selection_type", "identifiers"],
+      "required": [
+        "selection_type",
+        "identifiers"
+      ],
       "additionalProperties": false
     },
     {
@@ -65,7 +71,11 @@
           "minItems": 1
         }
       },
-      "required": ["selection_type", "publisher_domain", "collection_ids"],
+      "required": [
+        "selection_type",
+        "publisher_domain",
+        "collection_ids"
+      ],
       "additionalProperties": false
     },
     {
@@ -96,7 +106,12 @@
           "description": "Taxonomy for the genre values. Required so sellers can interpret genre strings unambiguously. Use 'custom' for free-form values negotiated out of band."
         }
       },
-      "required": ["selection_type", "publisher_domain", "genres", "genre_taxonomy"],
+      "required": [
+        "selection_type",
+        "publisher_domain",
+        "genres",
+        "genre_taxonomy"
+      ],
       "additionalProperties": false
     }
   ]

@@ -16,20 +16,42 @@
     },
     "industries": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
     },
     "data_subject_contestation": {
       "type": "object",
       "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
       "properties": {
-        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
-        "email": { "type": "string", "format": "email" },
-        "languages": { "type": "array", "items": { "type": "string" } }
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       },
       "anyOf": [
-        { "required": ["url"] },
-        { "required": ["email"] }
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "email"
+          ]
+        }
       ],
       "additionalProperties": false
     },
@@ -45,9 +67,18 @@
           "type": "object",
           "description": "Override brand colors (hex strings).",
           "properties": {
-            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+            "primary": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "secondary": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "accent": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
           },
           "additionalProperties": true
         },
@@ -63,7 +94,9 @@
       "additionalProperties": true
     }
   },
-  "required": ["domain"],
+  "required": [
+    "domain"
+  ],
   "additionalProperties": false,
   "examples": [
     {

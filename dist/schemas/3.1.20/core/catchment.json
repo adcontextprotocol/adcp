@@ -26,7 +26,10 @@
           "$ref": "/schemas/3.1.20/enums/travel-time-unit.json"
         }
       },
-      "required": ["value", "unit"],
+      "required": [
+        "value",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "transport_mode": {
@@ -47,7 +50,10 @@
           "description": "Distance unit."
         }
       },
-      "required": ["value", "unit"],
+      "required": [
+        "value",
+        "unit"
+      ],
       "additionalProperties": false
     },
     "geometry": {
@@ -56,7 +62,10 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["Polygon", "MultiPolygon"],
+          "enum": [
+            "Polygon",
+            "MultiPolygon"
+          ],
           "description": "GeoJSON geometry type."
         },
         "coordinates": {
@@ -64,39 +73,75 @@
           "description": "GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon: array of polygons."
         }
       },
-      "required": ["type", "coordinates"],
+      "required": [
+        "type",
+        "coordinates"
+      ],
       "additionalProperties": false
     },
     "ext": {
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["catchment_id"],
+  "required": [
+    "catchment_id"
+  ],
   "oneOf": [
     {
-      "required": ["travel_time", "transport_mode"],
+      "required": [
+        "travel_time",
+        "transport_mode"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["radius"] },
-          { "required": ["geometry"] }
+          {
+            "required": [
+              "radius"
+            ]
+          },
+          {
+            "required": [
+              "geometry"
+            ]
+          }
         ]
       }
     },
     {
-      "required": ["radius"],
+      "required": [
+        "radius"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["travel_time"] },
-          { "required": ["geometry"] }
+          {
+            "required": [
+              "travel_time"
+            ]
+          },
+          {
+            "required": [
+              "geometry"
+            ]
+          }
         ]
       }
     },
     {
-      "required": ["geometry"],
+      "required": [
+        "geometry"
+      ],
       "not": {
         "anyOf": [
-          { "required": ["travel_time"] },
-          { "required": ["radius"] }
+          {
+            "required": [
+              "travel_time"
+            ]
+          },
+          {
+            "required": [
+              "radius"
+            ]
+          }
         ]
       }
     }
@@ -108,7 +153,10 @@
       "data": {
         "catchment_id": "drive",
         "label": "15-min drive",
-        "travel_time": { "value": 15, "unit": "min" },
+        "travel_time": {
+          "value": 15,
+          "unit": "min"
+        },
         "transport_mode": "driving"
       }
     },
@@ -117,7 +165,10 @@
       "data": {
         "catchment_id": "walk",
         "label": "10-min walk",
-        "travel_time": { "value": 10, "unit": "min" },
+        "travel_time": {
+          "value": 10,
+          "unit": "min"
+        },
         "transport_mode": "walking"
       }
     },
@@ -126,7 +177,10 @@
       "data": {
         "catchment_id": "local",
         "label": "5km radius",
-        "radius": { "value": 5, "unit": "km" }
+        "radius": {
+          "value": 5,
+          "unit": "km"
+        }
       }
     },
     {
@@ -136,7 +190,30 @@
         "label": "Primary trade area",
         "geometry": {
           "type": "Polygon",
-          "coordinates": [[[4.85, 52.35], [4.95, 52.35], [4.95, 52.40], [4.85, 52.40], [4.85, 52.35]]]
+          "coordinates": [
+            [
+              [
+                4.85,
+                52.35
+              ],
+              [
+                4.95,
+                52.35
+              ],
+              [
+                4.95,
+                52.4
+              ],
+              [
+                4.85,
+                52.4
+              ],
+              [
+                4.85,
+                52.35
+              ]
+            ]
+          ]
         }
       }
     }

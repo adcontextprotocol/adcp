@@ -15,7 +15,10 @@
     },
     "platform": {
       "type": "string",
-      "enum": ["ios", "android"],
+      "enum": [
+        "ios",
+        "android"
+      ],
       "description": "Target platform. iOS and Android are separate items because they have distinct store identifiers and attribution mechanisms."
     },
     "bundle_id": {
@@ -107,7 +110,11 @@
       "$ref": "/schemas/3.1.20/core/ext.json"
     }
   },
-  "required": ["app_id", "name", "platform"],
+  "required": [
+    "app_id",
+    "name",
+    "platform"
+  ],
   "additionalProperties": true,
   "examples": [
     {
@@ -122,11 +129,17 @@
         "genre": "puzzle",
         "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
         "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
-        "price": { "amount": 0, "currency": "USD" },
+        "price": {
+          "amount": 0,
+          "currency": "USD"
+        },
         "rating": 4.7,
         "rating_count": 82000,
         "content_rating": "4+",
-        "tags": ["casual", "offline"]
+        "tags": [
+          "casual",
+          "offline"
+        ]
       }
     },
     {
@@ -140,11 +153,17 @@
         "icon_url": "https://assets.acmefinancial.com/app/icon.png",
         "store_url": "https://play.google.com/store/apps/details?id=com.acmefinancial.banking",
         "deep_link_url": "https://app.acmefinancial.com/offers",
-        "price": { "amount": 0, "currency": "USD" },
+        "price": {
+          "amount": 0,
+          "currency": "USD"
+        },
         "rating": 4.4,
         "rating_count": 31500,
         "content_rating": "Everyone",
-        "tags": ["finance", "banking"]
+        "tags": [
+          "finance",
+          "banking"
+        ]
       }
     }
   ]

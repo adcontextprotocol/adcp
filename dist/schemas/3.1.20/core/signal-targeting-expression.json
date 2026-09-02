@@ -26,7 +26,11 @@
           "description": "Binary package signal entries match users for whom the signal is true. Use the parent group operator for include/exclude."
         }
       },
-      "required": ["signal_ref", "value_type", "value"],
+      "required": [
+        "signal_ref",
+        "value_type",
+        "value"
+      ],
       "additionalProperties": true
     },
     {
@@ -51,7 +55,11 @@
           "minItems": 1
         }
       },
-      "required": ["signal_ref", "value_type", "values"],
+      "required": [
+        "signal_ref",
+        "value_type",
+        "values"
+      ],
       "additionalProperties": true
     },
     {
@@ -76,10 +84,21 @@
           "description": "Maximum value, inclusive. Omit for no maximum. Should be within the signal definition's range when declared."
         }
       },
-      "required": ["signal_ref", "value_type"],
+      "required": [
+        "signal_ref",
+        "value_type"
+      ],
       "anyOf": [
-        { "required": ["min_value"] },
-        { "required": ["max_value"] }
+        {
+          "required": [
+            "min_value"
+          ]
+        },
+        {
+          "required": [
+            "max_value"
+          ]
+        }
       ],
       "additionalProperties": true
     }

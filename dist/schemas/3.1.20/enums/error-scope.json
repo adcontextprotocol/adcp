@@ -4,7 +4,11 @@
   "title": "Error Scope",
   "description": "Shared discriminator vocabulary for `error.details.scope` across `error-details/` shapes that distinguish *which axis* of the seller's relationship triggered the rejection. Each error-details shape constrains its own `scope` field to the registered subset relevant to that code (e.g., `error-details/billing-not-supported.json` accepts `\"capability\" | \"account\"`; `error-details/agent-permission-denied.json` accepts only `\"agent\"`). This enum is the single source of truth for the union vocabulary so cross-language SDKs can dispatch on `details.scope` without re-deriving the value space per code. New scopes added here SHOULD be reflected in the per-shape constrained subsets that emit them, and MUST be coordinated across the `error-details/` schemas that participate in the discriminator.",
   "type": "string",
-  "enum": ["capability", "account", "agent"],
+  "enum": [
+    "capability",
+    "account",
+    "agent"
+  ],
   "enumDescriptions": {
     "capability": "Seller-wide capability rejection — the seller's declared capability does not include the requested value at the wire level. Used by `error-details/billing-not-supported.json`. Recovery: choose from the seller's declared capability and retry.",
     "account": "Per-account-relationship rejection — the seller's capability accepts the value generally but not for the specific operator on this account. Used by `error-details/billing-not-supported.json`. Recovery: try the next-most-permissive value the capability allows. Sellers MUST omit `scope` on the unauthenticated/unestablished-identity path so the discriminator does not act as a per-account oracle.",

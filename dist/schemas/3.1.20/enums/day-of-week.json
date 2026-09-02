@@ -4,5 +4,13 @@
   "title": "Day of Week",
   "description": "Days of the week for daypart targeting",
   "type": "string",
-  "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+  "enum": [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday"
+  ]
 }

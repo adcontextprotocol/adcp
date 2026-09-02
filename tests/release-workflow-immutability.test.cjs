@@ -124,17 +124,24 @@ const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.ste
 ).env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
 assert(
   storyboardCandidateMode.includes("matrix.surface == 'current'") &&
-    storyboardCandidateMode.includes("github.head_ref == 'changeset-release/main'") &&
-    storyboardCandidateMode.includes("startsWith(github.head_ref, 'forward-merge/')"),
-  'Only current-surface release integration PR jobs may enable candidate-version resolution.'
+    storyboardCandidateMode.includes("github.base_ref == 'main'") &&
+    storyboardCandidateMode.includes("github.ref == 'refs/heads/main'"),
+  'Only current-surface main-line PRs and pushes may enable candidate-version resolution.'
 );
-
-const salesStoryboardCandidateMode = trainingAgentWorkflowConfig.jobs.sales_storyboard_orchestrators
-  .env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
 assert(
-  salesStoryboardCandidateMode.includes("github.head_ref == 'changeset-release/main'") &&
-    salesStoryboardCandidateMode.includes("startsWith(github.head_ref, 'forward-merge/')"),
-  'Sales release integration PR jobs must use the same candidate-version branch allowlist.'
+  !storyboardCandidateMode.includes('github.head_ref'),
+  'Matrix candidate-version resolution must not depend on a release-branch head ref.'
+);
+const salesStoryboardCandidateMode = trainingAgentWorkflowConfig.jobs.sales_storyboard_orchestrators.env
+  .ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
+assert(
+  salesStoryboardCandidateMode.includes("github.base_ref == 'main'") &&
+    salesStoryboardCandidateMode.includes("github.ref == 'refs/heads/main'"),
+  'All isolated current /sales jobs must enable candidate-version resolution for main-line PRs and pushes.'
+);
+assert(
+  !salesStoryboardCandidateMode.includes('github.head_ref'),
+  'Isolated current /sales candidate-version resolution must not depend on a release-branch head ref.'
 );
 
 assert.strictEqual(

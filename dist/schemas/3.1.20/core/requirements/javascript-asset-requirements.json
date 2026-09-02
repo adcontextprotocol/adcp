@@ -12,7 +12,11 @@
     },
     "module_type": {
       "type": "string",
-      "enum": ["script", "module", "iife"],
+      "enum": [
+        "script",
+        "module",
+        "iife"
+      ],
       "description": "Required JavaScript module format. 'script' = classic script, 'module' = ES modules, 'iife' = immediately invoked function expression"
     },
     "strict_mode_required": {

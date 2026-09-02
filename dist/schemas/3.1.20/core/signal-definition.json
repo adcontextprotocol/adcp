@@ -52,7 +52,9 @@
     "policy_categories": {
       "type": "array",
       "description": "Policy categories this signal is sensitive for (e.g., a children's interest signal declares ['children_directed']). Governance agents match these against a plan's policy_categories to flag sensitive data usage.",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "minItems": 1
     },
     "range": {
@@ -72,7 +74,10 @@
           "description": "Unit of measurement (e.g., 'score', 'dollars', 'years')"
         }
       },
-      "required": ["min", "max"],
+      "required": [
+        "min",
+        "max"
+      ],
       "additionalProperties": false
     },
     "taxonomy": {
@@ -121,7 +126,9 @@
                 }
               }
             },
-            "required": ["id"],
+            "required": [
+              "id"
+            ],
             "additionalProperties": false
           }
         },
@@ -152,7 +159,10 @@
                 }
               }
             },
-            "required": ["value", "taxonomy_value_id"],
+            "required": [
+              "value",
+              "taxonomy_value_id"
+            ],
             "additionalProperties": false
           }
         },
@@ -166,7 +176,10 @@
           ]
         }
       },
-      "required": ["ref", "values"],
+      "required": [
+        "ref",
+        "values"
+      ],
       "additionalProperties": false
     },
     "segmentation_criteria": {
@@ -208,7 +221,13 @@
     },
     "methodology": {
       "type": "string",
-      "enum": ["observed", "declared", "derived", "inferred", "modeled"],
+      "enum": [
+        "observed",
+        "declared",
+        "derived",
+        "inferred",
+        "modeled"
+      ],
       "description": "How the signal's audience membership or attribute was determined. 'modeled' requires the modeling block."
     },
     "audience_expansion": {
@@ -221,12 +240,30 @@
     },
     "refresh_cadence": {
       "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "enum": [
+        "intra_day",
+        "daily",
+        "weekly",
+        "monthly",
+        "bi_monthly",
+        "quarterly",
+        "bi_annually",
+        "annually"
+      ],
       "description": "Cadence at which the signal definition's underlying segment membership is refreshed."
     },
     "lookback_window": {
       "type": "string",
-      "enum": ["intra_day", "daily", "weekly", "monthly", "bi_monthly", "quarterly", "bi_annually", "annually"],
+      "enum": [
+        "intra_day",
+        "daily",
+        "weekly",
+        "monthly",
+        "bi_monthly",
+        "quarterly",
+        "bi_annually",
+        "annually"
+      ],
       "description": "Time window in which a qualifying event can occur for inclusion."
     },
     "onboarder": {
@@ -238,7 +275,18 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "enum": ["name", "address", "email", "postal", "lat_long", "mobile_id", "cookie_id", "ip", "customer_id", "phone"]
+            "enum": [
+              "name",
+              "address",
+              "email",
+              "postal",
+              "lat_long",
+              "mobile_id",
+              "cookie_id",
+              "ip",
+              "customer_id",
+              "phone"
+            ]
           }
         },
         "pre_onboarding_audience_expansion": {
@@ -249,20 +297,40 @@
         },
         "pre_onboarding_precision_level": {
           "type": "string",
-          "enum": ["individual", "household", "business", "geography"]
+          "enum": [
+            "individual",
+            "household",
+            "business",
+            "geography"
+          ]
         }
       },
-      "required": ["match_keys"],
+      "required": [
+        "match_keys"
+      ],
       "additionalProperties": false
     },
     "subject_type": {
       "type": "string",
-      "enum": ["individual", "household", "business", "contextual", "none"],
+      "enum": [
+        "individual",
+        "household",
+        "business",
+        "contextual",
+        "none"
+      ],
       "description": "What kind of subject this signal characterizes."
     },
     "resolution_method": {
       "type": "string",
-      "enum": ["deterministic_id", "probabilistic_device", "browser", "geographic", "content_signal", "mixed"],
+      "enum": [
+        "deterministic_id",
+        "probabilistic_device",
+        "browser",
+        "geographic",
+        "content_signal",
+        "mixed"
+      ],
       "description": "How the subject is resolved at decision time."
     },
     "id_types": {
@@ -270,13 +338,23 @@
       "minItems": 1,
       "items": {
         "type": "string",
-        "enum": ["cookie", "mobile_id", "platform_id", "user_enabled_id"]
+        "enum": [
+          "cookie",
+          "mobile_id",
+          "platform_id",
+          "user_enabled_id"
+        ]
       },
       "description": "Identifier currencies analyzed to determine audience membership or attributes."
     },
     "audience_scope": {
       "type": "string",
-      "enum": ["single_domain", "cross_domain_owned", "cross_domain_unowned", "offline"],
+      "enum": [
+        "single_domain",
+        "cross_domain_owned",
+        "cross_domain_unowned",
+        "offline"
+      ],
       "description": "Context within which the audience attribute was determined. 'single_domain' requires originating_domain."
     },
     "originating_domain": {
@@ -303,7 +381,12 @@
     },
     "art9_basis": {
       "type": "string",
-      "enum": ["explicit_consent", "manifestly_made_public", "substantial_public_interest", "vital_interests"],
+      "enum": [
+        "explicit_consent",
+        "manifestly_made_public",
+        "substantial_public_interest",
+        "vital_interests"
+      ],
       "description": "GDPR Article 9 basis when restricted_attributes is non-empty and the signal is used in jurisdictions where Article 9 applies. Required by policy for applicable use cases rather than universally required at schema level because sensitivity and lawful basis are jurisdiction-relative."
     },
     "modeling": {
@@ -312,21 +395,35 @@
       "properties": {
         "method": {
           "type": "string",
-          "enum": ["lookalike", "supervised", "embedding", "rules"]
+          "enum": [
+            "lookalike",
+            "supervised",
+            "embedding",
+            "rules"
+          ]
         },
         "seed_source": {
           "type": "object",
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["first_party_crm", "panel", "declared_survey", "transactional", "behavioral"]
+              "enum": [
+                "first_party_crm",
+                "panel",
+                "declared_survey",
+                "transactional",
+                "behavioral"
+              ]
             },
             "provider_signed": {
               "type": "boolean",
               "description": "Whether the seed source carries a signed attestation under one of the provider's published signing keys. This is a forward-looking claim until the consumer can resolve and verify the provider's applicable signing keys through the AdCP signing profile; consumers MUST NOT treat this boolean alone as cryptographic proof."
             }
           },
-          "required": ["type", "provider_signed"],
+          "required": [
+            "type",
+            "provider_signed"
+          ],
           "additionalProperties": false
         },
         "training_data_jurisdictions": {
@@ -340,7 +437,11 @@
         },
         "ai_act_risk_class": {
           "type": "string",
-          "enum": ["minimal", "limited", "high_risk"],
+          "enum": [
+            "minimal",
+            "limited",
+            "high_risk"
+          ],
           "description": "EU AI Act risk classification self-declared by the provider. Prohibited-risk modeled signals must not be published as AdCP signal definitions."
         },
         "disclosure": {
@@ -348,7 +449,12 @@
           "description": "Signal/modeling-specific disclosure requirements and jurisdictional notes. This is not creative provenance render guidance."
         }
       },
-      "required": ["method", "seed_source", "training_data_jurisdictions", "ai_act_risk_class"],
+      "required": [
+        "method",
+        "seed_source",
+        "training_data_jurisdictions",
+        "ai_act_risk_class"
+      ],
       "additionalProperties": false
     },
     "data_subject_rights": {
@@ -371,11 +477,17 @@
               "rights": {
                 "type": "array",
                 "contains": {
-                  "enum": ["access", "erasure", "objection"]
+                  "enum": [
+                    "access",
+                    "erasure",
+                    "objection"
+                  ]
                 }
               }
             },
-            "required": ["rights"]
+            "required": [
+              "rights"
+            ]
           },
           "items": {
             "type": "object",
@@ -385,7 +497,13 @@
                 "description": "Rights supported by this channel.",
                 "items": {
                   "type": "string",
-                  "enum": ["access", "rectification", "erasure", "portability", "objection"]
+                  "enum": [
+                    "access",
+                    "rectification",
+                    "erasure",
+                    "portability",
+                    "objection"
+                  ]
                 },
                 "minItems": 1,
                 "uniqueItems": true
@@ -417,10 +535,20 @@
                 }
               }
             },
-            "required": ["rights"],
+            "required": [
+              "rights"
+            ],
             "anyOf": [
-              { "required": ["url"] },
-              { "required": ["email"] }
+              {
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "required": [
+                  "email"
+                ]
+              }
             ],
             "additionalProperties": false
           }
@@ -438,7 +566,9 @@
           "description": "US-specific 'Do Not Sell or Share' opt-out URL where required."
         }
       },
-      "required": ["channels"],
+      "required": [
+        "channels"
+      ],
       "additionalProperties": false
     },
     "last_updated": {
@@ -459,28 +589,76 @@
   "allOf": [
     {
       "if": {
-        "properties": { "value_type": { "const": "categorical" } },
-        "required": ["value_type", "taxonomy"]
+        "properties": {
+          "value_type": {
+            "const": "categorical"
+          }
+        },
+        "required": [
+          "value_type",
+          "taxonomy"
+        ]
       },
       "then": {
         "properties": {
           "taxonomy": {
-            "required": ["value_mappings"]
+            "required": [
+              "value_mappings"
+            ]
           }
         }
       }
     },
     {
-      "if": { "properties": { "audience_scope": { "const": "single_domain" } }, "required": ["audience_scope"] },
-      "then": { "required": ["originating_domain"] }
+      "if": {
+        "properties": {
+          "audience_scope": {
+            "const": "single_domain"
+          }
+        },
+        "required": [
+          "audience_scope"
+        ]
+      },
+      "then": {
+        "required": [
+          "originating_domain"
+        ]
+      }
     },
     {
-      "if": { "properties": { "methodology": { "const": "modeled" } }, "required": ["methodology"] },
-      "then": { "required": ["modeling"] }
+      "if": {
+        "properties": {
+          "methodology": {
+            "const": "modeled"
+          }
+        },
+        "required": [
+          "methodology"
+        ]
+      },
+      "then": {
+        "required": [
+          "modeling"
+        ]
+      }
     },
     {
-      "if": { "properties": { "audience_expansion": { "const": true } }, "required": ["audience_expansion"] },
-      "then": { "required": ["modeling"] }
+      "if": {
+        "properties": {
+          "audience_expansion": {
+            "const": true
+          }
+        },
+        "required": [
+          "audience_expansion"
+        ]
+      },
+      "then": {
+        "required": [
+          "modeling"
+        ]
+      }
     },
     {
       "if": {
@@ -488,13 +666,25 @@
           "data_sources": {
             "type": "array",
             "contains": {
-              "enum": ["offline_survey", "public_record_census", "public_record_voter_file", "public_record_other", "offline_transaction"]
+              "enum": [
+                "offline_survey",
+                "public_record_census",
+                "public_record_voter_file",
+                "public_record_other",
+                "offline_transaction"
+              ]
             }
           }
         },
-        "required": ["data_sources"]
+        "required": [
+          "data_sources"
+        ]
       },
-      "then": { "required": ["onboarder"] }
+      "then": {
+        "required": [
+          "onboarder"
+        ]
+      }
     }
   ],
   "additionalProperties": true

@@ -57,13 +57,24 @@
           "description": "Maximum value, inclusive."
         }
       },
-      "required": ["min", "max"],
+      "required": [
+        "min",
+        "max"
+      ],
       "additionalProperties": false
     }
   },
   "anyOf": [
-    { "required": ["signal_ref"] },
-    { "required": ["signal_id"] }
+    {
+      "required": [
+        "signal_ref"
+      ]
+    },
+    {
+      "required": [
+        "signal_id"
+      ]
+    }
   ],
   "allOf": [
     {
@@ -77,13 +88,20 @@
                 "const": "product"
               }
             },
-            "required": ["scope"]
+            "required": [
+              "scope"
+            ]
           }
         },
-        "required": ["signal_ref"]
+        "required": [
+          "signal_ref"
+        ]
       },
       "then": {
-        "required": ["name", "value_type"]
+        "required": [
+          "name",
+          "value_type"
+        ]
       }
     }
   ],

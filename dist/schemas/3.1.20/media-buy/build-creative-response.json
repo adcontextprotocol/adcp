@@ -309,7 +309,9 @@
                     "description": "Identifier of the catalog item this creative was built for."
                   }
                 },
-                "required": ["item_id"],
+                "required": [
+                  "item_id"
+                ],
                 "additionalProperties": true
               },
               "signal_condition": {
@@ -406,11 +408,21 @@
                       "description": "Structured consumption for this variant leaf. Informational; vendor_cost is the billing source of truth."
                     }
                   },
-                  "required": ["build_variant_id", "creative_manifest"],
+                  "required": [
+                    "build_variant_id",
+                    "creative_manifest"
+                  ],
                   "dependencies": {
-                    "vendor_cost": ["currency"],
-                    "currency": ["vendor_cost"],
-                    "pricing_option_id": ["vendor_cost", "currency"]
+                    "vendor_cost": [
+                      "currency"
+                    ],
+                    "currency": [
+                      "vendor_cost"
+                    ],
+                    "pricing_option_id": [
+                      "vendor_cost",
+                      "currency"
+                    ]
                   },
                   "additionalProperties": true
                 },
@@ -419,13 +431,23 @@
               "errors": {
                 "type": "array",
                 "description": "Per-creative errors when this catalog item failed to build. Present only on failed items; does not fail the batch (per-item non-atomic). A failed entry carries errors[] and no variants[]; a successful entry carries variants[] and SHOULD NOT carry errors.",
-                "items": { "$ref": "/schemas/3.1.20/core/error.json" },
+                "items": {
+                  "$ref": "/schemas/3.1.20/core/error.json"
+                },
                 "minItems": 1
               }
             },
             "anyOf": [
-              { "required": ["variants"] },
-              { "required": ["errors"] }
+              {
+                "required": [
+                  "variants"
+                ]
+              },
+              {
+                "required": [
+                  "errors"
+                ]
+              }
             ],
             "additionalProperties": true
           },
@@ -463,7 +485,11 @@
         },
         "keep_mode_applied": {
           "type": "string",
-          "enum": ["keep_all", "keep_one", "keep_some"],
+          "enum": [
+            "keep_all",
+            "keep_one",
+            "keep_some"
+          ],
           "description": "Echoes the `keep_mode` the agent applied (mirrors the request hint). Present when the request set `keep_mode`. `keep_mode` is advisory — it does not change what is produced or billed (you pay for every leaf in `variants[]`) — so this echo is the buyer's confirmation that the hint was received, the audit paper trail for a 'I asked for keep_one but was billed for N' dispute. Whether the agent acted on it shows in the `recommended`/`rank` it set on the leaves."
         },
         "selection_strategy_applied": {
@@ -473,14 +499,19 @@
         },
         "budget_status": {
           "type": "string",
-          "enum": ["complete", "capped"],
+          "enum": [
+            "complete",
+            "capped"
+          ],
           "default": "complete",
           "description": "`complete` (default; absent == complete for back-compat) means the agent produced everything requested. `capped` means a `max_spend` ceiling stopped production early: every returned leaf is real/billed, and an advisory `BUDGET_CAP_REACHED` entry in `errors[]` is the authoritative cap signal. The leaf-granular shortfall is `leaves_returned` < `leaves_total` (do NOT rely on items_returned < items_total — that is also the normal max_creatives-sampling signal and does not capture a mid-item or variant-only cap). This is a successful partial build, not a failure."
         },
         "errors": {
           "type": "array",
           "description": "Advisory (non-terminal) entries on an otherwise-successful build — e.g. a `BUDGET_CAP_REACHED` notice when `budget_status` is `capped`. Terminal failures use the BuildCreativeError shape, not this field.",
-          "items": { "$ref": "/schemas/3.1.20/core/error.json" }
+          "items": {
+            "$ref": "/schemas/3.1.20/core/error.json"
+          }
         },
         "sandbox": {
           "type": "boolean",
@@ -501,16 +532,27 @@
       "required": [
         "creatives"
       ],
-      "if": { "required": ["vendor_cost"] },
+      "if": {
+        "required": [
+          "vendor_cost"
+        ]
+      },
       "then": {
-        "required": ["currency"],
+        "required": [
+          "currency"
+        ],
         "properties": {
           "creatives": {
             "items": {
               "properties": {
                 "variants": {
                   "items": {
-                    "required": ["build_variant_id", "creative_manifest", "vendor_cost", "currency"]
+                    "required": [
+                      "build_variant_id",
+                      "creative_manifest",
+                      "vendor_cost",
+                      "currency"
+                    ]
                   }
                 }
               }
@@ -534,18 +576,59 @@
           "type": "object",
           "description": "Projected cost for what mode:\"execute\" would have produced.",
           "properties": {
-            "items_total": { "type": "integer", "minimum": 0, "description": "Catalog items eligible (before max_creatives sampling)." },
-            "items_to_produce": { "type": "integer", "minimum": 0, "description": "Distinct creatives that would be produced (after max_creatives)." },
-            "conditions_total": { "type": "integer", "minimum": 1, "x-status": "experimental", "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend." },
-            "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
-            "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item (× conditions_total when signal_conditions was sent — see conditions_total)." },
-            "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
-            "cost_low": { "type": "number", "minimum": 0, "description": "Low end of the projected aggregate vendor_cost." },
-            "cost_high": { "type": "number", "minimum": 0, "description": "High end. For basis \"fixed\" this equals cost_low (exact)." },
-            "cost_expected": { "type": "number", "minimum": 0, "description": "Optional point estimate within the band." },
+            "items_total": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Catalog items eligible (before max_creatives sampling)."
+            },
+            "items_to_produce": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Distinct creatives that would be produced (after max_creatives)."
+            },
+            "conditions_total": {
+              "type": "integer",
+              "minimum": 1,
+              "x-status": "experimental",
+              "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend."
+            },
+            "variants_per_item": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Alternatives per creative (max_variants)."
+            },
+            "leaves_total": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Total billable leaves = items_to_produce × variants_per_item (× conditions_total when signal_conditions was sent — see conditions_total)."
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$",
+              "description": "ISO 4217 currency for the cost band."
+            },
+            "cost_low": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Low end of the projected aggregate vendor_cost."
+            },
+            "cost_high": {
+              "type": "number",
+              "minimum": 0,
+              "description": "High end. For basis \"fixed\" this equals cost_low (exact)."
+            },
+            "cost_expected": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Optional point estimate within the band."
+            },
             "basis": {
               "type": "string",
-              "enum": ["fixed", "estimated_units", "cpm_deferred"],
+              "enum": [
+                "fixed",
+                "estimated_units",
+                "cpm_deferred"
+              ],
               "description": "`fixed` = per-format flat pricing (cost_low == cost_high, exact). `estimated_units` = generative per_unit where the seller projects a unit range (band reflects the uncertainty in seconds/images/tokens). `cpm_deferred` = CPM-priced; build-time cost is 0 and cost accrues at serve time (mirrors the vendor_cost:0 CPM convention)."
             },
             "per_leaf": {
@@ -554,18 +637,37 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "catalog_item_ref": { "type": "object", "additionalProperties": true },
+                  "catalog_item_ref": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
                   "variant_axis_value": {},
-                  "pricing_option_id": { "type": "string", "x-entity": "vendor_pricing_option" },
-                  "cost_low": { "type": "number", "minimum": 0 },
-                  "cost_high": { "type": "number", "minimum": 0 },
-                  "consumption_estimate": { "$ref": "/schemas/3.1.20/core/creative-consumption.json" }
+                  "pricing_option_id": {
+                    "type": "string",
+                    "x-entity": "vendor_pricing_option"
+                  },
+                  "cost_low": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "cost_high": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "consumption_estimate": {
+                    "$ref": "/schemas/3.1.20/core/creative-consumption.json"
+                  }
                 },
                 "additionalProperties": true
               }
             }
           },
-          "required": ["currency", "cost_low", "cost_high", "basis"],
+          "required": [
+            "currency",
+            "cost_low",
+            "cost_high",
+            "basis"
+          ],
           "additionalProperties": true
         },
         "expires_at": {

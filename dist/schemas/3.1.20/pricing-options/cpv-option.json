@@ -18,7 +18,12 @@
       "type": "string",
       "description": "ISO 4217 currency code",
       "pattern": "^[A-Z]{3}$",
-      "examples": ["USD", "EUR", "GBP", "JPY"]
+      "examples": [
+        "USD",
+        "EUR",
+        "GBP",
+        "JPY"
+      ]
     },
     "fixed_price": {
       "type": "number",
@@ -61,13 +66,17 @@
                   "minimum": 1
                 }
               },
-              "required": ["duration_seconds"],
+              "required": [
+                "duration_seconds"
+              ],
               "additionalProperties": true
             }
           ]
         }
       },
-      "required": ["view_threshold"],
+      "required": [
+        "view_threshold"
+      ],
       "additionalProperties": true
     },
     "min_spend_per_package": {
@@ -88,6 +97,11 @@
       "uniqueItems": true
     }
   },
-  "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
+  "required": [
+    "pricing_option_id",
+    "pricing_model",
+    "currency",
+    "parameters"
+  ],
   "additionalProperties": true
 }

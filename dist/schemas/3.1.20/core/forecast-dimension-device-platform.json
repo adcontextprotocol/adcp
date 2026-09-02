@@ -15,6 +15,9 @@
       "description": "Operating system or platform for this forecast row."
     }
   },
-  "required": ["kind", "device_platform"],
+  "required": [
+    "kind",
+    "device_platform"
+  ],
   "additionalProperties": false
 }

@@ -6,7 +6,10 @@
   "version": "1.3.1",
   "last_updated": "2026-08-05",
   "type": "object",
-  "required": ["version", "mappings"],
+  "required": [
+    "version",
+    "mappings"
+  ],
   "properties": {
     "version": {
       "type": "string",
@@ -22,14 +25,19 @@
       "description": "Ordered list of v1 → v2 mappings. SDKs apply mappings in order and use the first match.",
       "items": {
         "type": "object",
-        "required": ["v1_pattern", "v2"],
+        "required": [
+          "v1_pattern",
+          "v2"
+        ],
         "properties": {
           "v1_pattern": {
             "type": "object",
             "description": "Match pattern. Carries either format_id_glob OR structural, not both.",
             "oneOf": [
               {
-                "required": ["format_id_glob"],
+                "required": [
+                  "format_id_glob"
+                ],
                 "properties": {
                   "format_id_glob": {
                     "type": "string",
@@ -38,7 +46,9 @@
                 }
               },
               {
-                "required": ["structural"],
+                "required": [
+                  "structural"
+                ],
                 "properties": {
                   "structural": {
                     "type": "object",
@@ -46,23 +56,33 @@
                     "properties": {
                       "asset_types": {
                         "type": "array",
-                        "items": { "type": "string" },
+                        "items": {
+                          "type": "string"
+                        },
                         "description": "Set of asset_type values that must appear in the format's slots (in any order, any count)."
                       },
                       "vast_versions": {
                         "type": "array",
-                        "items": { "type": "string" },
+                        "items": {
+                          "type": "string"
+                        },
                         "description": "VAST version constraints. Strings like '>=4.0', '4.x', '4.2'."
                       },
                       "daast_versions": {
                         "type": "array",
-                        "items": { "type": "string" }
+                        "items": {
+                          "type": "string"
+                        }
                       },
                       "dimensions": {
                         "type": "object",
                         "properties": {
-                          "width": { "type": "integer" },
-                          "height": { "type": "integer" }
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
                         }
                       }
                     },
@@ -74,7 +94,9 @@
           },
           "v2": {
             "type": "object",
-            "required": ["canonical"],
+            "required": [
+              "canonical"
+            ],
             "properties": {
               "canonical": {
                 "$ref": "/schemas/3.1.20/core/canonical-format-kind.json",
@@ -102,218 +124,741 @@
   },
   "mappings": [
     {
-      "v1_pattern": { "format_id_glob": "display_static" },
-      "v2": { "canonical": "image" },
+      "v1_pattern": {
+        "format_id_glob": "display_static"
+      },
+      "v2": {
+        "canonical": "image"
+      },
       "notes": "Observed AAO-namespace static display id. The absent size constraint is intentional: the id carries no dimensions, so execution narrows size from the matched creative's intrinsic dimensions."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x250" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x250"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 250
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_728x90" },
-      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } },
+      "v1_pattern": {
+        "format_id_glob": "display_728x90"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 728,
+          "height": 90
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x50" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x50"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 50
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x600" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x600"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 600
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_970x250" },
-      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } },
+      "v1_pattern": {
+        "format_id_glob": "display_970x250"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 970,
+          "height": 250
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_250x250" },
-      "v2": { "canonical": "image", "parameters": { "width": 250, "height": 250 } },
+      "v1_pattern": {
+        "format_id_glob": "display_250x250"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 250,
+          "height": 250
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_200x200" },
-      "v2": { "canonical": "image", "parameters": { "width": 200, "height": 200 } },
+      "v1_pattern": {
+        "format_id_glob": "display_200x200"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 200,
+          "height": 200
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x50" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 50 } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x50"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 50
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x480" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 480 } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x480"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 480
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x400" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 400 } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x400"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 400
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x320" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 320 } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x320"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 320
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x250" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 250 } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x250"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 250
+        }
+      },
       "notes": "Observed AAO-namespace unsuffixed display size id. Exact pixel dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x250_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x250_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 250,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 600x500 asset for a logical 300x250 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_728x90_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_728x90_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 728,
+          "height": 90,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 1456x180 asset for a logical 728x90 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x50_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x50_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 50,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 640x100 asset for a logical 320x50 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_160x600_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_160x600_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 160,
+          "height": 600,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 320x1200 asset for a logical 160x600 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_336x280_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_336x280_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 336,
+          "height": 280,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 672x560 asset for a logical 336x280 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x600_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x600_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 600,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 600x1200 asset for a logical 300x600 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_970x250_image_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [2] } },
+      "v1_pattern": {
+        "format_id_glob": "display_970x250_image_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 970,
+          "height": 250,
+          "pixel_ratios": [
+            2
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring only a 1940x500 asset for a logical 970x250 image. pixel_ratios is opaque forward-projection metadata interpreted only by a 3.2-aware SDK; it is not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x250_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x250_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 250,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 300x250 and 600x500 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_728x90_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_728x90_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 728,
+          "height": 90,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 728x90 and 1456x180 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_320x50_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_320x50_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 320,
+          "height": 50,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 320x50 and 640x100 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_160x600_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_160x600_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 160,
+          "height": 600,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 160x600 and 320x1200 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_336x280_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_336x280_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 336,
+          "height": 280,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 336x280 and 672x560 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_300x600_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_300x600_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 300,
+          "height": 600,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 300x600 and 600x1200 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "display_970x250_image_1x_2x" },
-      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250, "pixel_ratios": [1, 2], "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true, "min": 2, "max": 2, "pixel_ratios": [1, 2], "required_pixel_ratios": [1, 2] }] } },
+      "v1_pattern": {
+        "format_id_glob": "display_970x250_image_1x_2x"
+      },
+      "v2": {
+        "canonical": "image",
+        "parameters": {
+          "width": 970,
+          "height": 250,
+          "pixel_ratios": [
+            1,
+            2
+          ],
+          "slots": [
+            {
+              "asset_group_id": "image_main",
+              "asset_type": "image",
+              "required": true,
+              "min": 2,
+              "max": 2,
+              "pixel_ratios": [
+                1,
+                2
+              ],
+              "required_pixel_ratios": [
+                1,
+                2
+              ]
+            }
+          ]
+        }
+      },
       "notes": "Unversioned legacy reference-catalog compatibility format requiring 970x250 and 1940x500 renditions of one logical image. Density and required-coverage values are opaque forward-projection metadata for 3.2-aware SDKs, not pre-3.2 canonical protocol support."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_30s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } },
+      "v1_pattern": {
+        "format_id_glob": "video_30s"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "duration_ms_exact": 30000
+        }
+      },
       "notes": "Observed legacy duration suffix. Duration is retained so the projected format remains traffickable."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_15s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } },
+      "v1_pattern": {
+        "format_id_glob": "video_15s"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "duration_ms_exact": 15000
+        }
+      },
       "notes": "Observed legacy duration suffix. Duration is retained so the projected format remains traffickable."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_pre_roll_30s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } },
+      "v1_pattern": {
+        "format_id_glob": "video_pre_roll_30s"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "duration_ms_exact": 30000
+        }
+      },
       "notes": "Observed legacy placement and duration suffix. Placement does not change the canonical; duration is retained."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_pre_roll_15s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } },
+      "v1_pattern": {
+        "format_id_glob": "video_pre_roll_15s"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "duration_ms_exact": 15000
+        }
+      },
       "notes": "Observed legacy placement and duration suffix. Placement does not change the canonical; duration is retained."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_640x480" },
-      "v2": { "canonical": "video_hosted", "parameters": { "width": 640, "height": 480 } },
+      "v1_pattern": {
+        "format_id_glob": "video_640x480"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "width": 640,
+          "height": 480
+        }
+      },
       "notes": "Observed legacy dimension suffix. Exact dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_300x250" },
-      "v2": { "canonical": "video_hosted", "parameters": { "width": 300, "height": 250 } },
+      "v1_pattern": {
+        "format_id_glob": "video_300x250"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "width": 300,
+          "height": 250
+        }
+      },
       "notes": "Observed legacy dimension suffix. Exact dimensions are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_16x9_30s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "aspect_ratio": "16:9", "duration_ms_exact": 30000 } },
+      "v1_pattern": {
+        "format_id_glob": "video_16x9_30s"
+      },
+      "v2": {
+        "canonical": "video_hosted",
+        "parameters": {
+          "aspect_ratio": "16:9",
+          "duration_ms_exact": 30000
+        }
+      },
       "notes": "Observed legacy aspect-ratio and duration suffixes. Both constraints are retained in the projected parameters."
     },
     {
-      "v1_pattern": { "format_id_glob": "video_640x360_vast" },
-      "v2": { "canonical": "video_vast", "parameters": { "width": 640, "height": 360 } },
+      "v1_pattern": {
+        "format_id_glob": "video_640x360_vast"
+      },
+      "v2": {
+        "canonical": "video_vast",
+        "parameters": {
+          "width": 640,
+          "height": 360
+        }
+      },
       "notes": "The VAST token selects video_vast wherever it occurs in a legacy id, including this observed suffix form; exact dimensions are retained."
     },
     {
-      "v1_pattern": { "format_id_glob": "audio_15s" },
-      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 15000 } },
+      "v1_pattern": {
+        "format_id_glob": "audio_15s"
+      },
+      "v2": {
+        "canonical": "audio_hosted",
+        "parameters": {
+          "duration_ms_exact": 15000
+        }
+      },
       "notes": "Observed legacy duration suffix. Duration is retained so the projected format remains traffickable."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },
-      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.2" } },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "vast"
+          ],
+          "vast_versions": [
+            ">=4.0"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "video_vast",
+        "parameters": {
+          "vast_version": "4.2"
+        }
+      },
       "notes": "Any v1 format whose primary asset is a VAST 4.x tag. SDKs should narrow the parameters.vast_version to the lowest common denominator they support."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": ["3.x", "2.x"] } },
-      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "3.0" } },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "vast"
+          ],
+          "vast_versions": [
+            "3.x",
+            "2.x"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "video_vast",
+        "parameters": {
+          "vast_version": "3.0"
+        }
+      },
       "notes": "Legacy VAST 2.x/3.x — projected as video_vast with the lowest-supported version."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["daast"], "daast_versions": ["1.0", "1.1"] } },
-      "v2": { "canonical": "audio_daast", "parameters": { "daast_version": "1.1" } },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "daast"
+          ],
+          "daast_versions": [
+            "1.0",
+            "1.1"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "audio_daast",
+        "parameters": {
+          "daast_version": "1.1"
+        }
+      },
       "notes": "DAAST 1.x audio tag → audio_daast canonical."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["zip"] } },
-      "v2": { "canonical": "html5" },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "zip"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "html5"
+      },
       "notes": "Any v1 format whose primary asset is a zip bundle (HTML5 banner). Caller must add platform_extensions for OM-SDK / clickTag specifics from the v1 declaration."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["video"] } },
-      "v2": { "canonical": "video_hosted" },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "video"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "video_hosted"
+      },
       "notes": "v1 format with a hosted video file as its primary asset → video_hosted. Caller infers orientation/dimensions from the v1 slot constraints."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["audio"] } },
-      "v2": { "canonical": "audio_hosted" },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "audio"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "audio_hosted"
+      },
       "notes": "v1 format with a hosted audio file as its primary asset → audio_hosted. Distinct from audio_daast (which uses tag delivery)."
     },
     {
-      "v1_pattern": { "structural": { "asset_types": ["url"] } },
-      "v2": { "canonical": "display_tag" },
+      "v1_pattern": {
+        "structural": {
+          "asset_types": [
+            "url"
+          ]
+        }
+      },
+      "v2": {
+        "canonical": "display_tag"
+      },
       "notes": "Last-resort structural match: v1 format whose primary asset is a URL pointing at a third-party-served creative → display_tag canonical. Lower confidence than other entries — sellers SHOULD declare an explicit `canonical` for url-shaped formats whenever possible."
     }
   ]

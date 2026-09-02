@@ -62,7 +62,9 @@
             "maxItems": 2
           }
         },
-        "required": ["chunks"],
+        "required": [
+          "chunks"
+        ],
         "additionalProperties": false
       }
     }
@@ -75,11 +77,31 @@
   ],
   "not": {
     "anyOf": [
-      { "required": ["tmpx_chunks"] },
-      { "required": ["tmpx_values"] },
-      { "required": ["tmpx_macros"] },
-      { "required": ["context"] },
-      { "required": ["ext"] }
+      {
+        "required": [
+          "tmpx_chunks"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_values"
+        ]
+      },
+      {
+        "required": [
+          "tmpx_macros"
+        ]
+      },
+      {
+        "required": [
+          "context"
+        ]
+      },
+      {
+        "required": [
+          "ext"
+        ]
+      }
     ]
   },
   "additionalProperties": true

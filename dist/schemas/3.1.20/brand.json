@@ -40,12 +40,22 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "pending", "abandoned", "cancelled", "expired"],
+          "enum": [
+            "active",
+            "pending",
+            "abandoned",
+            "cancelled",
+            "expired"
+          ],
           "description": "Registration status. Omit for active marks if status tracking is not maintained."
         },
         "license_type": {
           "type": "string",
-          "enum": ["owned", "licensed_in", "licensed_out"],
+          "enum": [
+            "owned",
+            "licensed_in",
+            "licensed_out"
+          ],
           "description": "Whether the publisher owns the mark, licenses it from another entity, or licenses it to others. 'owned' is the default if omitted."
         },
         "licensor_domain": {
@@ -54,16 +64,28 @@
         },
         "countries": {
           "type": "array",
-          "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+          "items": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 2
+          },
           "description": "ISO 3166-1 alpha-2 country codes where this registration applies. Omit for global or where the registry's jurisdiction is implicit."
         },
         "nice_classes": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 1, "maximum": 45 },
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 45
+          },
           "description": "Nice Classification class numbers (1-45) covered by this registration. Disambiguates marks across industries (e.g., Delta-airline vs Delta-faucet). Omit if scope is implicit from registry."
         }
       },
-      "required": ["registry", "number", "mark"],
+      "required": [
+        "registry",
+        "number",
+        "mark"
+      ],
       "additionalProperties": true
     },
     "portfolio_entry": {
@@ -88,7 +110,10 @@
           "description": "ISO 8601 timestamp when the house established this ownership claim. Consumers age mutual-assertion edges from this date for TTL purposes. Optional; absent means the consumer ages from its own first observation."
         }
       },
-      "required": ["domain", "brand_id"],
+      "required": [
+        "domain",
+        "brand_id"
+      ],
       "additionalProperties": false
     },
     "localized_name": {
@@ -103,7 +128,12 @@
     },
     "keller_type": {
       "type": "string",
-      "enum": ["master", "sub_brand", "endorsed", "independent"],
+      "enum": [
+        "master",
+        "sub_brand",
+        "endorsed",
+        "independent"
+      ],
       "description": "Brand architecture type from Keller's theory. master: primary brand of house. sub_brand: carries parent name (Nike SB). endorsed: independent identity backed by parent (Air Jordan 'by Nike'). independent: operates separately (Converse under Nike, Inc.)"
     },
     "logo": {
@@ -121,38 +151,65 @@
         },
         "orientation": {
           "type": "string",
-          "enum": ["square", "horizontal", "vertical", "stacked"],
+          "enum": [
+            "square",
+            "horizontal",
+            "vertical",
+            "stacked"
+          ],
           "description": "Logo aspect ratio orientation. square: ~1:1, horizontal: wide, vertical: tall, stacked: vertically arranged elements"
         },
         "background": {
           "type": "string",
-          "enum": ["dark-bg", "light-bg", "transparent-bg"],
+          "enum": [
+            "dark-bg",
+            "light-bg",
+            "transparent-bg"
+          ],
           "description": "Background compatibility. dark-bg: use on dark backgrounds, light-bg: use on light backgrounds, transparent-bg: has transparent background"
         },
         "variant": {
           "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "enum": [
+            "primary",
+            "secondary",
+            "icon",
+            "wordmark",
+            "full-lockup"
+          ],
           "description": "Logo variant type. primary: main logo, secondary: alternative, icon: symbol only, wordmark: text only, full-lockup: complete logo"
         },
         "tags": {
           "type": "array",
           "description": "Additional semantic tags for custom categorization beyond the standard orientation, background, and variant fields",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         },
         "slots": {
           "type": "array",
           "description": "Canonical renderer slots where this logo is appropriate. Consumers SHOULD prefer this over inferring from tags or usage prose when selecting a logo for a specific UI surface.",
-          "items": { "$ref": "#/definitions/logo_slot" },
+          "items": {
+            "$ref": "#/definitions/logo_slot"
+          },
           "uniqueItems": true
         },
         "usage": {
           "type": "string",
           "description": "Human-readable description of when to use this logo variant (e.g., 'Primary logo for use on light backgrounds')"
         },
-        "width": { "type": "integer", "description": "Width in pixels" },
-        "height": { "type": "integer", "description": "Height in pixels" }
+        "width": {
+          "type": "integer",
+          "description": "Width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "description": "Height in pixels"
+        }
       },
-      "required": ["url"],
+      "required": [
+        "url"
+      ],
       "additionalProperties": true
     },
     "hex_color": {
@@ -162,8 +219,18 @@
     },
     "color_value": {
       "oneOf": [
-        { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
-        { "type": "array", "items": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }, "minItems": 1 }
+        {
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          },
+          "minItems": 1
+        }
       ]
     },
     "color_ref": {
@@ -172,7 +239,11 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["name", "value", "surface"],
+          "enum": [
+            "name",
+            "value",
+            "surface"
+          ],
           "description": "Discriminator for the color reference variant."
         },
         "name": {
@@ -185,101 +256,197 @@
         },
         "surface": {
           "type": "string",
-          "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"],
+          "enum": [
+            "background",
+            "foreground",
+            "text",
+            "logo_background",
+            "cta",
+            "accent",
+            "border",
+            "icon",
+            "graphic_element"
+          ],
           "description": "Usage surface rather than a specific color value."
         }
       },
       "oneOf": [
         {
-          "properties": { "kind": { "const": "name" } },
-          "required": ["kind", "name"]
+          "properties": {
+            "kind": {
+              "const": "name"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ]
         },
         {
-          "properties": { "kind": { "const": "value" } },
-          "required": ["kind", "value"]
+          "properties": {
+            "kind": {
+              "const": "value"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ]
         },
         {
-          "properties": { "kind": { "const": "surface" } },
-          "required": ["kind", "surface"]
+          "properties": {
+            "kind": {
+              "const": "surface"
+            }
+          },
+          "required": [
+            "kind",
+            "surface"
+          ]
         }
       ],
       "additionalProperties": false
     },
     "guideline_severity": {
       "type": "string",
-      "enum": ["must", "should"],
+      "enum": [
+        "must",
+        "should"
+      ],
       "description": "Strength of a machine-readable brand guideline constraint."
     },
     "colors": {
       "type": "object",
       "description": "Brand color palette. Each role accepts a single hex color or an array of hex colors for brands with multiple values per role. Beyond the core five roles, brands can provide additional color roles for finer granularity — heading, body, label, border, divider, surface_1, surface_2, etc.",
       "properties": {
-        "primary": { "$ref": "#/definitions/color_value" },
-        "secondary": { "$ref": "#/definitions/color_value" },
-        "accent": { "$ref": "#/definitions/color_value" },
-        "background": { "$ref": "#/definitions/color_value" },
-        "text": { "$ref": "#/definitions/color_value" },
-        "heading": { "$ref": "#/definitions/color_value" },
-        "body": { "$ref": "#/definitions/color_value" },
-        "label": { "$ref": "#/definitions/color_value" },
-        "border": { "$ref": "#/definitions/color_value" },
-        "divider": { "$ref": "#/definitions/color_value" },
-        "surface_1": { "$ref": "#/definitions/color_value" },
-        "surface_2": { "$ref": "#/definitions/color_value" }
+        "primary": {
+          "$ref": "#/definitions/color_value"
+        },
+        "secondary": {
+          "$ref": "#/definitions/color_value"
+        },
+        "accent": {
+          "$ref": "#/definitions/color_value"
+        },
+        "background": {
+          "$ref": "#/definitions/color_value"
+        },
+        "text": {
+          "$ref": "#/definitions/color_value"
+        },
+        "heading": {
+          "$ref": "#/definitions/color_value"
+        },
+        "body": {
+          "$ref": "#/definitions/color_value"
+        },
+        "label": {
+          "$ref": "#/definitions/color_value"
+        },
+        "border": {
+          "$ref": "#/definitions/color_value"
+        },
+        "divider": {
+          "$ref": "#/definitions/color_value"
+        },
+        "surface_1": {
+          "$ref": "#/definitions/color_value"
+        },
+        "surface_2": {
+          "$ref": "#/definitions/color_value"
+        }
       },
-      "additionalProperties": { "$ref": "#/definitions/color_value" }
+      "additionalProperties": {
+        "$ref": "#/definitions/color_value"
+      }
     },
     "font_file": {
       "type": "object",
       "description": "A font file with weight, style, and variable font metadata",
       "properties": {
-        "url": { "type": "string", "format": "uri", "pattern": "^https://", "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)" },
-        "weight": { "type": "integer", "minimum": 100, "maximum": 900, "description": "CSS numeric font-weight for static fonts (100-900)" },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL to the font file (WOFF2, TTF, or OTF)"
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 900,
+          "description": "CSS numeric font-weight for static fonts (100-900)"
+        },
         "weight_range": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 100, "maximum": 900 },
+          "items": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 900
+          },
           "minItems": 2,
           "maxItems": 2,
           "description": "Variable font weight axis range as [min, max] (e.g., [100, 900]). Use instead of weight for variable fonts."
         },
         "style": {
           "type": "string",
-          "enum": ["normal", "italic", "oblique"],
+          "enum": [
+            "normal",
+            "italic",
+            "oblique"
+          ],
           "description": "CSS font-style"
         }
       },
-      "required": ["url"],
+      "required": [
+        "url"
+      ],
       "additionalProperties": true
     },
     "font_role": {
       "description": "A font role entry. Either a CSS font-family string (simple) or a structured object with family name and font files (rich).",
       "oneOf": [
-        { "type": "string", "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')" },
+        {
+          "type": "string",
+          "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')"
+        },
         {
           "type": "object",
           "description": "Structured font with family name, downloadable font files, and typographic metadata",
           "properties": {
-            "family": { "type": "string", "description": "CSS font-family name (e.g., 'Brand Sans')" },
+            "family": {
+              "type": "string",
+              "description": "CSS font-family name (e.g., 'Brand Sans')"
+            },
             "files": {
               "type": "array",
-              "items": { "$ref": "#/definitions/font_file" },
+              "items": {
+                "$ref": "#/definitions/font_file"
+              },
               "maxItems": 36,
               "description": "Font files for different weights and styles"
             },
             "opentype_features": {
               "type": "array",
-              "items": { "type": "string", "pattern": "^[a-z0-9]{4}$" },
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9]{4}$"
+              },
               "maxItems": 20,
               "description": "OpenType feature tags to enable (e.g., ['ss01', 'tnum', 'cv01']). These are four-character tags per the OpenType spec."
             },
             "fallbacks": {
               "type": "array",
-              "items": { "type": "string", "maxLength": 100 },
+              "items": {
+                "type": "string",
+                "maxLength": 100
+              },
               "maxItems": 10,
               "description": "Ordered fallback font-family names for when the primary font is unavailable or does not support the required script (e.g., ['Noto Sans Arabic', 'Noto Sans SC', 'sans-serif'])"
             }
           },
-          "required": ["family"],
+          "required": [
+            "family"
+          ],
           "additionalProperties": true
         }
       ]
@@ -289,40 +456,82 @@
       "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with font files for reliable resolution.",
       "maxProperties": 20,
       "properties": {
-        "primary": { "$ref": "#/definitions/font_role", "description": "Primary font family" },
-        "secondary": { "$ref": "#/definitions/font_role", "description": "Secondary font family" }
+        "primary": {
+          "$ref": "#/definitions/font_role",
+          "description": "Primary font family"
+        },
+        "secondary": {
+          "$ref": "#/definitions/font_role",
+          "description": "Secondary font family"
+        }
       },
-      "additionalProperties": { "$ref": "#/definitions/font_role" }
+      "additionalProperties": {
+        "$ref": "#/definitions/font_role"
+      }
     },
     "asset": {
       "type": "object",
       "description": "Brand asset (image, video, audio, text)",
       "properties": {
-        "asset_id": { "type": "string", "description": "Unique identifier" },
+        "asset_id": {
+          "type": "string",
+          "description": "Unique identifier"
+        },
         "asset_type": {
           "$ref": "/schemas/3.1.20/enums/asset-content-type.json",
           "description": "Type of asset content"
         },
-        "url": { "type": "string", "format": "uri", "description": "URL to CDN-hosted asset file" },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to CDN-hosted asset file"
+        },
         "tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product', 'holiday')"
         },
-        "name": { "type": "string", "description": "Human-readable name" },
-        "description": { "type": "string", "description": "Asset description or usage notes" },
-        "width": { "type": "integer", "description": "Image/video width in pixels" },
-        "height": { "type": "integer", "description": "Image/video height in pixels" },
-        "duration_seconds": { "type": "number", "description": "Video/audio duration in seconds" },
-        "file_size_bytes": { "type": "integer", "description": "File size in bytes" },
-        "format": { "type": "string", "description": "File format (e.g., 'jpg', 'mp4', 'mp3')" },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Asset description or usage notes"
+        },
+        "width": {
+          "type": "integer",
+          "description": "Image/video width in pixels"
+        },
+        "height": {
+          "type": "integer",
+          "description": "Image/video height in pixels"
+        },
+        "duration_seconds": {
+          "type": "number",
+          "description": "Video/audio duration in seconds"
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "description": "File size in bytes"
+        },
+        "format": {
+          "type": "string",
+          "description": "File format (e.g., 'jpg', 'mp4', 'mp3')"
+        },
         "metadata": {
           "type": "object",
           "description": "Additional asset-specific metadata",
           "additionalProperties": true
         }
       },
-      "required": ["asset_id", "asset_type", "url"],
+      "required": [
+        "asset_id",
+        "asset_type",
+        "url"
+      ],
       "additionalProperties": true
     },
     "property": {
@@ -331,7 +540,16 @@
       "properties": {
         "type": {
           "type": "string",
-          "enum": ["website", "mobile_app", "ctv_app", "desktop_app", "dooh", "podcast", "radio", "streaming_audio"],
+          "enum": [
+            "website",
+            "mobile_app",
+            "ctv_app",
+            "desktop_app",
+            "dooh",
+            "podcast",
+            "radio",
+            "streaming_audio"
+          ],
           "description": "Property type"
         },
         "identifier": {
@@ -341,7 +559,15 @@
         },
         "store": {
           "type": "string",
-          "enum": ["apple", "google", "amazon", "roku", "samsung", "lg", "other"],
+          "enum": [
+            "apple",
+            "google",
+            "amazon",
+            "roku",
+            "samsung",
+            "lg",
+            "other"
+          ],
           "description": "App store for mobile/CTV apps"
         },
         "region": {
@@ -356,26 +582,40 @@
         },
         "relationship": {
           "type": "string",
-          "enum": ["owned", "direct", "delegated", "ad_network"],
+          "enum": [
+            "owned",
+            "direct",
+            "delegated",
+            "ad_network"
+          ],
           "default": "owned",
           "description": "How this brand relates to the property. 'owned': the brand owns and operates this property (default) and has no adagents.json delegation_type counterpart. 'direct': the brand is the direct sales path for this property, even if a third party operates the software (e.g., a publisher's in-house ad team using a vendor's tech). 'delegated': the brand manages monetization for this property — they are in charge of ad sales (e.g., Mediavine managing a food blog). 'ad_network': the brand sells this property's inventory as part of a network or exchange — they are a path to the inventory, not the path (e.g., PubMatic as an SSP). For non-owned properties, the publisher confirms the relationship by setting the matching delegation_type on the agent's authorization in their adagents.json."
         }
       },
-      "required": ["type", "identifier"],
+      "required": [
+        "type",
+        "identifier"
+      ],
       "additionalProperties": true
     },
     "product_catalog": {
       "type": "object",
       "description": "Product catalog for e-commerce brands",
       "properties": {
-        "feed_url": { "type": "string", "format": "uri", "description": "URL to product catalog feed" },
+        "feed_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to product catalog feed"
+        },
         "feed_format": {
           "$ref": "/schemas/3.1.20/enums/feed-format.json",
           "description": "Format of the product feed"
         },
         "categories": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Product categories available in the catalog"
         },
         "last_updated": {
@@ -385,25 +625,44 @@
         },
         "update_frequency": {
           "type": "string",
-          "enum": ["realtime", "hourly", "daily", "weekly"],
+          "enum": [
+            "realtime",
+            "hourly",
+            "daily",
+            "weekly"
+          ],
           "description": "How frequently the product catalog is updated"
         },
         "agentic_checkout": {
           "type": "object",
           "description": "Agentic checkout endpoint configuration",
           "properties": {
-            "endpoint": { "type": "string", "format": "uri", "description": "Base URL for checkout session API" },
-            "spec": { "type": "string", "description": "Checkout API specification identifier. Use a namespaced string to identify the checkout protocol (e.g., vendor-prefixed or custom). Vendor-specific values belong under ext.{vendor}." },
+            "endpoint": {
+              "type": "string",
+              "format": "uri",
+              "description": "Base URL for checkout session API"
+            },
+            "spec": {
+              "type": "string",
+              "description": "Checkout API specification identifier. Use a namespaced string to identify the checkout protocol (e.g., vendor-prefixed or custom). Vendor-specific values belong under ext.{vendor}."
+            },
             "supported_payment_providers": {
               "type": "array",
               "description": "Payment providers supported by this checkout endpoint",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             }
           },
-          "required": ["endpoint", "spec"]
+          "required": [
+            "endpoint",
+            "spec"
+          ]
         }
       },
-      "required": ["feed_url"],
+      "required": [
+        "feed_url"
+      ],
       "additionalProperties": true
     },
     "data_subject_contestation": {
@@ -430,8 +689,16 @@
         }
       },
       "anyOf": [
-        { "required": ["url"] },
-        { "required": ["email"] }
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "email"
+          ]
+        }
       ],
       "additionalProperties": false
     },
@@ -451,15 +718,21 @@
         "identity_relying_parties": {
           "type": "array",
           "description": "Verified-identity relying parties scoped to this brand/property, for attestation provenance in TMP Identity Match. Use when a brand or property runs its own relying_party_id (per-property pseudonyms); entity-wide relying parties live on the house object. See specs/tmp-verified-identity-attestation.md.",
-          "items": { "$ref": "#/definitions/identity_relying_party" }
+          "items": {
+            "$ref": "#/definitions/identity_relying_party"
+          }
         },
         "names": {
           "type": "array",
           "description": "Localized brand names. Multiple entries per language allowed for aliases.",
-          "items": { "$ref": "#/definitions/localized_name" },
+          "items": {
+            "$ref": "#/definitions/localized_name"
+          },
           "minItems": 1
         },
-        "keller_type": { "$ref": "#/definitions/keller_type" },
+        "keller_type": {
+          "$ref": "#/definitions/keller_type"
+        },
         "parent_brand": {
           "$ref": "#/definitions/brand_id",
           "description": "Parent brand ID for sub-brands and endorsed brands"
@@ -470,7 +743,9 @@
         },
         "industries": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "Brand industries (e.g., ['automotive'] or ['pharmaceutical', 'cpg'] for a consumer health company). Describes what the company does — not what regulatory regimes apply (use policy_categories for that)."
         },
@@ -480,11 +755,17 @@
         },
         "logos": {
           "type": "array",
-          "items": { "$ref": "#/definitions/logo" },
+          "items": {
+            "$ref": "#/definitions/logo"
+          },
           "description": "Brand logo assets"
         },
-        "colors": { "$ref": "#/definitions/colors" },
-        "fonts": { "$ref": "#/definitions/fonts" },
+        "colors": {
+          "$ref": "#/definitions/colors"
+        },
+        "fonts": {
+          "$ref": "#/definitions/fonts"
+        },
         "tone": {
           "description": "Brand voice and messaging tone guidelines",
           "oneOf": [
@@ -496,21 +777,30 @@
               "type": "object",
               "description": "Structured brand voice guidelines",
               "properties": {
-                "voice": { "type": "string", "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')" },
+                "voice": {
+                  "type": "string",
+                  "description": "High-level voice descriptor (e.g., 'warm and inviting', 'professional and trustworthy')"
+                },
                 "attributes": {
                   "type": "array",
                   "description": "Personality traits that characterize the brand voice",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "dos": {
                   "type": "array",
                   "description": "Guidance for copy generation - what TO do",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "donts": {
                   "type": "array",
                   "description": "Guardrails to avoid brand violations - what NOT to do",
-                  "items": { "type": "string" }
+                  "items": {
+                    "type": "string"
+                  }
                 }
               }
             }
@@ -525,7 +815,9 @@
             {
               "type": "array",
               "description": "Localized taglines with BCP 47 locale codes",
-              "items": { "$ref": "#/definitions/localized_name" },
+              "items": {
+                "$ref": "#/definitions/localized_name"
+              },
               "minItems": 1
             }
           ],
@@ -533,15 +825,21 @@
         },
         "assets": {
           "type": "array",
-          "items": { "$ref": "#/definitions/asset" },
+          "items": {
+            "$ref": "#/definitions/asset"
+          },
           "description": "Brand asset library"
         },
         "properties": {
           "type": "array",
-          "items": { "$ref": "#/definitions/property" },
+          "items": {
+            "$ref": "#/definitions/property"
+          },
           "description": "Digital properties associated with this brand — owned, managed, or represented"
         },
-        "product_catalog": { "$ref": "#/definitions/product_catalog" },
+        "product_catalog": {
+          "$ref": "#/definitions/product_catalog"
+        },
         "privacy_policy_url": {
           "type": "string",
           "format": "uri",
@@ -555,26 +853,44 @@
           "items": {
             "type": "object",
             "properties": {
-              "text": { "type": "string" },
-              "context": { "type": "string" },
-              "required": { "type": "boolean", "default": true }
+              "text": {
+                "type": "string"
+              },
+              "context": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean",
+                "default": true
+              }
             },
-            "required": ["text"]
+            "required": [
+              "text"
+            ]
           },
           "description": "Legal disclaimers for creatives"
         },
         "trademarks": {
           "type": "array",
-          "items": { "$ref": "#/definitions/trademark" },
+          "items": {
+            "$ref": "#/definitions/trademark"
+          },
           "description": "Brand-level registered trademarks. Use for marks the brand owns or controls (e.g., a sub-brand's own marks distinct from the corporate parent). House-level trademarks live on the house object; resolution between the two is union — both lists are valid claims."
         },
         "voice_synthesis": {
           "type": "object",
           "description": "TTS voice synthesis configuration for AI-generated audio",
           "properties": {
-            "provider": { "type": "string" },
-            "voice_id": { "type": "string" },
-            "settings": { "type": "object", "additionalProperties": true }
+            "provider": {
+              "type": "string"
+            },
+            "voice_id": {
+              "type": "string"
+            },
+            "settings": {
+              "type": "object",
+              "additionalProperties": true
+            }
           },
           "additionalProperties": true
         },
@@ -582,9 +898,16 @@
           "type": "object",
           "description": "Visual avatar configuration",
           "properties": {
-            "provider": { "type": "string" },
-            "avatar_id": { "type": "string" },
-            "settings": { "type": "object", "additionalProperties": true }
+            "provider": {
+              "type": "string"
+            },
+            "avatar_id": {
+              "type": "string"
+            },
+            "settings": {
+              "type": "object",
+              "additionalProperties": true
+            }
           },
           "additionalProperties": true
         },
@@ -610,8 +933,15 @@
           "type": "object",
           "description": "Brand-level contact information",
           "properties": {
-            "email": { "type": "string", "format": "email", "description": "Contact email" },
-            "phone": { "type": "string", "description": "Contact phone number" }
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Contact email"
+            },
+            "phone": {
+              "type": "string",
+              "description": "Contact phone number"
+            }
           }
         },
         "collections": {
@@ -638,12 +968,17 @@
                 "description": "URL of the sales agent that sells inventory for this collection. Buyer agents can query this agent for collection products."
               }
             },
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "additionalProperties": true
           }
         }
       },
-      "required": ["id", "names"],
+      "required": [
+        "id",
+        "names"
+      ],
       "additionalProperties": true
     },
     "house": {
@@ -662,11 +997,17 @@
         "names": {
           "type": "array",
           "description": "Localized house names including legal name, stock symbol, etc.",
-          "items": { "$ref": "#/definitions/localized_name" }
+          "items": {
+            "$ref": "#/definitions/localized_name"
+          }
         },
         "architecture": {
           "type": "string",
-          "enum": ["branded_house", "house_of_brands", "hybrid"],
+          "enum": [
+            "branded_house",
+            "house_of_brands",
+            "hybrid"
+          ],
           "description": "Brand architecture model: branded_house (Google), house_of_brands (P&G), hybrid (Nike)"
         },
         "agents": {
@@ -680,10 +1021,15 @@
         "identity_relying_parties": {
           "type": "array",
           "description": "Verified-identity relying parties this house/entity operates, so a buyer can verify that a forwarded TMP identity attestation's relying_party_id genuinely belongs to this entity (provenance) rather than being replayed under another owner. For network-as-RP, the network publishes its own relying_party_id here. See specs/tmp-verified-identity-attestation.md.",
-          "items": { "$ref": "#/definitions/identity_relying_party" }
+          "items": {
+            "$ref": "#/definitions/identity_relying_party"
+          }
         }
       },
-      "required": ["domain", "name"],
+      "required": [
+        "domain",
+        "name"
+      ],
       "additionalProperties": true
     },
     "identity_relying_party": {
@@ -705,11 +1051,17 @@
         },
         "scope": {
           "type": "string",
-          "enum": ["entity", "property"],
+          "enum": [
+            "entity",
+            "property"
+          ],
           "description": "Whether this relying_party_id is shared across the entity's properties (entity → a within-entity unique-human graph) or scoped to a single property (property → per-property pseudonyms, unlinkable across the entity)."
         }
       },
-      "required": ["issuer", "relying_party_id"],
+      "required": [
+        "issuer",
+        "relying_party_id"
+      ],
       "additionalProperties": false
     },
     "brand_agent": {
@@ -728,7 +1080,10 @@
           "pattern": "^[a-z0-9_]+$"
         }
       },
-      "required": ["url", "id"],
+      "required": [
+        "url",
+        "id"
+      ],
       "additionalProperties": true
     },
     "rights_agent": {
@@ -749,13 +1104,17 @@
         "available_uses": {
           "type": "array",
           "description": "Rights uses available for licensing through this agent",
-          "items": { "$ref": "/schemas/3.1.20/enums/right-use.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/enums/right-use.json"
+          },
           "minItems": 1
         },
         "right_types": {
           "type": "array",
           "description": "Types of rights available",
-          "items": { "$ref": "/schemas/3.1.20/enums/right-type.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/enums/right-type.json"
+          },
           "minItems": 1
         },
         "countries": {
@@ -767,7 +1126,11 @@
           }
         }
       },
-      "required": ["url", "id", "available_uses"],
+      "required": [
+        "url",
+        "id",
+        "available_uses"
+      ],
       "additionalProperties": true
     },
     "brand_agent_entry": {
@@ -804,13 +1167,17 @@
         "available_uses": {
           "type": "array",
           "description": "For rights agents: rights uses available for licensing",
-          "items": { "$ref": "/schemas/3.1.20/enums/right-use.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/enums/right-use.json"
+          },
           "minItems": 1
         },
         "right_types": {
           "type": "array",
           "description": "For rights agents: types of rights available",
-          "items": { "$ref": "/schemas/3.1.20/enums/right-type.json" },
+          "items": {
+            "$ref": "/schemas/3.1.20/enums/right-type.json"
+          },
           "minItems": 1
         },
         "countries": {
@@ -822,13 +1189,19 @@
           }
         }
       },
-      "required": ["type", "url", "id"],
+      "required": [
+        "type",
+        "url",
+        "id"
+      ],
       "additionalProperties": true
     },
     "agents": {
       "type": "array",
       "description": "Agents declared by this brand or house. Multiple entries with the same type are permitted when they have distinct url values, such as one endpoint URL per tenant or property scope. Agent url values MUST be unique within this array; duplicate urls are invalid because signature verifiers resolve a signing key by matching one agent url to one agents[] entry and reject ambiguous matches.",
-      "items": { "$ref": "#/definitions/brand_agent_entry" }
+      "items": {
+        "$ref": "#/definitions/brand_agent_entry"
+      }
     },
     "authorized_operator": {
       "type": "object",
@@ -860,7 +1233,15 @@
           "description": "Activities this operator is authorized to perform for the listed brands and countries. Omit for backwards-compatible broad authorization. Use ['all'] only when every listed scope is delegated.",
           "items": {
             "type": "string",
-            "enum": ["all", "media_buying", "creative_generation", "rights_clearance", "governance", "measurement", "agent_operations"]
+            "enum": [
+              "all",
+              "media_buying",
+              "creative_generation",
+              "rights_clearance",
+              "governance",
+              "measurement",
+              "agent_operations"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -876,7 +1257,10 @@
           "description": "ISO 8601 timestamp when this operator authorization expires. Consumers MUST treat entries at or after this timestamp as inactive for authorization decisions."
         }
       },
-      "required": ["domain", "brands"],
+      "required": [
+        "domain",
+        "brands"
+      ],
       "additionalProperties": true
     },
     "photography_style": {
@@ -885,7 +1269,12 @@
       "properties": {
         "realism": {
           "type": "string",
-          "enum": ["natural", "stylized", "hyperreal", "abstract"],
+          "enum": [
+            "natural",
+            "stylized",
+            "hyperreal",
+            "abstract"
+          ],
           "description": "Level of photographic realism"
         },
         "lighting": {
@@ -894,17 +1283,29 @@
         },
         "color_temperature": {
           "type": "string",
-          "enum": ["warm", "neutral", "cool"],
+          "enum": [
+            "warm",
+            "neutral",
+            "cool"
+          ],
           "description": "Overall color temperature of photography"
         },
         "contrast": {
           "type": "string",
-          "enum": ["low", "medium", "high"],
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
           "description": "Contrast level in photography"
         },
         "depth_of_field": {
           "type": "string",
-          "enum": ["shallow", "medium", "deep"],
+          "enum": [
+            "shallow",
+            "medium",
+            "deep"
+          ],
           "description": "Depth of field preference. shallow: blurred background with subject isolation, deep: everything in focus"
         },
         "subject": {
@@ -915,11 +1316,19 @@
               "type": "object",
               "description": "People photography guidelines",
               "properties": {
-                "age_range": { "type": "string", "description": "Target age range (e.g., '20-35')" },
-                "diversity": { "type": "string", "description": "Diversity representation (e.g., 'mixed', 'varied')" },
+                "age_range": {
+                  "type": "string",
+                  "description": "Target age range (e.g., '20-35')"
+                },
+                "diversity": {
+                  "type": "string",
+                  "description": "Diversity representation (e.g., 'mixed', 'varied')"
+                },
                 "mood": {
                   "type": "array",
-                  "items": { "type": "string" },
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Mood descriptors (e.g., ['confident', 'relaxed'])"
                 }
               },
@@ -927,7 +1336,12 @@
             },
             "product_focus": {
               "type": "string",
-              "enum": ["in-use", "isolated", "lifestyle", "detail"],
+              "enum": [
+                "in-use",
+                "isolated",
+                "lifestyle",
+                "detail"
+              ],
               "description": "How products are shown"
             },
             "setting": {
@@ -966,7 +1380,9 @@
         },
         "tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Additional style descriptors"
         }
       },
@@ -978,12 +1394,27 @@
       "properties": {
         "style_type": {
           "type": "string",
-          "enum": ["flat_illustration", "geometric", "gradient_mesh", "editorial_collage", "hand_drawn", "minimal_line_art", "3d_render", "isometric", "photographic_composite"],
+          "enum": [
+            "flat_illustration",
+            "geometric",
+            "gradient_mesh",
+            "editorial_collage",
+            "hand_drawn",
+            "minimal_line_art",
+            "3d_render",
+            "isometric",
+            "photographic_composite"
+          ],
           "description": "Primary graphic style"
         },
         "stroke_style": {
           "type": "string",
-          "enum": ["rounded", "square", "mixed", "none"],
+          "enum": [
+            "rounded",
+            "square",
+            "mixed",
+            "none"
+          ],
           "description": "Stroke end/join style"
         },
         "stroke_weight": {
@@ -996,7 +1427,9 @@
         },
         "tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Additional style descriptors"
         }
       },
@@ -1068,12 +1501,30 @@
           "type": "object",
           "description": "Named spacing scale built from the base unit",
           "properties": {
-            "xs": { "type": "string", "description": "Extra small spacing (e.g., '4px')" },
-            "sm": { "type": "string", "description": "Small spacing (e.g., '8px')" },
-            "md": { "type": "string", "description": "Medium spacing (e.g., '16px')" },
-            "lg": { "type": "string", "description": "Large spacing (e.g., '24px')" },
-            "xl": { "type": "string", "description": "Extra large spacing (e.g., '32px')" },
-            "2xl": { "type": "string", "description": "Section-level spacing (e.g., '48px', '64px')" }
+            "xs": {
+              "type": "string",
+              "description": "Extra small spacing (e.g., '4px')"
+            },
+            "sm": {
+              "type": "string",
+              "description": "Small spacing (e.g., '8px')"
+            },
+            "md": {
+              "type": "string",
+              "description": "Medium spacing (e.g., '16px')"
+            },
+            "lg": {
+              "type": "string",
+              "description": "Large spacing (e.g., '24px')"
+            },
+            "xl": {
+              "type": "string",
+              "description": "Extra large spacing (e.g., '32px')"
+            },
+            "2xl": {
+              "type": "string",
+              "description": "Section-level spacing (e.g., '48px', '64px')"
+            }
           },
           "additionalProperties": {
             "type": "string"
@@ -1092,7 +1543,9 @@
         },
         "secondary_shapes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Secondary shapes in the brand vocabulary"
         },
         "usage": {
@@ -1119,7 +1572,14 @@
       "properties": {
         "style": {
           "type": "string",
-          "enum": ["outline", "filled", "duotone", "flat", "glyph", "hand_drawn"],
+          "enum": [
+            "outline",
+            "filled",
+            "duotone",
+            "flat",
+            "glyph",
+            "hand_drawn"
+          ],
           "description": "Icon rendering style"
         },
         "stroke_weight": {
@@ -1128,7 +1588,11 @@
         },
         "corner_style": {
           "type": "string",
-          "enum": ["rounded", "square", "mixed"],
+          "enum": [
+            "rounded",
+            "square",
+            "mixed"
+          ],
           "description": "Corner style for icon paths"
         },
         "usage": {
@@ -1159,7 +1623,12 @@
           "properties": {
             "gradient_style": {
               "type": "string",
-              "enum": ["linear", "radial", "conic", "none"],
+              "enum": [
+                "linear",
+                "radial",
+                "conic",
+                "none"
+              ],
               "description": "Gradient type for overlays"
             },
             "gradient_direction": {
@@ -1179,12 +1648,23 @@
           "properties": {
             "style": {
               "type": "string",
-              "enum": ["none", "subtle_grain", "noise", "paper", "fabric", "concrete"],
+              "enum": [
+                "none",
+                "subtle_grain",
+                "noise",
+                "paper",
+                "fabric",
+                "concrete"
+              ],
               "description": "Texture style applied to creative assets"
             },
             "intensity": {
               "type": "string",
-              "enum": ["low", "medium", "high"],
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ],
               "description": "Texture intensity"
             }
           },
@@ -1198,7 +1678,15 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": ["solid_color", "gradient", "blurred_photo", "image", "video", "pattern", "transparent"]
+                "enum": [
+                  "solid_color",
+                  "gradient",
+                  "blurred_photo",
+                  "image",
+                  "video",
+                  "pattern",
+                  "transparent"
+                ]
               },
               "description": "Permitted background types"
             }
@@ -1216,19 +1704,39 @@
           "type": "string",
           "description": "Colorway name (e.g., 'primary', 'inverted', 'subtle')"
         },
-        "foreground": { "$ref": "#/definitions/hex_color" },
-        "background": { "$ref": "#/definitions/hex_color" },
-        "accent": { "$ref": "#/definitions/hex_color" },
-        "border": { "$ref": "#/definitions/hex_color" },
-        "cta_foreground": { "$ref": "#/definitions/hex_color", "description": "CTA text/icon color, if different from foreground" },
-        "cta_background": { "$ref": "#/definitions/hex_color", "description": "CTA button/container color, if different from accent" },
+        "foreground": {
+          "$ref": "#/definitions/hex_color"
+        },
+        "background": {
+          "$ref": "#/definitions/hex_color"
+        },
+        "accent": {
+          "$ref": "#/definitions/hex_color"
+        },
+        "border": {
+          "$ref": "#/definitions/hex_color"
+        },
+        "cta_foreground": {
+          "$ref": "#/definitions/hex_color",
+          "description": "CTA text/icon color, if different from foreground"
+        },
+        "cta_background": {
+          "$ref": "#/definitions/hex_color",
+          "description": "CTA button/container color, if different from accent"
+        },
         "channels": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Channels or contexts where this colorway applies (e.g., 'online', 'print', 'pos', 'social', 'outdoor'). Omit for universal colorways."
         }
       },
-      "required": ["name", "foreground", "background"],
+      "required": [
+        "name",
+        "foreground",
+        "background"
+      ],
       "additionalProperties": true
     },
     "color_constraint": {
@@ -1243,37 +1751,59 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["background", "foreground", "text", "logo_background", "cta", "accent", "border", "icon", "graphic_element"]
+            "enum": [
+              "background",
+              "foreground",
+              "text",
+              "logo_background",
+              "cta",
+              "accent",
+              "border",
+              "icon",
+              "graphic_element"
+            ]
           },
           "description": "Surfaces where this color may be used."
         },
         "allowed_on": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
+          "items": {
+            "$ref": "#/definitions/color_ref"
+          },
           "description": "Backgrounds, surfaces, or color roles where this color is allowed."
         },
         "forbidden_on": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
+          "items": {
+            "$ref": "#/definitions/color_ref"
+          },
           "description": "Backgrounds, surfaces, or color roles where this color is forbidden."
         },
         "never_pair_with": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
+          "items": {
+            "$ref": "#/definitions/color_ref"
+          },
           "description": "Color roles or values that must not be paired with this color."
         },
         "contexts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Channels or creative contexts where this constraint applies, such as digital, print, social, or ctv_end_card."
         },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "severity": {
+          "$ref": "#/definitions/guideline_severity"
+        },
         "description": {
           "type": "string",
           "description": "Human-readable rationale or source-language summary for the rule."
         }
       },
-      "required": ["color"],
+      "required": [
+        "color"
+      ],
       "additionalProperties": true
     },
     "logo_usage_rule": {
@@ -1291,23 +1821,35 @@
         },
         "logo_variant": {
           "type": "string",
-          "enum": ["primary", "secondary", "icon", "wordmark", "full-lockup"],
+          "enum": [
+            "primary",
+            "secondary",
+            "icon",
+            "wordmark",
+            "full-lockup"
+          ],
           "description": "Logo variant this rule applies to."
         },
         "logo_tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "minItems": 1,
           "description": "Logo tags this rule applies to."
         },
         "contexts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Creative contexts where this rule applies."
         },
         "slots": {
           "type": "array",
-          "items": { "$ref": "#/definitions/logo_slot" },
+          "items": {
+            "$ref": "#/definitions/logo_slot"
+          },
           "minItems": 1,
           "uniqueItems": true,
           "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
@@ -1316,8 +1858,14 @@
           "type": "object",
           "description": "Minimum rendered size needed for legibility.",
           "properties": {
-            "width": { "type": "string", "description": "Minimum width, such as 48px or 12mm." },
-            "height": { "type": "string", "description": "Minimum height, such as 18px or 6mm." }
+            "width": {
+              "type": "string",
+              "description": "Minimum width, such as 48px or 12mm."
+            },
+            "height": {
+              "type": "string",
+              "description": "Minimum height, such as 18px or 6mm."
+            }
           },
           "additionalProperties": false
         },
@@ -1327,31 +1875,59 @@
         },
         "allowed_backgrounds": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
+          "items": {
+            "$ref": "#/definitions/color_ref"
+          },
           "description": "Background color roles, values, or surfaces where this logo may be placed."
         },
         "forbidden_backgrounds": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_ref" },
+          "items": {
+            "$ref": "#/definitions/color_ref"
+          },
           "description": "Background color roles, values, or surfaces where this logo must not be placed."
         },
         "forbidden_contexts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Contexts where this logo must not be used, such as photography_without_knockout."
         },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "severity": {
+          "$ref": "#/definitions/guideline_severity"
+        },
         "description": {
           "type": "string",
           "description": "Human-readable rationale or source-language summary for the rule."
         }
       },
       "anyOf": [
-        { "required": ["logo_id"] },
-        { "required": ["logo_url"] },
-        { "required": ["logo_variant"] },
-        { "required": ["logo_tags"] },
-        { "required": ["slots"] }
+        {
+          "required": [
+            "logo_id"
+          ]
+        },
+        {
+          "required": [
+            "logo_url"
+          ]
+        },
+        {
+          "required": [
+            "logo_variant"
+          ]
+        },
+        {
+          "required": [
+            "logo_tags"
+          ]
+        },
+        {
+          "required": [
+            "slots"
+          ]
+        }
       ],
       "additionalProperties": true
     },
@@ -1361,17 +1937,32 @@
       "properties": {
         "lockup_type": {
           "type": "string",
-          "enum": ["co_brand", "secondary_mark", "partner", "sponsor", "program", "talent", "custom"],
+          "enum": [
+            "co_brand",
+            "secondary_mark",
+            "partner",
+            "sponsor",
+            "program",
+            "talent",
+            "custom"
+          ],
           "description": "Type of mark relationship governed by this lockup rule."
         },
         "ordering": {
           "type": "string",
-          "enum": ["brand_first", "partner_first", "equal", "contextual"],
+          "enum": [
+            "brand_first",
+            "partner_first",
+            "equal",
+            "contextual"
+          ],
           "description": "Required visual ordering of the brand mark relative to partner or secondary marks."
         },
         "contexts": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Creative contexts where this lockup rule applies."
         },
         "brand_logo_id": {
@@ -1380,7 +1971,9 @@
         },
         "secondary_logo_ids": {
           "type": "array",
-          "items": { "$ref": "#/definitions/logo_id" },
+          "items": {
+            "$ref": "#/definitions/logo_id"
+          },
           "uniqueItems": true,
           "description": "Stable `logos[].id` values for secondary, program, sponsor, or partner marks governed by this lockup rule when those marks are represented in this brand.json."
         },
@@ -1390,13 +1983,25 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["none", "keyline", "space", "divider"],
+              "enum": [
+                "none",
+                "keyline",
+                "space",
+                "divider"
+              ],
               "description": "Separator style."
             },
-            "color": { "$ref": "#/definitions/color_ref" },
-            "width": { "type": "string", "description": "Separator width, such as 1px." }
+            "color": {
+              "$ref": "#/definitions/color_ref"
+            },
+            "width": {
+              "type": "string",
+              "description": "Separator width, such as 1px."
+            }
           },
-          "required": ["type"],
+          "required": [
+            "type"
+          ],
           "additionalProperties": true
         },
         "min_gap": {
@@ -1413,13 +2018,17 @@
           "exclusiveMinimum": 0,
           "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark. Enforcement is at layout time, not parse time — this value signals to renderers and creative agents how much space to provision for each mark."
         },
-        "severity": { "$ref": "#/definitions/guideline_severity" },
+        "severity": {
+          "$ref": "#/definitions/guideline_severity"
+        },
         "description": {
           "type": "string",
           "description": "Human-readable rationale or source-language summary for the lockup rule."
         }
       },
-      "required": ["lockup_type"],
+      "required": [
+        "lockup_type"
+      ],
       "additionalProperties": true
     },
     "type_scale_entry": {
@@ -1430,13 +2039,30 @@
           "type": "string",
           "description": "Font reference. Use a key from the fonts object (e.g., 'primary', 'secondary') to reference a defined font role, or a literal CSS font-family string as a fallback."
         },
-        "size": { "type": "string", "description": "Font size (e.g., '48px', '2rem')" },
-        "weight": { "type": "string", "description": "Font weight (e.g., '700', 'bold')" },
-        "line_height": { "type": "string", "description": "Line height (e.g., '1.2', '56px')" },
-        "letter_spacing": { "type": "string", "description": "Letter spacing (e.g., '-0.02em', '0.5px')" },
+        "size": {
+          "type": "string",
+          "description": "Font size (e.g., '48px', '2rem')"
+        },
+        "weight": {
+          "type": "string",
+          "description": "Font weight (e.g., '700', 'bold')"
+        },
+        "line_height": {
+          "type": "string",
+          "description": "Line height (e.g., '1.2', '56px')"
+        },
+        "letter_spacing": {
+          "type": "string",
+          "description": "Letter spacing (e.g., '-0.02em', '0.5px')"
+        },
         "text_transform": {
           "type": "string",
-          "enum": ["none", "uppercase", "lowercase", "capitalize"],
+          "enum": [
+            "none",
+            "uppercase",
+            "lowercase",
+            "capitalize"
+          ],
           "description": "Text transformation"
         }
       },
@@ -1448,12 +2074,23 @@
       "properties": {
         "transition_style": {
           "type": "string",
-          "enum": ["cut", "dissolve", "slide", "wipe", "zoom", "fade"],
+          "enum": [
+            "cut",
+            "dissolve",
+            "slide",
+            "wipe",
+            "zoom",
+            "fade"
+          ],
           "description": "Primary transition style between scenes"
         },
         "animation_speed": {
           "type": "string",
-          "enum": ["slow", "moderate", "fast"],
+          "enum": [
+            "slow",
+            "moderate",
+            "fast"
+          ],
           "description": "Overall animation pacing"
         },
         "easing": {
@@ -1462,12 +2099,23 @@
         },
         "text_entrance": {
           "type": "string",
-          "enum": ["fade", "typewriter", "slide_up", "slide_left", "scale", "none"],
+          "enum": [
+            "fade",
+            "typewriter",
+            "slide_up",
+            "slide_left",
+            "scale",
+            "none"
+          ],
           "description": "How text enters the frame"
         },
         "pacing": {
           "type": "string",
-          "enum": ["lingering", "moderate", "fast_cuts"],
+          "enum": [
+            "lingering",
+            "moderate",
+            "fast_cuts"
+          ],
           "description": "Overall editing rhythm"
         },
         "kinetic_typography": {
@@ -1476,7 +2124,9 @@
         },
         "tags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Additional motion style descriptors"
         }
       },
@@ -1488,7 +2138,15 @@
       "properties": {
         "preferred_position": {
           "type": "string",
-          "enum": ["top-left", "top-center", "top-right", "bottom-left", "bottom-center", "bottom-right", "center"],
+          "enum": [
+            "top-left",
+            "top-center",
+            "top-right",
+            "bottom-left",
+            "bottom-center",
+            "bottom-right",
+            "center"
+          ],
           "description": "Preferred logo position in layouts"
         },
         "min_clear_space": {
@@ -1501,7 +2159,11 @@
         },
         "background_contrast": {
           "type": "string",
-          "enum": ["light_only", "dark_only", "any"],
+          "enum": [
+            "light_only",
+            "dark_only",
+            "any"
+          ],
           "description": "Permitted background contrast behind logo"
         }
       },
@@ -1517,7 +2179,15 @@
         },
         "type": {
           "type": "string",
-          "enum": ["border", "divider", "frame", "watermark", "pattern", "texture_overlay", "decorative"],
+          "enum": [
+            "border",
+            "divider",
+            "frame",
+            "watermark",
+            "pattern",
+            "texture_overlay",
+            "decorative"
+          ],
           "description": "Element type"
         },
         "description": {
@@ -1526,12 +2196,18 @@
         },
         "orientation": {
           "type": "string",
-          "enum": ["horizontal", "vertical", "any"],
+          "enum": [
+            "horizontal",
+            "vertical",
+            "any"
+          ],
           "description": "Preferred orientation when used in layouts"
         },
         "colors": {
           "type": "array",
-          "items": { "$ref": "#/definitions/hex_color" },
+          "items": {
+            "$ref": "#/definitions/hex_color"
+          },
           "description": "Colors this element may appear in"
         },
         "max_per_layout": {
@@ -1539,7 +2215,9 @@
           "description": "Maximum instances per layout"
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": true
     },
     "asset_library": {
@@ -1552,7 +2230,13 @@
         },
         "type": {
           "type": "string",
-          "enum": ["icon_set", "illustration_system", "image_library", "video_library", "template_library"],
+          "enum": [
+            "icon_set",
+            "illustration_system",
+            "image_library",
+            "video_library",
+            "template_library"
+          ],
           "description": "Type of asset library"
         },
         "url": {
@@ -1570,7 +2254,9 @@
           "properties": {
             "roles": {
               "type": "array",
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "description": "Named color roles used in the library (e.g., base, shadow_1, highlight_1, stroke)"
             },
             "palettes": {
@@ -1584,11 +2270,16 @@
                   },
                   "colors": {
                     "type": "object",
-                    "additionalProperties": { "$ref": "#/definitions/hex_color" },
+                    "additionalProperties": {
+                      "$ref": "#/definitions/hex_color"
+                    },
                     "description": "Map of role names to hex color values"
                   }
                 },
-                "required": ["name", "colors"],
+                "required": [
+                  "name",
+                  "colors"
+                ],
                 "additionalProperties": true
               },
               "description": "Named color palettes mapping roles to specific colors"
@@ -1597,46 +2288,79 @@
           "additionalProperties": true
         }
       },
-      "required": ["name", "url"],
+      "required": [
+        "name",
+        "url"
+      ],
       "additionalProperties": true
     },
     "visual_guidelines": {
       "type": "object",
       "description": "Structured visual rules for generative creative systems. Defines how brand photography, graphics, typography, and composition should be produced to maintain brand consistency at scale.",
       "properties": {
-        "photography": { "$ref": "#/definitions/photography_style" },
-        "graphic_style": { "$ref": "#/definitions/graphic_style" },
-        "shapes": { "$ref": "#/definitions/brand_shapes" },
-        "iconography": { "$ref": "#/definitions/iconography" },
-        "composition": { "$ref": "#/definitions/composition_rules" },
-        "border_radius": { "$ref": "#/definitions/border_radius" },
-        "elevation": { "$ref": "#/definitions/elevation" },
-        "spacing": { "$ref": "#/definitions/spacing" },
+        "photography": {
+          "$ref": "#/definitions/photography_style"
+        },
+        "graphic_style": {
+          "$ref": "#/definitions/graphic_style"
+        },
+        "shapes": {
+          "$ref": "#/definitions/brand_shapes"
+        },
+        "iconography": {
+          "$ref": "#/definitions/iconography"
+        },
+        "composition": {
+          "$ref": "#/definitions/composition_rules"
+        },
+        "border_radius": {
+          "$ref": "#/definitions/border_radius"
+        },
+        "elevation": {
+          "$ref": "#/definitions/elevation"
+        },
+        "spacing": {
+          "$ref": "#/definitions/spacing"
+        },
         "graphic_elements": {
           "type": "array",
-          "items": { "$ref": "#/definitions/graphic_element" },
+          "items": {
+            "$ref": "#/definitions/graphic_element"
+          },
           "description": "Reusable decorative elements that are part of the brand visual identity (e.g., torn paper edges, watermarks, dividers)"
         },
-        "motion": { "$ref": "#/definitions/motion_guidelines" },
-        "logo_placement": { "$ref": "#/definitions/logo_placement" },
+        "motion": {
+          "$ref": "#/definitions/motion_guidelines"
+        },
+        "logo_placement": {
+          "$ref": "#/definitions/logo_placement"
+        },
         "colorways": {
           "type": "array",
-          "items": { "$ref": "#/definitions/colorway" },
+          "items": {
+            "$ref": "#/definitions/colorway"
+          },
           "description": "Named color pairings for consistent foreground/background combinations"
         },
         "color_constraints": {
           "type": "array",
-          "items": { "$ref": "#/definitions/color_constraint" },
+          "items": {
+            "$ref": "#/definitions/color_constraint"
+          },
           "description": "Machine-readable constraints for color usage and pairings, such as accent-only rules or forbidden foreground/background combinations."
         },
         "logo_usage_rules": {
           "type": "array",
-          "items": { "$ref": "#/definitions/logo_usage_rule" },
+          "items": {
+            "$ref": "#/definitions/logo_usage_rule"
+          },
           "description": "Machine-readable logo selection and placement constraints for minimum size, clear space, backgrounds, and contexts."
         },
         "mark_lockups": {
           "type": "array",
-          "items": { "$ref": "#/definitions/mark_lockup" },
+          "items": {
+            "$ref": "#/definitions/mark_lockup"
+          },
           "description": "Machine-readable co-brand, partner, sponsor, program, or secondary-mark lockup rules."
         },
         "type_scale": {
@@ -1647,22 +2371,38 @@
               "type": "string",
               "description": "Reference canvas width these sizes were designed for (e.g., '1080px'). Generative systems should scale proportionally for other canvas sizes."
             },
-            "heading": { "$ref": "#/definitions/type_scale_entry" },
-            "subheading": { "$ref": "#/definitions/type_scale_entry" },
-            "body": { "$ref": "#/definitions/type_scale_entry" },
-            "caption": { "$ref": "#/definitions/type_scale_entry" },
-            "cta": { "$ref": "#/definitions/type_scale_entry" }
+            "heading": {
+              "$ref": "#/definitions/type_scale_entry"
+            },
+            "subheading": {
+              "$ref": "#/definitions/type_scale_entry"
+            },
+            "body": {
+              "$ref": "#/definitions/type_scale_entry"
+            },
+            "caption": {
+              "$ref": "#/definitions/type_scale_entry"
+            },
+            "cta": {
+              "$ref": "#/definitions/type_scale_entry"
+            }
           },
-          "additionalProperties": { "$ref": "#/definitions/type_scale_entry" }
+          "additionalProperties": {
+            "$ref": "#/definitions/type_scale_entry"
+          }
         },
         "asset_libraries": {
           "type": "array",
-          "items": { "$ref": "#/definitions/asset_library" },
+          "items": {
+            "$ref": "#/definitions/asset_library"
+          },
           "description": "References to managed asset libraries (icon sets, illustration systems, image collections). URLs are intended for human access; agent-facing DAM integration is under investigation."
         },
         "restrictions": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Visual prohibitions and guardrails (e.g., 'Never use black backgrounds', 'Do not crop the logo', 'No stock photography of people on phones')"
         }
       },
@@ -1672,11 +2412,23 @@
       "type": "object",
       "description": "Contact information",
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "email": { "type": "string", "format": "email", "maxLength": 255 },
-        "domain": { "$ref": "#/definitions/domain" }
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 255
+        },
+        "domain": {
+          "$ref": "#/definitions/domain"
+        }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": true
     }
   },
@@ -1686,7 +2438,9 @@
       "title": "Authoritative Location Redirect",
       "description": "Redirects to a hosted brand.json file at another URL",
       "properties": {
-        "$schema": { "type": "string" },
+        "$schema": {
+          "type": "string"
+        },
         "authoritative_location": {
           "type": "string",
           "format": "uri",
@@ -1695,7 +2449,15 @@
         },
         "redirect_reason": {
           "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "enum": [
+            "acquisition",
+            "divestiture",
+            "rebrand",
+            "regional",
+            "legacy",
+            "consolidation",
+            "other"
+          ],
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
@@ -1707,9 +2469,14 @@
           "type": "string",
           "description": "Optional human-readable rationale for the redirect."
         },
-        "last_updated": { "type": "string", "format": "date-time" }
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["authoritative_location"],
+      "required": [
+        "authoritative_location"
+      ],
       "additionalProperties": false
     },
     {
@@ -1717,7 +2484,9 @@
       "title": "House Redirect",
       "description": "Redirects to the house domain that contains the full brand portfolio",
       "properties": {
-        "$schema": { "type": "string" },
+        "$schema": {
+          "type": "string"
+        },
         "house": {
           "$ref": "#/definitions/domain",
           "description": "House domain to fetch brand portfolio from"
@@ -1729,7 +2498,15 @@
         },
         "redirect_reason": {
           "type": "string",
-          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "enum": [
+            "acquisition",
+            "divestiture",
+            "rebrand",
+            "regional",
+            "legacy",
+            "consolidation",
+            "other"
+          ],
           "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
@@ -1741,9 +2518,14 @@
           "type": "string",
           "description": "Optional human-readable rationale for the redirect."
         },
-        "last_updated": { "type": "string", "format": "date-time" }
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["house"],
+      "required": [
+        "house"
+      ],
       "additionalProperties": false
     },
     {
@@ -1751,22 +2533,41 @@
       "title": "Brand Agent",
       "description": "Brand represented by agents that provide brand info via MCP",
       "properties": {
-        "$schema": { "type": "string" },
-        "version": { "type": "string" },
-        "agents": { "$ref": "#/definitions/agents" },
+        "$schema": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "agents": {
+          "$ref": "#/definitions/agents"
+        },
         "brand_agent": {
           "$ref": "#/definitions/brand_agent",
           "deprecated": true
         },
-        "contact": { "$ref": "#/definitions/contact" },
+        "contact": {
+          "$ref": "#/definitions/contact"
+        },
         "data_subject_contestation": {
           "$ref": "#/definitions/data_subject_contestation"
         },
-        "last_updated": { "type": "string", "format": "date-time" }
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
       "anyOf": [
-        { "required": ["agents"] },
-        { "required": ["brand_agent"] }
+        {
+          "required": [
+            "agents"
+          ]
+        },
+        {
+          "required": [
+            "brand_agent"
+          ]
+        }
       ],
       "additionalProperties": false
     },
@@ -1775,38 +2576,67 @@
       "title": "House Portfolio",
       "description": "Full house/brand portfolio with hierarchy, creative assets, and properties. May carry inline brands (parent-owned, brands[]) and/or pointer brands (child-owned canonical documents, brand_refs[]). At least one of brands[] or brand_refs[] is required. A brand_id MUST NOT appear in both. See docs/brand-protocol/brand-json.mdx",
       "properties": {
-        "$schema": { "type": "string" },
-        "version": { "type": "string" },
-        "house": { "$ref": "#/definitions/house" },
+        "$schema": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "house": {
+          "$ref": "#/definitions/house"
+        },
         "brands": {
           "type": "array",
           "description": "Inline brands owned by this house (parent-owned data). Use for sub-brands without their own canonical document — typically those without a dedicated domain or that the holdco wants to manage centrally. A brand_id MUST NOT appear in both brands[] and brand_refs[].",
-          "items": { "$ref": "#/definitions/brand" },
+          "items": {
+            "$ref": "#/definitions/brand"
+          },
           "minItems": 1
         },
         "brand_refs": {
           "type": "array",
           "description": "Portfolio entries for brands owned by this house that publish their own canonical brand.json elsewhere (child-owned data). Each entry asserts ownership plus where the child's document lives. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. Invariants: a brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id and domain MUST each be unique within brand_refs[]. See docs/brand-protocol/brand-json.mdx",
-          "items": { "$ref": "#/definitions/portfolio_entry" },
+          "items": {
+            "$ref": "#/definitions/portfolio_entry"
+          },
           "minItems": 1
         },
-        "contact": { "$ref": "#/definitions/contact" },
+        "contact": {
+          "$ref": "#/definitions/contact"
+        },
         "authorized_operators": {
           "type": "array",
           "description": "Entities authorized to represent brands from this house. Third parties (sellers, platforms) can verify an operator's authorization by checking this list. Operators are identified by domain.",
-          "items": { "$ref": "#/definitions/authorized_operator" }
+          "items": {
+            "$ref": "#/definitions/authorized_operator"
+          }
         },
         "trademarks": {
           "type": "array",
-          "items": { "$ref": "#/definitions/trademark" },
+          "items": {
+            "$ref": "#/definitions/trademark"
+          },
           "description": "House-level (corporate) registered trademarks. Brand-level marks live on individual brand entries; resolution is union."
         },
-        "last_updated": { "type": "string", "format": "date-time" }
+        "last_updated": {
+          "type": "string",
+          "format": "date-time"
+        }
       },
-      "required": ["house"],
+      "required": [
+        "house"
+      ],
       "anyOf": [
-        { "required": ["brands"] },
-        { "required": ["brand_refs"] }
+        {
+          "required": [
+            "brands"
+          ]
+        },
+        {
+          "required": [
+            "brand_refs"
+          ]
+        }
       ],
       "additionalProperties": false
     },
@@ -1818,29 +2648,74 @@
         {
           "type": "object",
           "properties": {
-            "$schema": { "type": "string" },
-            "version": { "type": "string" },
+            "$schema": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
             "house_domain": {
               "$ref": "#/definitions/domain",
               "description": "Optional pointer to the corporate house this brand belongs to. The named house's brand_refs[] MUST reciprocate for mutual-assertion trust. Single-hop only — a brand cannot itself declare brand_refs[]. Omit for standalone brands (no house)."
             },
-            "last_updated": { "type": "string", "format": "date-time" }
+            "last_updated": {
+              "type": "string",
+              "format": "date-time"
+            }
           },
           "not": {
             "anyOf": [
-              { "required": ["house"] },
-              { "required": ["brands"] },
-              { "required": ["brand_refs"] },
-              { "required": ["authorized_operators"] },
-              { "required": ["authoritative_location"] },
-              { "required": ["redirect_reason"] },
-              { "required": ["redirect_effective_at"] },
-              { "required": ["region"] },
-              { "required": ["note"] }
+              {
+                "required": [
+                  "house"
+                ]
+              },
+              {
+                "required": [
+                  "brands"
+                ]
+              },
+              {
+                "required": [
+                  "brand_refs"
+                ]
+              },
+              {
+                "required": [
+                  "authorized_operators"
+                ]
+              },
+              {
+                "required": [
+                  "authoritative_location"
+                ]
+              },
+              {
+                "required": [
+                  "redirect_reason"
+                ]
+              },
+              {
+                "required": [
+                  "redirect_effective_at"
+                ]
+              },
+              {
+                "required": [
+                  "region"
+                ]
+              },
+              {
+                "required": [
+                  "note"
+                ]
+              }
             ]
           }
         },
-        { "$ref": "#/definitions/brand" }
+        {
+          "$ref": "#/definitions/brand"
+        }
       ]
     }
   ],
@@ -1886,9 +2761,21 @@
         {
           "id": "tide",
           "url": "https://tide.com",
-          "names": [{"en_US": "Tide"}, {"es_MX": "Tide"}, {"zh_CN": "汰渍"}],
+          "names": [
+            {
+              "en_US": "Tide"
+            },
+            {
+              "es_MX": "Tide"
+            },
+            {
+              "zh_CN": "汰渍"
+            }
+          ],
           "keller_type": "master",
-          "industries": ["cpg"],
+          "industries": [
+            "cpg"
+          ],
           "description": "Laundry detergent brand",
           "logos": [
             {
@@ -1906,14 +2793,40 @@
               "usage": "Full lockup for dark backgrounds"
             }
           ],
-          "colors": {"primary": "#FF6600", "secondary": "#0066CC", "background": "#FFFFFF", "text": "#1A1A1A", "heading": "#FF6600", "body": "#333333", "label": "#666666", "border": "#E5E5E5", "divider": "#F0F0F0", "surface_1": "#F9F9F9", "surface_2": "#EFEFEF"},
+          "colors": {
+            "primary": "#FF6600",
+            "secondary": "#0066CC",
+            "background": "#FFFFFF",
+            "text": "#1A1A1A",
+            "heading": "#FF6600",
+            "body": "#333333",
+            "label": "#666666",
+            "border": "#E5E5E5",
+            "divider": "#F0F0F0",
+            "surface_1": "#F9F9F9",
+            "surface_2": "#EFEFEF"
+          },
           "tone": {
             "voice": "clean, fresh, trustworthy",
-            "attributes": ["reliable", "family-friendly", "confident"],
-            "dos": ["Use simple, direct language", "Emphasize cleaning power"],
-            "donts": ["Avoid technical jargon", "Don't be overly serious"]
+            "attributes": [
+              "reliable",
+              "family-friendly",
+              "confident"
+            ],
+            "dos": [
+              "Use simple, direct language",
+              "Emphasize cleaning power"
+            ],
+            "donts": [
+              "Avoid technical jargon",
+              "Don't be overly serious"
+            ]
           },
-          "tagline": [{"en_US": "Tide's In, Dirt's Out"}],
+          "tagline": [
+            {
+              "en_US": "Tide's In, Dirt's Out"
+            }
+          ],
           "visual_guidelines": {
             "photography": {
               "realism": "natural",
@@ -1925,7 +2838,11 @@
                 "people": {
                   "age_range": "25-45",
                   "diversity": "mixed",
-                  "mood": ["confident", "relaxed", "happy"]
+                  "mood": [
+                    "confident",
+                    "relaxed",
+                    "happy"
+                  ]
                 },
                 "product_focus": "in-use",
                 "setting": "indoor"
@@ -1935,7 +2852,11 @@
                 "crop_style": "waist-up",
                 "perspective": "eye-level"
               },
-              "preferred_aspect_ratios": ["16:9", "4:5", "1:1"]
+              "preferred_aspect_ratios": [
+                "16:9",
+                "4:5",
+                "1:1"
+              ]
             },
             "graphic_style": {
               "style_type": "flat_illustration",
@@ -1945,7 +2866,9 @@
             },
             "shapes": {
               "primary_shape": "circle",
-              "secondary_shapes": ["rounded_rectangle"],
+              "secondary_shapes": [
+                "rounded_rectangle"
+              ],
               "usage": {
                 "max_per_layout": 2,
                 "overlap_allowed": false
@@ -1970,7 +2893,11 @@
                 "style": "none"
               },
               "backgrounds": {
-                "types_allowed": ["solid_color", "gradient", "blurred_photo"]
+                "types_allowed": [
+                  "solid_color",
+                  "gradient",
+                  "blurred_photo"
+                ]
               }
             },
             "border_radius": {
@@ -2062,8 +2989,16 @@
             ]
           },
           "properties": [
-            {"type": "website", "identifier": "tide.com", "primary": true},
-            {"type": "mobile_app", "store": "apple", "identifier": "com.pg.tide"}
+            {
+              "type": "website",
+              "identifier": "tide.com",
+              "primary": true
+            },
+            {
+              "type": "mobile_app",
+              "store": "apple",
+              "identifier": "com.pg.tide"
+            }
           ],
           "contact": {
             "email": "brands@pg.com"
@@ -2072,9 +3007,15 @@
         {
           "id": "pampers",
           "url": "https://pampers.com",
-          "names": [{"en_US": "Pampers"}],
+          "names": [
+            {
+              "en_US": "Pampers"
+            }
+          ],
           "keller_type": "master",
-          "industries": ["cpg"],
+          "industries": [
+            "cpg"
+          ],
           "logos": [
             {
               "url": "https://cdn.pg.com/pampers/logo.png",
@@ -2082,9 +3023,15 @@
               "variant": "primary"
             }
           ],
-          "colors": {"primary": "#00A0D2"},
+          "colors": {
+            "primary": "#00A0D2"
+          },
           "properties": [
-            {"type": "website", "identifier": "pampers.com", "primary": true}
+            {
+              "type": "website",
+              "identifier": "pampers.com",
+              "primary": true
+            }
           ]
         }
       ],
@@ -2106,7 +3053,17 @@
         {
           "id": "nike",
           "url": "https://nike.com",
-          "names": [{"en_US": "Nike"}, {"zh_CN": "耐克"}, {"ja_JP": "ナイキ"}],
+          "names": [
+            {
+              "en_US": "Nike"
+            },
+            {
+              "zh_CN": "耐克"
+            },
+            {
+              "ja_JP": "ナイキ"
+            }
+          ],
           "keller_type": "master",
           "logos": [
             {
@@ -2124,19 +3081,48 @@
               "usage": "Full logo with wordmark for light backgrounds"
             }
           ],
-          "colors": {"primary": "#111111", "accent": "#FF6600"},
+          "colors": {
+            "primary": "#111111",
+            "accent": "#FF6600"
+          },
           "tone": "inspirational, bold, athletic",
-          "tagline": [{"en_US": "Just Do It"}],
+          "tagline": [
+            {
+              "en_US": "Just Do It"
+            }
+          ],
           "properties": [
-            {"type": "website", "identifier": "nike.com", "primary": true},
-            {"type": "website", "identifier": "nike.cn", "region": "CN"},
-            {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+            {
+              "type": "website",
+              "identifier": "nike.com",
+              "primary": true
+            },
+            {
+              "type": "website",
+              "identifier": "nike.cn",
+              "region": "CN"
+            },
+            {
+              "type": "mobile_app",
+              "store": "apple",
+              "identifier": "com.nike.omega"
+            }
           ]
         },
         {
           "id": "air_jordan",
           "url": "https://jordan.com",
-          "names": [{"en_US": "Air Jordan"}, {"en_US": "Jordan"}, {"en_US": "Jumpman"}],
+          "names": [
+            {
+              "en_US": "Air Jordan"
+            },
+            {
+              "en_US": "Jordan"
+            },
+            {
+              "en_US": "Jumpman"
+            }
+          ],
           "keller_type": "endorsed",
           "parent_brand": "nike",
           "logos": [
@@ -2147,10 +3133,20 @@
               "variant": "icon"
             }
           ],
-          "colors": {"primary": "#CE1141", "secondary": "#111111"},
+          "colors": {
+            "primary": "#CE1141",
+            "secondary": "#111111"
+          },
           "properties": [
-            {"type": "website", "identifier": "jordan.com", "primary": true},
-            {"type": "website", "identifier": "jumpman23.com"}
+            {
+              "type": "website",
+              "identifier": "jordan.com",
+              "primary": true
+            },
+            {
+              "type": "website",
+              "identifier": "jumpman23.com"
+            }
           ],
           "brand_agent": {
             "url": "https://dam.nike.com/mcp",
@@ -2160,7 +3156,11 @@
         {
           "id": "converse",
           "url": "https://converse.com",
-          "names": [{"en_US": "Converse"}],
+          "names": [
+            {
+              "en_US": "Converse"
+            }
+          ],
           "keller_type": "independent",
           "logos": [
             {
@@ -2170,29 +3170,54 @@
             }
           ],
           "properties": [
-            {"type": "website", "identifier": "converse.com", "primary": true}
+            {
+              "type": "website",
+              "identifier": "converse.com",
+              "primary": true
+            }
           ]
         }
       ],
       "authorized_operators": [
         {
           "domain": "wpp.com",
-          "brands": ["nike", "air_jordan"],
-          "countries": ["US", "GB", "DE", "FR"],
-          "scopes": ["media_buying", "creative_generation"],
+          "brands": [
+            "nike",
+            "air_jordan"
+          ],
+          "countries": [
+            "US",
+            "GB",
+            "DE",
+            "FR"
+          ],
+          "scopes": [
+            "media_buying",
+            "creative_generation"
+          ],
           "valid_from": "2026-01-01T00:00:00Z",
           "valid_until": "2027-01-01T00:00:00Z"
         },
         {
           "domain": "dentsu.co.jp",
-          "brands": ["nike"],
-          "countries": ["JP"],
-          "scopes": ["media_buying"]
+          "brands": [
+            "nike"
+          ],
+          "countries": [
+            "JP"
+          ],
+          "scopes": [
+            "media_buying"
+          ]
         },
         {
           "domain": "nike.com",
-          "brands": ["*"],
-          "scopes": ["all"]
+          "brands": [
+            "*"
+          ],
+          "scopes": [
+            "all"
+          ]
         }
       ],
       "last_updated": "2026-01-15T10:00:00Z"
@@ -2209,13 +3234,33 @@
         {
           "id": "mediavine",
           "url": "https://mediavine.com",
-          "names": [{"en_US": "Mediavine"}],
+          "names": [
+            {
+              "en_US": "Mediavine"
+            }
+          ],
           "keller_type": "master",
           "properties": [
-            {"type": "website", "identifier": "mediavine.com", "primary": true},
-            {"type": "website", "identifier": "thehollywoodgossip.com", "relationship": "delegated"},
-            {"type": "website", "identifier": "foodfanatic.com", "relationship": "delegated"},
-            {"type": "website", "identifier": "thebiglead.com", "relationship": "delegated"}
+            {
+              "type": "website",
+              "identifier": "mediavine.com",
+              "primary": true
+            },
+            {
+              "type": "website",
+              "identifier": "thehollywoodgossip.com",
+              "relationship": "delegated"
+            },
+            {
+              "type": "website",
+              "identifier": "foodfanatic.com",
+              "relationship": "delegated"
+            },
+            {
+              "type": "website",
+              "identifier": "thebiglead.com",
+              "relationship": "delegated"
+            }
           ],
           "agents": [
             {
@@ -2239,16 +3284,29 @@
       "brands": [
         {
           "id": "nike_sb",
-          "names": [{"en_US": "Nike SB"}],
+          "names": [
+            {
+              "en_US": "Nike SB"
+            }
+          ],
           "keller_type": "sub_brand",
           "logos": [
-            {"url": "https://nike.com/sb/logo.svg", "variant": "primary"}
+            {
+              "url": "https://nike.com/sb/logo.svg",
+              "variant": "primary"
+            }
           ]
         }
       ],
       "brand_refs": [
-        { "domain": "converse.com", "brand_id": "converse" },
-        { "domain": "jordan.com", "brand_id": "jordan" }
+        {
+          "domain": "converse.com",
+          "brand_id": "converse"
+        },
+        {
+          "domain": "jordan.com",
+          "brand_id": "jordan"
+        }
       ],
       "last_updated": "2026-01-15T10:00:00Z"
     },
@@ -2260,9 +3318,20 @@
         "name": "WPP plc"
       },
       "brand_refs": [
-        { "domain": "bbh-sport.com", "brand_id": "bbh_sport", "managed_by": "bbh.com" },
-        { "domain": "ogilvy-toyota.com", "brand_id": "ogilvy_toyota", "managed_by": "ogilvy.com" },
-        { "domain": "wpp-direct.com", "brand_id": "wpp_direct" }
+        {
+          "domain": "bbh-sport.com",
+          "brand_id": "bbh_sport",
+          "managed_by": "bbh.com"
+        },
+        {
+          "domain": "ogilvy-toyota.com",
+          "brand_id": "ogilvy_toyota",
+          "managed_by": "ogilvy.com"
+        },
+        {
+          "domain": "wpp-direct.com",
+          "brand_id": "wpp_direct"
+        }
       ],
       "last_updated": "2026-01-15T10:00:00Z"
     },
@@ -2270,11 +3339,18 @@
       "$schema": "/schemas/3.1.20/brand.json",
       "version": "1.0",
       "id": "converse",
-      "names": [{"en_US": "Converse"}],
+      "names": [
+        {
+          "en_US": "Converse"
+        }
+      ],
       "keller_type": "sub_brand",
       "house_domain": "nikeinc.com",
       "logos": [
-        {"url": "https://converse.com/logo.svg", "variant": "primary"}
+        {
+          "url": "https://converse.com/logo.svg",
+          "variant": "primary"
+        }
       ],
       "tagline": "Sneaker for the streets",
       "last_updated": "2026-01-15T10:00:00Z"
@@ -2283,10 +3359,17 @@
       "$schema": "/schemas/3.1.20/brand.json",
       "version": "1.0",
       "id": "patagonia",
-      "names": [{"en_US": "Patagonia"}],
+      "names": [
+        {
+          "en_US": "Patagonia"
+        }
+      ],
       "keller_type": "independent",
       "logos": [
-        {"url": "https://patagonia.com/logo.svg", "variant": "primary"}
+        {
+          "url": "https://patagonia.com/logo.svg",
+          "variant": "primary"
+        }
       ],
       "tagline": "We're in business to save our home planet.",
       "last_updated": "2026-01-15T10:00:00Z"
