@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(75);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(75);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(76);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(76);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
@@ -157,7 +157,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(74);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(75);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -238,12 +238,13 @@ describe('strict router eval', () => {
     expect(dateCase.expected).toMatchObject({ action: 'respond', toolSets: [] });
   });
 
-  it('treats Addie deployment capabilities as documented facts', () => {
-    const capabilityCase = SYNTHETIC_ROUTER_CORPUS.find(
-      (item) => item.id === 'addie-mcp-capability',
-    )!;
+  it.each([
+    ['addie-mcp-capability', 'does addie exist as mcp or am i hallucinating?'],
+    ['addie-tool-capabilities', 'What tools and integrations can Addie use today?'],
+  ])('treats %s as documented Addie capability facts', (id, message) => {
+    const capabilityCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
 
-    expect(capabilityCase.context.message).toBe('does addie exist as mcp or am i hallucinating?');
+    expect(capabilityCase.context.message).toBe(message);
     expect(capabilityCase.expected).toMatchObject({
       action: 'respond',
       toolSets: ['knowledge'],

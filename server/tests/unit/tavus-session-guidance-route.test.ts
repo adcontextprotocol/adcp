@@ -373,7 +373,7 @@ describe("Tavus session guidance route boundary", () => {
       { tools: Array<{ name: string }>; handlers: Map<string, unknown> },
       { selectedToolSetNames: string[]; allowedToolNames: string[] },
     ];
-    expect(options.selectedToolSetNames).toEqual(['member_billing', 'knowledge']);
+    expect(options.selectedToolSetNames).toEqual(['member_billing']);
     expect(options.allowedToolNames).toContain('create_payment_link');
     expect(requestTools.tools.map((tool) => tool.name)).toContain('create_payment_link');
     expect([...requestTools.handlers.keys()]).toContain('create_payment_link');

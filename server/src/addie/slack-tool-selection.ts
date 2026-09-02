@@ -172,13 +172,43 @@ export function selectBoundedRoutedToolSets(
       ? false
       : input.hasSponsoredIntelligenceContext,
   });
+  // The legacy Slack selector retains its direct-message knowledge overlay
+  // for non-bounded callers. A trusted bounded response plan, however, is
+  // already an explicit capability decision: do not attach knowledge unless
+  // the router selected it. This keeps the web, Tavus, and bounded Slack
+  // response surfaces provider-neutral and within their domain budget.
+  if (
+    !useSafeFallback
+    && (input.source === 'dm' || input.source === 'mention')
+    && !input.activeCertificationKind
+    && !respondPlan?.tool_sets.includes('knowledge')
+  ) {
+    selectedToolSets = selectedToolSets.filter((name) => name !== 'knowledge');
+  }
   let allowedToolNames = useSafeFallback
     ? getSafeReadOnlyFallbackTools()
     : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
   const isToolAvailable = input.isToolAvailable;
-  if (!useSafeFallback && isToolAvailable && allowedToolNames.some((name) =>
-    name !== 'web_search' && !isToolAvailable(name),
-  )) {
+  const activeCertificationSets = input.activeCertificationKind === 'mixed'
+    ? ['certification_learning', 'certification_assessment']
+    : input.activeCertificationKind
+      ? [`certification_${input.activeCertificationKind}`]
+      : [];
+  // Direct certification sessions retain the legacy learning workflow and
+  // authoritative docs. Some delivery surfaces intentionally lack optional
+  // Slack-only community retrieval tools, so those may be intersected out
+  // below without demoting a trusted certification session to fallback.
+  const activeCertificationRequiredToolNames = new Set(getToolsForSets([
+    ...activeCertificationSets,
+    'knowledge',
+    'illustrations',
+  ], input.isAdmin, input.isPublicChannel));
+  const hasUnavailableRequiredTool = allowedToolNames.some((name) =>
+    name !== 'web_search'
+    && !isToolAvailable?.(name)
+    && (activeCertificationSets.length === 0 || activeCertificationRequiredToolNames.has(name)),
+  );
+  if (!useSafeFallback && isToolAvailable && hasUnavailableRequiredTool) {
     // A bounded domain with an incomplete registration is no safer than a
     // stale router result. Do not hand a model a definition without its
     // handler (or vice versa); recover to the read-only domain instead.
