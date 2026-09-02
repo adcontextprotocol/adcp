@@ -308,6 +308,16 @@ export function buildTieredAccess(memberTools: RequestTools, isAuth: boolean, is
 type WebChatRouter = Pick<AddieRouter, 'quickMatch' | 'route'>;
 type WebChatClient = Pick<AddieClaudeClient, 'processMessage' | 'processMessageStream'>
   & Partial<Pick<AddieClaudeClient, 'getRegisteredTools'>>;
+export type WebChatRequestThreadService = Pick<ReturnType<typeof getThreadService>,
+  | 'getOrCreateThread'
+  | 'getThreadByExternalId'
+  | 'claimAnonymousThread'
+  | 'getThreadMessages'
+  | 'addMessage'
+  | 'getMessagesByClientRequestId'
+  | 'claimClientTurn'
+  | 'renewClientTurnLease'
+>;
 
 export interface RoutedWebTools {
   requestTools: RequestTools;
@@ -1047,6 +1057,10 @@ const chatCorsOptions: cors.CorsOptions = {
 export function createAddieChatRouter(options?: {
   chatClient?: WebChatClient;
   router?: WebChatRouter | null;
+  /** Test/evaluation-only seams; callers cannot set these through HTTP. */
+  requestThreadService?: WebChatRequestThreadService;
+  prepareRequest?: typeof prepareRequestWithMemberTools;
+  evaluationMode?: true;
 }): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
@@ -1057,6 +1071,7 @@ export function createAddieChatRouter(options?: {
   const resolveRouter = (): WebChatRouter | null => Object.hasOwn(options ?? {}, 'router')
     ? options?.router ?? null
     : (injectedChatClient ? null : webChatRouter);
+  const prepareRequest = options?.prepareRequest ?? prepareRequestWithMemberTools;
 
   // Enable CORS for all API routes (for native app support)
   apiRouter.use(cors(chatCorsOptions));
@@ -1090,9 +1105,13 @@ export function createAddieChatRouter(options?: {
 
   // POST /api/addie/chat - Send a message and get a response
   // optionalAuth runs first so rate limiters can check auth status
-  apiRouter.post("/", optionalAuth, chatRateLimiter, anonymousDailyLimiter, async (req, res) => {
+  apiRouter.post(
+    "/",
+    optionalAuth,
+    ...(options?.evaluationMode ? [] : [chatRateLimiter, anonymousDailyLimiter]),
+    async (req, res) => {
     const startTime = Date.now();
-    const threadService = getThreadService();
+    const threadService = options?.requestThreadService ?? getThreadService();
     const activeChatClient = injectedChatClient ?? claudeClient;
 
     try {
@@ -1264,7 +1283,7 @@ export function createAddieChatRouter(options?: {
         certificationProgress,
         isAAOAdmin,
         hasThreadCertificationContext,
-      } = await prepareRequestWithMemberTools(
+      } = await prepareRequest(
         inputValidation.sanitized,
         req.user?.id,
         externalId,
@@ -1325,6 +1344,7 @@ export function createAddieChatRouter(options?: {
           userDisplayName: displayName || undefined,
           currentSpeakerName: displayName || undefined,
           inputAttachments: attachments,
+          ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
           costScope: authedScope
             ? authedScope
             : { userId: `anon:${hashIp(req.ip)}`, tier: 'anonymous' as const },
@@ -1441,7 +1461,8 @@ export function createAddieChatRouter(options?: {
         message: "Unable to process message",
       });
     }
-  });
+    },
+  );
 
   // GET /api/addie/chat/status - Check if Addie is ready
   // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
@@ -1454,9 +1475,13 @@ export function createAddieChatRouter(options?: {
 
   // POST /api/addie/chat/stream - Stream a response using Server-Sent Events
   // NOTE: This route must come BEFORE /:conversationId to avoid being matched as a conversation ID
-  apiRouter.post("/stream", optionalAuth, chatRateLimiter, anonymousDailyLimiter, async (req, res) => {
+  apiRouter.post(
+    "/stream",
+    optionalAuth,
+    ...(options?.evaluationMode ? [] : [chatRateLimiter, anonymousDailyLimiter]),
+    async (req, res) => {
     const startTime = Date.now();
-    const threadService = getThreadService();
+    const threadService = options?.requestThreadService ?? getThreadService();
     const activeChatClient = injectedChatClient ?? claudeClient;
 
     // Track connection state
@@ -1756,7 +1781,7 @@ export function createAddieChatRouter(options?: {
         certificationModuleContext,
         certificationProgress,
         isAAOAdmin,
-      } = await prepareRequestWithMemberTools(
+      } = await prepareRequest(
         messageForModel,
         req.user?.id,
         externalId,
@@ -1836,6 +1861,7 @@ export function createAddieChatRouter(options?: {
         userDisplayName: displayName || undefined,
         currentSpeakerName: displayName || undefined,
         inputAttachments: attachments,
+        ...(options?.evaluationMode ? { executionMode: 'evaluation' as const } : {}),
         ...(streamAuthedScope
           ? { costScope: {
               ...streamAuthedScope,
@@ -2259,7 +2285,8 @@ export function createAddieChatRouter(options?: {
     } finally {
       if (heartbeat) clearInterval(heartbeat);
     }
-  });
+    },
+  );
 
   // POST /api/addie/chat/:conversationId/feedback - Submit feedback on a message
   apiRouter.post("/:conversationId/feedback", optionalAuth, feedbackRateLimiter, async (req, res) => {

@@ -16,15 +16,6 @@ import { syncUserToChaptersFromSlackChannels } from './sync.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
 import { invalidateMemberContextCache } from '../addie/index.js';
 import { invalidateAdminStatusCache, invalidateWebAdminStatusCache } from '../addie/mcp/admin-tools.js';
-import {
-  isAddieReady,
-  handleAssistantThreadStarted,
-  handleAssistantMessage,
-  handleAppMention,
-  type AssistantThreadStartedEvent,
-  type AppMentionEvent,
-  type AssistantMessageEvent,
-} from '../addie/index.js';
 import { triageAndCreateProspect } from '../services/prospect-triage.js';
 import { sendWelcomeSocialPosts } from '../notifications/welcome-social-posts.js';
 import { sendMarketingOptInDM } from '../notifications/marketing-optin-dm.js';
@@ -78,39 +69,12 @@ export interface SlackReactionAddedEvent {
   event_ts: string;
 }
 
-// Slack Assistant event types
-export interface SlackAssistantThreadStartedEvent {
-  type: 'assistant_thread_started';
-  assistant_thread: {
-    user_id: string;
-    context: {
-      channel_id: string;
-      team_id: string;
-      enterprise_id?: string;
-    };
-  };
-  event_ts: string;
-  channel: string;
-}
-
-export interface SlackAppMentionEvent {
-  type: 'app_mention';
-  user: string;
-  text: string;
-  ts: string;
-  channel: string;
-  thread_ts?: string;
-  event_ts: string;
-}
-
 export type SlackEvent =
   | SlackTeamJoinEvent
   | SlackUserChangeEvent
   | SlackMemberJoinedChannelEvent
   | SlackMessageEvent
   | SlackReactionAddedEvent
-  | SlackAssistantThreadStartedEvent
-  | SlackAppMentionEvent
   | { type: string };
 
 export interface SlackEventPayload {
@@ -453,7 +417,6 @@ async function autoAddToWorkingGroup(
 /**
  * Handle message event
  * Records message activity for engagement tracking
- * Also routes DM messages to Addie for Assistant thread handling
  * Indexes public channel messages for Addie's local search
  */
 export async function handleMessage(event: SlackMessageEvent): Promise<void> {
@@ -464,26 +427,6 @@ export async function handleMessage(event: SlackMessageEvent): Promise<void> {
       logger.debug({ bot_id: event.bot_id, channel: event.channel }, 'Ignoring bot message');
     }
     return;
-  }
-
-  // Route DM messages to Addie if ready (Assistant thread messages)
-  if (event.channel_type === 'im' && isAddieReady() && event.text) {
-    logger.debug(
-      { userId: event.user, channel: event.channel },
-      'Routing DM to Addie'
-    );
-    await handleAssistantMessage(
-      {
-        type: 'message',
-        user: event.user,
-        text: event.text,
-        ts: event.ts,
-        thread_ts: event.thread_ts || event.ts,
-        channel_type: 'im',
-      } as AssistantMessageEvent,
-      event.channel
-    );
-    // Don't return - still record the activity below
   }
 
   logger.debug(
@@ -655,38 +598,6 @@ export async function handleSlackEvent(payload: SlackEventPayload): Promise<void
 
     case 'reaction_added':
       await handleReactionAdded(event as SlackReactionAddedEvent);
-      break;
-
-    // Addie (AAO Community Agent) events
-    case 'assistant_thread_started':
-      if (isAddieReady()) {
-        const assistantEvent = event as SlackAssistantThreadStartedEvent;
-        await handleAssistantThreadStarted({
-          type: 'assistant_thread_started',
-          assistant_thread: assistantEvent.assistant_thread,
-          event_ts: assistantEvent.event_ts,
-          channel_id: assistantEvent.channel,
-        } as AssistantThreadStartedEvent);
-      } else {
-        logger.debug('Addie not ready, ignoring assistant_thread_started');
-      }
-      break;
-
-    case 'app_mention':
-      if (isAddieReady()) {
-        const mentionEvent = event as SlackAppMentionEvent;
-        await handleAppMention({
-          type: 'app_mention',
-          user: mentionEvent.user,
-          text: mentionEvent.text,
-          ts: mentionEvent.ts,
-          channel: mentionEvent.channel,
-          thread_ts: mentionEvent.thread_ts,
-          event_ts: mentionEvent.event_ts,
-        } as AppMentionEvent);
-      } else {
-        logger.debug('Addie not ready, ignoring app_mention');
-      }
       break;
 
     default:

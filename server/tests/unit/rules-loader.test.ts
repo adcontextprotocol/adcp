@@ -182,6 +182,23 @@ describe('Rules Loader', () => {
     expect(schemaRules).toContain('If `draft_github_issue` appears in the request-scoped catalog');
   });
 
+  it('keeps composite agent diagnosis behavior while preserving narrow route scoping', () => {
+    const endToEndRules = loadScopedRules(['agent_end_to_end']);
+    const registryRules = loadScopedRules(['agent_registry']);
+    const qualityRules = loadScopedRules(['agent_quality']);
+    const authenticationRules = loadScopedRules(['agent_authentication']);
+
+    expect(endToEndRules).toContain('## Compliance Controller Skip Framing');
+    expect(endToEndRules).toContain('## Publisher and Agent Setup Diagnosis');
+
+    expect(registryRules).toContain('## Publisher and Agent Setup Diagnosis');
+    expect(registryRules).not.toContain('## Compliance Controller Skip Framing');
+    expect(qualityRules).toContain('## Compliance Controller Skip Framing');
+    expect(qualityRules).not.toContain('## Publisher and Agent Setup Diagnosis');
+    expect(authenticationRules).not.toContain('## Compliance Controller Skip Framing');
+    expect(authenticationRules).not.toContain('## Publisher and Agent Setup Diagnosis');
+  });
+
   it('separates cacheable core rules from route-specific rules', () => {
     const coreRules = loadCoreRules();
     const constraints = loadConstraintRules();
@@ -239,7 +256,10 @@ describe('Addie tool reference', () => {
     // any of these going missing means the generator output drifted from
     // tool-sets.ts and the doc page is no longer the source of truth.
     expect(ADDIE_TOOL_REFERENCE).toContain('**knowledge**');
-    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_validation**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_registry**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_quality**');
+    expect(ADDIE_TOOL_REFERENCE).toContain('**agent_authentication**');
+    expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_validation**');
     expect(ADDIE_TOOL_REFERENCE).toContain('**property_catalog**');
     expect(ADDIE_TOOL_REFERENCE).not.toContain('**agent_testing**');
     expect(ADDIE_TOOL_REFERENCE).toContain('evaluate_agent_quality');
@@ -436,9 +456,21 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['adcp_operations'], false, false),
       selectedToolSetNames: ['adcp_operations'],
     });
-    const validation = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['agent_validation'], false, false),
-      selectedToolSetNames: ['agent_validation'],
+    const registry = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_registry'], false, false),
+      selectedToolSetNames: ['agent_registry'],
+    });
+    const quality = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_quality'], false, false),
+      selectedToolSetNames: ['agent_quality'],
+    });
+    const authentication = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_authentication'], false, false),
+      selectedToolSetNames: ['agent_authentication'],
+    });
+    const endToEnd = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['agent_end_to_end'], false, false),
+      selectedToolSetNames: ['agent_end_to_end'],
     });
     const property = buildAddieToolReference({
       availableToolNames: getToolsForSets(['property_catalog'], false, false),
@@ -449,9 +481,23 @@ describe('Addie tool reference', () => {
     expect(protocol).toContain('### Building with AdCP');
     expect(protocol).not.toContain('### Publisher and agent testing');
     expect(protocol).not.toContain('### Property-registry operations');
-    expect(validation).toContain('### Publisher and agent testing');
-    expect(validation).toContain('### Building with AdCP');
-    expect(validation).not.toContain('### Property-registry operations');
+    expect(registry).toContain('### Publisher and agent registry checks');
+    expect(registry).toContain('### Building with AdCP');
+    expect(registry).not.toContain('### Agent quality and behavior testing');
+    expect(registry).not.toContain('### Agent authentication and signing');
+    expect(registry).not.toContain('### Property-registry operations');
+    expect(quality).toContain('### Agent quality and behavior testing');
+    expect(quality).toContain('### Building with AdCP');
+    expect(quality).not.toContain('### Publisher and agent registry checks');
+    expect(quality).not.toContain('### Agent authentication and signing');
+    expect(authentication).toContain('### Agent authentication and signing');
+    expect(authentication).toContain('### Building with AdCP');
+    expect(authentication).not.toContain('### Publisher and agent registry checks');
+    expect(authentication).not.toContain('### Agent quality and behavior testing');
+    expect(endToEnd).toContain('### End-to-end agent diagnosis');
+    expect(endToEnd).toContain('validate_adagents');
+    expect(endToEnd).toContain('diagnose_agent_auth');
+    expect(endToEnd).toContain('test_io_execution');
     expect(property).toContain('### Property-registry operations');
     expect(property).toContain('### Property-list enrichment');
     expect(property).not.toContain('### Publisher and agent testing');
@@ -480,14 +526,14 @@ describe('Addie tool reference', () => {
   });
 
   it('requires optional storyboard tools before advertising that workflow', () => {
-    const routedTools = getToolsForSets(['agent_validation'], false, false);
+    const routedTools = getToolsForSets(['agent_quality'], false, false);
     const withoutConditionalTools = buildAddieToolReference({
       availableToolNames: routedTools,
-      selectedToolSetNames: ['agent_validation'],
+      selectedToolSetNames: ['agent_quality'],
     });
     const withPartialStoryboardTools = buildAddieToolReference({
       availableToolNames: [...routedTools, 'recommend_storyboards'],
-      selectedToolSetNames: ['agent_validation'],
+      selectedToolSetNames: ['agent_quality'],
     });
     const withConditionalTools = buildAddieToolReference({
       availableToolNames: [
@@ -498,7 +544,7 @@ describe('Addie tool reference', () => {
         'run_storyboard_step',
         'get_adcp_capabilities',
       ],
-      selectedToolSetNames: ['agent_validation'],
+      selectedToolSetNames: ['agent_quality'],
     });
 
     expect(withoutConditionalTools).not.toContain('### Storyboard testing');

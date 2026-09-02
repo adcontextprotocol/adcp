@@ -145,6 +145,12 @@ export interface BoundedRoutedToolSetSelection {
 export function selectBoundedRoutedToolSets(
   input: BoundedRoutedToolSetSelectionInput,
 ): BoundedRoutedToolSetSelection {
+  // Certification state is an authoritative routing overlay only for direct
+  // conversations. Non-DM delivery surfaces may carry this context, but must
+  // retain their ordinary bounded router route.
+  const trustedActiveCertificationKind = input.source === 'dm'
+    ? input.activeCertificationKind ?? null
+    : null;
   const validToolSets = getValidToolSetNames(input.isAdmin);
   const respondPlan = input.plan?.action === 'respond' ? input.plan : null;
   const hasValidRespondPlan = input.routerAvailable
@@ -167,18 +173,48 @@ export function selectBoundedRoutedToolSets(
     isAdmin: input.isAdmin,
     workingGroupSlug: useSafeFallback ? undefined : input.workingGroupSlug,
     systemRole: useSafeFallback ? undefined : input.systemRole,
-    activeCertificationKind: useSafeFallback ? null : input.activeCertificationKind,
+    activeCertificationKind: useSafeFallback ? null : trustedActiveCertificationKind,
     hasSponsoredIntelligenceContext: useSafeFallback
       ? false
       : input.hasSponsoredIntelligenceContext,
   });
+  // The legacy Slack selector retains its direct-message knowledge overlay
+  // for non-bounded callers. A trusted bounded response plan, however, is
+  // already an explicit capability decision: do not attach knowledge unless
+  // the router selected it. This keeps the web, Tavus, and bounded Slack
+  // response surfaces provider-neutral and within their domain budget.
+  if (
+    !useSafeFallback
+    && (input.source === 'dm' || input.source === 'mention')
+    && !trustedActiveCertificationKind
+    && !respondPlan?.tool_sets.includes('knowledge')
+  ) {
+    selectedToolSets = selectedToolSets.filter((name) => name !== 'knowledge');
+  }
   let allowedToolNames = useSafeFallback
     ? getSafeReadOnlyFallbackTools()
     : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
   const isToolAvailable = input.isToolAvailable;
-  if (!useSafeFallback && isToolAvailable && allowedToolNames.some((name) =>
-    name !== 'web_search' && !isToolAvailable(name),
-  )) {
+  const activeCertificationSets = trustedActiveCertificationKind === 'mixed'
+    ? ['certification_learning', 'certification_assessment']
+    : trustedActiveCertificationKind
+      ? [`certification_${trustedActiveCertificationKind}`]
+      : [];
+  // Direct certification sessions retain the legacy learning workflow and
+  // authoritative docs. Some delivery surfaces intentionally lack optional
+  // Slack-only community retrieval tools, so those may be intersected out
+  // below without demoting a trusted certification session to fallback.
+  const activeCertificationRequiredToolNames = new Set(getToolsForSets([
+    ...activeCertificationSets,
+    'knowledge',
+    'illustrations',
+  ], input.isAdmin, input.isPublicChannel));
+  const hasUnavailableRequiredTool = allowedToolNames.some((name) =>
+    name !== 'web_search'
+    && !isToolAvailable?.(name)
+    && (activeCertificationSets.length === 0 || activeCertificationRequiredToolNames.has(name)),
+  );
+  if (!useSafeFallback && isToolAvailable && hasUnavailableRequiredTool) {
     // A bounded domain with an incomplete registration is no safer than a
     // stale router result. Do not hand a model a definition without its
     // handler (or vice versa); recover to the read-only domain instead.

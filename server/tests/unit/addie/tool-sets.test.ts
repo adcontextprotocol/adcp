@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ADDIE_TOOL_CATALOG } from '../../../src/addie/generated/tool-catalog.generated.js';
 import {
+  AGENT_AUTHENTICATION_TOOLS,
+  AGENT_END_TO_END_TOOLS,
+  AGENT_QUALITY_TOOLS,
+  AGENT_REGISTRY_TOOLS,
   AGENT_VALIDATION_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
@@ -155,30 +159,93 @@ describe('getToolsForSets', () => {
       );
     });
 
-    it('keeps agent validation and property-catalog workflows isolated', () => {
-      const validation = getToolsForSets(['agent_validation'], false, false);
+    it('keeps registry, quality, authentication, and property workflows isolated', () => {
+      const registry = getToolsForSets(['agent_registry'], false, false);
+      const quality = getToolsForSets(['agent_quality'], false, false);
+      const authentication = getToolsForSets(['agent_authentication'], false, false);
+      const endToEnd = getToolsForSets(['agent_end_to_end'], false, false);
       const property = getToolsForSets(['property_catalog'], false, false);
 
-      expect(validation).toEqual(expect.arrayContaining([
+      expect(registry).toEqual(expect.arrayContaining([
         'validate_adagents',
         'check_publisher_authorization',
-        'evaluate_agent_quality',
-        'grade_agent_signing',
+        'validate_agent',
       ]));
-      expect(validation).not.toContain('resolve_property');
-      expect(validation).not.toContain('dispute_catalog_entry');
+      expect(registry).not.toContain('evaluate_agent_quality');
+      expect(registry).not.toContain('diagnose_agent_auth');
+      expect(quality).toEqual(expect.arrayContaining([
+        'evaluate_agent_quality',
+        'test_rfp_response',
+        'test_io_execution',
+      ]));
+      expect(quality).not.toContain('test_adcp_agent');
+      expect(quality).not.toContain('compare_media_kit');
+      expect(authentication).toEqual(expect.arrayContaining([
+        'grade_agent_signing',
+        'diagnose_agent_auth',
+      ]));
+      expect(authentication).not.toContain('evaluate_agent_quality');
+      expect(endToEnd).toEqual(expect.arrayContaining([
+        ...AGENT_REGISTRY_TOOLS,
+        ...AGENT_QUALITY_TOOLS,
+        ...AGENT_AUTHENTICATION_TOOLS,
+      ]));
+      expect(endToEnd).not.toContain('test_adcp_agent');
+      expect(endToEnd).not.toContain('compare_media_kit');
       expect(property).toContain('resolve_property');
       expect(property).toContain('dispute_catalog_entry');
       expect(property).not.toContain('evaluate_agent_quality');
       expect(property).not.toContain('diagnose_agent_auth');
     });
 
-    it('keeps agent validation and property-catalog routes visible', () => {
-      expect(AGENT_VALIDATION_TOOLS).toHaveLength(12);
+    it('keeps narrow agent routes visible and the exact legacy union hidden', () => {
+      expect(AGENT_REGISTRY_TOOLS).toEqual([
+        'validate_adagents', 'resolve_brand', 'get_agent_status',
+        'check_publisher_authorization', 'validate_agent',
+      ]);
+      expect(AGENT_QUALITY_TOOLS).toEqual([
+        'evaluate_agent_quality', 'test_rfp_response', 'test_io_execution',
+      ]);
+      expect(AGENT_AUTHENTICATION_TOOLS).toEqual([
+        'grade_agent_signing', 'diagnose_agent_auth',
+      ]);
+      expect(AGENT_END_TO_END_TOOLS).toEqual([
+        ...AGENT_REGISTRY_TOOLS,
+        ...AGENT_QUALITY_TOOLS,
+        ...AGENT_AUTHENTICATION_TOOLS,
+      ]);
+      expect(AGENT_VALIDATION_TOOLS).toEqual([
+        'validate_adagents', 'resolve_brand', 'get_agent_status',
+        'check_publisher_authorization', 'test_adcp_agent',
+        'evaluate_agent_quality', 'grade_agent_signing', 'diagnose_agent_auth',
+        'compare_media_kit', 'test_rfp_response', 'test_io_execution', 'validate_agent',
+      ]);
       expect(PROPERTY_CATALOG_TOOLS).toHaveLength(9);
-      expect(getValidToolSetNames(false).has('agent_validation')).toBe(true);
+      expect(TOOL_SETS.agent_validation.tools).toEqual(AGENT_VALIDATION_TOOLS);
+      expect(TOOL_SETS.agent_validation.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('agent_validation')).toBe(false);
+      expect(getValidToolSetNames(false).has('agent_registry')).toBe(true);
+      expect(getValidToolSetNames(false).has('agent_quality')).toBe(true);
+      expect(getValidToolSetNames(false).has('agent_authentication')).toBe(true);
+      expect(getValidToolSetNames(false).has('agent_end_to_end')).toBe(true);
       expect(getValidToolSetNames(false).has('property_catalog')).toBe(true);
     });
+
+    it.each(['agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end'] as const)(
+      'keeps %s available to members and admins without exposing deprecated aliases',
+      (setName) => {
+        const member = getToolsForSets([setName], false, false);
+        const admin = getToolsForSets([setName], true, false);
+        for (const tool of TOOL_SETS[setName].tools) {
+          expect(member).toContain(tool);
+          expect(admin).toContain(tool);
+        }
+        expect(member).not.toContain('test_adcp_agent');
+        expect(member).not.toContain('compare_media_kit');
+        expect(admin).not.toContain('test_adcp_agent');
+        expect(admin).not.toContain('compare_media_kit');
+      },
+    );
   });
 
   describe('brand canonical-document workflow', () => {
@@ -282,7 +349,10 @@ describe('getToolsForSets', () => {
       ['schema_reference', 4],
       ['directory', 9],
       ['brand_registry', 10],
-      ['agent_validation', 12],
+      ['agent_registry', 5],
+      ['agent_quality', 3],
+      ['agent_authentication', 2],
+      ['agent_end_to_end', 10],
       ['property_catalog', 9],
     ] as const)('keeps %s at twelve tools or fewer', (name, expectedCount) => {
       expect(TOOL_SETS[name].tools).toHaveLength(expectedCount);

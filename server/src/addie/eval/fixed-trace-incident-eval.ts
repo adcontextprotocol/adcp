@@ -10,7 +10,9 @@ import {
   MAX_OUTPUT_LENGTH,
   OUTPUT_TRUNCATION_SUFFIX,
   sanitizeInput,
+  wrapUrlsForSlack,
 } from '../security.js';
+import { deliverAndRecordDirectMessage, prepareSlackDirectMessagePost } from '../direct-message-delivery.js';
 import type {
   ModelProvider,
   ModelProviderId,
@@ -35,7 +37,7 @@ import {
   type FixedTraceCase,
 } from './fixed-trace-suite.js';
 
-export const FIXED_TRACE_INCIDENT_EVAL_VERSION = 'addie-fixed-trace-incidents-v1';
+export const FIXED_TRACE_INCIDENT_EVAL_VERSION = 'addie-fixed-trace-incidents-v2';
 
 const LEGACY_INPUT_BOUNDARY = 4_000;
 const PROVIDERS = ['anthropic', 'google'] as const satisfies readonly ModelProviderId[];
@@ -139,6 +141,15 @@ function googleProvider(): CapturingProvider {
     },
   };
   return new CapturingProvider(new GoogleGenerateContentProvider('', transport));
+}
+
+/** Create a real Addie client backed only by the incident's deterministic transport. */
+export function createFixedTraceIncidentClient(
+  provider: typeof PROVIDERS[number] = 'anthropic',
+): AddieClaudeClient {
+  const adapter = provider === 'anthropic' ? anthropicProvider() : googleProvider();
+  const model = provider === 'anthropic' ? 'claude-fixed-trace-eval' : GOOGLE_ROUTER_MODEL;
+  return new AddieClaudeClient('', model, undefined, { provider: adapter });
 }
 
 interface DeliveryObservation {
@@ -256,12 +267,19 @@ export interface FixedTraceIncidentEvalArtifact {
     markdownBoundary: boolean;
     jsonStreamParity: boolean;
     providerParity: boolean;
+    slackDeliveryIntegrity: boolean;
   };
   deliveries: Array<{
     provider: ModelProviderId;
     json: { outputLength: number; outputSha256: string; providerRequestSha256: string };
     stream: { outputLength: number; outputSha256: string; providerRequestSha256: string } | null;
   }>;
+  slackDelivery: {
+    postCount: number;
+    persistedCount: number;
+    postedTextSha256: string | null;
+    persistedTextSha256: string | null;
+  };
 }
 
 /** Run the known incident through real adapters backed by deterministic transports. */
@@ -313,6 +331,58 @@ export async function runFixedTraceIncidentEval(): Promise<FixedTraceIncidentEva
     && (stream === null || providerRequestContains(stream.prepared, trace.incident!.latePromptMarkers))
   ));
   const delivered = perProvider.flatMap(({ json, stream }) => [json.response.text, ...(stream ? [stream.response.text] : [])]);
+  const slackResponse = perProvider[0].json.response;
+  const postedPayloads: Array<{ channel: string; text: string; thread_ts: string }> = [];
+  const persistedMessages: Array<{ content: string }> = [];
+  const expectedSlackPost = {
+    channel: 'D_FIXED_TRACE',
+    text: wrapUrlsForSlack(slackResponse.text),
+    thread_ts: '1700000000.000001',
+  };
+  const slackPost = prepareSlackDirectMessagePost({
+    channelId: 'D_FIXED_TRACE',
+    threadTs: '1700000000.000001',
+    text: slackResponse.text,
+  });
+  const slackDeliveryResult = await deliverAndRecordDirectMessage({
+    channelId: 'D_FIXED_TRACE',
+    userId: 'U_FIXED_TRACE',
+    threadId: 'fixed-trace-incident-thread',
+    assistantMessage: {
+      thread_id: 'fixed-trace-incident-thread',
+      role: 'assistant',
+      content: slackResponse.text,
+      tools_used: slackResponse.tools_used,
+      tool_calls: slackResponse.tool_executions.map((execution) => ({
+        name: execution.tool_name,
+        input: execution.parameters,
+        result: execution.result,
+        duration_ms: execution.duration_ms,
+        is_error: execution.is_error,
+      })),
+      model: 'claude-fixed-trace-eval',
+      model_execution: slackResponse.model_execution,
+      flagged: slackResponse.flagged,
+      flag_reason: slackResponse.flag_reason,
+    },
+    userMessageFlagged: false,
+    assistantFlagged: slackResponse.flagged,
+    flagReason: slackResponse.flag_reason ?? '',
+    dependencies: {
+      postMessage: async () => {
+        postedPayloads.push({ ...slackPost });
+        return { ts: '1700000000.000002' };
+      },
+      addMessage: async (message) => { persistedMessages.push({ content: message.content }); },
+      flagThread: async () => undefined,
+    },
+  });
+  const slackDelivery = {
+    postCount: postedPayloads.length,
+    persistedCount: persistedMessages.length,
+    postedTextSha256: postedPayloads[0] ? sha256(postedPayloads[0].text) : null,
+    persistedTextSha256: persistedMessages[0] ? sha256(persistedMessages[0].content) : null,
+  };
   const dimensions = {
     inputAboveLegacyBoundary: trace.request.message.length > LEGACY_INPUT_BOUNDARY,
     inputWithinCurrentBoundary: trace.request.message.length <= MAX_INPUT_LENGTH,
@@ -323,6 +393,15 @@ export async function runFixedTraceIncidentEval(): Promise<FixedTraceIncidentEva
     markdownBoundary: delivered.every(validMarkdownDeliveryBoundary),
     jsonStreamParity,
     providerParity,
+    slackDeliveryIntegrity: slackDeliveryResult.delivered
+      && postedPayloads.length === 1
+      && postedPayloads[0]?.text === expectedSlackPost.text
+      && postedPayloads[0]?.channel === expectedSlackPost.channel
+      && postedPayloads[0]?.thread_ts === expectedSlackPost.thread_ts
+      && slackPost.text.length >= trace.incident!.minimumDeliveredCharacters
+      && trace.incident!.requiredDeliveredMarkers.every((marker) => slackPost.text.includes(marker))
+      && persistedMessages.length === 1
+      && persistedMessages[0]?.content === slackResponse.text,
   };
   return {
     artifactVersion: FIXED_TRACE_INCIDENT_EVAL_VERSION,
@@ -334,5 +413,6 @@ export async function runFixedTraceIncidentEval(): Promise<FixedTraceIncidentEva
     passed: Object.values(dimensions).every(Boolean),
     dimensions,
     deliveries,
+    slackDelivery,
   };
 }

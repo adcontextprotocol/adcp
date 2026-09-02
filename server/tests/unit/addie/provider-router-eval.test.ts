@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(69);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(69);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(76);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(76);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_validation', 'property_catalog', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
@@ -157,10 +157,25 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(68);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(75);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
+    expect(expectedSets).not.toContain('agent_validation');
+  });
+
+  it('preserves every stage of the long agent diagnosis in one bounded domain', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'agent-end-to-end')!;
+    const result = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["agent_end_to_end"],"confidence":"high","requires_depth":true,"reason":"one bounded diagnostic"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(result.plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['agent_end_to_end'],
+      requires_depth: true,
+    });
+    expect(result.scores).toMatchObject({ actionExact: true, toolsExact: true });
   });
 
   it('accepts production-compatible markdown fences without relaxing the plan schema', () => {
@@ -196,7 +211,12 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('official docs say about package identifiers');
     expect(nonAdmin).toContain('Never ignore a direct date/time question');
     expect(nonAdmin).toContain('a basic schema/JSON validation, a basic implementation validation, or a property-catalog audit');
-    expect(nonAdmin).toContain('select exactly ["agent_validation", "property_catalog"]');
+    expect(nonAdmin).toContain('→ ["agent_registry"]');
+    expect(nonAdmin).toContain('→ ["agent_quality"]');
+    expect(nonAdmin).toContain('→ ["agent_authentication"]');
+    expect(nonAdmin).toContain('exactly ["agent_end_to_end"]');
+    expect(nonAdmin).toContain('select exactly ["agent_registry", "property_catalog"]');
+    expect(nonAdmin).not.toContain('→ ["agent_validation"]');
     expect(nonAdmin).toContain('Community introductions, announcements, and positive social updates');
     expect(admin).toContain('always select exactly ["events", "admin_events"]');
     expect(admin).toContain('→ ["admin_group_structure"]');
@@ -218,12 +238,13 @@ describe('strict router eval', () => {
     expect(dateCase.expected).toMatchObject({ action: 'respond', toolSets: [] });
   });
 
-  it('treats Addie deployment capabilities as documented facts', () => {
-    const capabilityCase = SYNTHETIC_ROUTER_CORPUS.find(
-      (item) => item.id === 'addie-mcp-capability',
-    )!;
+  it.each([
+    ['addie-mcp-capability', 'does addie exist as mcp or am i hallucinating?'],
+    ['addie-tool-capabilities', 'What tools and integrations can Addie use today?'],
+  ])('treats %s as documented Addie capability facts', (id, message) => {
+    const capabilityCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
 
-    expect(capabilityCase.context.message).toBe('does addie exist as mcp or am i hallucinating?');
+    expect(capabilityCase.context.message).toBe(message);
     expect(capabilityCase.expected).toMatchObject({
       action: 'respond',
       toolSets: ['knowledge'],

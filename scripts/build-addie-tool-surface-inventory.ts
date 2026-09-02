@@ -75,7 +75,6 @@ const REGISTRATION_SOURCES = [
   'server/src/addie/prompt-assembly.ts',
   'server/src/addie/register-baseline-tools.ts',
   'server/src/addie/bolt-app.ts',
-  'server/src/addie/handler.ts',
   'server/src/routes/addie-chat.ts',
   'server/src/routes/tavus.ts',
   'server/src/addie/email-conversation-handler.ts',
@@ -100,7 +99,6 @@ const METRIC_NAMES = [
   'maximum_slack_member_schema_bytes',
   'maximum_slack_admin_schema_bytes',
   'maximum_slack_public_schema_bytes',
-  'legacy_slack_member_tools',
   'web_anonymous_tools',
   'web_authenticated_admin_tools',
 ] as const;
@@ -553,65 +551,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   return profiles;
 }
 
-function buildLegacyProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Profile[] {
-  const {
-    knowledge, admin, directory, schema, brand, brandCanonical, property,
-    googleDocs, member, billing, escalation, collaboration, social, portrait,
-    images, adcp, brandProperty, illustration, events, meetings, committee,
-  } = defs;
-  const globalTools = [
-    ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...directory.DIRECTORY_TOOLS,
-    ...schema.SCHEMA_TOOLS,
-    ...brand.BRAND_TOOLS,
-    ...brandCanonical.BRAND_CANONICAL_TOOLS,
-    ...property.PROPERTY_TOOLS,
-    ...googleDocs.GOOGLE_DOCS_TOOLS,
-  ];
-  const commonRequest = [
-    ...member.MEMBER_TOOLS,
-    ...directory.DIRECTORY_TOOLS,
-    ...knowledge.KNOWLEDGE_TOOLS.filter(knowledge.isSlackKnowledgeTool),
-    ...billing.BILLING_TOOLS,
-    ...escalation.ESCALATION_TOOLS,
-    ...collaboration.COLLABORATION_TOOLS,
-    ...social.SOCIAL_DRAFT_TOOLS,
-    ...portrait.PORTRAIT_TOOLS,
-    ...images.IMAGE_TOOLS,
-    ...adcp.ADCP_TOOLS,
-    ...brandProperty.BRAND_PROPERTY_TOOLS,
-    ...illustration.ILLUSTRATION_TOOLS,
-    ...events.EVENT_READONLY_TOOLS,
-    ...events.EVENT_ADMIN_TOOLS,
-    ...meetings.MEETING_TOOLS,
-    ...committee.COMMITTEE_LEADER_TOOLS,
-  ];
-  const billingNames = new Set(billing.BILLING_TOOLS.map((tool) => tool.name));
-  const mentionRequest = commonRequest.filter((tool) => !billingNames.has(tool.name));
-  return [
-    profile({
-      id: 'legacy_slack:member_dm:maximum', runtime: 'legacy_slack', audience: 'member_dm',
-      globalTools, requestTools: commonRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'member_and_event_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:admin_dm:maximum', runtime: 'legacy_slack', audience: 'admin_dm',
-      globalTools, requestTools: [...commonRequest, ...admin.ADMIN_TOOLS], providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:member_mention:maximum', runtime: 'legacy_slack', audience: 'member_mention',
-      globalTools, requestTools: mentionRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'member_and_event_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:admin_mention:maximum', runtime: 'legacy_slack', audience: 'admin_mention',
-      globalTools, requestTools: [...mentionRequest, ...admin.ADMIN_TOOLS], providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-  ];
-}
-
 function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Profile[] {
   const {
     knowledge, directory, member, billing, schema, brand, property, siHost,
@@ -666,18 +605,25 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
   const buildRoutedAuthenticatedProfiles = (isAdmin: boolean): Profile[] => {
     const audience = isAdmin ? 'authenticated_admin' : 'authenticated_member';
     const authenticatedRequest = buildAuthenticatedRequest(isAdmin);
-    const selectedFor = (routerSelectedSets: string[], hasSponsoredIntelligenceContext = false) => selectSlackToolSets({
-      routerSelectedSets,
+    const availableToolNames = new Set([...globalTools, ...authenticatedRequest].map((tool) => tool.name));
+    const selectedFor = (routerSelectedSets: string[], hasSponsoredIntelligenceContext = false) => selectBoundedRoutedToolSets({
+      plan: {
+        action: 'respond',
+        tool_sets: routerSelectedSets,
+        confidence: 'high',
+        reason: 'inventory bounded web route',
+        decision_method: 'quick_match',
+      },
       routerAvailable: true,
       source: 'dm',
       isAdmin,
       hasSponsoredIntelligenceContext,
+      isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
     });
     const profileFor = (
       id: string,
-      selectedToolSets: string[],
+      selection: ReturnType<typeof selectBoundedRoutedToolSets>,
       conditionalMaximums: string[],
-      safeFallback = false,
     ) =>
       profile({
         id: `web_chat:${audience}:${id}`,
@@ -685,10 +631,8 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
         audience,
         globalTools,
         requestTools: authenticatedRequest,
-        allowedToolNames: safeFallback
-          ? defs.toolSets.getSafeReadOnlyFallbackTools()
-          : defs.toolSets.getToolsForSets(selectedToolSets, isAdmin),
-        selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        selectedToolSets: selection.selectedToolSets,
         providerToolCount: 1,
         conditionalMaximums,
       });
@@ -733,9 +677,14 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
     }
     const fallback = profileFor(
       'safe_fallback',
-      selectSlackToolSets({ routerAvailable: false, source: 'dm', isAdmin }),
+      selectBoundedRoutedToolSets({
+        plan: null,
+        routerAvailable: false,
+        source: 'dm',
+        isAdmin,
+        isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
+      }),
       ['router_unavailable', 'nonstreaming_web_search'],
-      true,
     );
     const activeCertification = ([
       ['active_certification_learning', 'learning'],
@@ -743,11 +692,19 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
       ['active_certification_mixed', 'mixed'],
     ] as const).map(([id, activeCertificationKind]) => profileFor(
       id,
-      selectSlackToolSets({
+      selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: ['knowledge'],
+          confidence: 'high',
+          reason: 'inventory trusted certification session',
+          decision_method: 'quick_match',
+        },
         routerAvailable: true,
         source: 'dm',
         isAdmin,
         activeCertificationKind,
+        isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
       }),
       ['active_certification_session', 'nonstreaming_web_search'],
     ));
@@ -769,7 +726,7 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   const {
     knowledge, directory, member, brand, billing, schema, property, siHost,
     adcp, escalation, admin, events, meetings, collaboration, committee,
-    moltbook, chatTool,
+    moltbook, toolSets, chatTool,
   } = defs;
   const anonymousKnowledge = knowledge.KNOWLEDGE_TOOLS.filter(
     (tool) => chatTool.ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name),
@@ -824,6 +781,90 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...meetings.MEETING_TOOLS,
     ...tavusTailRequest,
   ];
+  // Authenticated Tavus turns now use the same bounded direct-response
+  // selection as web chat and Slack reactions. Record each surface's actual
+  // reachable maximum (one or two routed domains) and the explicit safe
+  // fallback; do not model the request registry as a prompt-visible union.
+  const buildTavusRoutedProfiles = (
+    audience: 'member' | 'committee_leader' | 'admin',
+    isAdmin: boolean,
+    requestTools: AddieTool[],
+    conditionalMaximums: string[],
+  ): Profile[] => {
+    const availableToolNames = new Set([...tavusGlobal, ...requestTools].map((tool) => tool.name));
+    const routerVisibleSetNames = Object.values(toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false && (isAdmin || !set.adminOnly))
+      .map((set) => set.name);
+    const combinations = routerVisibleSetNames.map((setName) => [setName]);
+    for (let first = 0; first < routerVisibleSetNames.length; first += 1) {
+      for (let second = first + 1; second < routerVisibleSetNames.length; second += 1) {
+        combinations.push([routerVisibleSetNames[first], routerVisibleSetNames[second]]);
+      }
+    }
+    const candidates = combinations.map((toolSetsForPlan) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: toolSetsForPlan,
+          confidence: 'high',
+          reason: 'inventory bounded Tavus voice route',
+          decision_method: 'quick_match',
+        },
+        routerAvailable: true,
+        source: 'dm',
+        isAdmin,
+        isToolAvailable: (name) => availableToolNames.has(name),
+      });
+      return profile({
+        id: `tavus_voice:${audience}:candidate:${toolSetsForPlan.join('+')}`,
+        runtime: 'tavus_voice',
+        audience,
+        route: toolSetsForPlan.join('+'),
+        selectedToolSets: selection.selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        globalTools: tavusGlobal,
+        requestTools,
+        providerToolCount: 0,
+        conditionalMaximums: [
+          'router_selected_up_to_two_bounded_domains',
+          ...conditionalMaximums,
+        ],
+      });
+    });
+    const maximums = new Map<string, Profile>();
+    for (const metric of ['custom_tool_count', 'wire_schema_bytes', 'tool_reference_bytes'] as const) {
+      const maximum = Math.max(...candidates.map((candidate) => candidate[metric]));
+      const candidate = candidates.find((entry) => entry[metric] === maximum)!;
+      maximums.set(metric, {
+        ...candidate,
+        id: metric === 'custom_tool_count'
+          ? `tavus_voice:${audience}:maximum`
+          : `tavus_voice:${audience}:maximum_${metric}`,
+      });
+    }
+    const fallback = selectBoundedRoutedToolSets({
+      plan: null,
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin,
+      isToolAvailable: (name) => availableToolNames.has(name),
+    });
+    return [
+      ...maximums.values(),
+      profile({
+        id: `tavus_voice:${audience}:router_unavailable`,
+        runtime: 'tavus_voice',
+        audience,
+        route: 'router_unavailable',
+        selectedToolSets: fallback.selectedToolSets,
+        allowedToolNames: fallback.allowedToolNames,
+        globalTools: tavusGlobal,
+        requestTools,
+        providerToolCount: 0,
+        conditionalMaximums: ['router_unavailable', ...conditionalMaximums],
+      }),
+    ];
+  };
   return [
     profile({
       id: 'mcp_chat:anonymous:exact', runtime: 'mcp_chat', audience: 'anonymous',
@@ -840,21 +881,19 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       globalTools: tavusGlobal, providerToolCount: 0,
       conditionalMaximums: ['thread_or_identity_unavailable'],
     }),
-    profile({
-      id: 'tavus_voice:member:maximum', runtime: 'tavus_voice', audience: 'member',
-      globalTools: tavusGlobal, requestTools: tavusMemberRequest, providerToolCount: 0,
-      conditionalMaximums: ['moltbook_configured'],
-    }),
-    profile({
-      id: 'tavus_voice:committee_leader:maximum', runtime: 'tavus_voice', audience: 'committee_leader',
-      globalTools: tavusGlobal, requestTools: tavusLeaderRequest, providerToolCount: 0,
-      conditionalMaximums: ['committee_leader_meeting_permissions', 'moltbook_configured'],
-    }),
-    profile({
-      id: 'tavus_voice:admin:maximum', runtime: 'tavus_voice', audience: 'admin',
-      globalTools: tavusGlobal, requestTools: tavusAdminRequest, providerToolCount: 0,
-      conditionalMaximums: ['admin_event_and_meeting_permissions', 'moltbook_configured'],
-    }),
+    ...buildTavusRoutedProfiles('member', false, tavusMemberRequest, ['moltbook_configured']),
+    ...buildTavusRoutedProfiles(
+      'committee_leader',
+      false,
+      tavusLeaderRequest,
+      ['committee_leader_meeting_permissions', 'moltbook_configured'],
+    ),
+    ...buildTavusRoutedProfiles(
+      'admin',
+      true,
+      tavusAdminRequest,
+      ['admin_event_and_meeting_permissions', 'moltbook_configured'],
+    ),
   ];
 }
 
@@ -920,7 +959,6 @@ function metrics(snapshot: {
       maximum('slack_bolt', 'public_channel_member', 'wire_schema_bytes'),
       maximum('slack_bolt', 'public_channel_admin', 'wire_schema_bytes'),
     ),
-    legacy_slack_member_tools: maximum('legacy_slack', 'member_dm', 'custom_tool_count'),
     web_anonymous_tools: maximum('web_chat', 'anonymous', 'custom_tool_count'),
     web_authenticated_admin_tools: maximum('web_chat', 'authenticated_admin', 'custom_tool_count'),
   };
@@ -1005,6 +1043,33 @@ function assertCertificationWireContract(profiles: Profile[]): void {
   }
 }
 
+/**
+ * Web search is provider-managed: it intentionally has no custom definition
+ * or handler in the web inventory. Keep its availability treatment aligned
+ * with the runtime selector so a valid knowledge plan cannot be mistaken for
+ * an incomplete registration and silently become the broad safe fallback.
+ */
+function assertWebProviderManagedToolParity(profiles: Profile[]): void {
+  const errors: string[] = [];
+  for (const audience of ['authenticated_member', 'authenticated_admin']) {
+    const entry = profiles.find((profile) =>
+      profile.id === `web_chat:${audience}:routed:knowledge`);
+    if (!entry) {
+      errors.push(`Addie tool inventory has no web knowledge profile for ${audience}`);
+      continue;
+    }
+    if (JSON.stringify(entry.selected_tool_sets) !== JSON.stringify(['knowledge'])) {
+      errors.push(`${entry.id} must retain its exact knowledge route`);
+    }
+    if (JSON.stringify(entry.maximum_provider_tool_names) !== JSON.stringify(['web_search'])) {
+      errors.push(`${entry.id} must model provider-managed web_search`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Web provider-managed tool parity failed:\n- ${errors.join('\n- ')}`);
+  }
+}
+
 function loadBudget(): BudgetFile | null {
   if (!fs.existsSync(BUDGET_FILE)) return null;
   const parsed = JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8')) as BudgetFile;
@@ -1077,12 +1142,12 @@ async function buildSnapshot() {
   const defs = await loadDefinitions();
   const profiles = [
     ...buildSlackBoltProfiles(defs),
-    ...buildLegacyProfiles(defs),
     ...buildWebProfiles(defs),
     ...buildAuxiliaryProfiles(defs),
     buildBoundedReplayProfile(defs),
   ].sort((left, right) => left.id.localeCompare(right.id));
   assertCertificationWireContract(profiles);
+  assertWebProviderManagedToolParity(profiles);
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,
