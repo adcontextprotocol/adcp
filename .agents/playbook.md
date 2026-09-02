@@ -513,9 +513,8 @@ The pre-mode file and pending 3.2 changesets belong only on `main`; the
 forward-merge workflow preserves main's copies. Do not cherry-pick them to
 `3.1.x`.
 
-When the final beta has landed and its root changeset pool is empty, prepare
-the beta-to-RC phase transition with the guarded release command documented in
-`RELEASING.md`:
+After the latest accepted beta has landed, prepare the beta-to-RC phase
+transition with the guarded release command documented in `RELEASING.md`:
 
 ```bash
 npm run promote:rc -- --check
@@ -523,10 +522,13 @@ npm run promote:rc -- --prepare
 ```
 
 This creates reviewed release state for the Version Packages workflow to cut
-`3.2.0-rc.0`. Changesets otherwise carries the beta sequence number across a
-tag change, so do not hand-edit package versions or switch the prerelease tag
-directly. Keep the promotion state in its own PR, and do not run it until the
-final beta is explicitly accepted.
+`3.2.0-rc.0`. The marker locks the exact pending root changeset pool by filename
+and digest; the trusted versioning job consumes that pool through Changesets,
+preserves its generated changelog, and performs the beta-to-RC phase change. An
+empty pool remains valid. Changesets otherwise carries the beta sequence number
+across a tag change, so do not hand-edit package versions or switch the
+prerelease tag directly. Keep the promotion state in its own PR, and do not run
+it until the latest beta is explicitly accepted.
 
 To exit pre mode for the eventual 3.2 stable cut:
 

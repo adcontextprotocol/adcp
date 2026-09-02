@@ -116,14 +116,14 @@ GA is a separate, explicitly reviewed release operation.
 ## Cutting a 3.2 release candidate
 
 The first candidate is `3.2.0-rc.0`. Treat that promotion as a reviewed release
-operation after the final beta, not as an ordinary Changesets tag switch.
+operation, not as an ordinary Changesets tag switch.
 Changesets increments the existing beta ordinal when its prerelease tag changes,
 which would turn `beta.10` into `rc.11`. The repository's guarded promotion
-script uses semver's phase-change behavior instead and refuses to run while any
-changesets are still waiting for a final beta.
+script uses semver's phase-change behavior instead. It can fold a reviewed
+pending changeset pool directly into RC.0 without publishing another beta.
 
-First merge the final beta Version Packages PR and verify its immutable assets.
-Then, from a clean branch based on the resulting `main`:
+After verifying the latest beta's immutable assets, close any superseded beta
+Version Packages PR. Then, from a clean branch based on the resulting `main`:
 
 ```bash
 git switch main
@@ -131,7 +131,7 @@ git pull --ff-only origin main
 npm run promote:rc -- --check
 npm run promote:rc -- --prepare
 git diff --check
-git add .changeset/pre.json .changeset/rc-promotion.json
+git add .changeset/rc-promotion.json
 git commit -m "chore(release): prepare 3.2.0-rc.0"
 ```
 
@@ -142,13 +142,15 @@ That generated PR must receive human approval on its final head SHA. Do not run
 `changeset version` for this one phase-transition, and do not hand-edit the
 package version, lockfile, prerelease state, marker, or generated artifacts.
 
-The script is intentionally one-way and 3.2-specific: it requires `beta.N`,
-beta pre mode, and an empty root changeset pool; computes `3.2.0-rc.0`; and
-prepares the reviewed marker and `rc` pre state. The Version Packages workflow
-updates the package and lockfile through `npm version`, consumes the marker, and
-adds a phase-only RC.0 changelog entry before building the release artifacts.
-Any fixes after RC.0 use ordinary changesets and the normal Version Packages
-flow to produce `rc.1`, `rc.2`, and so on.
+The script is intentionally one-way and 3.2-specific: it requires `beta.N` and
+beta pre mode, computes `3.2.0-rc.0`, and records the exact pending changeset
+filenames and SHA-256 digests in the reviewed marker. The Version Packages
+workflow refuses any changed or additional changeset, consumes the reviewed
+pool through Changesets, retitles that generated changelog section to RC.0,
+updates the package and lockfile through `npm version`, and switches pre mode to
+`rc` before building the release artifacts. With an empty pool it adds the
+phase-only RC.0 changelog entry. Any fixes after RC.0 use ordinary changesets
+and the normal Version Packages flow to produce `rc.1`, `rc.2`, and so on.
 
 Before merging the RC Version Packages PR, confirm:
 
