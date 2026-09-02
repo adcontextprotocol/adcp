@@ -1883,6 +1883,220 @@ describe('get_products handler', () => {
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
   });
 
+  it('preserves collection targeting capability on controller-seeded products', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'collection-targeting.example' },
+      operator: 'pinnacle-agency.example',
+      sandbox: true,
+    };
+    const productId = 'retro_bundle_ctv';
+    const fixture = {
+      channels: ['ctv'],
+      delivery_type: 'non_guaranteed',
+      format_options: [{
+        format_option_id: 'video_30s',
+        format_kind: 'video',
+        params: { duration_ms: 15000 },
+      }],
+      collections: [{
+        publisher_domain: 'channel-owner.example',
+        collection_ids: ['retro_news', 'vintage_static'],
+      }],
+    };
+    for (const [seededProductId, seededFixture] of [
+      ['retro_bundle_ctv_fixed', fixture],
+      [productId, { ...fixture, collection_targeting_allowed: true }],
+      ['no_collection_ctv', {
+        channels: ['ctv'],
+        delivery_type: 'non_guaranteed',
+        format_options: fixture.format_options,
+      }],
+    ] as const) {
+      const { result: seeded } = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: { product_id: seededProductId, fixture: seededFixture },
+      });
+      expect(seeded.success).toBe(true);
+    }
+
+    const { result: discovered } = await simulateCallTool(server, 'get_products', {
+      buying_mode: 'brief',
+      brief: 'Pre-roll across the HostStream channel bundle: Acme Retro News and Vintage Static',
+      account,
+      filters: { channels: ['ctv'] },
+    });
+    const product = (discovered.products as Array<Record<string, unknown>>)[0];
+    expect(product?.product_id).toBe(productId);
+    expect(product?.collection_targeting_allowed).toBe(true);
+
+    const defaultSelection = { mode: 'default', ext: { example: { source: 'test' } } };
+    const expectedSelection = {
+      mode: 'selected',
+      collections: [{
+        publisher_domain: 'channel-owner.example',
+        collection_ids: ['retro_news', 'vintage_static'],
+      }],
+      ext: { example: { source: 'test' } },
+    };
+    const { result: created } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      idempotency_key: 'collection-targeting-default-bundle',
+      start_time: 'asap',
+      end_time: '2099-09-30T23:59:59Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: 'fixture_default_cpm',
+        bid_price: 5,
+        budget: 5_000,
+        targeting_overlay: { collection_selection: defaultSelection },
+      }],
+    });
+    const mediaBuyId = created.media_buy_id as string;
+    const packageId = (created.packages as Array<{ package_id: string }>)[0]!.package_id;
+    expect((created.packages as Array<{ targeting_overlay?: { collection_selection?: unknown } }>)[0]
+      ?.targeting_overlay?.collection_selection).toEqual(expectedSelection);
+
+    const create = (idempotencyKey: string, targetProductId: string, collectionSelection: unknown) => (
+      simulateCallTool(server, 'create_media_buy', {
+        account,
+        idempotency_key: idempotencyKey,
+        start_time: 'asap',
+        end_time: '2099-09-30T23:59:59Z',
+        packages: [{
+          product_id: targetProductId,
+          pricing_option_id: 'fixture_default_cpm',
+          bid_price: 5,
+          budget: 5_000,
+          targeting_overlay: { collection_selection: collectionSelection },
+        }],
+      })
+    );
+    const { result: defaultWithoutCollections } = await create(
+      'collection-targeting-default-without-collections',
+      'no_collection_ctv',
+      { mode: 'default' },
+    );
+    expect(defaultWithoutCollections).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
+
+    const { result: updatedDefault } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{ package_id: packageId, targeting_overlay: { collection_selection: defaultSelection } }],
+    });
+    expect((updatedDefault.packages as Array<{ package_id: string; targeting_overlay?: { collection_selection?: unknown } }>)
+      .find(pkg => pkg.package_id === packageId)?.targeting_overlay?.collection_selection).toEqual(expectedSelection);
+    const { result: addedDefault } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: productId,
+        pricing_option_id: 'fixture_default_cpm',
+        bid_price: 5,
+        budget: 5_000,
+        targeting_overlay: { collection_selection: defaultSelection },
+      }],
+    });
+    expect((addedDefault.packages as Array<{ package_id: string; targeting_overlay?: { collection_selection?: unknown } }>)
+      .find(pkg => pkg.package_id === 'pkg-1')?.targeting_overlay?.collection_selection).toEqual(expectedSelection);
+    const { result: addedWithoutCollections } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: 'no_collection_ctv',
+        pricing_option_id: 'fixture_default_cpm',
+        bid_price: 5,
+        budget: 5_000,
+      }],
+    });
+    const noCollectionPackageId = (addedWithoutCollections.packages as Array<{ package_id: string; product_id: string }>)
+      .find(pkg => pkg.product_id === 'no_collection_ctv')!.package_id;
+    const { result: defaultUpdateWithoutCollections } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: noCollectionPackageId,
+        targeting_overlay: { collection_selection: { mode: 'default' } },
+      }],
+    });
+    expect(defaultUpdateWithoutCollections).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
+
+    const selected = (collections: unknown[]) => ({ mode: 'selected', collections });
+    const { result: unknownDomain } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      packages: [{
+        package_id: packageId,
+        targeting_overlay: { collection_selection: selected([
+          { publisher_domain: 'other-owner.example', collection_ids: ['retro_news'] },
+        ]) },
+      }],
+    });
+    expect(unknownDomain).toMatchObject({ code: 'REFERENCE_NOT_FOUND' });
+    const { result: partialFixedAdded } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: 'retro_bundle_ctv_fixed',
+        pricing_option_id: 'fixture_default_cpm',
+        bid_price: 5,
+        budget: 5_000,
+        targeting_overlay: { collection_selection: selected([
+          { publisher_domain: 'channel-owner.example', collection_ids: ['retro_news'] },
+        ]) },
+      }],
+    });
+    expect(partialFixedAdded).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
+    const { result: defaultAddedWithoutCollections } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mediaBuyId,
+      new_packages: [{
+        product_id: 'no_collection_ctv',
+        pricing_option_id: 'fixture_default_cpm',
+        bid_price: 5,
+        budget: 5_000,
+        targeting_overlay: { collection_selection: { mode: 'default' } },
+      }],
+    });
+    expect(defaultAddedWithoutCollections).toMatchObject({ code: 'UNSUPPORTED_FEATURE' });
+    const { result: readback } = await simulateCallTool(server, 'get_media_buys', {
+      account,
+      media_buy_ids: [mediaBuyId],
+    });
+    const readbackPackages = (readback.media_buys as Array<{
+      packages: Array<{ package_id: string; targeting_overlay?: { collection_selection?: unknown } }>;
+    }>)[0]!.packages;
+    expect(readbackPackages).toHaveLength(3);
+    expect(readbackPackages.find(pkg => pkg.package_id === packageId)?.targeting_overlay?.collection_selection)
+      .toEqual(expectedSelection);
+
+    const invalidSelection = (idempotencyKey: string, collections: unknown[]) => create(
+      idempotencyKey,
+      productId,
+      selected(collections),
+    );
+    const { result: malformed } = await invalidSelection(
+      'collection-targeting-domain-only', [{ publisher_domain: 'channel-owner.example' }],
+    );
+    expect(malformed).toMatchObject({ code: 'INVALID_REQUEST' });
+    const { result: unknownCollection } = await invalidSelection(
+      'collection-targeting-unknown-id', [{ publisher_domain: 'channel-owner.example', collection_ids: ['unknown'] }],
+    );
+    expect(unknownCollection).toMatchObject({ code: 'REFERENCE_NOT_FOUND' });
+    const { result: duplicate } = await invalidSelection(
+      'collection-targeting-duplicate-id', [{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news', 'retro_news'] }],
+    );
+    expect(duplicate).toMatchObject({ code: 'INVALID_REQUEST' });
+    const { result: fullFixedBundle } = await create(
+      'collection-targeting-fixed-full',
+      'retro_bundle_ctv_fixed',
+      selected([{ publisher_domain: 'channel-owner.example', collection_ids: ['retro_news', 'vintage_static'] }]),
+    );
+    expect(fullFixedBundle).toMatchObject({ packages: [{ product_id: 'retro_bundle_ctv_fixed' }] });
+  });
+
   it('warns when a custom format shape has been promoted in 3.2', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const account = {

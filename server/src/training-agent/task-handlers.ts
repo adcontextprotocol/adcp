@@ -1983,6 +1983,33 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   const ple = validateListRef(src.property_list_exclude, `${pathLabel}.property_list_exclude`);
   const cl = validateListRef(src.collection_list, `${pathLabel}.collection_list`);
   const cle = validateListRef(src.collection_list_exclude, `${pathLabel}.collection_list_exclude`);
+  const collectionSelection = src.collection_selection;
+  if (isRecord(collectionSelection) && collectionSelection.mode === 'selected') {
+    const selectors = collectionSelection.collections;
+    if (!Array.isArray(selectors) || selectors.length === 0) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${pathLabel}.collection_selection.collections: selected mode requires at least one collection selector`,
+        field: `${pathLabel}.collection_selection.collections`,
+      });
+    } else {
+      selectors.forEach((selector, index) => {
+        if (
+          !isRecord(selector)
+          || typeof selector.publisher_domain !== 'string'
+          || selector.publisher_domain.length === 0
+          || !Array.isArray(selector.collection_ids)
+          || selector.collection_ids.length === 0
+        ) {
+          errors.push({
+            code: 'INVALID_REQUEST',
+            message: `${pathLabel}.collection_selection.collections[${index}]: selected mode requires a publisher domain and explicit collection IDs`,
+            field: `${pathLabel}.collection_selection.collections[${index}]`,
+          });
+        }
+      });
+    }
+  }
   const validateAudienceIds = (value: unknown, field: string): string[] | undefined => {
     if (value === undefined) return undefined;
     if (!Array.isArray(value)) {
@@ -6372,6 +6399,10 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'radio': 'radio',
 };
 
+const BRIEF_STOP_WORDS = new Set([
+  'across', 'and', 'app', 'for', 'from', 'into', 'on', 'the', 'with',
+]);
+
 // Vendor-metric briefs often ask for a measurement outcome (emissions,
 // brand lift, attention) rather than the literal field name. Score against
 // each product's declared vendor metrics so the named vendor/metric pair wins
@@ -7743,6 +7774,120 @@ function packageTargetingResolution(
         : { type: 'continuous_bounds' },
     },
   };
+}
+
+/** Persist a product's concrete collection bundle when the buyer chose its
+ * default. Package readback must expose the committed selection. */
+function materializeDefaultCollectionSelection(
+  product: Product,
+  targeting: PackageTargeting | undefined,
+): PackageTargeting | undefined {
+  if (!targeting) return undefined;
+  const committed = structuredClone(targeting) as unknown as Record<string, unknown>;
+  const selection = isRecord(committed.collection_selection)
+    ? committed.collection_selection
+    : undefined;
+  const collections = (product as unknown as Record<string, unknown>).collections;
+  if (selection?.mode !== 'default' || !Array.isArray(collections) || collections.length === 0) {
+    return targeting;
+  }
+  committed.collection_selection = {
+    mode: 'selected',
+    collections: structuredClone(collections),
+    ...(Object.hasOwn(selection, 'ext') && { ext: structuredClone(selection.ext) }),
+  };
+  return committed as unknown as PackageTargeting;
+}
+
+/** Validate a concrete buyer collection selection against the product's
+ * advertised inventory. Fixed bundles accept only their exact full selector
+ * set; selectable bundles may be narrowed to a subset. */
+function validateCollectionSelectionForProduct(
+  product: Product,
+  targeting: PackageTargeting | undefined,
+  targetingPath: string,
+): TaskError | undefined {
+  const selection = targeting && isRecord((targeting as unknown as Record<string, unknown>).collection_selection)
+    ? (targeting as unknown as Record<string, unknown>).collection_selection as Record<string, unknown>
+    : undefined;
+  const advertised = (product as unknown as Record<string, unknown>).collections;
+  if (selection?.mode === 'default') {
+    return !Array.isArray(advertised) || advertised.length === 0
+      ? {
+        code: 'UNSUPPORTED_FEATURE',
+        message: 'The selected product does not advertise a collection bundle to use as its default selection.',
+        field: `${targetingPath}.collection_selection`,
+        recovery: 'correctable',
+      }
+      : undefined;
+  }
+  if (selection?.mode !== 'selected' || !Array.isArray(selection.collections)) return undefined;
+  if (!Array.isArray(advertised) || advertised.length === 0) {
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'The selected product does not advertise collection selectors.',
+      field: `${targetingPath}.collection_selection`,
+      recovery: 'correctable',
+    };
+  }
+  const advertisedIdsByDomain = new Map<string, Set<string>>();
+  for (const selector of advertised) {
+    if (!isRecord(selector) || typeof selector.publisher_domain !== 'string' || !Array.isArray(selector.collection_ids)) continue;
+    const collectionIds = advertisedIdsByDomain.get(selector.publisher_domain) ?? new Set<string>();
+    for (const collectionId of selector.collection_ids) {
+      if (typeof collectionId === 'string') collectionIds.add(collectionId);
+    }
+    advertisedIdsByDomain.set(selector.publisher_domain, collectionIds);
+  }
+  const requestedIds = new Set<string>();
+  for (const [selectorIndex, selector] of selection.collections.entries()) {
+    if (!isRecord(selector) || typeof selector.publisher_domain !== 'string' || !Array.isArray(selector.collection_ids)) continue;
+    const advertisedIds = advertisedIdsByDomain.get(selector.publisher_domain);
+    if (!advertisedIds) {
+      return {
+        code: 'REFERENCE_NOT_FOUND',
+        message: `Collection publisher domain "${selector.publisher_domain}" is not declared by the selected product.`,
+        field: `${targetingPath}.collection_selection.collections[${selectorIndex}].publisher_domain`,
+        recovery: 'correctable',
+      };
+    }
+    for (const [collectionIndex, collectionId] of selector.collection_ids.entries()) {
+      if (typeof collectionId !== 'string' || !advertisedIds.has(collectionId)) {
+        return {
+          code: 'REFERENCE_NOT_FOUND',
+          message: `Collection ID "${String(collectionId)}" is not declared by the selected product.`,
+          field: `${targetingPath}.collection_selection.collections[${selectorIndex}].collection_ids[${collectionIndex}]`,
+          recovery: 'correctable',
+        };
+      }
+      const requestedId = `${selector.publisher_domain}\u0000${collectionId}`;
+      if (requestedIds.has(requestedId)) {
+        return {
+          code: 'INVALID_REQUEST',
+          message: `Collection ID "${collectionId}" is selected more than once for publisher domain "${selector.publisher_domain}".`,
+          field: `${targetingPath}.collection_selection.collections[${selectorIndex}].collection_ids[${collectionIndex}]`,
+          recovery: 'correctable',
+        };
+      }
+      requestedIds.add(requestedId);
+    }
+  }
+  if ((product as unknown as Record<string, unknown>).collection_targeting_allowed === true) return undefined;
+  const advertisedIds = new Set(
+    Array.from(advertisedIdsByDomain.entries()).flatMap(([domain, ids]) => (
+      Array.from(ids, id => `${domain}\u0000${id}`)
+    )),
+  );
+  const isExactRestatement = requestedIds.size === advertisedIds.size
+    && Array.from(requestedIds).every(id => advertisedIds.has(id));
+  return isExactRestatement
+    ? undefined
+    : {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'The selected product is a fixed collection bundle and does not allow partial collection selection.',
+      field: `${targetingPath}.collection_selection`,
+      recovery: 'correctable',
+    };
 }
 
 /** Execute the 3.2 discovery targeting contract for the deterministic training
@@ -9575,7 +9720,10 @@ async function handleGetProductsUnlocked(
   // Brief mode: channel-aware keyword matching
   if (buyingMode === 'brief' && brief) {
     const briefLower = brief.toLowerCase();
-    const terms = briefLower.split(/\s+/);
+    const terms = briefLower
+      .replace(/[_-]+/g, ' ')
+      .split(/[^a-z0-9]+/)
+      .filter(term => term.length >= 3 && !BRIEF_STOP_WORDS.has(term));
 
     // Extract channel names mentioned in the brief — these get heavy weight
     const briefChannels = new Set<string>();
@@ -9585,15 +9733,44 @@ async function handleGetProductsUnlocked(
 
     const scored = products
       .map(p => {
-        const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
+        // Product identifiers and inventory selectors are buyer-visible
+        // metadata. A brief naming a collection (for example `retro_news`)
+        // should discover the product that advertises that collection.
+        const collectionTerms = (p.collections ?? []).flatMap(collection => [
+          collection.publisher_domain,
+          ...(collection.collection_ids ?? []),
+        ]);
+        const publisherPropertyTerms = (p.publisher_properties ?? []).flatMap(property => [
+          property.publisher_domain,
+          ...('publisher_domains' in property ? property.publisher_domains ?? [] : []),
+          ...('property_ids' in property ? property.property_ids ?? [] : []),
+        ]);
+        const collectionText = collectionTerms.join(' ').replace(/[_-]+/g, ' ').toLowerCase();
+        const publisherPropertyText = publisherPropertyTerms.join(' ').replace(/[_-]+/g, ' ').toLowerCase();
+        const text = [
+          p.name,
+          p.description,
+          p.product_id,
+          ...(p.channels ?? []),
+          ...collectionTerms,
+          ...publisherPropertyTerms,
+        ].join(' ').replace(/[_-]+/g, ' ').toLowerCase();
         const keywordScore = terms.filter(t => text.includes(t)).length;
+        const collectionScore = terms.filter(t => collectionText.includes(t)).length * 3;
+        const publisherPropertyScore = terms.filter(t => publisherPropertyText.includes(t)).length * 2;
+        const collectionSelectionScore = collectionScore > 0
+          && (p as unknown as Record<string, unknown>).collection_targeting_allowed === true
+          ? 1
+          : 0;
         // Channel match: +10 per matching channel (dominates keyword scoring)
         const channelScore = briefChannels.size > 0
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
         const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
-        const totalScore = channelScore + keywordScore + vendorMetricScore;
-        return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
+        const totalScore = channelScore + keywordScore + collectionScore + publisherPropertyScore + collectionSelectionScore + vendorMetricScore;
+        return totalScore > 0
+          ? { product: p, totalScore, channelScore, keywordScore, collectionScore, publisherPropertyScore, collectionSelectionScore, vendorMetricScore }
+          : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
       .sort((a, b) => b.totalScore - a.totalScore);
@@ -9604,6 +9781,9 @@ async function handleGetProductsUnlocked(
       const matchParts = [
         ...(s.channelScore > 0 ? [`${s.channelScore / 10} channel(s)`] : []),
         ...(s.keywordScore > 0 ? ['keywords'] : []),
+        ...(s.collectionScore > 0 ? ['collection selectors'] : []),
+        ...(s.collectionSelectionScore > 0 ? ['selectable collection bundle'] : []),
+        ...(s.publisherPropertyScore > 0 ? ['publisher-property selectors'] : []),
         ...(s.vendorMetricScore > 0 ? ['vendor-metric optimization'] : []),
       ];
       return {
@@ -13844,6 +14024,13 @@ async function handleCreateMediaBuyUnlocked(
     const targetingResult = validateTargeting(incomingTargeting, targetingPath);
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
+    } else {
+      const collectionSelectionError = validateCollectionSelectionForProduct(
+        product,
+        targetingResult.targeting,
+        targetingPath,
+      );
+      if (collectionSelectionError) errors.push(collectionSelectionError);
     }
     const requestedAssignmentRows = [
       ...(Array.isArray(pkg.creative_assignments) ? pkg.creative_assignments : []),
@@ -13923,7 +14110,8 @@ async function handleCreateMediaBuyUnlocked(
       formatSnapshot.legacyFormatIds,
       formatSnapshot.selectedLegacyFormatIds,
     );
-    const targetingResolution = packageTargetingResolution(product, targetingResult.targeting);
+    const committedTargeting = materializeDefaultCollectionSelection(product, targetingResult.targeting);
+    const targetingResolution = packageTargetingResolution(product, committedTargeting);
 
     const candidatePackage: PackageState = {
       packageId: `pkg-${i}`,
@@ -13947,7 +14135,7 @@ async function handleCreateMediaBuyUnlocked(
       }),
       creativeAssignments,
       creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
-      targeting: targetingResult.targeting,
+      targeting: committedTargeting,
       ...(targetingResolution && { targetingResolution }),
       ...(isRecord(pkg.context) && { context: pkg.context }),
       ...(isRecord(pkg.measurement_terms) && { measurementTerms: structuredClone(pkg.measurement_terms) }),
@@ -16236,7 +16424,7 @@ async function handleUpdateMediaBuyUnlocked(
         || update.targeting !== undefined;
       if (!traffickingChanged) continue;
       const enforceLifecycleSplit = supportsLifecycleSplitCompatibility(lifecycleSplitVersionForContext(ctx));
-      const product = enforceLifecycleSplit ? productMap.get(pkg.productId) : undefined;
+      const product = productMap.get(pkg.productId);
       if (enforceLifecycleSplit && !product) {
         return { errors: [{ code: 'PRODUCT_NOT_FOUND', message: `Product not found for package ${pkgId}: ${pkg.productId}` }] };
       }
@@ -16314,6 +16502,14 @@ async function handleUpdateMediaBuyUnlocked(
         ?? pkg.targeting;
       const targetingResult = validateTargeting(incomingTargeting, `packages[${pkgId}].targeting_overlay`);
       if (targetingResult.errors.length) return { errors: targetingResult.errors };
+      if (product) {
+        const collectionSelectionError = validateCollectionSelectionForProduct(
+          product,
+          targetingResult.targeting,
+          `packages[${pkgId}].targeting_overlay`,
+        );
+        if (collectionSelectionError) return { errors: [collectionSelectionError] };
+      }
       if (enforceLifecycleSplit) {
         const assignmentErrors = validateCreateAssignmentSemantics(
           candidateRows,
@@ -16545,8 +16741,20 @@ async function handleUpdateMediaBuyUnlocked(
         if (targetingResult.errors.length) {
           return { errors: targetingResult.errors };
         }
+        const product = productMap.get(pkg.productId);
+        if (product) {
+          const collectionSelectionError = validateCollectionSelectionForProduct(
+            product,
+            targetingResult.targeting,
+            `packages[${pkgId}].targeting_overlay`,
+          );
+          if (collectionSelectionError) return { errors: [collectionSelectionError] };
+        }
+        const committedTargeting = product
+          ? materializeDefaultCollectionSelection(product, targetingResult.targeting)
+          : targetingResult.targeting;
         const before = pkg.targeting;
-        pkg.targeting = targetingResult.targeting;
+        pkg.targeting = committedTargeting;
         const changed = JSON.stringify(before ?? null) !== JSON.stringify(pkg.targeting ?? null);
         // A valid exact restatement is still an accepted package operation and
         // belongs in affected_packages even when it is state-idempotent.
@@ -16642,6 +16850,13 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const collectionSelectionError = validateCollectionSelectionForProduct(
+        product,
+        targetingResult.targeting,
+        `new_packages[${i}].targeting_overlay`,
+      );
+      if (collectionSelectionError) return { errors: [collectionSelectionError] };
+      const committedTargeting = materializeDefaultCollectionSelection(product, targetingResult.targeting);
       const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
       if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
       for (const inline of inlineCreatives.validatedCreatives) {
@@ -16727,7 +16942,7 @@ async function handleUpdateMediaBuyUnlocked(
         }),
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
         creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
-        targeting: targetingResult.targeting,
+        targeting: committedTargeting,
         context: npkg.context ? structuredClone(npkg.context) : undefined,
       };
       stagedInlineCreatives.push(...inlineCreatives.validatedCreatives);
