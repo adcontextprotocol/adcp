@@ -12,6 +12,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const RUNNER_FILE = path.join(__dirname, '..', 'server', 'tests', 'manual', 'run-storyboards.ts');
+const THREE_ZERO_COMPAT_WRAPPER = path.join(__dirname, '..', 'scripts', 'run-storyboards-3-0-compat.sh');
 
 function findMatchingBrace(source, openIndex) {
   let depth = 0;
@@ -101,6 +102,15 @@ test('candidate-version compatibility is explicit and resolver-scoped', () => {
     source,
     /supported_versions:\s*\[[^\]]*releasedComplianceVersion/,
     'candidate mode must not rewrite the seller capability declaration',
+  );
+});
+
+test('3.0 compatibility wrapper overrides inherited candidate mode', () => {
+  const source = fs.readFileSync(THREE_ZERO_COMPAT_WRAPPER, 'utf8');
+  assert.match(
+    source,
+    /ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=0\s+exec bash .*run-storyboards-matrix\.sh" --latest-3\.0/,
+    'immutable 3.0 runs must override a candidate-mode environment inherited from current validation',
   );
 });
 

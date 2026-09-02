@@ -7,4 +7,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec bash "${SCRIPT_DIR}/run-storyboards-matrix.sh" --latest-3.0
+# Immutable 3.0 bundles must never use current-candidate schema resolution,
+# even when this wrapper is called from a main-line candidate validation.
+ADCP_STORYBOARD_CANDIDATE_VERSION_MODE=0 exec bash "${SCRIPT_DIR}/run-storyboards-matrix.sh" --latest-3.0
