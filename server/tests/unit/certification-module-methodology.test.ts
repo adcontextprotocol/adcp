@@ -80,7 +80,7 @@ describe('selectModuleMethodology', () => {
     for (const phase of ['build', 'validate']) {
       const instructions = await getInstructions({ module_id: 'C4', phase });
 
-      expect(instructions).toContain('@adcp/sdk@14.0.0-beta.27');
+      expect(instructions).toContain('@adcp/sdk@14.0.0-beta.28');
       expect(instructions).toContain('beta.10');
       expect(instructions).not.toContain('beta.5');
       expect(instructions).not.toContain('@adcp/sdk@14.0.0-beta.7');
