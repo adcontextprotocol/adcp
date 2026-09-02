@@ -1,5 +1,5 @@
 id: media_buy_seller
-version: "1.0.1"
+version: "1.0.2"
 title: "Media buy seller agent"
 category: media_buy_seller
 summary: "Seller agent that receives briefs, returns products, accepts media buys, and reports delivery."
@@ -69,12 +69,10 @@ narrative: |
   This storyboard walks through the core media buy flow: account setup, product discovery,
   buy creation, and delivery monitoring.
 
-  Creative sync, governance integration, product refinement, and proposal finalization
-  are tested by capability-gated required scenarios that run alongside this storyboard.
+  Creative sync, governance binding and approval, product refinement, and proposal
+  finalization are tested by capability-gated required scenarios that run alongside
+  this storyboard.
   See requires_scenarios for the full set of seller behaviors validated.
-
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -313,64 +311,6 @@ phases:
             context_key: "account_timezone"
             description: "Seller echoes the chosen immutable timezone"
 
-  - id: governance_setup
-    title: "Governance agent registration"
-    depends_on: [account_setup]
-    requires_capability:
-      path: account.timezone.supported_timezones
-      present: false
-    narrative: |
-      The buyer registers their governance agent with your platform. This tells your
-      platform where to call check_governance before confirming media buys.
-
-    steps:
-      - id: sync_governance
-        title: "Register governance agents"
-        narrative: |
-          The buyer tells your platform: "Before you confirm any media buy for this
-          account, call this governance agent to validate it."
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        requires_tool: sync_governance
-        stateful: true
-        expected: |
-          Acknowledge the governance agents. Your platform should:
-          - Store the governance agent URLs for the specified accounts
-          - Return confirmation that agents were registered
-
-        sample_request:
-          accounts:
-            - account:
-                &media_buy_lifecycle_account
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_governance_setup_sync_governance"
-          context:
-            correlation_id: "media_buy_seller--sync_governance"
-          ext:
-            test_platform:
-              governance_tier: "standard"
-
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "media_buy_seller--sync_governance"
-            description: "Context correlation_id returned unchanged"
-
   - id: product_discovery
     title: "Product discovery"
     depends_on: [account_setup]
@@ -426,7 +366,11 @@ phases:
           brief: "Premium video inventory on sports and outdoor lifestyle publishers. Q2 flight, $50K budget. Adults 25-54, US and Canada."
           pagination:
             max_results: 5
-          account: *media_buy_lifecycle_account
+          account: &media_buy_lifecycle_account
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
           context:
             correlation_id: "media_buy_seller--get_products_brief"
 
@@ -483,18 +427,17 @@ phases:
       is no "pending_approval" media buy status — IO review is modelled at the task
       layer, not as a MediaBuy.status value.
 
-      If the buyer registered governance agents in Phase 2, your platform calls
-      check_governance before confirming the buy. The governance agent validates budget
-      authority, brand safety, and compliance. If governance denies the buy, return the
-      denial — don't override it.
+      This core flow intentionally creates the buy without a governance-agent binding.
+      Governance registration, approval, and rejection are exercised by the dedicated
+      capability-gated required scenarios.
 
     steps:
       - id: create_media_buy
         title: "Create a media buy"
         narrative: |
           The buyer commits to specific products with budgets and flight dates. Your
-          platform validates the request, optionally calls governance, and either confirms
-          the buy or sends it through an approval workflow.
+          platform validates the request and either confirms the buy or sends it through
+          an approval workflow.
 
           Two creation modes:
           - Manual: buyer specifies packages array with explicit product selections
@@ -524,7 +467,7 @@ phases:
 
           Asynchronous (working):
           - percentage: 0-100 completion
-          - current_step: what's happening ("Validating inventory", "Checking governance")
+          - current_step: what's happening ("Validating inventory")
 
           Async with human approval (submitted):
           - task_id: AdCP handle the buyer passes to get_task_status or receives webhooks on; it is not the A2A Task id
@@ -697,51 +640,6 @@ phases:
   # The buyer-selected branch repeats the lifecycle with the complete
   # timezone-bearing natural AccountRef. The request bodies are explicit so
   # authored-storyboard consumers do not need YAML merge-key support.
-  - id: buyer_selected_governance_setup
-    title: "Buyer-selected timezone governance registration"
-    depends_on: [buyer_selected_account_setup]
-    requires_capability:
-      path: account.timezone.account_selection
-      equals: buyer_selected
-    steps:
-      - id: sync_governance_buyer_selected_timezone
-        title: "Register governance agents for the timezone-bound account"
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        requires_tool: sync_governance
-        stateful: true
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                timezone: "$context.account_timezone"
-                sandbox: true
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          idempotency_key: "$generate:uuid_v4#media_buy_seller_buyer_timezone_sync_governance"
-          context:
-            correlation_id: "media_buy_seller--sync_governance"
-          ext:
-            test_platform:
-              governance_tier: "standard"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_present
-            path: "context"
-            description: "Response echoes back the context object"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "media_buy_seller--sync_governance"
-            description: "Context correlation_id returned unchanged"
-
   - id: buyer_selected_product_discovery
     title: "Buyer-selected timezone product discovery"
     depends_on: [buyer_selected_account_setup]
