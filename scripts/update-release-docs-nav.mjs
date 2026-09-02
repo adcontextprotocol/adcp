@@ -30,6 +30,7 @@ const RELEASE_STORY_ALIASES = new Set([
 // release tags keep each docs version tied to the spec shipped with that release.
 const RELEASE_OPENAPI_URL = (releaseVersion) =>
   `https://raw.githubusercontent.com/adcontextprotocol/adcp/v${releaseVersion}/static/openapi/registry.yaml`;
+const DOCKERIGNORE_SCHEMA_MARKER = '!dist/schemas';
 
 function clone(value) {
   // docs.json navigation is JSON-pure, so JSON clone is sufficient here.
@@ -311,16 +312,55 @@ export function updateDocsConfig(config, releaseVersion, majorMinor) {
   };
 }
 
+export function updateDockerignore(content, releaseVersion) {
+  const directoryRule = `!dist/docs/${releaseVersion}`;
+  const contentsRule = `${directoryRule}/**`;
+  if (content.split('\n').includes(directoryRule)) return content;
+
+  const markerIndex = content.indexOf(DOCKERIGNORE_SCHEMA_MARKER);
+  if (markerIndex < 0) {
+    throw new Error(`.dockerignore must contain ${DOCKERIGNORE_SCHEMA_MARKER}`);
+  }
+
+  return `${content.slice(0, markerIndex)}${directoryRule}\n${contentsRule}\n${content.slice(markerIndex)}`;
+}
+
+export function updateSchemaTools(content, releaseVersion, majorMinor) {
+  const escapedKey = majorMinor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const releaseLinePattern = new RegExp(
+    `(export const DOCS_SCHEMA_RELEASES = Object\\.freeze\\(\\{[\\s\\S]*?\\n\\s*'${escapedKey}':\\s*')[^']+(',)`
+  );
+  if (!releaseLinePattern.test(content)) {
+    throw new Error(`schema-tools.ts is missing docs release line ${majorMinor}`);
+  }
+  return content.replace(releaseLinePattern, `$1${releaseVersion}$2`);
+}
+
 function main() {
-  const [releaseVersion, majorMinor, docsJsonPath = 'docs.json'] = process.argv.slice(2);
+  const [
+    releaseVersion,
+    majorMinor,
+    docsJsonPath = 'docs.json',
+    dockerignorePath = '.dockerignore',
+    schemaToolsPath = 'server/src/addie/mcp/schema-tools.ts',
+  ] = process.argv.slice(2);
   if (!releaseVersion || !majorMinor) {
-    console.error('Usage: update-release-docs-nav.mjs <release-version> <major-minor> [docs.json]');
+    console.error(
+      'Usage: update-release-docs-nav.mjs <release-version> <major-minor> [docs.json] [.dockerignore] [schema-tools.ts]'
+    );
     process.exit(2);
   }
 
   const config = JSON.parse(readFileSync(docsJsonPath, 'utf8'));
   const { action, sourceVersion } = updateDocsConfig(config, releaseVersion, majorMinor);
   writeFileSync(docsJsonPath, `${JSON.stringify(config, null, 2)}\n`);
+  const dockerignore = readFileSync(dockerignorePath, 'utf8');
+  writeFileSync(dockerignorePath, updateDockerignore(dockerignore, releaseVersion));
+  const schemaTools = readFileSync(schemaToolsPath, 'utf8');
+  writeFileSync(
+    schemaToolsPath,
+    updateSchemaTools(schemaTools, releaseVersion, majorMinor)
+  );
 
   if (action === 'added') {
     console.log(`Added docs.json version ${majorMinor} from ${sourceVersion}`);

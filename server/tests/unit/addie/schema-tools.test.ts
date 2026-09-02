@@ -13,28 +13,23 @@ import {
 
 describe('schema version selection', () => {
   it('accepts every public docs release and defaults its guidance to stable', () => {
-    expect(DOCS_SCHEMA_RELEASES).toEqual({
-      '3.1': '3.1.19',
-      '3.2-beta': '3.2.0-beta.10',
-      '3.0': '3.0.26',
-      '2.5': '2.5.3',
-    });
+    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(['3.1', '3.2-beta', '3.0', '2.5']);
     expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
       '3.1',
       'stable',
       'current',
       'latest',
       'v3',
-      '3.1.19',
+      DOCS_SCHEMA_RELEASES['3.1'],
       '3.2-beta',
       '3.2 beta',
       '3.2',
-      '3.2.0-beta.10',
+      DOCS_SCHEMA_RELEASES['3.2-beta'],
       '3.0',
-      '3.0.26',
+      DOCS_SCHEMA_RELEASES['3.0'],
       '2.5',
       '2.5 (archived)',
-      '2.5.3',
+      DOCS_SCHEMA_RELEASES['2.5'],
       'v2',
       '2.6',
       '2.6.0',
@@ -90,22 +85,22 @@ describe('schema handler version resolution', () => {
     canonical: string;
     artifact: string;
   }> = [
-    { canonical: '3.1', artifact: '3.1.19' },
-    { selector: '3.1', canonical: '3.1', artifact: '3.1.19' },
-    { selector: 'stable', canonical: '3.1', artifact: '3.1.19' },
-    { selector: 'current', canonical: '3.1', artifact: '3.1.19' },
-    { selector: 'latest', canonical: '3.1', artifact: '3.1.19' },
-    { selector: 'v3', canonical: '3.1', artifact: '3.1.19' },
-    { selector: '3.1.19', canonical: '3.1', artifact: '3.1.19' },
-    { selector: '3.2-beta', canonical: '3.2-beta', artifact: '3.2.0-beta.10' },
-    { selector: '3.2 beta', canonical: '3.2-beta', artifact: '3.2.0-beta.10' },
-    { selector: '3.2', canonical: '3.2-beta', artifact: '3.2.0-beta.10' },
-    { selector: '3.2.0-beta.10', canonical: '3.2-beta', artifact: '3.2.0-beta.10' },
-    { selector: '3.0', canonical: '3.0', artifact: '3.0.26' },
-    { selector: '3.0.26', canonical: '3.0', artifact: '3.0.26' },
-    { selector: '2.5', canonical: '2.5', artifact: '2.5.3' },
-    { selector: '2.5 (archived)', canonical: '2.5', artifact: '2.5.3' },
-    { selector: '2.5.3', canonical: '2.5', artifact: '2.5.3' },
+    { canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: '3.1', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: 'stable', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: 'current', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: 'latest', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: 'v3', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: DOCS_SCHEMA_RELEASES['3.1'], canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: '3.2-beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
+    { selector: '3.2 beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
+    { selector: '3.2', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
+    { selector: DOCS_SCHEMA_RELEASES['3.2-beta'], canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
+    { selector: '3.0', canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
+    { selector: DOCS_SCHEMA_RELEASES['3.0'], canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
+    { selector: '2.5', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
+    { selector: '2.5 (archived)', canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
+    { selector: DOCS_SCHEMA_RELEASES['2.5'], canonical: '2.5', artifact: DOCS_SCHEMA_RELEASES['2.5'] },
   ];
 
   it('fetches the exact frozen snapshot for the default and every public docs selector', async () => {
@@ -178,7 +173,7 @@ describe('schema handler version resolution', () => {
     const result = await validateJson!({
       json: { $schema: `https://adcontextprotocol.org/schemas/latest/${schemaPath}` },
     });
-    const expectedUrl = `https://adcontextprotocol.org/schemas/3.1.19/${schemaPath}`;
+    const expectedUrl = `https://adcontextprotocol.org/schemas/${DOCS_SCHEMA_RELEASES['3.1']}/${schemaPath}`;
 
     expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(expectedUrl);
     expect(result).toContain(`AdCP 3.1 ${schemaPath} schema`);
@@ -197,12 +192,12 @@ describe('schema handler version resolution', () => {
 
     const validateJson = createSchemaToolHandlers().get('validate_json');
     const cases = [
-      ['3.1.4', '3.1.19'],
-      ['3.1.0-rc.15', '3.1.19'],
-      ['3.2.0-beta.1', '3.2.0-beta.10'],
-      ['3.0.18', '3.0.26'],
-      ['3.0.0-rc.2', '3.0.26'],
-      ['2.5.1', '2.5.3'],
+      ['3.1.4', DOCS_SCHEMA_RELEASES['3.1']],
+      ['3.1.0-rc.15', DOCS_SCHEMA_RELEASES['3.1']],
+      ['3.2.0-beta.1', DOCS_SCHEMA_RELEASES['3.2-beta']],
+      ['3.0.18', DOCS_SCHEMA_RELEASES['3.0']],
+      ['3.0.0-rc.2', DOCS_SCHEMA_RELEASES['3.0']],
+      ['2.5.1', DOCS_SCHEMA_RELEASES['2.5']],
     ] as const;
 
     for (const [index, [pinnedVersion, frozenVersion]] of cases.entries()) {
@@ -226,8 +221,8 @@ describe('schema handler version resolution', () => {
 
     for (const version of [
       '4.0.1',
-      '3.1.20',
-      '3.2.0-beta.11',
+      '3.1.999',
+      '3.2.0-beta.999',
       '3.2.1-beta.1',
     ]) {
       await expect(validateJson!({
