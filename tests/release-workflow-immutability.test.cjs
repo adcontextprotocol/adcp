@@ -124,8 +124,17 @@ const storyboardCandidateMode = trainingAgentWorkflowConfig.jobs.storyboards.ste
 ).env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
 assert(
   storyboardCandidateMode.includes("matrix.surface == 'current'") &&
-    storyboardCandidateMode.includes("github.head_ref == 'changeset-release/main'"),
-  'Only current-surface Version Packages PR jobs may enable candidate-version resolution.'
+    storyboardCandidateMode.includes("github.head_ref == 'changeset-release/main'") &&
+    storyboardCandidateMode.includes("startsWith(github.head_ref, 'forward-merge/')"),
+  'Only current-surface release integration PR jobs may enable candidate-version resolution.'
+);
+
+const salesStoryboardCandidateMode = trainingAgentWorkflowConfig.jobs.sales_storyboard_orchestrators
+  .env.ADCP_STORYBOARD_CANDIDATE_VERSION_MODE;
+assert(
+  salesStoryboardCandidateMode.includes("github.head_ref == 'changeset-release/main'") &&
+    salesStoryboardCandidateMode.includes("startsWith(github.head_ref, 'forward-merge/')"),
+  'Sales release integration PR jobs must use the same candidate-version branch allowlist.'
 );
 
 assert.strictEqual(
