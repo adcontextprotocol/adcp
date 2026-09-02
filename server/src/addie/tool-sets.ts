@@ -271,8 +271,11 @@ export const MEETING_SERIES_TOPIC_TOOLS = [
   "manage_committee_topics",
 ] as const;
 
-/** Exact compatibility union for explicit callers carrying the pre-split route. */
-export const MEETING_TOOLS = [
+/**
+ * One long cross-workflow meeting request; preserves the exact legacy union.
+ * Kept as a literal because this router-visible set is statically cataloged.
+ */
+export const MEETING_FULL_ADMINISTRATION_TOOLS = [
   "schedule_meeting",
   "list_upcoming_meetings",
   "get_my_meetings",
@@ -286,8 +289,8 @@ export const MEETING_TOOLS = [
   "manage_committee_topics",
 ] as const;
 
-/** One long cross-workflow meeting request; preserves the exact legacy union. */
-export const MEETING_FULL_ADMINISTRATION_TOOLS = MEETING_TOOLS;
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const MEETING_TOOLS = MEETING_FULL_ADMINISTRATION_TOOLS;
 
 /** Publisher registry, configuration, authorization, and cached-status checks. */
 export const AGENT_REGISTRY_TOOLS = [

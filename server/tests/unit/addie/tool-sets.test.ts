@@ -273,6 +273,7 @@ describe('getToolsForSets', () => {
         'update_topic_subscriptions', 'manage_committee_topics',
       ]);
       expect(MEETING_FULL_ADMINISTRATION_TOOLS).toEqual(MEETING_TOOLS);
+      expect(MEETING_TOOLS).toBe(MEETING_FULL_ADMINISTRATION_TOOLS);
       expect(TOOL_SETS.meetings.tools).toEqual(MEETING_TOOLS);
       expect(TOOL_SETS.meetings.routerVisible).toBe(false);
       expect(getValidToolSetNames(false).has('meetings')).toBe(false);

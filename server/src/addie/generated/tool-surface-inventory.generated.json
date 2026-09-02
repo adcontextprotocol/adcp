@@ -23,7 +23,7 @@
     "server/src/addie/email-conversation-handler.ts": "091feb8569d9d254351c2c37b11747e34d3e5f6777bc362e5de750c05568a4a5",
     "server/src/mcp/chat-tool.ts": "a6bbde38fda11337a899fc92b8cabc3617377ae7c648609f34fae098f138f87e",
     "server/src/addie/jobs/shadow-replay-cohort.ts": "316d0764cd65e4c631d6efef7d090fd46a6a8fff22d4c917a40b44a7a69eee1f",
-    "server/src/addie/tool-sets.ts": "4487461a5b40847e674ba91b63e06cf66b2f7855cf1fd9e185b475e9be860fea"
+    "server/src/addie/tool-sets.ts": "65bf1a5f08bf96d5fa6513ad089cc16ab3342120c119c753b092f2e6d95a6e32"
   },
   "routed": {
     "tool_set_count": 43,
@@ -43,7 +43,7 @@
   "prompt": {
     "rules_bytes": 154021,
     "tool_reference_bytes": 37066,
-    "complete_offline_tool_reference_bytes": 38932,
+    "complete_offline_tool_reference_bytes": 39196,
     "response_style_bytes": 9053,
     "system_prompt_bytes": 200154,
     "system_prompt_sha256": "e5172933f9332a7ea94f79f477426f96e824635b145a0f103f14e621641557e7"

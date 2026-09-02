@@ -854,4 +854,28 @@ describe('Addie tool reference', () => {
     const missing = mdxTools.filter(name => !new RegExp(`\\b${name}\\b`).test(catalog));
     expect(missing).toEqual([]);
   });
+
+  it('keeps the visible full-meeting composite exact in generated docs and catalog', async () => {
+    const fullMeetingTools = [
+      'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
+      'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
+      'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee',
+      'update_topic_subscriptions', 'manage_committee_topics',
+    ];
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const mdx = fs.readFileSync(path.join(repoRoot, 'docs/aao/addie-tools.mdx'), 'utf8');
+    const catalog = fs.readFileSync(path.join(repoRoot, 'server/src/addie/generated/tool-catalog.generated.ts'), 'utf8');
+    const sectionStart = mdx.indexOf('## meeting_full_administration');
+    const sectionEnd = mdx.indexOf('\n## ', sectionStart + 1);
+    const section = mdx.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd);
+
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    expect(Array.from(section.matchAll(/^### `([a-z_][a-z_0-9]*)`/gm)).map((match) => match[1]))
+      .toEqual(fullMeetingTools);
+    expect(catalog).toContain(
+      `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
+    );
+  });
 });
