@@ -707,7 +707,9 @@ ${isAAOAdmin
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]
-- Listing all members with payment/product/invoice status, organization domains, roles, profiles, or duplicate organizations → ["admin_organizations"]
+- Duplicate-organization investigation or merge, domain-health checks, and verified-domain reconciliation → ["admin_organization_integrity"]
+- Organization-member role changes, organization Slack rosters, paying-member records, or directory logo/profile changes → ["admin_organization_member_records"]
+- A request that genuinely needs both organization integrity and member-record workflows may select both bounded domains; do not select the hidden legacy alias or add a composite.
 - Task management, marking tasks done, checking tasks, reminders, logging conversations, flagged-conversation review, or community analytics → ["admin_workflows"]
 - Escalations and pending requests → [] (list_escalations and resolve_escalation are always available to admins)` : ''}
 - Managing co-leaders for your own committee (non-admin) → ["committee_leadership"]

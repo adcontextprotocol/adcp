@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "3b412f30e61c21ae2ad8403ada76920b5aabfdd0196afbb7e7b81fd7fd0f4be5",
-  "profile_contract_sha256": "14d2c9834984d06ff10c86638338abfaa4f9c7b8235cb6f0aec60b5417bd3095",
+  "profile_ids_sha256": "332f03fc5f36f79c20157723af3e0ed284f41ffc43f5ff0309fff4c46ba4e138",
+  "profile_contract_sha256": "d5365d54c59c38cb3b189f4bfdba3a43d80d904c19a396616d20dfb3a4e0412c",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -34,8 +34,8 @@
     "runtime_tools_missing_prompt_catalog": 0,
     "prompt_catalog_tools_missing_runtime": 0,
     "always_available_tools": 6,
-    "tool_reference_bytes": 38489,
-    "system_prompt_bytes": 201577,
+    "tool_reference_bytes": 39293,
+    "system_prompt_bytes": 202381,
     "maximum_slack_member_tools": 33,
     "maximum_slack_admin_tools": 35,
     "maximum_slack_public_tools": 200,

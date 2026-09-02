@@ -18,6 +18,7 @@ import {
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
+import { ADMIN_TOOLS } from '../../../src/addie/mcp/admin-tools.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../../../src/addie/mcp/member-tools.js';
 import { KNOWLEDGE_TOOLS } from '../../../src/addie/mcp/knowledge-search.js';
@@ -139,6 +140,11 @@ const CANONICAL_COMMUNITY_GROUP_TOOLS = [...MEMBER_TOOLS, ...KNOWLEDGE_TOOLS].fi
   'create_working_group_post', 'bookmark_resource', 'list_committee_documents',
 ].includes(definition.name));
 
+const CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'list_paying_members',
+  'list_slack_users_by_org',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
@@ -146,7 +152,11 @@ const TOOL_DEFINITIONS = [
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',
-].map(tool).concat(CANONICAL_MEETING_TOOLS, CANONICAL_COMMUNITY_GROUP_TOOLS);
+].map(tool).concat(
+  CANONICAL_MEETING_TOOLS,
+  CANONICAL_COMMUNITY_GROUP_TOOLS,
+  CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS,
+);
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {
   return {
