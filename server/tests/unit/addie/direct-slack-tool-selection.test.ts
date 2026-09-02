@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
 import { selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
-import { PUBLIC_MENTION_READ_ONLY_TOOL_NAMES } from '../../../src/addie/slack-tool-selection.js';
+import {
+  PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
+  resolveRequiredSlackChannelContext,
+} from '../../../src/addie/slack-tool-selection.js';
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },
@@ -65,7 +68,11 @@ async function select(input: {
 describe('direct Slack Addie response tool routing', () => {
   it.each(['dm', 'mention'] as const)('uses the bounded selector at the %s response seam', async (source) => {
     const router = routerFor(['member_billing']);
-    const selected = await select({ source, router });
+    const selected = await select({
+      source,
+      router,
+      ...(source === 'mention' ? { isPublicChannel: false } : {}),
+    });
 
     expect(selected.selectedToolSets).toEqual(['member_billing']);
     expect(selected.allowedToolNames).toContain('create_payment_link');
@@ -158,6 +165,49 @@ describe('direct Slack Addie response tool routing', () => {
     ]));
   });
 
+  it('suppresses direct app-mention dispatch when channel privacy lookup fails', async () => {
+    const router = routerFor(['community_research']);
+    const modelDispatch = vi.fn();
+    const responseDelivery = vi.fn();
+    const channelContext = await resolveRequiredSlackChannelContext(
+      'C_UNVERIFIED',
+      async () => { throw new Error('channel lookup failed'); },
+    );
+
+    // This is the same required-context gate used by handleAppMention before
+    // it constructs tools, invokes the router/model, or calls Slack `say`.
+    if (channelContext) {
+      const selected = await select({
+        source: 'mention',
+        isPublicChannel: channelContext.viewing_channel_is_private === false,
+        router,
+      });
+      modelDispatch(selected);
+      responseDelivery();
+    }
+
+    expect(channelContext).toBeNull();
+    expect(router.quickMatch).not.toHaveBeenCalled();
+    expect(router.route).not.toHaveBeenCalled();
+    expect(modelDispatch).not.toHaveBeenCalled();
+    expect(responseDelivery).not.toHaveBeenCalled();
+  });
+
+  it('fails closed to the audited public surface when mention privacy is unknown', async () => {
+    const selected = await select({
+      source: 'mention',
+      toolSets: ['community_research'],
+    });
+
+    expect(selected.allowedToolNames.every((name) =>
+      (PUBLIC_MENTION_READ_ONLY_TOOL_NAMES as readonly string[]).includes(name),
+    )).toBe(true);
+    expect(selected.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'search_slack', 'read_slack_file', 'get_channel_activity',
+      'fetch_url', 'search_resources', 'get_recent_news',
+    ]));
+  });
+
   it('exposes a confirmation tool only when its domain is explicitly routed and paired', async () => {
     const selected = await select({ toolSets: ['member_billing'] });
     expect(selected.selectedToolSets).toEqual(['member_billing']);
@@ -188,6 +238,7 @@ describe('direct Slack Addie response tool routing', () => {
       source: 'mention',
       toolSets: ['directory'],
       activeCertificationKind: 'learning',
+      isPublicChannel: false,
     });
     expect(certificationMention.selectedToolSets).toEqual(['directory']);
     expect(certificationMention.allowedToolNames).not.toContain('start_certification_module');

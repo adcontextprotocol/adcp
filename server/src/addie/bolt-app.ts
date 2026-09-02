@@ -2616,8 +2616,20 @@ async function handleAppMention({
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
-  // Fetch channel info for context
-  const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
+  // App mentions are user-visible in a channel. Do not select tools or
+  // generate a response until Slack has verified whether that channel is
+  // private; an unresolved classification must not fall through as private.
+  const mentionChannelContext = await resolveRequiredSlackChannelContext(
+    channelId,
+    buildChannelContext,
+  );
+  if (!mentionChannelContext) {
+    logger.warn(
+      { event: 'addie_app_mention_channel_context_unavailable' },
+      'Addie Bolt: Skipping app mention because channel privacy could not be verified',
+    );
+    return;
+  }
 
   // Fetch surrounding conversation context for the mention.
   // For threaded mentions: fetch thread replies.

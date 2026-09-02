@@ -45,7 +45,10 @@ function retainPublicMentionReadOnlyTools(
   isPublicChannel: boolean | undefined,
   toolNames: string[],
 ): string[] {
-  return source === 'mention' && isPublicChannel
+  // App mentions must have their privacy verified before dispatch. Keep this
+  // selector conservative as a second boundary: an omitted classification is
+  // never permission to expose private retrieval tools.
+  return source === 'mention' && isPublicChannel !== false
     ? toolNames.filter((name) => PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET.has(name))
     : toolNames;
 }

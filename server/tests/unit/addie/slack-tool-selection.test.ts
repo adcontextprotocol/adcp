@@ -165,6 +165,7 @@ describe('Slack tool-set selection policy', () => {
         routerAvailable: true,
         source,
         isAdmin: false,
+        isPublicChannel: source === 'mention' ? false : undefined,
         activeCertificationKind: 'learning',
         isToolAvailable: () => true,
       });
@@ -184,6 +185,7 @@ describe('Slack tool-set selection policy', () => {
         routerAvailable: true,
         source,
         isAdmin: false,
+        isPublicChannel: source === 'mention' ? false : undefined,
         activeCertificationKind: 'learning',
         isToolAvailable: (name) => name !== 'search_members',
       });
