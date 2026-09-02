@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.2.0-beta.11
+
+### Patch Changes
+
+- f1b32c0: Align the training agent and compliance guidance with the published AdCP `3.2.0-beta.10` bundle in `@adcp/sdk@14.0.0-beta.27`. Keep legacy creative synchronization and listing in the same trusted account partition as current media-buy creation, restore the sales compliance account seeder, and keep the DOOH baseline ungoverned while its separate governance scenario exercises registration.
+- dd8edda: Include `get_principal` alongside `sync_principal` in the MCP media-buy role profile.
+
 ## 3.2.0-beta.10
 
 ### Minor Changes
@@ -629,6 +636,19 @@
 ## Unreleased experimental-surface notices
 
 - Cross-role governance enforcement: the experimental `governance.campaign` surface will add typed `target_agent`, task-scoped `adcp.governance_enforcement`, critical task/payload/commitment JWS bindings, intent-only conditions negotiation, and governance-authoritative settlement. The implementation may merge during 3.2 development; the beta-to-GA period provides the experimental-surface notice window. See the 3.2 release notes and migration guide.
+
+## 3.1.20
+
+### Patch Changes
+
+- 301573a: Use the media-buy request schema when validating the universal creative-format pagination storyboard, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
+- 6dae516: Correct the OpenRTB/AdCOM `cattax` mappings documented for IAB Content Taxonomy 3.0 and 2.2.
+
+## 3.1.19
+
+### Patch Changes
+
+- 76710cd: Gate creative-library and product-refinement compliance paths on advertised 3.1 capabilities, and keep measurement-term acceptance outside the universal rejection scenario.
 
 ## 3.1.18
 

@@ -1,0 +1,216 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/protocol/sync-principal-response.json",
+  "title": "Sync Principal Response",
+  "x-status": "experimental",
+  "description": "Result of synchronizing selected sections of the principal's standing configuration. Applied responses return the complete current credential-free configuration. Validated dry-run responses report the would-be action without issuing durable identifiers. Failed responses deliberately cannot carry principal identifiers, versions, or configuration state.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "result": {
+      "oneOf": [
+        {
+          "title": "Applied principal configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "applied"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "updated",
+                "unchanged",
+                "cleared"
+              ],
+              "description": "Persisted outcome for the submitted sections, computed solely against the caller's own prior state. cleared applies only when every submitted section was []; any other change is updated; unchanged means no submitted section differed."
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": false
+            },
+            "principal_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "principal_kind": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/principal-kind.json",
+              "description": "Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
+            },
+            "configuration_version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
+            },
+            "configuration": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/principal-state.json"
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run",
+            "principal_id",
+            "principal_kind",
+            "configuration_version",
+            "configuration"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Validated principal dry run",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "validated"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "would_update",
+                "would_be_unchanged",
+                "would_clear"
+              ]
+            },
+            "dry_run": {
+              "type": "boolean",
+              "const": true
+            },
+            "warnings": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/error.json"
+              },
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "action",
+            "dry_run"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Failed principal sync",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "failed"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/ext.json"
+    }
+  },
+  "required": [
+    "result"
+  ],
+  "additionalProperties": true,
+  "if": {
+    "properties": {
+      "result": {
+        "properties": {
+          "kind": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    },
+    "required": [
+      "result"
+    ]
+  },
+  "then": {
+    "properties": {
+      "status": {
+        "enum": [
+          "failed",
+          "rejected"
+        ]
+      }
+    }
+  },
+  "examples": [
+    {
+      "description": "Principal configuration updated",
+      "data": {
+        "status": "completed",
+        "result": {
+          "kind": "applied",
+          "action": "updated",
+          "dry_run": false,
+          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+          "principal_kind": "buyer_agent",
+          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+          "configuration": {
+            "notification_configs": [],
+            "reporting_destinations": [
+              {
+                "destination_id": "analytics-warehouse",
+                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+                "state": "ready",
+                "configuration": {
+                  "pattern": "warehouse_materialization",
+                  "destination_id": "analytics-warehouse",
+                  "active": true,
+                  "provider": {
+                    "domain": "data-warehouse.example"
+                  },
+                  "transport": "bigquery",
+                  "location": "pinnacle-analytics.adcp_reporting",
+                  "accepted_verification_profiles": [
+                    "native_commit",
+                    "canonical_digest"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,395 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-delivery-offering.json",
+  "title": "Reporting Delivery Offering",
+  "x-status": "experimental",
+  "description": "One atomic combination a seller can honor. Buyers MUST NOT form a cross-product from separate capability arrays; each installed configuration selects one offering_id and values within that offering.",
+  "type": "object",
+  "definitions": {
+    "ReportingFeedPurpose": {
+      "title": "Reporting Feed Purpose",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "pacing",
+        "analytics",
+        "billing"
+      ],
+      "description": "Operational use of an independently scheduled and reconciled feed. pacing is the fast snapshot path; billing requires official revisions and consumer reconciliation. Event-level exposure is intentionally deferred until a privacy and authorization contract exists."
+    },
+    "ReportingDeliveryPattern": {
+      "title": "Reporting Delivery Pattern",
+      "type": "string",
+      "enum": [
+        "file_transfer",
+        "dataset_share",
+        "warehouse_materialization"
+      ]
+    }
+  },
+  "properties": {
+    "offering_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "x-entity": "reporting_offering"
+    },
+    "feed_purpose": {
+      "$ref": "#/definitions/ReportingFeedPurpose"
+    },
+    "report_definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_definition",
+      "description": "Immutable semantic definition for metric, grain, attribution, action-report-time, timezone/calendar, source/API mapping, and restatement/finality policy. Configurations and revisions MUST echo this exact value."
+    },
+    "report_definition_uri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+      "description": "Retrievable immutable reporting-report-definition.json document on the authenticated seller/provider or AdCP-registry origin."
+    },
+    "report_definition_sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "Digest of the exact report-definition bytes. SDKs verify this before parsing and cache by digest."
+    },
+    "reporting_profile": {
+      "type": "object",
+      "description": "Machine-readable semantic and validation contract for delivered rows. The canonicalization_* fields describe the canonical-digest contract and are required only for offerings under the reconciled_billing tier; Core and managed-delivery offerings omit them.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "schema_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+          "description": "Authenticated seller/provider or AdCP-registry HTTPS origin only; never an IP literal, userinfo URL, redirect target, or mutable validation authority."
+        },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "Digest of the exact schema bytes. SDKs verify this before parsing and cache by digest."
+        },
+        "schema_dialect": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema",
+          "description": "Closed SDK-bundled dialect. The SDK never resolves a metaschema over the network, and the fetched document's $schema MUST equal this value."
+        },
+        "schema_ref_policy": {
+          "type": "string",
+          "const": "local_fragment_only",
+          "description": "The fetched schema is a self-contained bundle. Every $ref is a local # fragment; remote and relative-document dependencies are forbidden."
+        },
+        "grain": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Stable description of what one logical row represents."
+        },
+        "primary_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-canonicalization-contract.json#/definitions/ReportingPrimaryKey"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "canonicalization_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Rules for stable logical row ordering, value encoding, nulls, and schema used by canonical_content_digest."
+        },
+        "canonicalization_contract_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "canonicalization_media_type": {
+          "type": "string",
+          "const": "application/vnd.adcp.reporting-canonicalization+json"
+        },
+        "canonicalization_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)",
+          "description": "Retrievable exact canonicalization contract on the authenticated seller/provider or AdCP-registry origin. SDKs apply the same bounded, redirect-free SSRF controls as schema_uri and verify canonicalization_sha256 before use."
+        },
+        "canonicalization_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$",
+          "description": "Digest of the exact canonicalization contract identified by canonicalization_id."
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "schema_uri",
+        "schema_sha256",
+        "schema_dialect",
+        "schema_ref_policy",
+        "grain",
+        "primary_keys"
+      ],
+      "additionalProperties": false
+    },
+    "schedule": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-schedule-offering.json",
+      "description": "Period and availability SLA this offering can honor. For example, PT1H with snapshot finality explicitly advertises hourly provisional snapshots; a separate P1D official offering advertises daily finalized reporting."
+    },
+    "supported_finality": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/reporting-finality.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Finality classes available under this exact report definition, schedule, and delivery method. snapshot is an explicit provisional capability, not inferred from poll frequency. Use separate atomic offerings when snapshot and official schedules or methods differ."
+    },
+    "reconciliation_mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-reconciliation-mode.json",
+      "description": "Receipt contract included in this atomic offering. Billing offerings MUST require consumer_receipt."
+    },
+    "method": {
+      "type": "object",
+      "description": "Managed delivery method for this offering. Omit for a Core (API-delivered) offering: rows flow through existing get_media_buy_delivery and reporting_webhook transports and no destination is involved. Present only when the seller advertises managed_delivery.",
+      "properties": {
+        "pattern": {
+          "$ref": "#/definitions/ReportingDeliveryPattern"
+        },
+        "transport": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "orchestration": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-delivery-method.json#/definitions/ReportingOrchestration"
+        },
+        "destination_modes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "provision",
+              "existing"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "provider": {
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "additionalProperties": false
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "jsonl",
+            "csv",
+            "parquet",
+            "avro",
+            "orc"
+          ]
+        },
+        "access_mode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "producer_identity": {
+          "type": "object",
+          "description": "Seller principal a buyer grants access to for this exact buyer-hosted destination offering.",
+          "properties": {
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "identity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "cloud": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-dataset-share-destination.json#/definitions/ReportingCloud"
+            },
+            "region": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "provider",
+            "identity"
+          ],
+          "dependencies": {
+            "cloud": [
+              "region"
+            ],
+            "region": [
+              "cloud"
+            ]
+          },
+          "additionalProperties": false
+        },
+        "reader_compatibility": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-resource.json#/definitions/ReportingReaderCompatibilityItem"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "pattern",
+        "transport",
+        "orchestration",
+        "destination_modes"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "pattern"
+            ]
+          },
+          "then": {
+            "required": [
+              "provider"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "file_transfer"
+              }
+            },
+            "required": [
+              "pattern"
+            ]
+          },
+          "then": {
+            "required": [
+              "format"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "pattern": {
+                "const": "dataset_share"
+              }
+            },
+            "required": [
+              "pattern"
+            ]
+          },
+          "then": {
+            "required": [
+              "access_mode"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "offering_id",
+    "feed_purpose",
+    "report_definition_id",
+    "report_definition_uri",
+    "report_definition_sha256",
+    "reporting_profile",
+    "schedule",
+    "supported_finality",
+    "reconciliation_mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "feed_purpose": {
+            "const": "billing"
+          }
+        },
+        "required": [
+          "feed_purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          }
+        },
+        "required": [
+          "reconciliation_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reporting_profile": {
+            "required": [
+              "canonicalization_id",
+              "canonicalization_contract_version",
+              "canonicalization_media_type",
+              "canonicalization_uri",
+              "canonicalization_sha256"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "tier_boundaries": "An offering without method is Core: delivered through existing API transports, no destination, manifest, or canonicalization knowledge required. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires the reconciled_billing capability, and such offerings MUST carry the full canonicalization_* contract in reporting_profile. delivery_only offerings omit canonicalization.",
+    "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
+    "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
+  },
+  "additionalProperties": false
+}

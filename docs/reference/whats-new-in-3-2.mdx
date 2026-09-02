@@ -8,8 +8,8 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed beta.9. Python
+**3.2 is in beta.** Beta.10 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.28` and Python `adcp==8.0.0b11` embed beta.10. Python
 higher-level helpers remain partial, and Go exact support is still pending. See
 the [3.2 beta program](/docs/reference/3-2-beta) before testing.
 </Warning>
@@ -291,8 +291,8 @@ for the remaining runner and coverage gaps.
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed beta.9 tarball, name the exact supported bundle, and feed accepted protocol corrections into the RC. |
-| A compliance operator | Test beta.9 from its signed assets or an SDK that explicitly lists beta.9, such as TypeScript SDK 14 beta.22 or Python SDK 8 beta.10; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
+| An SDK maintainer | Generate from the signed beta.10 tarball, name the exact supported bundle, and feed accepted protocol corrections into the RC. |
+| A compliance operator | Test beta.10 from its signed assets or an SDK that explicitly lists beta.10, such as TypeScript SDK 14 beta.28 or Python SDK 8 beta.11; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
 
 ## Start here
 

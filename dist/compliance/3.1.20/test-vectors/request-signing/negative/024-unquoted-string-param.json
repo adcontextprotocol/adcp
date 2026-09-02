@@ -1,0 +1,31 @@
+{
+  "name": "Signature-Input sig-param string value sent unquoted (keyid=foo instead of keyid=\"foo\")",
+  "spec_reference": "#verifier-checklist-requests step 1 (RFC 9421 §2.3 sig-params; RFC 8941 §3.3 string values MUST be double-quoted)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=test-ed25519-2026;alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "Per RFC 8941 §3.3.3, Structured-Field string values MUST be wrapped in ASCII double-quotes. RFC 9421 §2.3 defines keyid, nonce, and tag as string-typed sig-params, so 'keyid=foo' (bare token) is not a valid string — it would parse as a token-typed value if the grammar allowed tokens there, which it does not. A verifier that tolerantly accepts bare tokens (common bug in hand-rolled parsers) introduces a parser-differential attack: one implementation sees keyid='foo', another sees keyid=undefined, and they disagree on which JWKS entry to resolve. Verifier MUST reject at parse."
+}

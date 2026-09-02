@@ -1,0 +1,91 @@
+id: reporting_core
+version: "1.0.0"
+title: "Reporting Core tier"
+category: schema_validation
+summary: "Validates the required reporting.core tier: capability declaration with tier boundaries, and that a polling-only seller needs no receipt task, push notification, destination, or canonicalization surface."
+track: core
+required_tools:
+  - get_reporting_status
+
+requires_capability:
+  path: "media_buy.reporting_delivery.supported"
+  equals: true
+
+narrative: |
+  Core is the only required reporting tier: obligations, revisions,
+  materializations, the five health states, and `get_reporting_status`,
+  delivered over transports sellers already have. The managed_delivery and
+  reconciled_billing tiers are separately advertised capabilities. The
+  `reporting.delivery_ready` doorbell is optional in every tier, so a
+  polling-only seller is fully Core-conformant.
+
+  This storyboard grades the declaration surface. Obligation lifecycle,
+  health-state transitions, restatements, and tier-gated delivery flows
+  require controller-backed fixtures and are covered by the deterministic
+  reporting scenarios as they land.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "media_buy.reporting_delivery"
+  examples:
+    - "Any seller agent that advertises media_buy.reporting_delivery"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness acting as an authorized buyer"
+
+prerequisites:
+  description: |
+    The agent under test advertises `media_buy.reporting_delivery.supported:
+    true` plus the matching experimental feature.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: core_declaration
+    title: "Advertise the Core tier without requiring optional tiers"
+    narrative: |
+      The capability document declares the status task and its tier
+      boundaries. receipt_task is only meaningful under reconciled_billing,
+      and readiness_notification is never required: sellers advertising
+      neither remain conformant, so these fields are deliberately not graded
+      as present.
+
+    steps:
+      - id: get_capabilities_declares_reporting_core
+        title: "Read the reporting delivery declaration"
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        stateful: false
+        expected: |
+          Return a schema-valid response with:
+          - media_buy.reporting_delivery.supported: true
+          - media_buy.reporting_delivery.status_task: get_reporting_status
+          - at least one offering
+          - experimental_features containing media_buy.reporting_delivery
+
+        sample_request:
+          context:
+            correlation_id: "reporting_core--get_capabilities"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json, including the tier conditionals: managed_delivery requires retention and revocation bounds, reconciled_billing requires receipt_task, and webhook signing is forced only when readiness_notification is declared"
+          - check: field_value
+            path: "media_buy.reporting_delivery.supported"
+            value: true
+            description: "Seller advertises the required Core tier"
+          - check: field_value
+            path: "media_buy.reporting_delivery.status_task"
+            value: "get_reporting_status"
+            description: "Core status reads flow through get_reporting_status"
+          - check: field_present
+            path: "media_buy.reporting_delivery.offerings[0].offering_id"
+            description: "At least one atomic offering is declared"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "media_buy.reporting_delivery"
+            description: "Experimental feature gate is declared"
