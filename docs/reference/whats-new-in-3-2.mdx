@@ -134,7 +134,10 @@ exact package readback — including committed inventory selection:
 collections, the latter materializing concrete selectors even when the
 selection came from collection-list references. Products can also disclose per-package cardinality for
 country inclusion, country exclusion, and proximity targeting before a buyer
-creates or updates a package. See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
+creates or updates a package. Daypart windows now default explicitly to each
+inventory unit's seller-assigned local clock and can instead name one IANA
+timezone for a synchronized schedule; products declare the supported modes through
+`overlay_support.daypart_targets`. See [Targeting-aware product discovery](/docs/reference/migration/targeting-aware-discovery).
 
 ### Commercial terms and controls are explicit
 

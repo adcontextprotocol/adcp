@@ -137,7 +137,7 @@
     },
     "daypart_targets": {
       "type": "array",
-      "description": "Restrict delivery to specific time windows. Each entry specifies days of week and an hour range.",
+      "description": "Restrict delivery to specific time windows. Each entry specifies days of week, an hour range, and an optional timezone that defaults to inventory_local. A concrete IANA zone uses one shared civil-time clock, while inventory_local evaluates each inventory unit in its seller-assigned local timezone. Entries are independent and MAY use different clocks.",
       "items": {
         "$ref": "/schemas/core/daypart-target.json"
       },
