@@ -10,7 +10,11 @@ import {
   SYSTEM_CHANNEL_TOOL_SETS,
   type SystemChannelRole,
 } from '../../../src/addie/slack-tool-selection.js';
-import { getToolsForSets } from '../../../src/addie/tool-sets.js';
+import {
+  AGENT_END_TO_END_TOOLS,
+  getToolsForSets,
+  MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
+} from '../../../src/addie/tool-sets.js';
 
 const safeKnowledgeFallback = ['knowledge', 'community_research', 'schema_reference'];
 
@@ -226,8 +230,49 @@ describe('Slack tool-set selection policy', () => {
   });
 
   it.each([
+    ['agent_registry', ['validate_adagents', 'resolve_brand', 'get_agent_status', 'check_publisher_authorization', 'validate_agent']],
+    ['agent_quality', ['evaluate_agent_quality', 'test_rfp_response', 'test_io_execution']],
+    ['agent_authentication', ['grade_agent_signing', 'diagnose_agent_auth']],
+    ['agent_end_to_end', ['validate_adagents', 'check_publisher_authorization', 'evaluate_agent_quality', 'test_rfp_response', 'test_io_execution', 'grade_agent_signing', 'diagnose_agent_auth']],
+  ] as const)('keeps the %s reaction surface paired and alias-free', (toolSet, expectedTools) => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: [toolSet], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual([toolSet]);
+    expect(selection.allowedToolNames).toEqual(expect.arrayContaining(expectedTools));
+    expect(selection.allowedToolNames).not.toContain('test_adcp_agent');
+    expect(selection.allowedToolNames).not.toContain('compare_media_kit');
+  });
+
+  it('retains a long end-to-end agent request as one domain under the direct cap', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['agent_end_to_end'], confidence: 'high', reason: 'long diagnostic', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isPublicChannel: false,
+      isToolAvailable: () => true,
+    });
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['agent_end_to_end', 'knowledge']);
+    expect(selection.selectedToolSets).toHaveLength(MAX_DIRECT_ROUTED_TOOL_SET_COUNT);
+    const endToEndTools = selection.allowedToolNames.filter((name) =>
+      (AGENT_END_TO_END_TOOLS as readonly string[]).includes(name),
+    );
+    expect(endToEndTools).toEqual(AGENT_END_TO_END_TOOLS);
+    expect(endToEndTools).toHaveLength(10);
+  });
+
+  it.each([
     ['non-response action', { action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }],
     ['stale alias', { action: 'respond', tool_sets: ['admin'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy agent-validation union', { action: 'respond', tool_sets: ['agent_validation'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
   ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {

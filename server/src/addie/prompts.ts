@@ -236,19 +236,40 @@ The public protocol roadmap is https://github.com/orgs/adcontextprotocol/project
 Admins manage roadmap entries by setting the Protocol and Kind fields and moving the item between statuses. Triage owners are listed at https://adcontextprotocol.org/docs/reference/roadmap; volunteers should contact the relevant working group in Slack.`,
   },
   {
-    selectedToolSets: ['agent_validation'],
-    text: `### Publisher and agent testing
-These tools diagnose publisher and agent setup. When someone has verification, authorization, signing, OAuth, or endpoint issues, use them together to find which step in the setup chain is missing (brand.json → adagents.json → agent authorization → live agent behavior).
+    selectedToolSets: ['agent_registry'],
+    text: `### Publisher and agent registry checks
+These tools diagnose publisher and agent configuration. When someone has verification, authorization, or status issues, find which step in the setup chain is missing (brand.json → adagents.json → agent authorization → registry status).
 
 - validate_adagents: Check a domain's adagents.json configuration. Start here for any publisher setup issue.
 - resolve_brand: Check if a domain has brand.json set up. If not, they need the brand builder (https://agenticadvertising.org/brand).
 - check_publisher_authorization: Verify that a publisher has authorized a specific agent URL.
-- get_agent_status: Read cached agent health, capabilities, and the latest comply verdict. For a live retest, use evaluate_agent_quality.
+- get_agent_status: Read cached agent health, capabilities, and the latest comply verdict. For a live retest, route to agent_quality.
+- validate_agent: Validate whether an agent is authorized for a publisher domain from its adagents.json declaration.`,
+  },
+  {
+    selectedToolSets: ['agent_quality'],
+    text: `### Agent quality and behavior testing
+- evaluate_agent_quality: Run the live comply evaluation and return structured coaching.
 - test_rfp_response: Ask for publisher_response before calling; it is the highest-value comparison input.
 - test_io_execution: Set execute=true only when the user wants to submit the generated create_media_buy request.`,
   },
   {
-    selectedToolSets: ['agent_validation'],
+    selectedToolSets: ['agent_authentication'],
+    text: `### Agent authentication and signing
+- diagnose_agent_auth: Diagnose public OAuth protected-resource and authorization-server metadata. It does not test a specific private token.
+- grade_agent_signing: Grade the public RFC 9421 request-signing verifier with the safe-default test vectors.`,
+  },
+  {
+    selectedToolSets: ['agent_end_to_end'],
+    text: `### End-to-end agent diagnosis
+Use this composite only when one long request explicitly needs registry configuration, public OAuth or request-signing diagnosis, and live RFP or IO behavior. It keeps all three diagnostic stages available without expanding the direct router's two-domain cap.
+
+- Start with registry checks (validate_adagents, resolve_brand, check_publisher_authorization, get_agent_status, validate_agent).
+- Then diagnose public authentication (diagnose_agent_auth or grade_agent_signing).
+- Finally test live buyer behavior (evaluate_agent_quality, test_rfp_response, or test_io_execution). Set execute=true only when the user wants to submit the generated create_media_buy request.`,
+  },
+  {
+    selectedToolSets: ['agent_quality'],
     requiredToolNames: [
       'recommend_storyboards',
       'get_storyboard_detail',
@@ -333,7 +354,7 @@ Use check_property_list to audit the supplied domains and surface its report_url
 - dispute_catalog_entry: File a correction request against a catalog entry. Use the identifier-link dispute path for medium or weak links; do not mutate publisher-controlled declarations directly.`,
   },
   {
-    selectedToolSets: ['knowledge', 'agent_validation', 'agent_conformance', 'adcp_operations'],
+    selectedToolSets: ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance', 'adcp_operations'],
     text: `### Building with AdCP
 When someone wants to build an agent, first clarify whether it is a buyer agent (a client that calls sellers) or a seller agent (an MCP server exposing inventory).
 
