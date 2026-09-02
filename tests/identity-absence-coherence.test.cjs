@@ -85,10 +85,42 @@ test("identity-absent products cannot advertise identifier-backed frequency-cap 
     true,
     JSON.stringify(validateCanonical.errors)
   );
+  assert.equal(
+    validateCanonical({
+      product_id: "place_based_modeled",
+      name: "Place-based modeled inventory",
+      identity: completeProduct.identity,
+      overlay_support: { frequency_cap: true },
+    }),
+    false,
+    "list_products cannot advertise a frequency cap that the product cannot enforce"
+  );
 });
 
-test("frequency-only delivery remains unit-bearing", async () => {
+function identityAbsenceDeliveryCoherent(product, metrics) {
+  if (product.identity?.persistent_identifier !== false) return true;
+
+  const reportsReachOrFrequency =
+    Object.hasOwn(metrics, "reach") || Object.hasOwn(metrics, "frequency");
+  if (Object.hasOwn(metrics, "frequency") && !Object.hasOwn(metrics, "reach_unit")) {
+    return false;
+  }
+  if (!Object.hasOwn(metrics, "reach_unit")) return true;
+  if (!["individuals", "households", "custom"].includes(metrics.reach_unit)) {
+    return false;
+  }
+  if (metrics.reach_unit !== "custom" || !reportsReachOrFrequency) return true;
+  return typeof product.identity.reach_methodology === "string" &&
+    product.identity.reach_methodology.trim().length > 0;
+}
+
+test("identity-absence delivery invariant keeps frequency-only rows unit-bearing", async () => {
   const validate = await compileSchema("/schemas/core/delivery-metrics.json");
+  const storyboard = YAML.parse(fs.readFileSync(SALES_DOOH, "utf8"));
+  const product = storyboard.fixtures.products[0];
+  const constraint = readJson("core/product-identity.json")[
+    "x-adcp-validation"
+  ].verifier_constraints.identity_absence_delivery;
 
   assert.equal(
     validate({ frequency: 2.5, reach_unit: "custom" }),
@@ -97,8 +129,42 @@ test("frequency-only delivery remains unit-bearing", async () => {
   );
   assert.equal(
     validate({ frequency: 2.5 }),
+    true,
+    "stable delivery metrics retain the existing frequency-only wire shape"
+  );
+  assert.match(constraint.frequency_requires_reach_unit, /frequency-only row/);
+  assert.deepEqual(constraint.permitted_reach_units, [
+    "individuals",
+    "households",
+    "custom",
+  ]);
+  assert.equal(
+    identityAbsenceDeliveryCoherent(product, { frequency: 2.5 }),
     false,
-    "frequency needs a reach_unit even when reach is absent"
+    "identity-absent frequency-only rows need a reach_unit"
+  );
+  assert.equal(
+    identityAbsenceDeliveryCoherent(product, {
+      frequency: 2.5,
+      reach_unit: "custom",
+    }),
+    true
+  );
+  assert.equal(
+    identityAbsenceDeliveryCoherent(product, {
+      frequency: 2.5,
+      reach_unit: "devices",
+    }),
+    false,
+    "identity-absent products cannot label delivery with device reach"
+  );
+  assert.equal(
+    identityAbsenceDeliveryCoherent(
+      { identity: { persistent_identifier: false } },
+      { frequency: 2.5, reach_unit: "custom" }
+    ),
+    false,
+    "custom frequency reporting needs a disclosed methodology"
   );
 });
 
@@ -146,10 +212,17 @@ test("sales-dooh exercises discovery, cap rejection, valid buy, and identity-saf
     "packages[0].targeting_overlay.frequency_cap"
   );
 
-  for (const path of [
-    "media_buy_deliveries[0].totals.reach_unit",
-    "media_buy_deliveries[0].by_package[0].reach_unit",
-  ]) {
+  const totalsFrequency = delivery.validations.find(
+    (candidate) => candidate.path === "media_buy_deliveries[0].totals.frequency"
+  );
+  assert.equal(totalsFrequency.value, 2.5);
+  const totalsReachUnit = delivery.validations.find(
+    (candidate) => candidate.path === "media_buy_deliveries[0].totals.reach_unit"
+  );
+  assert.equal(totalsReachUnit.check, "field_value");
+  assert.equal(totalsReachUnit.value, "custom");
+
+  for (const path of ["media_buy_deliveries[0].by_package[0].reach_unit"]) {
     const validation = delivery.validations.find(
       (candidate) => candidate.path === path
     );

@@ -136,11 +136,14 @@ accepts and ignores the field. This uses the product's existing
 
 Delivery for such a product MUST NOT report `reach_unit` as `devices`,
 `accounts`, or `cookies`. `individuals` and `households` remain valid for
-panel-based or place-based modeled measurement. If either `reach` or
-`frequency` is reported with `reach_unit: "custom"`, including a
-frequency-only report, the discovered product MUST include a non-empty
-`identity.reach_methodology` describing that unit. Frequency always carries a
-`reach_unit`, even when the same delivery row omits `reach`.
+panel-based or place-based modeled measurement. For an identity-absence
+product, a delivery row that reports `frequency` MUST also report
+`reach_unit`, even when that row omits `reach`. If either `reach` or
+`frequency` is reported with `reach_unit: "custom"`, the discovered product
+MUST include a non-empty `identity.reach_methodology` describing that unit.
+This product-to-delivery conformance invariant applies only when the product
+has made the experimental identity-absence declaration; it does not tighten
+the stable shared delivery-metrics payload for legacy products.
 
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 

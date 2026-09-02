@@ -128,7 +128,9 @@ Products without persistent identifiers do not advertise package
 `frequency_cap` support and reject a capped purchase rather than accepting it
 without enforcement. Their delivery may still report modeled people or
 households; custom reach units disclose their methodology, including on a
-frequency-only report. Sellers opt in with
+frequency-only report, whose row also carries its reach unit. This invariant
+applies only to products that make the experimental identity declaration, so
+existing delivery-metrics payloads remain unchanged. Sellers opt in with
 `media_buy.product_identity` in `experimental_features`.
 
 ### Targeting that survives discovery and execution

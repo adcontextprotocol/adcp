@@ -996,6 +996,10 @@
           "minimum": 0,
           "description": "Average frequency per reach unit to inject. Used by simulate_delivery. When supplied alongside reach, sellers MUST surface this value at `totals.frequency`. The measurement window for this frequency value is declared in `reach_window` when also present."
         },
+        "reach_unit": {
+          "$ref": "/schemas/enums/reach-unit.json",
+          "description": "Unit for an injected reach or frequency value. Used by simulate_delivery. When supplied with reach or frequency, sellers MUST surface it on the corresponding delivery row."
+        },
         "reach_window": {
           "type": "object",
           "description": "Measurement window semantics to attach to the simulated reach and frequency values. Used by simulate_delivery. When present, sellers MUST populate `reach_window` on the delivery row so buyers can determine the window semantics (cumulative vs. period vs. rolling). Omitting this param produces a row with no `reach_window` — valid per schema but sum-unsafe. Mirrors the `reach_window` shape in delivery-metrics.json.",

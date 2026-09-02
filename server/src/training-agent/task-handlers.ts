@@ -15093,7 +15093,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // bind reach measurement to the unit (households vs cookies are not
   // comparable). When goals omitted the unit, fall back to the existing
   // channel-derived unit (totalReachUnit) computed above.
-  let derivedReachUnit: string | undefined = totalReachUnit !== 'mixed' ? totalReachUnit : undefined;
+  let derivedReachUnit: string | undefined = simDelivery?.reachUnit
+    ?? (totalReachUnit !== 'mixed' ? totalReachUnit : undefined);
   if (!derivedReachUnit && hasReachGoal) {
     for (const pkg of mb.packages) {
       const goal = pkg.optimizationGoals?.find(g => g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string');
@@ -15130,7 +15131,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   )
     ? {
       ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
-      ...(simDelivery.reach !== undefined && derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
+      ...(derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
       ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
       ...(defaultReachWindow ? { reach_window: defaultReachWindow } : {}),

@@ -44,6 +44,10 @@
     "signal_targeting_allowed": { "type": "boolean" },
     "signal_targeting_rules": { "$ref": "/schemas/core/signal-targeting-rules.json" },
     "demographic_targeting": { "$ref": "/schemas/core/demographic-targeting-capability.json" },
+    "overlay_support": {
+      "$ref": "/schemas/core/targeting-overlay-support.json",
+      "description": "Binding product-scoped targeting dimensions the buyer may set independently on a package after discovery."
+    },
     "identity": {
       "$ref": "/schemas/core/product-identity.json",
       "x-status": "experimental",
@@ -92,5 +96,28 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["product_id", "name"],
+  "allOf": [
+    {
+      "description": "A compact product that declares identity absence cannot promise identifier-backed frequency-cap execution.",
+      "if": {
+        "properties": {
+          "identity": {
+            "properties": {
+              "persistent_identifier": { "const": false }
+            },
+            "required": ["persistent_identifier"]
+          }
+        },
+        "required": ["identity"]
+      },
+      "then": {
+        "properties": {
+          "overlay_support": {
+            "not": { "required": ["frequency_cap"] }
+          }
+        }
+      }
+    }
+  ],
   "additionalProperties": false
 }

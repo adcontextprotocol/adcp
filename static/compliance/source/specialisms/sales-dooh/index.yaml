@@ -560,7 +560,8 @@ phases:
         stateful: true
         expected: |
           Acknowledge the exact play count and screen-activity metrics injected
-          for this sandbox media buy.
+          for this sandbox media buy, plus the frequency-only custom reach unit
+          whose methodology was disclosed during product discovery.
         sample_request:
           account:
             brand:
@@ -571,6 +572,8 @@ phases:
           params:
             media_buy_id: "$context.media_buy_id"
             plays: 125
+            frequency: 2.5
+            reach_unit: "custom"
             dooh_metrics:
               loop_plays: 125
               screens_used: 18
@@ -587,6 +590,14 @@ phases:
             path: "simulated.plays"
             value: 125
             description: "Controller acknowledges the injected play count"
+          - check: field_value
+            path: "simulated.frequency"
+            value: 2.5
+            description: "Controller acknowledges the frequency-only report"
+          - check: field_value
+            path: "simulated.reach_unit"
+            value: "custom"
+            description: "Controller acknowledges the disclosed custom reach unit"
           - check: field_value
             path: "simulated.dooh_metrics.loop_plays"
             value: 125
@@ -672,10 +683,14 @@ phases:
             path: "media_buy_deliveries[0].totals.dooh_metrics.sov_achieved"
             value: 0.25
             description: "Buy totals reproduce duration-weighted share of voice for the unequal-segment loop"
-          - check: field_value_or_absent
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.frequency"
+            value: 2.5
+            description: "Identity-absent DOOH delivery reports the injected frequency-only value"
+          - check: field_value
             path: "media_buy_deliveries[0].totals.reach_unit"
-            allowed_values: ["individuals", "households", "custom"]
-            description: "Identity-absent DOOH delivery never labels reach as devices, accounts, or cookies"
+            value: "custom"
+            description: "Frequency-only DOOH delivery carries its disclosed custom reach unit"
           - check: field_value_or_absent
             path: "media_buy_deliveries[0].by_package[0].reach_unit"
             allowed_values: ["individuals", "households", "custom"]
