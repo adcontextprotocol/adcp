@@ -26,8 +26,11 @@ import {
   executeTrainingAgentTool,
   handleGetAdcpCapabilities,
   handleBuildCreative,
+  handleCreateMediaBuy,
+  handleGetProducts,
   handleListTransformers,
   handleControlMediaBuy,
+  handleUpdateMediaBuy,
   handleAcceptProposal,
   handleListCreatives,
   canonicalParamsSatisfied,
@@ -18548,6 +18551,236 @@ describe('proposal lifecycle', () => {
       expect(concurrentPurchase.success, concurrentPurchase.error).toBe(true);
       expect(concurrentPurchase.data).toMatchObject({ status: 'completed' });
     }
+  });
+
+  it('enforces product-scoped daypart timezone support across discovery, create, and update', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'daypart_timezone_training_product';
+    const legacyProductId = 'daypart_timezone_legacy_product';
+    const pricingOptionId = 'daypart_timezone_cpm';
+
+    for (const [seededProductId, daypartSupport] of [
+      [
+        productId,
+        {
+          timezone_modes: ['inventory_local', 'iana'],
+          iana_timezones: ['America/New_York', 'CET'],
+        },
+      ],
+      [legacyProductId, true],
+    ] as const) {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: seededProductId,
+          fixture: {
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            allowed_actions: [{ action: 'update_targeting', modes: ['self_serve'] }],
+            overlay_support: { daypart_targets: daypartSupport },
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+    }
+
+    const seededPricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 8 },
+      },
+    });
+    expect(seededPricing.result.success).toBe(true);
+
+    const supportedRequirement = await runWithSessionContext(() => handleGetProducts({
+      account,
+      buying_mode: 'brief',
+      brief: 'Daypart scheduling',
+      product_ids: [productId],
+      required_overlay_support: {
+        daypart_targets: {
+          timezone_modes: ['iana'],
+          iana_timezones: ['America/New_York'],
+        },
+      },
+    }, DEFAULT_CTX));
+    expect(supportedRequirement).not.toHaveProperty('errors');
+    expect((supportedRequirement as { products: unknown[] }).products).toHaveLength(1);
+
+    for (const invalidDiscovery of [
+      {
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['monday'], start_hour: 9, end_hour: 11, timezone: 'user_timezone',
+          }],
+        },
+        expectedField: 'targeting_overlay.daypart_targets[0].timezone',
+      },
+      {
+        required_overlay_support: {
+          daypart_targets: {
+            timezone_modes: ['iana'],
+            iana_timezones: ['Not/A_Timezone'],
+          },
+        },
+        expectedField: 'required_overlay_support.daypart_targets.iana_timezones[0]',
+      },
+    ]) {
+      const { expectedField, ...criteria } = invalidDiscovery;
+      const rejected = await runWithSessionContext(() => handleGetProducts({
+        account,
+        buying_mode: 'brief',
+        brief: 'Daypart scheduling',
+        product_ids: [productId],
+        ...criteria,
+      }, DEFAULT_CTX));
+      expect(rejected).toMatchObject({
+        errors: [{ code: 'INVALID_REQUEST', field: expectedField }],
+      });
+    }
+
+    for (const criteria of [
+      {
+        product_ids: [productId],
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['monday'], start_hour: 9, end_hour: 11, timezone: 'America/Los_Angeles',
+          }],
+        },
+      },
+      {
+        product_ids: [productId],
+        required_overlay_support: {
+          daypart_targets: {
+            timezone_modes: ['iana'],
+            iana_timezones: ['America/Los_Angeles'],
+          },
+        },
+      },
+      {
+        product_ids: [legacyProductId],
+        required_overlay_support: {
+          daypart_targets: { timezone_modes: ['iana'] },
+        },
+      },
+    ]) {
+      const excluded = await runWithSessionContext(() => handleGetProducts({
+        account,
+        buying_mode: 'brief',
+        brief: 'Daypart scheduling',
+        ...criteria,
+      }, DEFAULT_CTX));
+      expect(excluded).not.toHaveProperty('errors');
+      expect((excluded as { products: unknown[] }).products).toEqual([]);
+    }
+
+    const baseCreate = {
+      account,
+      start_time: '2027-01-01T00:00:00Z',
+      end_time: '2027-01-31T00:00:00Z',
+    };
+    const invalidZone = await runWithSessionContext(() => handleCreateMediaBuy({
+      ...baseCreate,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['monday'], start_hour: 9, end_hour: 11, timezone: 'user_timezone',
+          }],
+        },
+      }],
+    }, DEFAULT_CTX));
+    expect(invalidZone).toMatchObject({
+      errors: [{
+        code: 'INVALID_REQUEST',
+        field: 'packages[0].targeting_overlay.daypart_targets[0].timezone',
+      }],
+    });
+
+    const unsupportedZone = await runWithSessionContext(() => handleCreateMediaBuy({
+      ...baseCreate,
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['monday'], start_hour: 9, end_hour: 11, timezone: 'America/Los_Angeles',
+          }],
+        },
+      }],
+    }, DEFAULT_CTX));
+    expect(unsupportedZone).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'packages[0].targeting_overlay.daypart_targets',
+      }],
+    });
+
+    const mixedClocks = [
+      { days: ['monday'], start_hour: 6, end_hour: 10 },
+      { days: ['tuesday'], start_hour: 9, end_hour: 11, timezone: 'America/New_York' },
+    ];
+    const created = await runWithSessionContext(async () => {
+      const result = await handleCreateMediaBuy({
+        ...baseCreate,
+        packages: [{
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+          targeting_overlay: { daypart_targets: mixedClocks },
+        }],
+      }, DEFAULT_CTX);
+      await flushDirtySessions();
+      return result;
+    });
+    expect(created).not.toHaveProperty('errors');
+    expect(created).toMatchObject({
+      media_buy_id: expect.any(String),
+      packages: [{ targeting_overlay: { daypart_targets: mixedClocks } }],
+    });
+
+    const packageId = (created.packages as Array<{ package_id: string }>)[0]!.package_id;
+    const unsupportedUpdate = await runWithSessionContext(() => handleUpdateMediaBuy({
+      account,
+      media_buy_id: created.media_buy_id,
+      packages: [{
+        package_id: packageId,
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['wednesday'], start_hour: 9, end_hour: 11, timezone: 'America/Los_Angeles',
+          }],
+        },
+      }],
+    }, DEFAULT_CTX));
+    expect(unsupportedUpdate).toMatchObject({
+      errors: [{
+        code: 'UNSUPPORTED_FEATURE',
+        field: 'packages[0].targeting_overlay.daypart_targets',
+      }],
+    });
+
+    const supportedUpdate = await runWithSessionContext(() => handleUpdateMediaBuy({
+      account,
+      media_buy_id: created.media_buy_id,
+      packages: [{
+        package_id: packageId,
+        targeting_overlay: {
+          daypart_targets: [{
+            days: ['wednesday'], start_hour: 9, end_hour: 11, timezone: 'CET',
+          }],
+        },
+      }],
+    }, DEFAULT_CTX));
+    expect(supportedUpdate).not.toHaveProperty('errors');
   });
 
   it('resolves 3.2 discovery targeting through configured-product purchase', async () => {

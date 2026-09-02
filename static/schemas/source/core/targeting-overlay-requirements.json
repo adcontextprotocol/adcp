@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-requirements.json",
   "title": "Targeting Overlay Requirements",
-  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
+  "description": "Buyer minimum requirements for targeting dimensions that will be selected on packages later. This request shape deliberately excludes seller limits such as max_values_per_package and max_packages. Matching is capability containment: where a field permits a boolean form, a requirement value of true matches product support true or any valid positive support object, and product support true satisfies every protocol-valid structured requirement except daypart_targets, where true promises inventory_local only. Otherwise, structured product support must contain the structured requirement. For geo_regions and geo_regions_exclude, every requested country must exist; requested all_values requires supported all_values; and requested values must be a subset of supported values unless support declares all_values. For geo_places and geo_places_exclude, every requested system and country key must exist and each requested place-type and system-version array must be a subset of the corresponding product array. Include and exclude fields match independently. Every valid structured requirement or support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Object fields the buyer did not request do not participate. Missing or unknown required fields do not match. Numeric seller limits are disclosed only in Product.overlay_support and never participate in matching.",
   "type": "object",
   "definitions": {
     "required": { "type": "boolean", "const": true },
@@ -57,6 +57,54 @@
             }
           },
           "required": ["families"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "daypartRequirement": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/required"
+        },
+        {
+          "type": "object",
+          "description": "Require later package-level daypart selection using each listed timezone mode. Structured product support must contain every requested mode. For backward compatibility, daypart_targets support true satisfies inventory_local requirements only and does not satisfy requirements for iana.",
+          "properties": {
+            "timezone_modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["inventory_local", "iana"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "iana_timezones": {
+              "type": "array",
+              "description": "Exact concrete IANA timezone identifiers that must remain selectable after discovery. Valid only when timezone_modes includes iana.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "required": ["timezone_modes"],
+          "allOf": [
+            {
+              "if": { "required": ["iana_timezones"] },
+              "then": {
+                "properties": {
+                  "timezone_modes": {
+                    "contains": { "const": "iana" }
+                  }
+                }
+              }
+            }
+          ],
           "additionalProperties": false
         }
       ]
@@ -131,7 +179,7 @@
         }
       ]
     },
-    "daypart_targets": { "$ref": "#/definitions/required" },
+    "daypart_targets": { "$ref": "#/definitions/daypartRequirement" },
     "audience_include": { "$ref": "#/definitions/required" },
     "audience_exclude": { "$ref": "#/definitions/required" },
     "signal_targeting_groups": { "$ref": "#/definitions/required" },

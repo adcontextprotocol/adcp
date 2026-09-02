@@ -63,7 +63,7 @@
     },
     "daypart_targets": {
       "type": "array",
-      "description": "Recommended time windows for this allocation in spot-plan proposals.",
+      "description": "Recommended time windows for this allocation in spot-plan proposals. Each entry's timezone defaults to inventory_local when omitted, and entries MAY use different clocks.",
       "items": {
         "$ref": "/schemas/core/daypart-target.json"
       },

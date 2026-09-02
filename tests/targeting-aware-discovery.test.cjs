@@ -307,6 +307,111 @@ test("device-platform exclusion is typed and independently discoverable", async 
   assert.match(targetingSchema, /MUST reject/);
 });
 
+test("daypart targeting binds delivery clocks and product-scoped timezone modes", async () => {
+  const [validateDaypart, validateTargeting, validateRequirements, validateSupport] =
+    await Promise.all([
+      compile("/schemas/core/daypart-target.json"),
+      compile("/schemas/core/targeting.json"),
+      compile("/schemas/core/targeting-overlay-requirements.json"),
+      compile("/schemas/core/targeting-overlay-support.json"),
+    ]);
+
+  const base = {
+    days: ["monday", "tuesday"],
+    start_hour: 9,
+    end_hour: 11,
+  };
+  for (const timezone of [
+    undefined,
+    "inventory_local",
+    "UTC",
+    "CET",
+    "EST",
+    "GMT",
+    "MST",
+    "PST8PDT",
+    "America/New_York",
+    "Etc/GMT+5",
+  ]) {
+    const daypart = timezone === undefined ? base : { ...base, timezone };
+    assert.equal(validateDaypart(daypart), true, errors(validateDaypart));
+  }
+  for (const timezone of ["", "/America", "America/", "America//New_York", "New York", "America/New York"]) {
+    assert.equal(
+      validateDaypart({ ...base, timezone }),
+      false,
+      `${timezone} is not an inventory-local or IANA-shaped timezone`
+    );
+  }
+
+  assert.equal(
+    validateTargeting({ daypart_targets: [{ ...base, timezone: "America/New_York" }] }),
+    true,
+    errors(validateTargeting)
+  );
+  for (const declaration of [
+    { daypart_targets: true },
+    { daypart_targets: { timezone_modes: ["inventory_local"] } },
+    {
+      daypart_targets: {
+        timezone_modes: ["inventory_local", "iana"],
+        iana_timezones: true,
+      },
+    },
+    {
+      daypart_targets: {
+        timezone_modes: ["iana"],
+        iana_timezones: ["America/New_York", "CET"],
+      },
+    },
+  ]) {
+    assert.equal(validateSupport(declaration), true, errors(validateSupport));
+  }
+  assert.equal(
+    validateRequirements({
+      daypart_targets: {
+        timezone_modes: ["iana"],
+        iana_timezones: ["America/New_York"],
+      },
+    }),
+    true,
+    errors(validateRequirements)
+  );
+  for (const declaration of [
+    { daypart_targets: {} },
+    { daypart_targets: { timezone_modes: [] } },
+    { daypart_targets: { timezone_modes: ["viewer_local"] } },
+  ]) {
+    assert.equal(validateSupport(declaration), false);
+    assert.equal(validateRequirements(declaration), false);
+  }
+  for (const declaration of [
+    { daypart_targets: { timezone_modes: ["iana"] } },
+    {
+      daypart_targets: {
+        timezone_modes: ["inventory_local"],
+        iana_timezones: ["America/New_York"],
+      },
+    },
+  ]) {
+    assert.equal(validateSupport(declaration), false);
+  }
+
+  const daypartSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "daypart-target.json"), "utf8")
+  );
+  assert.equal(daypartSchema.properties.timezone.default, "inventory_local");
+  assert.equal(
+    validateDaypart({ ...base, timezone: "user_timezone" }),
+    true,
+    "schema only constrains IANA identifier shape; runtime verifies TZDB membership"
+  );
+  assert.match(
+    daypartSchema.properties.timezone["x-adcp-validation"].iana_timezone,
+    /IANA_TZDB/
+  );
+});
+
 test("browser-family inclusion and exclusion are typed and independently discoverable", async () => {
   const [validateTargeting, validateRequirements, validateSupport] =
     await Promise.all([

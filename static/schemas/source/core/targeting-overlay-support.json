@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/targeting-overlay-support.json",
   "title": "Targeting Overlay Support",
-  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
+  "description": "Product-scoped package targeting dimensions that may be supplied or changed after discovery. This is the seller response shape and may disclose seller limits such as max_values_per_package and max_packages. Product.overlay_support is the binding selectable-targeting contract: presence means the seller can apply protocol-valid values within the declared systems, countries, values, types, versions, and limits. Inherent product coverage alone does not satisfy a future-support requirement. Support does not guarantee inventory or a value-specific forecast before values are supplied; fixed prices and floors remain binding for supported selections. geo_regions and geo_regions_exclude are independent: structured support either exhaustively declares every value active in the seller's support snapshot for a country or lists the exact finite selectable subset. Buyer minimums use targeting-overlay-requirements.json. A requirement value of true matches true or any valid support object; an object requirement matches true or a containing support object. The daypart_targets boolean is the backward-compatible exception: true promises inventory_local only, and structured support opts into IANA zones. Every valid structured support object represents a positive capability; empty, extension-only, and false-only objects are invalid. Unrequested object fields and numeric seller limits do not participate in matching.",
   "type": "object",
   "definitions": {
     "supported": {
@@ -167,6 +167,73 @@
           "additionalProperties": false
         }
       ]
+    },
+    "daypartSupport": {
+      "anyOf": [
+        {
+          "type": "boolean",
+          "const": true,
+          "description": "Backward-compatible declaration of inventory_local daypart support. Use the structured form to opt in to concrete IANA timezone execution."
+        },
+        {
+          "type": "object",
+          "description": "Binding timezone modes this product can apply to package-level daypart targeting. 'inventory_local' covers the default seller-assigned local clock for each inventory unit. 'iana' opts the product into concrete IANA timezone execution and requires iana_timezones to declare whether every valid identifier or an exact subset is supported.",
+          "properties": {
+            "timezone_modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["inventory_local", "iana"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "iana_timezones": {
+              "description": "Concrete IANA timezone identifiers accepted by this product. true means every identifier valid in the seller's supported IANA TZDB; an array is the exact supported subset. Required when timezone_modes includes iana and forbidden otherwise.",
+              "anyOf": [
+                {
+                  "type": "boolean",
+                  "const": true
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255,
+                    "pattern": "^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$"
+                  },
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              ]
+            },
+            "ext": {
+              "$ref": "/schemas/core/ext.json"
+            }
+          },
+          "required": ["timezone_modes"],
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "timezone_modes": {
+                    "contains": { "const": "iana" }
+                  }
+                },
+                "required": ["timezone_modes"]
+              },
+              "then": {
+                "required": ["iana_timezones"]
+              },
+              "else": {
+                "not": { "required": ["iana_timezones"] }
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      ]
     }
   },
   "properties": {
@@ -232,7 +299,7 @@
         }
       ]
     },
-    "daypart_targets": { "$ref": "#/definitions/supported" },
+    "daypart_targets": { "$ref": "#/definitions/daypartSupport" },
     "audience_include": { "$ref": "#/definitions/supported" },
     "audience_exclude": { "$ref": "#/definitions/supported" },
     "signal_targeting_groups": { "$ref": "#/definitions/supported" },
