@@ -288,13 +288,8 @@ export const ROUTING_RULES = {
         "join group",
         "group post",
       ],
-      tools: [
-        "list_working_groups",
-        "join_working_group",
-        "get_my_working_groups",
-        "list_committee_documents",
-      ],
-      description: "Working-group, committee, and council participation",
+      tools: ["list_working_groups", "get_working_group"],
+      description: "Working-group, committee, and council participation (router policy only)",
     },
     find_help: {
       patterns: [
@@ -674,7 +669,11 @@ ${
 - Explicit AdCP schema fields, structure, or versioned schema documentation → ["knowledge", "schema_reference"]. This includes "Which AdCP field..." and "Where is the 3.2 schema documentation?" Validating JSON or comparing schema versions → ["schema_reference"]. If schema work is part of validating registry configuration, select exactly ["schema_reference", "agent_registry"] and add ["knowledge"] only when separate protocol documentation beyond the schema is requested. Example: "Inspect the schema fields and then validate my implementation against them" → ["schema_reference", "agent_registry"]
 - Explicit requests to search or recap Slack history/channel activity, community discussions, curated resources, recent industry news, supplied web pages, or Slack files → ["community_research"]. Do not add it merely because community opinion could supplement an authoritative answer
 - Questions about the current member's profile, company listing, logo, account, or brand-domain claim → ["member_profile"]
-- Working group membership or participation, committee documents, council participation, group posts, or saving a community resource → ["community_groups"]
+- Browsing working groups or councils, inspecting one group, reviewing the current member's memberships, or reading committee documents → ["community_group_discovery"]
+- Joining a public working group or requesting access to a private group → ["community_group_membership"]
+- Expressing, withdrawing, or reviewing the current member's future-council interest → ["council_interest"]
+- Creating a post in one of the current member's working groups, or saving/bookmarking a community resource → ["community_group_contribution"]
+- A single long request that explicitly spans at least three group workflows (discovery, membership, council interest, or contribution) → exactly ["community_group_full_participation"]. Use one or two narrow group domains for ordinary requests; genuine two-workflow requests remain under the global two-domain cap.
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
 - Researching or managing brand-registry entries, logos, canonical documents, or reciprocal brand.json assertions → ["brand_registry"], not ["directory"], ["agent_registry"], or ["property_catalog"]
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
@@ -693,7 +692,7 @@ ${
 - Placement assessment, testing out modules, or starting/continuing a specialist capstone or exam → ["certification_assessment"]
 - Reading a specific GitHub issue/PR, drafting a bug or feature request, or creating a confirmed issue → ["github"]. Protocol roadmap/RFC research → ["github", "knowledge"]. Do not add community research unless explicitly requested
 - Searching for an existing explanatory diagram/image, or a request that explicitly asks for a visual, figure, or diagram → ["illustrations"]. A text-only overview or detailed concept explanation is exactly ["knowledge"] even when a visual might be useful. Never use this set for an article/perspective cover; those always use ["publishing_author"]
-- Questions about tracked working-group documents → ["knowledge", "community_groups"]. Questions about the current member's company listing or brand profile → ["member_profile"]
+- Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
     ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
@@ -704,7 +703,7 @@ ${isAAOAdmin
 - Cancelling a recurring series or managing meeting topics or topic subscriptions → ["meeting_series_topics"]
 - A single long meeting request that explicitly spans scheduling, attendance, and recurring-series or topic administration → exactly ["meeting_full_administration"]. Use the narrow meeting domains for ordinary requests.
 - Requests that need two meeting workflows may select the applicable two meeting domains; never exceed the global two-domain cap.
-- When "working group" only identifies which meeting or agenda the user means, select the applicable meeting domain and do NOT add ["community_groups"]. Add ["community_groups"] only when the user is asking about working group membership, participation, group information, or documents.
+- When "working group" only identifies which meeting or agenda the user means, select the applicable meeting domain and do NOT add a community-group domain. Add the applicable narrow group domain only when the user is asking about group membership, participation, group information, or documents.
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]

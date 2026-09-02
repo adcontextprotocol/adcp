@@ -21,7 +21,11 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **community_research** — search_slack, get_channel_activity, search_resources, get_recent_news, fetch_url, read_slack_file
 - **schema_reference** — validate_json, get_schema, list_schemas, compare_schema_versions
 - **member_profile** — get_my_profile, update_my_profile, get_company_listing, update_company_listing, update_company_logo, request_brand_domain_challenge, verify_brand_domain_challenge
-- **community_groups** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, create_working_group_post, bookmark_resource, list_committee_documents
+- **community_group_discovery** — list_working_groups, get_working_group, get_my_working_groups, list_committee_documents
+- **community_group_membership** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation
+- **council_interest** — list_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests
+- **community_group_contribution** — get_my_working_groups, create_working_group_post, bookmark_resource
+- **community_group_full_participation** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, create_working_group_post, bookmark_resource, list_committee_documents
 - **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain
 - **brand_registry** — research_brand, resolve_brand, save_brand, list_brands, list_missing_brands, upload_brand_logo, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification
 - **agent_registry** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, validate_agent
