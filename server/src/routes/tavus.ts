@@ -766,16 +766,22 @@ export function createTavusRouter(options?: {
         // fall through to the mutable global baseline in that case.
         if (voiceUserId) {
           let globalToolNames: readonly string[] | undefined;
+          let forceSafeFallback = false;
           try {
             globalToolNames = activeVoiceClient.getRegisteredTools?.();
           } catch (globalToolError) {
             logger.warn({ globalToolError, threadId }, 'Tavus: Could not inspect global tools for safe fallback');
+            // Request-scoped assembly and global pairing inspection both
+            // failed. Keep a live router out of this uncertain capability
+            // state so the authenticated response stays read-only.
+            forceSafeFallback = true;
           }
           pendingVoiceToolSelection = {
             memberContext: null,
             isAAOAdmin: false,
             requestTools: { tools: [], handlers: new Map() },
             globalToolNames,
+            forceSafeFallback,
           };
         }
       }

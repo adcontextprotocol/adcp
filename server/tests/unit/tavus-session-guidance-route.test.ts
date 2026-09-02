@@ -476,6 +476,7 @@ describe("Tavus session guidance route boundary", () => {
       });
 
     expect(response.status).toBe(200);
+    expect(router.route).not.toHaveBeenCalled();
     const [_message, _history, requestTools, options] = mocks.processMessageStream.mock.calls[0] as [
       string,
       unknown,
@@ -488,10 +489,22 @@ describe("Tavus session guidance route boundary", () => {
     expect([...requestTools.handlers.keys()]).not.toContain('create_payment_link');
   });
 
-  it('uses the safe stream fallback when authenticated voice capability assembly fails', async () => {
+  it('uses the safe stream fallback without routing when authenticated voice capability and global inspection both fail', async () => {
     mocks.getCommitteesLedByUser.mockRejectedValueOnce(new Error('working group database unavailable'));
+    const router = {
+      quickMatch: () => null,
+      route: vi.fn().mockResolvedValue({
+        action: 'respond' as const,
+        tool_sets: ['member_billing'],
+        confidence: 'high' as const,
+        reason: 'billing request',
+        decision_method: 'llm' as const,
+      }),
+    };
 
-    const response = await request(mountApp())
+    const response = await request(mountApp(router, () => {
+      throw new Error('global inspection failed');
+    }))
       .post('/api/addie/v1/chat/completions')
       .set('Authorization', 'Bearer test-llm-secret')
       .send({
@@ -502,6 +515,7 @@ describe("Tavus session guidance route boundary", () => {
       });
 
     expect(response.status).toBe(200);
+    expect(router.route).not.toHaveBeenCalled();
     const [_message, _history, requestTools, options] = mocks.processMessageStream.mock.calls[0] as [
       string,
       unknown,
