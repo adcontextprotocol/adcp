@@ -209,6 +209,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  COMPLIANCE_VERSION_RE,
   COMMAND_MAX_BUFFER_BYTES,
   missingPublishedVersions,
   packagedComplianceVersions,
