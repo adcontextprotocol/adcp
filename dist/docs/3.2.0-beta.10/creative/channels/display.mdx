@@ -1,0 +1,151 @@
+---
+title: Display Ads
+description: "Canonical image, HTML5, and display-tag creative contracts for AdCP 3.2."
+"og:title": "AdCP — Display Ads"
+---
+
+Display inventory uses three canonical kinds: `image`, `html5`, and `display_tag`. Size, file, interaction, and slot constraints live in `params`; a size-specific named format ID is not needed.
+
+## Static image
+
+```json
+{
+  "format_option_id": "homepage_image_300x250",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "max_file_size_kb": 200,
+    "image_formats": ["jpg", "png", "webp"],
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+      { "asset_group_id": "landing_page_url", "asset_type": "url", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "image",
+  "format_option_ref": { "scope": "product", "format_option_id": "homepage_image_300x250" },
+  "assets": {
+    "image_main": {
+      "asset_type": "image",
+      "url": "https://cdn.acmeoutdoor.example/trail-pro-300x250.png",
+      "width": 300,
+      "height": 250,
+      "alt_text": "Trail Pro boot on a mountain path"
+    },
+    "landing_page_url": { "asset_type": "url", "url": "https://acmeoutdoor.example/trail-pro" }
+  }
+}
+```
+
+## Multi-size image
+
+Use `sizes[]` when one creative contract accepts a closed set of sizes:
+
+```json
+{
+  "format_kind": "image",
+  "params": {
+    "sizes": [{ "w": 300, "h": 250 }, { "w": 728, "h": 90 }, { "w": 320, "h": 50 }],
+    "slots": [{ "asset_group_id": "image_main", "asset_type": "image", "required": true }]
+  }
+}
+```
+
+Use min/max width and height for a genuinely responsive envelope. Exact-size, multi-size, and responsive modes are mutually exclusive.
+
+## HTML5 and third-party tags
+
+`html5` describes a buyer-supplied zip bundle that the seller hosts. `display_tag` describes a third-party-served representation. Keep them separate because validation, hosting, security, and measurement differ. Inline third-party markup is never an `html5` bundle.
+
+Display tags have three delivery types:
+
+| Delivery type | Asset contract |
+|---|---|
+| `tag_url` | One `url` asset with `url_type: "ad_request"`, or a `display_tag` asset with `delivery_type: "tag_url"` |
+| `inline_markup` | One `display_tag` asset with byte-preserved markup and its markup type |
+| `paired_redirect` | One `display_tag` asset containing both `ad_request_url` and `clickthrough_url` |
+
+The existing `tag_url` slot remains the backward-compatible default. A seller accepting inline or paired delivery publishes an explicit option with a `display_tag` slot.
+
+### Inline iframe/JavaScript
+
+```json
+{
+  "format_option_id": "inline_iframe_javascript_300x250",
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "supported_delivery_types": ["inline_markup"],
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "inline_iframe_javascript_300x250"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "inline_markup",
+      "markup_type": "iframe_javascript",
+      "markup": "<iframe src=\"https://ads.acme-example.com/render?cb=%%CACHEBUSTER%%\"></iframe>"
+    }
+  }
+}
+```
+
+### Internal Redirect
+
+A two-URL internal redirect is represented portably as `paired_redirect`; the canonical kind remains `display_tag`. The asset is atomic so its two URLs cannot be mixed across rows or revisions.
+
+```json
+{
+  "format_option_id": "acme_internal_redirect_300x250",
+  "format_kind": "display_tag",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "supported_delivery_types": ["paired_redirect"],
+    "slots": [
+      { "asset_group_id": "serving_tag", "asset_type": "display_tag", "required": true }
+    ]
+  }
+}
+```
+
+```json
+{
+  "format_kind": "display_tag",
+  "format_option_ref": {
+    "scope": "product",
+    "format_option_id": "acme_internal_redirect_300x250"
+  },
+  "assets": {
+    "serving_tag": {
+      "asset_type": "display_tag",
+      "delivery_type": "paired_redirect",
+      "ad_request_url": "https://ads.acme-example.com/ad?slot=42&cb=%%CACHEBUSTER%%",
+      "clickthrough_url": "https://click.acme-example.com/redirect?dest=%%DEST_URL_ESC%%"
+    }
+  }
+}
+```
+
+Both fields are required by schema. A half-present pair is invalid. Do not split the pair into independent URL slots.
+
+Buyers discover seller acceptance from `Product.format_options[]`. Creative agents that can build or validate these contracts advertise matching `creative.supported_formats[]` entries.
+
+See [Creative representation sets](/dist/docs/3.2.0-beta.10/creative/representation-sets), [Canonical formats](/dist/docs/3.2.0-beta.10/creative/canonical-formats), [Creative manifests](/dist/docs/3.2.0-beta.10/creative/creative-manifests), and [Universal macros](/dist/docs/3.2.0-beta.10/creative/universal-macros).
