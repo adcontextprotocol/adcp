@@ -24,7 +24,10 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **community_groups** — list_working_groups, get_working_group, join_working_group, request_working_group_invitation, get_my_working_groups, express_council_interest, withdraw_council_interest, get_my_council_interests, create_working_group_post, bookmark_resource, list_committee_documents
 - **directory** — search_members, request_introduction, get_my_search_analytics, list_members, get_member, list_agents, get_agent, list_publishers, lookup_domain
 - **brand_registry** — research_brand, resolve_brand, save_brand, list_brands, list_missing_brands, upload_brand_logo, publish_brand_canonical_document, add_to_brand_refs, check_mutual_assertion, notify_pending_verification
-- **agent_validation** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, test_adcp_agent, evaluate_agent_quality, grade_agent_signing, diagnose_agent_auth, compare_media_kit, test_rfp_response, test_io_execution, validate_agent
+- **agent_registry** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, validate_agent
+- **agent_quality** — evaluate_agent_quality, test_rfp_response, test_io_execution
+- **agent_authentication** — grade_agent_signing, diagnose_agent_auth
+- **agent_end_to_end** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, validate_agent, evaluate_agent_quality, test_rfp_response, test_io_execution, grade_agent_signing, diagnose_agent_auth
 - **property_catalog** — resolve_property, save_property, list_properties, list_missing_properties, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
@@ -67,7 +70,7 @@ resolve_escalation, list_escalations
 
 Conditionally registered (channel- or env-gated). Available when their preconditions are met.
 
-research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
+research_domain, diagnose_signin_block, list_invites_for_org, resend_invite, revoke_invite, add_member_to_org, create_committee, update_user_name, ban_entity, unban_entity, list_bans, get_person_memory, get_engagement_plan, get_outreach_health, parse_brand_properties, import_brand_properties, test_adcp_agent, compare_media_kit, recommend_storyboards, get_storyboard_detail, run_storyboard, run_storyboard_step, get_member_engagement, search_moltbook, get_moltbook_thread, post_to_moltbook, comment_on_moltbook, get_moltbook_stats, get_moltbook_feed, suggest_newsletter_content, check_portrait_status, offer_portrait_generation
 `;
 
 /** Explicit catalog names for runtime/inventory parity checks. */

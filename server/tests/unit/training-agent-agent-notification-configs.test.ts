@@ -136,6 +136,20 @@ describe('agent notification configuration', () => {
     expect(store.documents).toHaveLength(0);
   });
 
+  it('retains the expanded caller event set in deterministic order', async () => {
+    const store = memoryStore();
+    const result = await syncAgentNotificationConfigs(request([
+      notificationConfig({
+        event_types: ['principal.changed', 'capabilities.changed', 'principal.changed'],
+      }),
+    ]), context(store));
+
+    expect(result.notification_configs?.[0]?.event_types).toEqual([
+      'capabilities.changed',
+      'principal.changed',
+    ]);
+  });
+
   it('replaces, redacts, and clears a caller-owned subscriber set', async () => {
     const store = memoryStore();
     const syncContext = context(store);
@@ -179,6 +193,21 @@ describe('agent notification configuration', () => {
     const store = memoryStore();
     const result = await syncAgentNotificationConfigs(request([
       notificationConfig({ url }),
+    ]), context(store));
+
+    expect(result).toMatchObject({
+      action: 'failed',
+      notification_configs: [],
+      errors: [{ code: 'VALIDATION_ERROR' }],
+    });
+    expect(proveAgentWebhookControlMock).not.toHaveBeenCalled();
+    expect(store.put).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty event-type set before persistence', async () => {
+    const store = memoryStore();
+    const result = await syncAgentNotificationConfigs(request([
+      notificationConfig({ event_types: [] }),
     ]), context(store));
 
     expect(result).toMatchObject({

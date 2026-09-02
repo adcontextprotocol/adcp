@@ -415,6 +415,7 @@ export function buildSalesComplyConfig(
   return {
     inputSchema: SALES_COMPLY_INPUT_SCHEMA,
     seed: {
+      account: cast(seedAdapter('seed_account', storyboardCompat)),
       product: cast(seedAdapter('seed_product', storyboardCompat)),
       pricing_option: cast(seedAdapter('seed_pricing_option', storyboardCompat)),
       media_buy: cast(seedAdapter('seed_media_buy', storyboardCompat)),

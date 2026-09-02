@@ -158,13 +158,17 @@ function killProcessGroup(pid) {
 
 function linuxProcessGroupRssBytes(processGroupId) {
   let totalKb = 0;
-  for (const entry of readdirSync('/proc', { withFileTypes: true })) {
-    if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+  // Request names only. Asking readdir for Dirents makes Node lstat each
+  // volatile /proc/<pid> entry, and a process exiting during that scan can
+  // surface ENOENT before the per-entry race handling below gets a chance to
+  // ignore it.
+  for (const entry of readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
     try {
-      const stat = readFileSync(join('/proc', entry.name, 'stat'), 'utf8');
+      const stat = readFileSync(join('/proc', entry, 'stat'), 'utf8');
       const afterCommand = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
       if (Number(afterCommand[2]) !== processGroupId) continue;
-      const status = readFileSync(join('/proc', entry.name, 'status'), 'utf8');
+      const status = readFileSync(join('/proc', entry, 'status'), 'utf8');
       const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
       if (match) totalKb += Number(match[1]);
     } catch (error) {

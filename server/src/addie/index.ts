@@ -14,19 +14,6 @@ export {
   invalidateAddieRulesCache,
 } from './bolt-app.js';
 
-// Legacy exports for backward compatibility during migration
-// TODO: Remove these once all callers are updated to use Bolt
-export {
-  initializeAddie,
-  setAddieBotUserId,
-  isAddieReady,
-  handleAssistantThreadStarted,
-  handleAssistantMessage,
-  handleAppMention,
-  sendAccountLinkedMessage as sendAccountLinkedMessageLegacy,
-  invalidateAddieRulesCache as invalidateAddieRulesCacheLegacy,
-} from './handler.js';
-
 export { isSlackUserAAOAdmin, invalidateAdminStatusCache } from './mcp/admin-tools.js';
 
 export { invalidateMemberContextCache } from './member-context.js';

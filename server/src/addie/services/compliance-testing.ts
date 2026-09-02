@@ -710,6 +710,7 @@ function isRunnerApplicabilitySkip(step: {
 }, scenario?: unknown): boolean {
   switch (step.skip_reason) {
     case 'capability_unsupported':
+    case 'capability_prerequisite_unavailable':
       return true;
     case 'missing_test_kit_contract':
       return scenario === 'idempotency/rate_limit_replay_invariant' &&

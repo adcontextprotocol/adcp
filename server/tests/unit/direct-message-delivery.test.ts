@@ -10,7 +10,24 @@ vi.mock('../../src/logger.js', () => ({
   createLogger: vi.fn(() => log),
 }));
 
-import { deliverAndRecordDirectMessage } from '../../src/addie/direct-message-delivery.js';
+import {
+  deliverAndRecordDirectMessage,
+  prepareSlackDirectMessagePost,
+} from '../../src/addie/direct-message-delivery.js';
+
+describe('prepareSlackDirectMessagePost', () => {
+  it('preserves the thread binding while applying the shared Slack URL format', () => {
+    expect(prepareSlackDirectMessagePost({
+      channelId: 'D123',
+      threadTs: '123.456',
+      text: 'See https://fixture.test/checkpoint/1#evidence',
+    })).toEqual({
+      channel: 'D123',
+      thread_ts: '123.456',
+      text: 'See <https://fixture.test/checkpoint/1#evidence>',
+    });
+  });
+});
 
 function makeInput(overrides: { userMessageFlagged?: boolean; assistantFlagged?: boolean } = {}) {
   const postMessage = vi.fn();

@@ -923,7 +923,7 @@ export function buildShowsForProducts(products: Product[]): ShowResponse[] {
     const collections = (p as Product & { collections?: CollectionSelector[] }).collections;
     if (collections) {
       for (const selector of collections) {
-        selector.collection_ids.forEach((id: string) => referencedIds.add(id));
+        selector.collection_ids?.forEach((id: string) => referencedIds.add(id));
       }
     }
   }

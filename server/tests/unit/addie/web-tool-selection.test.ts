@@ -60,20 +60,14 @@ async function select(
 }
 
 describe('authenticated web Addie tool routing', () => {
-  it('selects bounded member tools with request-scoped prompt modules', async () => {
+  it('selects bounded member tools without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);
 
-    expect(selected.selectedToolSets).toEqual(['member_billing', 'knowledge']);
+    expect(selected.selectedToolSets).toEqual(['member_billing']);
     expect(selected.allowedToolNames).toContain('create_payment_link');
-    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual([
-      'search_docs',
-      'create_payment_link',
-    ]);
-    expect([...selected.requestTools.handlers.keys()]).toEqual([
-      'search_docs',
-      'create_payment_link',
-    ]);
+    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual(['create_payment_link']);
+    expect([...selected.requestTools.handlers.keys()]).toEqual(['create_payment_link']);
     expect(router.route).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'dm',
@@ -83,6 +77,20 @@ describe('authenticated web Addie tool routing', () => {
       }),
       { failureMode: 'throw' },
     );
+  });
+
+  it('preserves an explicit knowledge plus member-domain web plan', async () => {
+    const selected = await select(routerFor(['knowledge', 'member_billing']));
+
+    expect(selected.selectedToolSets).toEqual(['knowledge', 'member_billing']);
+    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual([
+      'search_docs',
+      'create_payment_link',
+    ]);
+    expect([...selected.requestTools.handlers.keys()]).toEqual([
+      'search_docs',
+      'create_payment_link',
+    ]);
   });
 
   it('allows an authorized admin domain but rejects it for a member', async () => {
@@ -224,9 +232,10 @@ describe('authenticated web Addie tool routing', () => {
 
   it('retains authenticated handlers that override a paired global definition', async () => {
     const localTools = tools.filter((tool) => tool.name === 'create_payment_link');
+    const authenticatedPaymentLinkHandler = async () => '{}';
     const localHandlers = new Map([
       ['search_docs', async () => '{"scope":"authenticated"}'],
-      ['create_payment_link', async () => '{}'],
+      ['create_payment_link', authenticatedPaymentLinkHandler],
     ]);
     const selected = await select(
       routerFor(['member_billing']),
@@ -235,12 +244,10 @@ describe('authenticated web Addie tool routing', () => {
       [...pairedGlobalToolNames, 'search_docs'],
     );
 
-    // The definition is paired in the global registry; the request-local
-    // handler shadows its anonymous-safe counterpart for authenticated users.
+    // The request-local definition and handler remain paired on the selected
+    // bounded member-billing route.
     expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual(['create_payment_link']);
-    expect([...selected.requestTools.handlers.keys()]).toEqual([
-      'search_docs',
-      'create_payment_link',
-    ]);
+    expect([...selected.requestTools.handlers.keys()]).toEqual(['create_payment_link']);
+    expect(selected.requestTools.handlers.get('create_payment_link')).toBe(authenticatedPaymentLinkHandler);
   });
 });

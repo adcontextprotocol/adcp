@@ -24,11 +24,18 @@ describe('fixed trace long-form incident evaluation', () => {
         markdownBoundary: true,
         jsonStreamParity: true,
         providerParity: true,
+        slackDeliveryIntegrity: true,
       },
     });
     expect(artifact.traceSuiteSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(artifact.fixtureSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(artifact.deliveries).toHaveLength(2);
+    expect(artifact.slackDelivery).toMatchObject({
+      postCount: 1,
+      persistedCount: 1,
+      postedTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      persistedTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
     for (const delivery of artifact.deliveries) {
       expect(delivery.json.outputLength).toBeGreaterThanOrEqual(9_500);
       expect(delivery.json.providerRequestSha256).toMatch(/^[a-f0-9]{64}$/);
