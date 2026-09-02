@@ -14,6 +14,32 @@ export type ActiveCertificationKind = 'learning' | 'assessment' | 'mixed';
 
 export const ADMIN_CHANNEL_WG_SLUG = 'aao-admin';
 
+/**
+ * The entire custom-tool surface for a bounded public app mention.
+ *
+ * This list is deliberately independent of replaySafety: that metadata is
+ * incomplete and describes retry behavior, not whether a result is suitable
+ * to disclose in a public Slack reply. Add a tool here only after reviewing
+ * both its handler and the visibility of every result it can return. Channel
+ * replies retain their established policy; this applies only to the new
+ * bounded app-mention response path.
+ */
+export const PUBLIC_MENTION_READ_ONLY_TOOL_NAMES = [
+  'web_search',
+  'search_docs', 'get_doc', 'search_repos',
+  'validate_json', 'get_schema', 'list_schemas', 'compare_schema_versions',
+  'list_publishers', 'lookup_domain',
+  'resolve_brand', 'list_brands',
+  'validate_adagents',
+  'list_properties', 'browse_catalog',
+  'ask_about_adcp_task', 'get_adcp_capabilities',
+  'list_perspectives',
+] as const;
+
+const PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET = new Set<string>(
+  PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
+);
+
 /** Tool sets required by server-owned channel configuration. */
 export const SYSTEM_CHANNEL_TOOL_SETS: Readonly<Record<SystemChannelRole, readonly string[]>> = {
   prospect: ['admin_prospects', 'outreach'],
@@ -159,7 +185,12 @@ export function selectBoundedRoutedToolSets(
     && respondPlan.tool_sets.length > 0
     && respondPlan.tool_sets.length <= MAX_DIRECT_ROUTED_TOOL_SET_COUNT
     && respondPlan.tool_sets.every((name) => typeof name === 'string' && validToolSets.has(name));
-  let useSafeFallback = !hasValidRespondPlan;
+  // An active certification module is server-trusted direct-DM state, not a
+  // router proposal. Preserve its established workflow during a router outage
+  // while every ordinary direct interaction still uses the safe fallback.
+  const hasTrustedCertificationSession = trustedActiveCertificationKind !== null;
+  const hasUsableSelection = hasValidRespondPlan || hasTrustedCertificationSession;
+  let useSafeFallback = !hasUsableSelection;
 
   // Never retain certification, Sponsored Intelligence, or server-configured
   // channel overlays when routing is unavailable or untrusted. They may be
@@ -168,7 +199,7 @@ export function selectBoundedRoutedToolSets(
     routerSelectedSets: hasValidRespondPlan
       ? respondPlan.tool_sets
       : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
-    routerAvailable: hasValidRespondPlan,
+    routerAvailable: hasUsableSelection,
     source: input.source,
     isAdmin: input.isAdmin,
     workingGroupSlug: useSafeFallback ? undefined : input.workingGroupSlug,
@@ -194,6 +225,11 @@ export function selectBoundedRoutedToolSets(
   let allowedToolNames = useSafeFallback
     ? getSafeReadOnlyFallbackTools()
     : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
+  if (input.source === 'mention' && input.isPublicChannel) {
+    allowedToolNames = allowedToolNames.filter((name) =>
+      PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET.has(name),
+    );
+  }
   const isToolAvailable = input.isToolAvailable;
   const activeCertificationSets = trustedActiveCertificationKind === 'mixed'
     ? ['certification_learning', 'certification_assessment']

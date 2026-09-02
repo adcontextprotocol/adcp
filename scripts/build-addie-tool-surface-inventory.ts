@@ -13,8 +13,10 @@ import {
 } from '../server/src/addie/tool-wire-shape.js';
 import { assembleAddieSystemPrompt } from '../server/src/addie/prompt-assembly.js';
 import { buildAddieToolReference } from '../server/src/addie/prompts.js';
+import { SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from '../server/src/addie/tool-sets.js';
 import {
   ADMIN_CHANNEL_WG_SLUG,
+  PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
   selectBoundedRoutedToolSets,
   selectSlackToolSets,
   SYSTEM_CHANNEL_TOOL_SETS,
@@ -290,8 +292,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     workingGroupSlug?: string;
     available: AddieTool[];
   }> = [
-    { audience: 'member_dm', source: 'dm', isAdmin: false, isPublic: false, available: memberRequest },
-    { audience: 'admin_dm', source: 'dm', isAdmin: true, isPublic: false, available: adminRequest },
     { audience: 'private_channel_member', source: 'channel', isAdmin: false, isPublic: false, available: memberRequest },
     { audience: 'private_channel_admin', source: 'channel', isAdmin: true, isPublic: false, available: adminRequest },
     { audience: 'admin_working_group', source: 'channel', isAdmin: true, isPublic: false, workingGroupSlug: ADMIN_CHANNEL_WG_SLUG, available: adminRequest },
@@ -419,6 +419,146 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
           allowedToolNames: [...certificationAllowed],
           globalTools,
           requestTools: surface.available.filter((tool) => certificationAllowed.has(tool.name)),
+          providerToolCount: 1,
+          conditionalMaximums: [
+            'active_certification_overrides_router_admin_and_fallback',
+            'google_docs_configured',
+            'nonstreaming_web_search',
+          ],
+        }));
+      }
+    }
+  }
+
+  // Direct Slack conversations use the bounded provider-neutral selector.
+  // Inventory every reachable one- and two-domain response plan, including
+  // SI context, instead of treating the entire request registry as visible.
+  // Channel profiles above intentionally remain on the legacy selector.
+  const directSurfaces: Array<{
+    audience: string;
+    source: 'dm' | 'mention';
+    isAdmin: boolean;
+    isPublic: boolean;
+    available: AddieTool[];
+  }> = [
+    { audience: 'member_dm', source: 'dm', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'admin_dm', source: 'dm', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'private_mention_member', source: 'mention', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'private_mention_admin', source: 'mention', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'public_mention_member', source: 'mention', isAdmin: false, isPublic: true, available: publicRequest },
+    { audience: 'public_mention_admin', source: 'mention', isAdmin: true, isPublic: true, available: buildRequest(true, true) },
+  ];
+  for (const surface of directSurfaces) {
+    const availableToolNames = new Set([
+      ...globalTools,
+      ...surface.available,
+    ].map((tool) => tool.name));
+    const routerVisibleSetNames = Object.values(toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false && (surface.isAdmin || !set.adminOnly))
+      .map((set) => set.name);
+    const combinations = routerVisibleSetNames.map((setName) => [setName]);
+    for (let first = 0; first < routerVisibleSetNames.length; first += 1) {
+      for (let second = first + 1; second < routerVisibleSetNames.length; second += 1) {
+        combinations.push([routerVisibleSetNames[first], routerVisibleSetNames[second]]);
+      }
+    }
+    const candidates = combinations.flatMap((toolSetsForPlan) => [false, true].map((hasSponsoredIntelligenceContext) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: toolSetsForPlan,
+          confidence: 'high',
+          reason: 'inventory bounded direct Slack route',
+          decision_method: 'quick_match',
+        },
+        routerAvailable: true,
+        source: surface.source,
+        isAdmin: surface.isAdmin,
+        isPublicChannel: surface.isPublic,
+        hasSponsoredIntelligenceContext,
+        isToolAvailable: (name) => availableToolNames.has(name),
+      });
+      return profile({
+        id: `slack_bolt:${surface.audience}:candidate:${toolSetsForPlan.join('+')}${hasSponsoredIntelligenceContext ? ':si_context' : ''}`,
+        runtime: 'slack_bolt',
+        audience: surface.audience,
+        route: toolSetsForPlan.join('+'),
+        selectedToolSets: selection.selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        globalTools,
+        requestTools: surface.available,
+        providerToolCount: 1,
+        conditionalMaximums: [
+          'router_selected_up_to_two_bounded_domains',
+          ...(hasSponsoredIntelligenceContext ? ['active_sponsored_intelligence_session'] : []),
+          'google_docs_configured',
+          'conformance_socket_enabled',
+          'all_role_permissions',
+          'nonstreaming_web_search',
+        ],
+      });
+    }));
+    const routed = routerVisibleSetNames.map((setName) => {
+      const candidate = candidates.find((entry) =>
+        entry.id === `slack_bolt:${surface.audience}:candidate:${setName}`,
+      )!;
+      return {
+        ...candidate,
+        id: `slack_bolt:${surface.audience}:routed:${setName}`,
+      };
+    });
+    const maximums = new Map<string, Profile>();
+    for (const metric of ['custom_tool_count', 'wire_schema_bytes', 'tool_reference_bytes'] as const) {
+      const maximum = Math.max(...candidates.map((candidate) => candidate[metric]));
+      const candidate = candidates.find((entry) => entry[metric] === maximum)!;
+      maximums.set(metric, {
+        ...candidate,
+        id: metric === 'custom_tool_count'
+          ? `slack_bolt:${surface.audience}:maximum`
+          : `slack_bolt:${surface.audience}:maximum_${metric}`,
+      });
+    }
+    const fallback = selectBoundedRoutedToolSets({
+      plan: null,
+      routerAvailable: false,
+      source: surface.source,
+      isAdmin: surface.isAdmin,
+      isPublicChannel: surface.isPublic,
+      hasSponsoredIntelligenceContext: true,
+      isToolAvailable: (name) => availableToolNames.has(name),
+    });
+    profiles.push(...routed, ...maximums.values(), profile({
+      id: `slack_bolt:${surface.audience}:safe_fallback`,
+      runtime: 'slack_bolt',
+      audience: surface.audience,
+      route: 'safe_fallback',
+      selectedToolSets: fallback.selectedToolSets,
+      allowedToolNames: fallback.allowedToolNames,
+      globalTools,
+      requestTools: surface.available,
+      providerToolCount: 1,
+      conditionalMaximums: ['router_unavailable', 'nonstreaming_web_search'],
+    }));
+
+    if (surface.source === 'dm') {
+      for (const activeCertificationKind of ['learning', 'assessment', 'mixed'] as const) {
+        const certification = selectBoundedRoutedToolSets({
+          plan: null,
+          routerAvailable: false,
+          source: 'dm',
+          isAdmin: surface.isAdmin,
+          activeCertificationKind,
+          isToolAvailable: (name) => availableToolNames.has(name),
+        });
+        profiles.push(profile({
+          id: `slack_bolt:${surface.audience}:certification_${activeCertificationKind}_session`,
+          runtime: 'slack_bolt',
+          audience: surface.audience,
+          route: `certification_${activeCertificationKind}_session`,
+          selectedToolSets: certification.selectedToolSets,
+          allowedToolNames: certification.allowedToolNames,
+          globalTools,
+          requestTools: surface.available,
           providerToolCount: 1,
           conditionalMaximums: [
             'active_certification_overrides_router_admin_and_fallback',
@@ -1026,7 +1166,11 @@ function assertCertificationWireContract(profiles: Profile[]): void {
   const errors: string[] = [];
   for (const [setName, requirements] of Object.entries(CERTIFICATION_WIRE_REQUIREMENTS)) {
     const certificationProfiles = profiles.filter((entry) =>
-      entry.selected_tool_sets?.includes(setName));
+      // Public app mentions deliberately expose only the read-only subset of
+      // a routed certification domain. The full wire contract still applies
+      // to every private/direct certification session.
+      entry.selected_tool_sets?.includes(setName)
+      && !entry.id.includes('public_mention'));
     if (certificationProfiles.length === 0) {
       errors.push(`Addie tool inventory has no ${setName} profiles`);
       continue;
@@ -1067,6 +1211,62 @@ function assertWebProviderManagedToolParity(profiles: Profile[]): void {
   }
   if (errors.length > 0) {
     throw new Error(`Web provider-managed tool parity failed:\n- ${errors.join('\n- ')}`);
+  }
+}
+
+/** Keep the generated direct-Slack inventory on the runtime bounded selector. */
+function assertDirectSlackBoundedSelectionParity(profiles: Profile[]): void {
+  const errors: string[] = [];
+  for (const audience of [
+    'member_dm',
+    'admin_dm',
+    'private_mention_member',
+    'private_mention_admin',
+    'public_mention_member',
+    'public_mention_admin',
+  ]) {
+    const knowledge = profiles.find((entry) =>
+      entry.id === `slack_bolt:${audience}:routed:knowledge`);
+    const fallback = profiles.find((entry) =>
+      entry.id === `slack_bolt:${audience}:safe_fallback`);
+    if (!knowledge || JSON.stringify(knowledge.selected_tool_sets) !== JSON.stringify(['knowledge'])) {
+      errors.push(`Addie tool inventory has no exact bounded knowledge profile for ${audience}`);
+    }
+    if (!fallback || JSON.stringify(fallback.selected_tool_sets) !== JSON.stringify(SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS)) {
+      errors.push(`Addie tool inventory has no exact safe fallback profile for ${audience}`);
+    }
+  }
+  for (const audience of ['member_dm', 'admin_dm']) {
+    for (const [kind, expected] of [
+      ['learning', ['certification_learning', ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS, 'illustrations']],
+      ['assessment', ['certification_assessment', ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS, 'illustrations']],
+      ['mixed', ['certification_learning', 'certification_assessment', ...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS, 'illustrations']],
+    ] as const) {
+      const entry = profiles.find((profile) =>
+        profile.id === `slack_bolt:${audience}:certification_${kind}_session`);
+      if (!entry || JSON.stringify(entry.selected_tool_sets) !== JSON.stringify(expected)) {
+        errors.push(`Addie tool inventory has no exact trusted ${kind} certification profile for ${audience}`);
+      }
+    }
+  }
+  if (profiles.some((entry) => entry.id.includes('_mention_') && entry.route?.includes('certification_') && entry.route.endsWith('_session'))) {
+    errors.push('Addie tool inventory must not model trusted certification sessions for mentions');
+  }
+  const publicMentionAllowedNames = new Set<string>(PUBLIC_MENTION_READ_ONLY_TOOL_NAMES);
+  for (const entry of profiles.filter((profile) =>
+    profile.runtime === 'slack_bolt' && profile.audience.startsWith('public_mention_')
+  )) {
+    const disallowedCustomTools = entry.ordered_tool_names.filter((name) => !publicMentionAllowedNames.has(name));
+    const disallowedProviderTools = entry.maximum_provider_tool_names.filter((name) => !publicMentionAllowedNames.has(name));
+    if (disallowedCustomTools.length > 0 || disallowedProviderTools.length > 0) {
+      errors.push(`${entry.id} exceeds the audited public-mention read-only surface: ${[
+        ...disallowedCustomTools,
+        ...disallowedProviderTools,
+      ].join(', ')}`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Direct Slack bounded-selection parity failed:\n- ${errors.join('\n- ')}`);
   }
 }
 
@@ -1148,6 +1348,7 @@ async function buildSnapshot() {
   ].sort((left, right) => left.id.localeCompare(right.id));
   assertCertificationWireContract(profiles);
   assertWebProviderManagedToolParity(profiles);
+  assertDirectSlackBoundedSelectionParity(profiles);
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,
