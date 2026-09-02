@@ -224,11 +224,11 @@ All data in `.artifacts[].parts[].data` and `status.message.parts[].data` is sel
 
 ### Prototype Pollution
 
-Clients MUST NOT merge extracted DataPart payloads into application state via `Object.assign` or spread without filtering keys. This applies even though `JSON.parse` itself is safe against a wire-format `__proto__` key (it produces an ordinary own property, not a prototype mutation) — the risk is downstream: a subsequent `Object.assign`/spread merge can still retarget the *merged object's own* prototype (`__proto__`) or shadow its `constructor`, which is why unfiltered merging remains unsafe regardless of parser behavior. Validate against the expected task response schema before merging.
+Clients MUST NOT merge extracted DataPart payloads into application state via `Object.assign` or spread without filtering keys. Validate against the expected task response schema before merging.
 
 ### FilePart URI Validation
 
-A2A responses may include FileParts. In 1.0 these are Parts carrying a `url` field (file by reference) or a `raw` field (base64 bytes); in v0.3 they carry `kind: "file"` with a `uri` field. Clients MUST validate that the URL uses the `https` scheme, contains no userinfo component, and matches an expected domain allowlist. Reject `javascript:`, `data:`, `file:`, and `http:` URIs. For `raw` parts, enforce a max decoded size before accepting — suggested cap: 5 MB.
+A2A responses may include FileParts. In 1.0 these are Parts carrying a `url` field (file by reference) or a `raw` field (base64 bytes); in v0.3 they carry `kind: "file"` with a `uri` field. Clients MUST validate that the URL uses the `https` scheme, contains no userinfo component, and matches an expected domain allowlist. Reject `javascript:`, `data:`, `file:`, and `http:` URIs. For `raw` parts, enforce a max decoded size before accepting.
 
 ### Auth Challenge URL Validation
 

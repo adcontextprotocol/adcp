@@ -404,7 +404,7 @@
     },
     {
       "id": "constructor-pollution-payload",
-      "description": "Payload containing a constructor.prototype gadget — extraction succeeds but clients MUST NOT deep-merge via Object.assign/spread without filtering keys, or the gadget could reach Object.prototype",
+      "description": "Payload containing a constructor.prototype gadget — extraction succeeds but clients MUST NOT merge via Object.assign without filtering keys (shadows constructor on the merged object; unlike __proto__, this does not retarget the destination's own prototype)",
       "status": "completed",
       "path": "artifact",
       "response": {

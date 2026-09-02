@@ -378,16 +378,32 @@ describe('Validation and safety', () => {
   });
 
   // The two tests above construct `__proto__` as a JS object-literal key, which
-  // the language treats as prototype-literal syntax (Annex B.3.1) — it never
+  // the language treats as prototype-literal syntax (Annex B.3.1) and never
   // touches Object.prototype either, so those assertions hold trivially and
   // don't exercise the realistic threat. The realistic threat is a seller
   // payload arriving over the wire (JSON.parse, which *does* create ordinary
-  // own properties named "__proto__"/"constructor") and then being merged into
-  // application state downstream via Object.assign or spread, per the spec's
-  // "Prototype Pollution" security section. These tests load the payload from
-  // the JSON test-vector file (real JSON.parse own-properties, not literal
-  // syntax) and simulate that downstream Object.assign merge.
-  it('should not leak to the global Object.prototype when a __proto__ payload is merged via Object.assign', () => {
+  // own properties named "__proto__"/"constructor") and later being merged
+  // into application state downstream via an unfiltered `Object.assign`, per
+  // the spec's "Prototype Pollution" security section.
+  //
+  // Object.assign and object spread (`{...x}`) are NOT the same mechanism
+  // here. Object.assign copies properties with [[Set]], so an own
+  // "__proto__" property on the source really does invoke the legacy
+  // `__proto__` setter and retarget the *destination's own* [[Prototype]]
+  // (demonstrated below). Object spread copies properties with
+  // [[DefineOwnProperty]] (the CopyDataProperties abstract operation), which
+  // creates an ordinary own data property named "__proto__" on the
+  // destination and does NOT invoke the setter or change the destination's
+  // [[Prototype]] at all. Spread is not exercised here because it is not a
+  // vector for this specific footgun.
+  //
+  // These two tests are extraction vectors, not mitigation tests. This
+  // repository has no runtime extraction/filtering library to assert
+  // against (it is spec-only), so nothing here proves unsafe merging is
+  // "prevented". They exist to demonstrate, concretely, why the spec's
+  // "Clients MUST NOT merge ... via Object.assign ... without filtering
+  // keys" rule exists — not to certify that any client actually complies.
+  it('demonstrates the Object.assign __proto__ footgun on the merged object (extraction vector, not a mitigation test)', () => {
     const vector = data.vectors.find(v => v.id === 'proto-pollution-payload');
     assert.ok(vector, 'fixture vector must exist');
     const extracted = extractAdcpResponseFromA2A(vector.response);
@@ -395,21 +411,17 @@ describe('Validation and safety', () => {
 
     const merged = Object.assign({}, extracted);
 
-    // Object.assign uses [[Set]], so assigning the "__proto__" own property
-    // DOES retarget `merged`'s own prototype locally — that's the real
-    // footgun the spec warns about (unfiltered merge changes the shape/
-    // behavior of the merged object). But it must never leak to the shared,
-    // global Object.prototype that every other object in the process inherits
-    // from.
-    assert.equal(({}).isAdmin, undefined,
-      'Object.assign of a __proto__ payload must not pollute the global Object.prototype');
+    // Object.assign uses [[Set]], so assigning the own "__proto__" property
+    // invokes the legacy setter and retargets `merged`'s own [[Prototype]]
+    // to { isAdmin: true } — a real, local footgun (every property lookup
+    // and `instanceof` check on `merged` is now affected).
     assert.equal(merged.isAdmin, true,
-      'sanity check: Object.assign really did retarget merged\'s own prototype locally — ' +
-      'proves this vector exercises a genuine own-property __proto__ (as JSON.parse produces ' +
-      'from wire text), not inert data that would make the assertion above a no-op');
+      'Object.assign really did retarget merged\'s own prototype — this is the footgun the spec warns about');
+    assert.notEqual(Object.getPrototypeOf(merged), Object.prototype,
+      'merged\'s own [[Prototype]] was reassigned away from Object.prototype by the unfiltered assign');
   });
 
-  it('should not leak to the global Object.prototype when a constructor.prototype payload is merged via Object.assign', () => {
+  it('demonstrates the Object.assign constructor-shadowing footgun on the merged object (extraction vector, not a mitigation test)', () => {
     const vector = data.vectors.find(v => v.id === 'constructor-pollution-payload');
     assert.ok(vector, 'fixture vector must exist');
     const extracted = extractAdcpResponseFromA2A(vector.response);
@@ -417,15 +429,16 @@ describe('Validation and safety', () => {
 
     const merged = Object.assign({}, extracted);
 
-    // "constructor" is an ordinary property name (no special [[Set]] behavior
-    // like "__proto__"), so Object.assign just overwrites `merged.constructor`
-    // with the plain payload object — a real footgun (type checks like
-    // `merged.constructor === Object` now fail) but again must not reach the
-    // shared global Object.prototype via a single shallow assign.
-    assert.equal(({}).isAdmin, undefined,
-      'Object.assign of a constructor.prototype payload must not pollute the global Object.prototype');
+    // "constructor" is an ordinary property name — unlike "__proto__" it has
+    // no special [[Set]] behavior, so Object.assign just overwrites
+    // `merged.constructor` with the plain payload object. This does NOT
+    // retarget merged's [[Prototype]] the way the __proto__ case above does;
+    // it only shadows the `constructor` lookup (e.g. `merged.constructor ===
+    // Object` now fails). Still a real footgun, but a distinct, weaker one.
     assert.notEqual(merged.constructor, Object,
-      'sanity check: the payload really does shadow constructor locally — proves this vector exercises a real gadget, not a no-op');
+      'Object.assign shadowed merged.constructor with the payload — a real footgun, distinct from __proto__ retargeting');
+    assert.equal(Object.getPrototypeOf(merged), Object.prototype,
+      'sanity check: unlike the __proto__ case, constructor-shadowing does not touch [[Prototype]] at all');
   });
 
   it('should handle artifacts with no parts array', () => {
