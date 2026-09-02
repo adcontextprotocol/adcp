@@ -27,7 +27,10 @@ import type {
   FixedTraceToolObservation,
 } from './fixed-trace-suite.js';
 
-const MAX_ITERATIONS = 8;
+// The bounded full-meeting compatibility route can legitimately use its exact
+// 11-tool union, followed by one final model turn. This applies only to the
+// synthetic replay harness, never to production request routing.
+const MAX_ITERATIONS = 12;
 
 export type FixedTraceToolLoopReason = FixedTraceBoundaryReason;
 

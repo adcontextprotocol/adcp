@@ -211,6 +211,43 @@ describe('executeFixedTraceToolLoop', () => {
     })]);
   });
 
+  it('preserves the full meeting union for a confirmed long three-workflow request', async () => {
+    const create = vi.fn()
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_1', name: 'schedule_meeting', input: { query: 'recurring governance meeting' },
+      }], 'tool_use', 'msg_1'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_2', name: 'add_meeting_attendee', input: { query: 'new attendee' },
+      }], 'tool_use', 'msg_2'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_3', name: 'rsvp_to_meeting', input: { query: 'accepted' },
+      }], 'tool_use', 'msg_3'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'tool_use', id: 'tool_4', name: 'update_topic_subscriptions', input: { query: 'governance topics' },
+      }], 'tool_use', 'msg_4'))
+      .mockResolvedValueOnce(anthropicResponse([{
+        type: 'text', text: 'Scheduled the recurring meeting, added the attendee, recorded the RSVP, and updated topic subscriptions.',
+      }], 'end_turn', 'msg_5'));
+    const provider = new AnthropicModelProvider('unused', {
+      beta: { messages: { create } },
+    } as AnthropicMessagesTransport);
+    const meetingTrace = trace('meeting-full-administration-confirmed');
+
+    const result = await executeFixedTraceToolLoop(
+      provider,
+      request('claude-test'),
+      meetingTrace,
+      meetingTrace.toolFixtures.map((fixture) => tool(fixture.name, ['query'])),
+    );
+
+    expect(create).toHaveBeenCalledTimes(5);
+    expect(result.tools.map((execution) => execution.name)).toEqual([
+      'schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions',
+    ]);
+    expect(result.tools.every((execution) => execution.policyDisposition === 'allowed' && execution.simulated)).toBe(true);
+    expect(result.text).toContain('updated topic subscriptions');
+  });
+
   it('blocks an unconfirmed mutation while still returning safe model context', async () => {
     const unconfirmed = structuredClone(trace('billing-invoice-confirmed'));
     unconfirmed.expectation.mutationAuthorization = 'none';

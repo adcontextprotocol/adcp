@@ -962,9 +962,51 @@ Register the current user's interest in an event. Use when someone asks to be no
 
 *Source: `server/src/addie/mcp/event-tools.ts`*
 
-## meetings
+## meeting_attendance
 
-Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links
+Check meeting agendas, RSVP, and manage attendance
+
+### `list_upcoming_meetings`
+
+List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `get_my_meetings`
+
+Get the user's upcoming meetings. Use this when someone asks "what meetings do I have?" or "what's on my calendar?"
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `get_meeting_details`
+
+Get details about a specific meeting including attendees and RSVP status.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `rsvp_to_meeting`
+
+RSVP to a meeting. Use this when someone says they want to attend a meeting or needs to decline.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `add_meeting_attendee`
+
+Add a person to an existing meeting by email. Call this once per person. Use list_upcoming_meetings first to get the meeting_id.
+
+Example: "add Karen, Brian, and Jonathan to the call" requires:
+1. list_upcoming_meetings to find the meeting_id
+2. add_meeting_attendee for Karen
+3. add_meeting_attendee for Brian
+4. add_meeting_attendee for Jonathan
+
+When add_to_series is true, adds them to all upcoming meetings in the same series.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+## meeting_scheduling
+
+Schedule, update, or cancel one meeting
 
 ### `schedule_meeting`
 
@@ -996,33 +1038,9 @@ List upcoming meetings. Use this when someone asks about scheduled meetings, wha
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 
-### `get_my_meetings`
-
-Get the user's upcoming meetings. Use this when someone asks "what meetings do I have?" or "what's on my calendar?"
-
-*Source: `server/src/addie/mcp/meeting-tools.ts`*
-
-### `get_meeting_details`
-
-Get details about a specific meeting including attendees and RSVP status.
-
-*Source: `server/src/addie/mcp/meeting-tools.ts`*
-
-### `rsvp_to_meeting`
-
-RSVP to a meeting. Use this when someone says they want to attend a meeting or needs to decline.
-
-*Source: `server/src/addie/mcp/meeting-tools.ts`*
-
 ### `cancel_meeting`
 
 Cancel a scheduled meeting. Sends cancellation notices to all attendees.
-
-*Source: `server/src/addie/mcp/meeting-tools.ts`*
-
-### `cancel_meeting_series`
-
-Cancel a recurring meeting series. Cancels all upcoming meetings in the series (Zoom + calendar) and archives the series record. Use this when someone wants to stop a recurring series entirely.
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 
@@ -1036,17 +1054,19 @@ IMPORTANT: start_time must be RFC 3339 with an explicit offset that agrees with 
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 
-### `add_meeting_attendee`
+## meeting_series_topics
 
-Add a person to an existing meeting by email. Call this once per person. Use list_upcoming_meetings first to get the meeting_id.
+Manage recurring series and invitation topics
 
-Example: "add Karen, Brian, and Jonathan to the call" requires:
-1. list_upcoming_meetings to find the meeting_id
-2. add_meeting_attendee for Karen
-3. add_meeting_attendee for Brian
-4. add_meeting_attendee for Jonathan
+### `list_upcoming_meetings`
 
-When add_to_series is true, adds them to all upcoming meetings in the same series.
+List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `cancel_meeting_series`
+
+Cancel a recurring meeting series. Cancels all upcoming meetings in the series (Zoom + calendar) and archives the series record. Use this when someone wants to stop a recurring series entirely.
 
 *Source: `server/src/addie/mcp/meeting-tools.ts`*
 

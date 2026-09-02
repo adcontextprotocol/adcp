@@ -65,6 +65,8 @@ resolve_escalation handles notification automatically (Slack DM or email fallbac
 
 interface RoutedToolReferenceModule {
   selectedToolSets: readonly string[];
+  /** Omit a composite's duplicate guidance when its narrow domains are present. */
+  omitWhenToolSetsSelected?: readonly string[];
   /** Every listed conditional tool must be on the provider request. */
   requiredToolNames?: readonly string[];
   text: string;
@@ -419,17 +421,32 @@ Use these tools instead of recalling schema details from memory. Never invent a 
 - register_event_interest: Register the current user's interest`,
   },
   {
-    selectedToolSets: ['meetings'],
-    text: `### Meeting operations
-- schedule_meeting: Schedule a meeting with Zoom and calendar invites. Requires working_group_slug, title, start_time (ISO format). Optional: description, agenda, duration_minutes, timezone, topic_slugs
-- list_upcoming_meetings: List upcoming meetings, optionally filtered by working_group_slug
-- get_my_meetings: Get the current user's upcoming meetings
-- get_meeting_details: Get meeting details with attendees and RSVP status
-- rsvp_to_meeting: RSVP as accepted, declined, or tentative
-- cancel_meeting: Cancel a meeting and send notices
-- cancel_meeting_series: Cancel all upcoming meetings in a recurring series
-- add_meeting_attendee: Add one person to a meeting by email per call
-- update_topic_subscriptions: Update meeting topic subscriptions`,
+    selectedToolSets: ['meeting_attendance'],
+    requiredToolNames: ['list_upcoming_meetings', 'get_my_meetings', 'get_meeting_details', 'rsvp_to_meeting', 'add_meeting_attendee'],
+    text: `### Meeting attendance
+- List a meeting before adding an attendee; call add_meeting_attendee once per person.
+- Use get_my_meetings for my calendar, get_meeting_details for attendees and RSVP state, and rsvp_to_meeting to respond.`,
+  },
+  {
+    selectedToolSets: ['meeting_scheduling'],
+    requiredToolNames: ['schedule_meeting', 'list_upcoming_meetings', 'cancel_meeting', 'update_meeting'],
+    text: `### Meeting scheduling
+- schedule_meeting creates Zoom/calendar invites and supports recurrence.
+- Use list_upcoming_meetings before cancelling or updating one existing meeting.`,
+  },
+  {
+    selectedToolSets: ['meeting_series_topics'],
+    requiredToolNames: ['list_upcoming_meetings', 'cancel_meeting_series', 'update_topic_subscriptions', 'manage_committee_topics'],
+    text: `### Recurring meeting series and topics
+- Use list_upcoming_meetings before cancelling a recurring series.
+- update_topic_subscriptions changes a user's invitations; manage_committee_topics maintains working-group topics.`,
+  },
+  {
+    selectedToolSets: ['meeting_full_administration'],
+    omitWhenToolSetsSelected: ['meeting_attendance', 'meeting_scheduling', 'meeting_series_topics'],
+    requiredToolNames: ['schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings', 'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting', 'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee', 'update_topic_subscriptions', 'manage_committee_topics'],
+    text: `### Full meeting administration
+Use this complete atomic-tool surface only for one long request spanning scheduling, attendance, and recurring-series or topic work.`,
   },
   {
     selectedToolSets: ['member_profile'],
@@ -623,6 +640,14 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
   ];
 
   for (const name of selectedNames) {
+    // The full meeting route deliberately has the exact union of the three
+    // narrow domains. A synthetic all-domains inventory profile already lists
+    // that union through those domains, so omit only this redundant label.
+    if (
+      name === 'meeting_full_administration'
+      && ['meeting_attendance', 'meeting_scheduling', 'meeting_series_topics']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
     const set = TOOL_SETS[name];
     if (!set) continue;
     const visibleTools = set.tools.filter(toolName => available.has(toolName));
@@ -677,6 +702,9 @@ function selectedRoutedModules(scope: AddieToolReferenceScope): string[] {
   const available = new Set(scope.availableToolNames);
   return ROUTED_TOOL_REFERENCE_MODULES
     .filter(module => {
+      if (
+        module.omitWhenToolSetsSelected?.every(name => selected.has(name))
+      ) return false;
       const relevantToolSets = selected.size === 0
         ? module.selectedToolSets
         : module.selectedToolSets.filter(name => selected.has(name));
