@@ -124,6 +124,16 @@ fixtures:
       price_guidance:
         p50: 10.0
         p75: 12.0
+    - product_id: "dooh_transit_concourse_loop"
+      pricing_option_id: "dooh_transit_flat_unequal_loop"
+      pricing_model: "flat_rate"
+      currency: "USD"
+      fixed_price: 5000
+      parameters:
+        type: "dooh"
+        sov_percentage: 25
+        slot_span: 2
+        loop_position: "adjacent_to_content_break"
 
 phases:
   - id: capability_discovery
@@ -174,7 +184,10 @@ phases:
       The returned product must be independently actionable: placement attributes
       describe the physical screen and loop, while its canonical format declaration
       independently supplies accepted asset constraints without a legacy
-      format-catalog lookup.
+      format-catalog lookup. The reference seller's internal 80-second loop has
+      segment durations [10, 10, 20, 40]. Its flat-rate option reserves the first
+      two consecutive 10-second segments: 20 / 80 = 25% time share, not the
+      incorrect 2 / 4 = 50% slot-count share.
     steps:
       - id: get_dooh_products
         title: "Read non-guaranteed DOOH products"
@@ -190,6 +203,7 @@ phases:
           - delivery_type set to non_guaranteed
           - canonical format_options with concrete screen dimensions
           - publisher property and placement scope with DOOH inventory facts
+          - a flat-rate offer for two consecutive slots at 25% duration-weighted SOV
           - plays and dooh_metrics reporting
         sample_request:
           idempotency_key: "$generate:uuid_v4#sales_dooh_product_discovery_get_dooh_products"
@@ -250,6 +264,18 @@ phases:
             path: "products[0].placements[0].dooh_placement_attributes.loop_duration_seconds"
             value: 80
             description: "Placement declares the canonical loop duration"
+          - check: field_value
+            path: "products[0].pricing_options[1].parameters.sov_percentage"
+            value: 25
+            description: "Unequal-segment loop offer uses reserved duration divided by loop duration"
+          - check: field_value
+            path: "products[0].pricing_options[1].parameters.slot_span"
+            value: 2
+            description: "Flat-rate offer guarantees two consecutive slots"
+          - check: field_value
+            path: "products[0].pricing_options[1].parameters.loop_position"
+            value: "adjacent_to_content_break"
+            description: "Flat-rate offer discloses its seller-defined loop position"
           - check: field_value
             path: "products[0].placements[0].dooh_placement_attributes.screen_resolution.width"
             value: 1080
@@ -390,7 +416,7 @@ phases:
     title: "Create the non-guaranteed DOOH buy"
     narrative: |
       The buyer creates an ungoverned non-guaranteed buy against the exact
-      product and pricing option returned by discovery. Governance registration
+      product and unequal-segment flat-rate option returned by discovery. Governance registration
       is exercised independently by the required governance-registration
       scenario; registering here would require an approved governance_context
       before this baseline create.
@@ -419,8 +445,7 @@ phases:
           packages:
             - product_id: "$context.dooh_product_id"
               budget: 10000
-              bid_price: 10
-              pricing_option_id: "dooh_transit_cpm_auction"
+              pricing_option_id: "dooh_transit_flat_unequal_loop"
               creative_assignments:
                 - creative_id: "dooh_acme_portrait_1080x1920"
           idempotency_key: "$generate:uuid_v4#sales_dooh_create_buy_create_media_buy"
@@ -451,6 +476,8 @@ phases:
       The controller injects deterministic DOOH screen activity, then the buyer
       requests delivery for the buy. The response must reproduce the exact
       `plays` and `dooh_metrics` values and reconcile them to the purchased package.
+      The achieved SOV is 0.25 because the delivered consecutive segments occupy
+      20 of the 80 loop seconds; their two-of-four slot count is not the denominator.
     steps:
       - id: simulate_delivery
         title: "Inject deterministic DOOH delivery"
@@ -474,8 +501,8 @@ phases:
             dooh_metrics:
               loop_plays: 125
               screens_used: 18
-              screen_time_seconds: 1250
-              sov_achieved: 0.125
+              screen_time_seconds: 2500
+              sov_achieved: 0.25
           context:
             correlation_id: "sales_dooh--simulate_delivery"
         validations:
@@ -546,12 +573,12 @@ phases:
             description: "Package delivery reproduces the injected unique screen count"
           - check: field_value
             path: "media_buy_deliveries[0].by_package[0].dooh_metrics.screen_time_seconds"
-            value: 1250
+            value: 2500
             description: "Package delivery reproduces the injected screen time"
           - check: field_value
             path: "media_buy_deliveries[0].by_package[0].dooh_metrics.sov_achieved"
-            value: 0.125
-            description: "Package delivery reproduces the injected share of voice"
+            value: 0.25
+            description: "Package delivery reproduces duration-weighted share of voice for the unequal-segment loop"
           - check: field_value
             path: "media_buy_deliveries[0].totals.plays"
             value: 125
@@ -566,12 +593,12 @@ phases:
             description: "Buy totals reproduce the injected unique screen count"
           - check: field_value
             path: "media_buy_deliveries[0].totals.dooh_metrics.screen_time_seconds"
-            value: 1250
+            value: 2500
             description: "Buy totals reproduce the injected screen time"
           - check: field_value
             path: "media_buy_deliveries[0].totals.dooh_metrics.sov_achieved"
-            value: 0.125
-            description: "Buy totals reproduce the injected share of voice"
+            value: 0.25
+            description: "Buy totals reproduce duration-weighted share of voice for the unequal-segment loop"
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--get_delivery"

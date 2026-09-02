@@ -147,6 +147,11 @@ structured warnings and durable indicators. Commercial changes outside an
 accepted proposal flow through refinement; operational changes inside accepted
 terms use `control_media_buy`.
 
+DOOH flat-rate offers can declare consecutive `slot_span` and an open
+`loop_position` label. Contracted `sov_percentage` and delivered
+`dooh_metrics.sov_achieved` now have explicit 100-to-1 units and use
+duration-weighted time share, including on loops with unequal segment lengths.
+
 This split gives buyers one recovery rule: follow the accepted terms and current
 revision for control; request a new immutable commercial snapshot for anything
 that changes those terms.
