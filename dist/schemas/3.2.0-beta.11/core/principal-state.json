@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/principal-state.json",
+  "title": "Principal State",
+  "x-status": "experimental",
+  "description": "Complete principal-scoped standing configuration visible after sync or read. Secrets are never returned. The seller keys this state by its own agent identity and the stable authenticated caller principal. Each section is present when and only when the seller advertises it in principal.supported_sections, so an empty supported array is distinguishable from an unsupported section.",
+  "type": "object",
+  "properties": {
+    "notification_configs": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/agent-notification-config-state.json"
+      },
+      "maxItems": 16,
+      "description": "Current agent-level webhook subscribers. authentication.credentials is always omitted because it is write-only."
+    },
+    "reporting_destinations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/agent-reporting-destination-state.json"
+      },
+      "maxItems": 64,
+      "description": "Current reusable reporting destination bindings and setup states. destination_id and destination_ref values MUST each be unique within this caller-scoped array; superseded generations of a current destination appear in its prior_destination_refs."
+    },
+    "declarations": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/principal-declarations-state.json",
+      "description": "Declared consumption facts and the seller-computed accepted intersection. Present when and only when the seller supports the declarations section."
+    },
+    "retired_destinations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "destination_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+          },
+          "destination_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "minItems": 1,
+            "maxItems": 32,
+            "uniqueItems": true,
+            "description": "Retained generation references of the revoked destination, newest first, still resolvable for retained reporting history but ineligible for delivery and for new bindings."
+          },
+          "revoked_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "destination_id",
+          "destination_refs"
+        ],
+        "additionalProperties": false
+      },
+      "maxItems": 64,
+      "description": "Destinations the caller revoked by omitting them from a submitted reporting_destinations section, retained while any generation remains resolvable for reporting history. Enumerable only by the owning principal. Reusing a retired destination_id requires fresh registration and proof and produces a new generation."
+    }
+  },
+  "minProperties": 1,
+  "additionalProperties": false
+}

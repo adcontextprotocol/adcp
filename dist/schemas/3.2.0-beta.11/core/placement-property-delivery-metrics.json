@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/placement-property-delivery-metrics.json",
+  "title": "Placement Property Delivery Metrics",
+  "description": "Delivery metrics at the intersection of one placement and one publisher property. This distinguishes the actual serving property when a placement declaration spans multiple properties.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "placement_id_consistency": "placement_id MUST equal placement_identity.placement_id",
+      "property_domain_consistency": "property_ref.publisher_domain MUST equal publisher_domain when property_ref is present"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "placement_id": {
+          "type": "string",
+          "description": "Required flat compatibility ID. It MUST equal placement_identity.placement_id when placement_identity is present.",
+          "x-entity": "placement"
+        },
+        "placement_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/placement-identity.json",
+          "description": "Required self-contained placement identity. Unlike the legacy-compatible by_placement dimension, the new by_placement_property dimension has no pre-3.2 row shape and always names the placement authority."
+        },
+        "placement_name": {
+          "type": "string",
+          "description": "Current convenience name for the placement."
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Publisher or platform authority that namespaces the property identifier. This may differ from a publisher-catalog placement's publisher_domain."
+        },
+        "identifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/identifier.json",
+          "description": "Primary operational identifier of the property that delivered."
+        },
+        "property_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/property-ref.json",
+          "description": "Canonical publisher-scoped property catalog identity when available. Its publisher_domain MUST equal the row's publisher_domain."
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Current convenience name for the property."
+        }
+      },
+      "required": [
+        "placement_id",
+        "placement_identity",
+        "publisher_domain",
+        "identifier",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

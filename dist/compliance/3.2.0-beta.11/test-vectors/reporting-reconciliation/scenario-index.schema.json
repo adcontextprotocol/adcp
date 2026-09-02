@@ -1,0 +1,326 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "scenario-index.schema.json",
+  "title": "Reporting reconciliation scenario index",
+  "type": "object",
+  "definitions": {
+    "assetPath": {
+      "type": "string",
+      "pattern": "^(?:(?:canonicalization|manifest|materialization|obligation|report-definition|revision|row-schema)\\.json|rows\\.jsonl|receipts/[a-z0-9][a-z0-9.-]*\\.json)$"
+    },
+    "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "asset": {
+      "type": "object",
+      "properties": {
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "sha512": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+      },
+      "required": ["size_bytes", "sha256", "sha512"],
+      "additionalProperties": false
+    },
+    "read": {
+      "type": "object",
+      "properties": {
+        "object_ref": { "type": "string", "minLength": 1 },
+        "outcome": { "type": "string", "enum": ["bytes", "not_found", "transient_error"] },
+        "asset": { "$ref": "#/definitions/assetPath" }
+      },
+      "required": ["object_ref", "outcome"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "type": "string", "const": "bytes" } },
+            "required": ["outcome"]
+          },
+          "then": { "required": ["asset"] },
+          "else": { "not": { "required": ["asset"] } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "RESOURCE_NOT_READY",
+            "RESOURCE_READ_FAILED",
+            "OBJECT_DIGEST_MISMATCH",
+            "ROW_COUNT_MISMATCH",
+            "CONTROL_TOTAL_MISMATCH",
+            "CANONICAL_DIGEST_MISMATCH",
+            "RECEIPT_WRITE_UNCERTAIN"
+          ]
+        },
+        "classification": { "type": "string", "enum": ["retryable", "permanent"] }
+      },
+      "required": ["code", "classification"],
+      "additionalProperties": false
+    },
+    "noReceipt": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "const": "none" }
+      },
+      "required": ["action"],
+      "additionalProperties": false
+    },
+    "acceptedReceipt": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "const": "submit" },
+        "status": { "type": "string", "const": "accepted" },
+        "request_asset": { "$ref": "#/definitions/assetPath" },
+        "acknowledgement_asset": { "$ref": "#/definitions/assetPath" },
+        "replay_acknowledgement_asset": { "$ref": "#/definitions/assetPath" },
+        "idempotency_behavior": { "type": "string", "const": "same_id_and_body_recorded_then_unchanged" },
+        "write_attempts": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "first_write_response": { "type": "string", "enum": ["recorded", "lost_after_commit"] }
+      },
+      "required": ["action", "status", "request_asset", "acknowledgement_asset", "idempotency_behavior", "write_attempts", "first_write_response"],
+      "additionalProperties": false
+    },
+    "rejectedReceipt": {
+      "type": "object",
+      "properties": {
+        "action": { "type": "string", "const": "submit" },
+        "status": { "type": "string", "const": "rejected" },
+        "rejection_codes": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "request_asset": { "$ref": "#/definitions/assetPath" },
+        "acknowledgement_asset": { "$ref": "#/definitions/assetPath" },
+        "idempotency_behavior": { "type": "string", "const": "same_id_and_body_recorded_then_unchanged" },
+        "write_attempts": { "type": "integer", "const": 1 },
+        "first_write_response": { "type": "string", "const": "recorded" }
+      },
+      "required": ["action", "status", "rejection_codes", "request_asset", "acknowledgement_asset", "idempotency_behavior", "write_attempts", "first_write_response"],
+      "additionalProperties": false
+    },
+    "mutation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": { "operation": { "type": "string", "const": "none" } },
+          "required": ["operation"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "remove_object" },
+            "object_ref": { "type": "string", "const": "rows.jsonl" }
+          },
+          "required": ["operation", "object_ref"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "xor_byte" },
+            "object_ref": { "type": "string", "const": "rows.jsonl" },
+            "byte_offset": { "type": "integer", "const": 0 },
+            "xor_mask": { "type": "integer", "const": 1 }
+          },
+          "required": ["operation", "object_ref", "byte_offset", "xor_mask"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "replace_json_pointer" },
+            "asset": { "type": "string", "const": "revision.json" },
+            "pointer": { "type": "string", "const": "/row_count" },
+            "value": { "type": "integer", "const": 3 }
+          },
+          "required": ["operation", "asset", "pointer", "value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "replace_json_pointer" },
+            "asset": { "type": "string", "const": "revision.json" },
+            "pointer": { "type": "string", "const": "/control_totals/0/value" },
+            "value": { "type": "string", "const": "6" }
+          },
+          "required": ["operation", "asset", "pointer", "value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "replace_json_pointer" },
+            "asset": { "type": "string", "const": "revision.json" },
+            "pointer": { "type": "string", "const": "/canonical_content_digest/value" },
+            "value": { "type": "string", "const": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }
+          },
+          "required": ["operation", "asset", "pointer", "value"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "inject_read_error" },
+            "object_ref": { "type": "string", "const": "manifest" },
+            "attempt": { "type": "integer", "const": 1 },
+            "outcome": { "type": "string", "const": "transient_error" }
+          },
+          "required": ["operation", "object_ref", "attempt", "outcome"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "inject_receipt_write_outcome" },
+            "attempt": { "type": "integer", "const": 1 },
+            "outcome": { "type": "string", "const": "lost_after_commit" }
+          },
+          "required": ["operation", "attempt", "outcome"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": { "type": "string", "const": "use_receipt_asset" },
+            "asset": { "type": "string", "const": "receipts/rejected-request.json" }
+          },
+          "required": ["operation", "asset"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string", "const": "./scenario-index.schema.json" },
+    "fixture_version": { "type": "string", "const": "1.0" },
+    "protocol": {
+      "type": "object",
+      "properties": {
+        "protocol_version": { "type": "string", "const": "unreleased" },
+        "source_revision": { "type": "string", "const": "adcontextprotocol/adcp@df3c80713416bd4146e9c56e91b8e34df8b173bb" },
+        "promoted_from": { "type": "string", "const": "adcontextprotocol/adcp-client@43f7660ce1be17073d1207ee0168ae8343941be8" },
+        "schema_ids": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^/schemas/" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["protocol_version", "source_revision", "promoted_from", "schema_ids"],
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/assetPath" },
+      "additionalProperties": { "$ref": "#/definitions/asset" },
+      "minProperties": 1
+    },
+    "base_inputs": {
+      "type": "object",
+      "properties": {
+        "obligation": { "type": "string", "const": "obligation.json" },
+        "revision": { "type": "string", "const": "revision.json" },
+        "materialization": { "type": "string", "const": "materialization.json" },
+        "manifest": { "type": "string", "const": "manifest.json" },
+        "report_definition": { "type": "string", "const": "report-definition.json" },
+        "row_schema": { "type": "string", "const": "row-schema.json" },
+        "canonicalization": { "type": "string", "const": "canonicalization.json" }
+      },
+      "required": ["obligation", "revision", "materialization", "manifest", "report_definition", "row_schema", "canonicalization"],
+      "additionalProperties": false
+    },
+    "canonical_report": {
+      "type": "object",
+      "properties": {
+        "row_count": { "type": "integer", "const": 2 },
+        "control_totals": {
+          "type": "array",
+          "items": { "$ref": "/schemas/core/reporting-control-total.json" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "canonical_utf8_base64": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/definitions/digest" },
+        "physical_checksums": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "object_ref": { "type": "string", "minLength": 1 },
+                  "algorithm": { "type": "string", "const": "sha256" },
+                  "value": { "$ref": "#/definitions/digest" }
+                },
+                "required": ["object_ref", "algorithm", "value"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "object_ref": { "type": "string", "minLength": 1 },
+                  "algorithm": { "type": "string", "const": "sha512" },
+                  "value": { "type": "string", "pattern": "^[a-f0-9]{128}$" }
+                },
+                "required": ["object_ref", "algorithm", "value"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        }
+      },
+      "required": ["row_count", "control_totals", "canonical_utf8_base64", "sha256", "physical_checksums"],
+      "additionalProperties": false
+    },
+    "publish_order": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/assetPath" },
+      "minItems": 2,
+      "uniqueItems": true
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 9,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "mutation": { "$ref": "#/definitions/mutation" },
+          "resource_reads": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/read" },
+            "minItems": 2
+          },
+          "expected_resource_read_count": { "type": "integer", "minimum": 2 },
+          "expected_outcome": { "type": "string", "enum": ["accepted", "accepted_after_retry", "rejected"] },
+          "expected_error": { "$ref": "#/definitions/error" },
+          "expected_receipt": {
+            "oneOf": [
+              { "$ref": "#/definitions/noReceipt" },
+              { "$ref": "#/definitions/acceptedReceipt" },
+              { "$ref": "#/definitions/rejectedReceipt" }
+            ]
+          },
+          "checkpoint_events": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["inspection_complete", "receipt_write_started", "receipt_write_outcome_uncertain", "resume_with_same_receipt"] },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": ["id", "mutation", "resource_reads", "expected_resource_read_count", "expected_outcome", "expected_receipt"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["$schema", "fixture_version", "protocol", "assets", "base_inputs", "canonical_report", "publish_order", "scenarios"],
+  "additionalProperties": false
+}

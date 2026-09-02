@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-schedule-offering.json",
+  "title": "Reporting Schedule Offering",
+  "x-status": "experimental",
+  "description": "Schedule constraint advertised by a seller. Unlike an installed reporting-schedule, a billing-cycle offering may allow the account configuration to select its own anchor and IANA timezone.",
+  "type": "object",
+  "properties": {
+    "period_duration": {
+      "type": "string",
+      "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+    },
+    "alignment": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-schedule.json#/definitions/ReportingScheduleAlignment"
+    },
+    "period_anchor_policy": {
+      "type": "string",
+      "enum": [
+        "fixed",
+        "configurable"
+      ],
+      "description": "For billing_cycle only. fixed requires the advertised anchor and timezone; configurable lets each authorized account configuration select them."
+    },
+    "period_anchor": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "period_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "delivery_sla": {
+      "type": "string",
+      "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+    }
+  },
+  "required": [
+    "period_duration",
+    "alignment",
+    "delivery_sla"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "alignment": {
+            "const": "billing_cycle"
+          }
+        },
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "required": [
+          "period_anchor_policy"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "period_anchor_policy": {
+                  "const": "fixed"
+                }
+              },
+              "required": [
+                "period_anchor_policy"
+              ]
+            },
+            "then": {
+              "required": [
+                "period_anchor",
+                "period_timezone"
+              ]
+            },
+            "else": {
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "period_anchor"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "period_timezone"
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "period_anchor_policy"
+              ]
+            },
+            {
+              "required": [
+                "period_anchor"
+              ]
+            },
+            {
+              "required": [
+                "period_timezone"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "installed_schedule_match": "period_duration, alignment, and delivery_sla MUST equal the installed configuration. For fixed billing_cycle offerings, period_anchor and period_timezone MUST also equal it. For configurable billing_cycle offerings, the installed configuration supplies both values. utc and account_timezone use the normative origins in reporting-schedule.json, so even multi-unit durations have one independently derivable phase."
+  },
+  "additionalProperties": false
+}

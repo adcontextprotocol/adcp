@@ -1,0 +1,45 @@
+{
+  "reporting_materialization_id": "materialization-billing",
+  "reporting_revision_id": "revision-august-official",
+  "reporting_obligation_id": "obligation-billing",
+  "delivery_config_id": "billing-files",
+  "delivery_config_version": 1,
+  "destination_ref": "fixture-destination",
+  "feed_purpose": "billing",
+  "method": "file_transfer",
+  "transport": "fixture_object_store",
+  "attempt": 1,
+  "status": "available",
+  "ready_at": "2026-08-27T04:00:02Z",
+  "resource": {
+    "resource_ref": "resource-billing-manifest",
+    "kind": "manifest",
+    "location": "fixture/reports/2026-08-26/manifest.json",
+    "manifest_version": "1.0",
+    "manifest_sha256": "46d127b2026c48d2e5ced78237c9c1efe63dccbd5099ba4a561073a3f5ef75e6",
+    "immutability": "immutable_location",
+    "expires_at": "2026-09-27T04:00:02Z"
+  },
+  "verification": {
+    "verified_at": "2026-08-27T04:00:02Z",
+    "verification_path": "representative_consumer",
+    "verification_profile": "canonical_digest",
+    "row_count": 2,
+    "control_totals": [
+      { "name": "impressions", "value": "5", "value_type": "integer", "unit": "impressions" },
+      { "name": "spend", "value": "8.00", "value_type": "decimal", "unit": "USD" }
+    ],
+    "canonical_content_digest": {
+      "algorithm": "sha256",
+      "value": "bcd079902f3c8edb4315dbbdaf9b4e37f6fd5af33c80d1fe6ac8c655581342d4",
+      "canonicalization_id": "billing-rows-v1",
+      "canonicalization_uri": "https://schemas.fixture.example.net/canonicalization.json",
+      "canonicalization_sha256": "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa"
+    },
+    "physical_checksums": [
+      { "object_ref": "rows.jsonl", "algorithm": "sha256", "value": "735610f303d6d91aa618df3aa6d7f18bcf5dfa52bdbd9ef551293e6bd14c92d9" },
+      { "object_ref": "rows.jsonl", "algorithm": "sha512", "value": "7f20c6cef80c7c8ced425ee30a620daba0996ec6786bfa1507ffa6f34f14967a95593cf47fd6658212dc7a6c6e8b2cc24edbb1e7a9b86e62759e76ff30e78a10" }
+    ]
+  },
+  "created_at": "2026-08-27T04:00:00Z"
+}
