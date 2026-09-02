@@ -2,6 +2,7 @@ import { createLogger } from '../logger.js';
 import type { CreateMessageInput } from './thread-service.js';
 import { getSlackApiErrorCode, isPermanentDmDeliveryError } from './slack-api-errors.js';
 import { classifyLocalModelExecution } from './model-providers/model-provider.js';
+import { wrapUrlsForSlack } from './security.js';
 
 const logger = createLogger('addie-dm-delivery');
 
@@ -27,6 +28,19 @@ export interface DirectMessageDeliveryResult {
   responseTs?: string;
   errorCode: string | null;
   permanentFailure: boolean;
+}
+
+/** Build the bounded Slack API payload used by direct-message delivery. */
+export function prepareSlackDirectMessagePost(input: {
+  channelId: string;
+  threadTs: string;
+  text: string;
+}): { channel: string; text: string; thread_ts: string } {
+  return {
+    channel: input.channelId,
+    text: wrapUrlsForSlack(input.text),
+    thread_ts: input.threadTs,
+  };
 }
 
 /**
