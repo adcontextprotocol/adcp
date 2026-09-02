@@ -12881,11 +12881,50 @@ interface MediaBuyExecutionOptions {
   governance?: TrustedGovernedExecution;
 }
 
+function invalidSelectedCollectionSelector(
+  args: ToolArgs,
+  packageFields: readonly string[],
+): TaskError[] | undefined {
+  const input = args as unknown as Record<string, unknown>;
+  for (const packageField of packageFields) {
+    const packages = input[packageField];
+    if (!Array.isArray(packages)) continue;
+    for (let packageIndex = 0; packageIndex < packages.length; packageIndex++) {
+      const pkg = packages[packageIndex];
+      if (!isRecord(pkg)) continue;
+      const overlay = isRecord(pkg.targeting_overlay)
+        ? pkg.targeting_overlay
+        : isRecord(pkg.targeting)
+          ? pkg.targeting
+          : undefined;
+      if (!overlay || !isRecord(overlay.collection_selection)) continue;
+      const selection = overlay.collection_selection;
+      if (selection.mode !== 'selected' || !Array.isArray(selection.collections)) continue;
+      for (let collectionIndex = 0; collectionIndex < selection.collections.length; collectionIndex++) {
+        const selector = selection.collections[collectionIndex];
+        const collectionIds = isRecord(selector) ? selector.collection_ids : undefined;
+        if (Array.isArray(collectionIds) && collectionIds.length > 0) continue;
+        const field = `${packageField}[${packageIndex}].targeting_overlay.collection_selection.collections[${collectionIndex}].collection_ids`;
+        return [{
+          code: 'INVALID_REQUEST',
+          message: 'Selected collection selectors must include at least one collection_id.',
+          field,
+          recovery: 'correctable',
+        }];
+      }
+    }
+  }
+  return undefined;
+}
+
 export async function handleCreateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
   options: MediaBuyExecutionOptions = {},
 ) {
+  const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
+  if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
 
@@ -15939,6 +15978,9 @@ export async function handleUpdateMediaBuy(
   ctx: TrainingContext,
   options: { acceptedProposalExecution?: boolean; operationalControlExecution?: boolean; governance?: TrustedGovernedExecution } = {},
 ): Promise<Record<string, unknown>> {
+  const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages', 'new_packages']);
+  if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
+
   const mutex = await acquireMediaBuyMutationMutex(args, ctx);
   if (!mutex) return mediaBuyMutationConflict();
   try {
