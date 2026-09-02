@@ -1,4 +1,12 @@
-import { getValidToolSetNames, SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS } from './tool-sets.js';
+import type { ExecutionPlan } from './router.js';
+import {
+  buildUnavailableSetsHint,
+  getSafeReadOnlyFallbackTools,
+  getToolsForSets,
+  getValidToolSetNames,
+  MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
+  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
+} from './tool-sets.js';
 
 export type SlackToolSource = 'dm' | 'mention' | 'channel';
 export type SystemChannelRole = 'prospect' | 'escalation' | 'billing' | 'error' | 'admin';
@@ -104,6 +112,104 @@ export function selectSlackToolSets(input: SlackToolSetSelectionInput): string[]
  * Slack retains its established export while web chat shares the exact policy.
  */
 export const selectRoutedToolSets = selectSlackToolSets;
+
+export interface BoundedRoutedToolSetSelectionInput {
+  /** A plan is trusted only after it has passed the bounded-domain checks below. */
+  plan: ExecutionPlan | null;
+  routerAvailable: boolean;
+  source: SlackToolSource;
+  isAdmin: boolean;
+  isPublicChannel?: boolean;
+  workingGroupSlug?: string | null;
+  systemRole?: SystemChannelRole | null;
+  activeCertificationKind?: ActiveCertificationKind | null;
+  hasSponsoredIntelligenceContext?: boolean;
+  /** Exact definition-and-handler availability at the delivery boundary. */
+  isToolAvailable?: (toolName: string) => boolean;
+}
+
+export interface BoundedRoutedToolSetSelection {
+  selectedToolSets: string[];
+  allowedToolNames: string[];
+  unavailableHint: string;
+  useSafeFallback: boolean;
+}
+
+/**
+ * Validate a direct, user-visible routed response before tool or prompt
+ * assembly. Delivery layers retain ownership of how a response is triggered
+ * and delivered; this policy only determines the request-scoped capability
+ * surface. A router error, non-response action, empty/stale/unauthorized
+ * domain, or an over-broad plan receives the explicit read-only fallback.
+ */
+export function selectBoundedRoutedToolSets(
+  input: BoundedRoutedToolSetSelectionInput,
+): BoundedRoutedToolSetSelection {
+  const validToolSets = getValidToolSetNames(input.isAdmin);
+  const respondPlan = input.plan?.action === 'respond' ? input.plan : null;
+  const hasValidRespondPlan = input.routerAvailable
+    && respondPlan !== null
+    && Array.isArray(respondPlan.tool_sets)
+    && respondPlan.tool_sets.length > 0
+    && respondPlan.tool_sets.length <= MAX_DIRECT_ROUTED_TOOL_SET_COUNT
+    && respondPlan.tool_sets.every((name) => typeof name === 'string' && validToolSets.has(name));
+  let useSafeFallback = !hasValidRespondPlan;
+
+  // Never retain certification, Sponsored Intelligence, or server-configured
+  // channel overlays when routing is unavailable or untrusted. They may be
+  // added only to a valid, bounded response plan below.
+  let selectedToolSets = selectRoutedToolSets({
+    routerSelectedSets: hasValidRespondPlan
+      ? respondPlan.tool_sets
+      : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
+    routerAvailable: hasValidRespondPlan,
+    source: input.source,
+    isAdmin: input.isAdmin,
+    workingGroupSlug: useSafeFallback ? undefined : input.workingGroupSlug,
+    systemRole: useSafeFallback ? undefined : input.systemRole,
+    activeCertificationKind: useSafeFallback ? null : input.activeCertificationKind,
+    hasSponsoredIntelligenceContext: useSafeFallback
+      ? false
+      : input.hasSponsoredIntelligenceContext,
+  });
+  let allowedToolNames = useSafeFallback
+    ? getSafeReadOnlyFallbackTools()
+    : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
+  const isToolAvailable = input.isToolAvailable;
+  if (!useSafeFallback && isToolAvailable && allowedToolNames.some((name) =>
+    name !== 'web_search' && !isToolAvailable(name),
+  )) {
+    // A bounded domain with an incomplete registration is no safer than a
+    // stale router result. Do not hand a model a definition without its
+    // handler (or vice versa); recover to the read-only domain instead.
+    useSafeFallback = true;
+    selectedToolSets = selectRoutedToolSets({
+      routerSelectedSets: [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS],
+      routerAvailable: false,
+      source: input.source,
+      isAdmin: input.isAdmin,
+      activeCertificationKind: null,
+      hasSponsoredIntelligenceContext: false,
+    });
+    allowedToolNames = getSafeReadOnlyFallbackTools();
+  }
+
+  // The provider-managed web search tool has no custom handler. Every other
+  // name must remain in the exact definition/handler intersection, including
+  // in the read-only fallback when a deployment has a partial registration.
+  if (isToolAvailable) {
+    allowedToolNames = allowedToolNames.filter((name) =>
+      name === 'web_search' || isToolAvailable(name),
+    );
+  }
+
+  return {
+    selectedToolSets,
+    allowedToolNames,
+    unavailableHint: buildUnavailableSetsHint(selectedToolSets, input.isAdmin),
+    useSafeFallback,
+  };
+}
 
 /** Normalize Slack conversation privacy, including DM shapes that omit is_private. */
 export function resolveSlackChannelPrivacy(channel: {

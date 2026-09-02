@@ -24,16 +24,8 @@ import {
 } from "../addie/router.js";
 import { createProductionRouter } from "../addie/router-runtime.js";
 import {
-  buildUnavailableSetsHint,
-  getSafeReadOnlyFallbackTools,
-  getToolsForSets,
-  getValidToolSetNames,
-  MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
-  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
-} from "../addie/tool-sets.js";
-import {
   classifyActiveCertificationProgress,
-  selectRoutedToolSets,
+  selectBoundedRoutedToolSets,
   type ActiveCertificationKind,
 } from "../addie/slack-tool-selection.js";
 import { classifyLocalModelExecution } from "../addie/model-providers/model-provider.js";
@@ -363,48 +355,22 @@ export async function selectRoutedWebTools(input: {
     }
   }
 
-  const validToolSets = getValidToolSetNames(input.isAAOAdmin);
-  const respondPlan = plan?.action === 'respond' ? plan : null;
-  const hasValidRespondPlan = respondPlan !== null
-    && Array.isArray(respondPlan.tool_sets)
-    && respondPlan.tool_sets.length <= MAX_DIRECT_ROUTED_TOOL_SET_COUNT
-    && respondPlan.tool_sets.every((name) => typeof name === 'string' && validToolSets.has(name));
-  const useSafeFallback = !routerAvailable || !hasValidRespondPlan;
-
-  // Web chat is a direct interaction. An ignore/react, malformed, stale, or
-  // unauthorized plan cannot be delivered safely, so use the explicit
-  // read-only fallback rather than the normal always-available escape hatches.
-  const routerSelectedSets = hasValidRespondPlan
-    ? respondPlan.tool_sets
-    : [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS];
-  const selectedToolSets = selectRoutedToolSets({
-    routerSelectedSets,
-    routerAvailable: !useSafeFallback,
-    source: 'dm',
-    isAdmin: input.isAAOAdmin,
-    activeCertificationKind: useSafeFallback ? null : input.activeCertificationKind,
-    hasSponsoredIntelligenceContext: useSafeFallback
-      ? false
-      : input.hasSponsoredIntelligenceContext,
-  });
-  const allowedToolNames = useSafeFallback
-    ? getSafeReadOnlyFallbackTools()
-    : getToolsForSets(selectedToolSets, input.isAAOAdmin);
   const definitions = new Map(input.requestTools.tools.map((tool) => [tool.name, tool]));
   const globalToolNames = new Set(input.globalToolNames ?? []);
-  const matchedToolNames = allowedToolNames.filter((name) =>
-    (definitions.has(name) || globalToolNames.has(name))
-    && (input.requestTools.handlers.has(name) || globalToolNames.has(name)),
-  );
-  const incompleteToolNames = allowedToolNames.filter((name) =>
-    name !== 'web_search' && !matchedToolNames.includes(name),
-  );
-  if (incompleteToolNames.length > 0) {
-    logger.warn(
-      { threadId: input.threadId, incompleteToolNames },
-      'Addie Chat: Excluded incomplete routed tool registrations',
-    );
-  }
+  const isToolAvailable = (name: string) => name === 'web_search'
+    || ((definitions.has(name) || globalToolNames.has(name))
+      && (input.requestTools.handlers.has(name) || globalToolNames.has(name)));
+  const selection = selectBoundedRoutedToolSets({
+    plan,
+    routerAvailable,
+    source: 'dm',
+    isAdmin: input.isAAOAdmin,
+    activeCertificationKind: input.activeCertificationKind,
+    hasSponsoredIntelligenceContext: input.hasSponsoredIntelligenceContext,
+    isToolAvailable,
+  });
+  const { selectedToolSets, allowedToolNames } = selection;
+  const matchedToolNames = allowedToolNames.filter(isToolAvailable);
   const matched = new Set(matchedToolNames);
 
   return {
@@ -418,7 +384,7 @@ export async function selectRoutedWebTools(input: {
     // Keep provider-managed web_search in the allowlist even though it has no
     // custom handler. The client applies this list to global definitions too.
     allowedToolNames,
-    unavailableHint: buildUnavailableSetsHint(selectedToolSets, input.isAAOAdmin),
+    unavailableHint: selection.unavailableHint,
   };
 }
 

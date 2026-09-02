@@ -252,6 +252,7 @@ import {
   classifyActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
+  selectBoundedRoutedToolSets,
   selectSlackToolSets,
   type ActiveCertificationKind,
   type SystemChannelRole,
@@ -1058,7 +1059,8 @@ async function setAgentViewSuggestedPrompts(client: any, userId: string, channel
 async function buildRequestContext(
   userId: string,
   threadContext?: ThreadContext,
-  existingMemberContext?: MemberContext | null
+  existingMemberContext?: MemberContext | null,
+  options?: { includeCertificationContext?: boolean },
 ): Promise<{ requestContext: string; memberContext: MemberContext | null; activeCertificationKind: ActiveCertificationKind | null }> {
   try {
     const memberContext = existingMemberContext !== undefined ? existingMemberContext : await getMemberContext(userId);
@@ -1097,7 +1099,7 @@ async function buildRequestContext(
     let certContextText = '';
     let activeCertificationKind: ActiveCertificationKind | null = null;
     const workosUserId = memberContext?.workos_user?.workos_user_id;
-    if (workosUserId) {
+    if (workosUserId && options?.includeCertificationContext !== false) {
       try {
         const progress = await certDb.getProgress(workosUserId);
         const inProgress = progress.filter(p => p.status === 'in_progress');
@@ -5730,6 +5732,7 @@ async function handleReactionAdded({
   if (!claudeClient || !boltApp) {
     return;
   }
+  const reactionClient = claudeClient;
 
   // Use boltApp.client for API calls
   const client = boltApp.client;
@@ -5928,11 +5931,70 @@ async function handleReactionAdded({
   // Create user-scoped tools (pass channel context for working group auto-detection)
   const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, reactingUserId, thread.thread_id, channelContext);
 
+  // Reactions are user-visible thread continuations, but selection is kept
+  // separate from the reaction trigger, persistence, audit, and delivery
+  // mechanics above. Invalid/non-response/over-broad router output receives
+  // the same explicit read-only fallback as authenticated web chat.
+  let reactionPlan: ExecutionPlan | null = null;
+  let reactionRouterAvailable = addieRouter !== null;
+  if (addieRouter) {
+    const routingContext: RoutingContext = {
+      message: userInput,
+      source: 'channel',
+      memberContext,
+      isThread: true,
+      isAAOAdmin: userIsAdmin,
+      channelName: channelContext.viewing_channel_name,
+      threadMessages: conversationHistory?.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+    };
+    try {
+      reactionPlan = addieRouter.quickMatch(routingContext)
+        ?? await addieRouter.route(routingContext, { failureMode: 'throw' });
+    } catch (error) {
+      reactionRouterAvailable = false;
+      logger.warn({ error, threadId: thread.thread_id }, 'Addie Bolt: Reaction router unavailable; using safe read-only fallback');
+    }
+  }
+  const requestDefinitionNames = new Set(userTools.tools.map((tool) => tool.name));
+  const requestHandlerNames = new Set(userTools.handlers.keys());
+  const reactionSelection = selectBoundedRoutedToolSets({
+    plan: reactionPlan,
+    routerAvailable: reactionRouterAvailable,
+    source: 'channel',
+    isAdmin: userIsAdmin,
+    isPublicChannel: channelContext.viewing_channel_is_private === false,
+    hasSponsoredIntelligenceContext: hasCachedSiSession(thread.thread_id),
+    isToolAvailable: (name) => (
+      (requestDefinitionNames.has(name) && requestHandlerNames.has(name))
+      || reactionClient.hasRegisteredTools([name])
+    ),
+  });
+  const { filteredTools: reactionTools } = filterToolsBySet(
+    userTools,
+    reactionSelection.selectedToolSets,
+    userIsAdmin,
+    channelContext.viewing_channel_is_private === false,
+  );
+  if (reactionSelection.useSafeFallback) {
+    // The normal member context can contain a server-owned active-course
+    // overlay. Rebuild it without that elevated context for a router fallback.
+    const fallbackContext = await buildRequestContext(reactingUserId, channelContext, memberContext, {
+      includeCertificationContext: false,
+    });
+    requestContext = fallbackContext.requestContext;
+    if (historyUnavailable) requestContext += `\n\n${HISTORY_UNAVAILABLE_NOTE}`;
+  }
+  requestContext = [requestContext, reactionSelection.unavailableHint]
+    .filter(Boolean)
+    .join('\n\n');
+
   // Admin users get higher iteration limit for bulk operations.
   // Reactions can confirm tool actions, so they remain user-scoped.
   const processOptions = {
     ...(userIsAdmin ? { maxIterations: ADMIN_MAX_ITERATIONS } : {}),
     requestContext,
+    selectedToolSetNames: reactionSelection.selectedToolSets,
+    allowedToolNames: reactionSelection.allowedToolNames,
     slackUserId: reactingUserId,
     threadId: thread.thread_id,
     ...(await buildSlackCostOptions(memberContext, reactingUserId)),
@@ -5942,7 +6004,7 @@ async function handleReactionAdded({
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(userInput, conversationHistory, userTools, undefined, processOptions);
+    response = await reactionClient.processMessage(userInput, conversationHistory, reactionTools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing reaction response');
     response = {

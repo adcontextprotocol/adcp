@@ -708,7 +708,10 @@ export function getToolsForSets(
     : ALWAYS_AVAILABLE_TOOLS;
   const tools = new Set<string>(alwaysAvailable);
 
-  if (isAAOAdmin) {
+  // Public-channel replies must not expose escalation records: even an admin
+  // can retrieve member identities and private request context from them.
+  // Keep those tools to direct/private surfaces only.
+  if (isAAOAdmin && !isPublicChannel) {
     for (const tool of ALWAYS_AVAILABLE_ADMIN_TOOLS) {
       tools.add(tool);
     }

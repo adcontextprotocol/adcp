@@ -40,6 +40,12 @@ describe('getToolsForSets', () => {
         expect(tools).toContain(tool);
       }
     });
+
+    it('withholds admin escalation records from public channels', () => {
+      const tools = getToolsForSets(['knowledge'], true, true);
+      expect(tools).not.toContain('resolve_escalation');
+      expect(tools).not.toContain('list_escalations');
+    });
   });
 
   describe('bounded admin domains', () => {
