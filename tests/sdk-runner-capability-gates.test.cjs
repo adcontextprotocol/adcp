@@ -40,6 +40,83 @@ function loadMediaBuyStoryboard(name) {
   return YAML.parse(fs.readFileSync(storyboardPath, 'utf8'));
 }
 
+test('phase capability gates do not dispatch dependents with unresolved context', async () => {
+  const storyboard = {
+    id: 'phase_capability_cascade_regression',
+    version: '1.0',
+    title: 'Phase capability cascade regression',
+    category: 'media_buy',
+    summary: 'Regression',
+    narrative: 'Regression',
+    agent: { interaction_model: 'single_agent', capabilities: [] },
+    caller: { role: 'buyer' },
+    phases: [
+      {
+        id: 'setup',
+        title: 'Setup',
+        requires_capability: {
+          path: 'creative.has_creative_library',
+          equals: true,
+        },
+        steps: [
+          {
+            id: 'create_buy',
+            title: 'Create media buy',
+            task: 'create_media_buy',
+            stateful: true,
+            sample_request: { brand_id: 'test' },
+            context_outputs: [{ key: 'media_buy_id', path: 'media_buy_id' }],
+          },
+        ],
+      },
+      {
+        id: 'state_transitions',
+        title: 'State transitions',
+        steps: [
+          {
+            id: 'pause_buy',
+            title: 'Pause media buy',
+            task: 'update_media_buy',
+            stateful: true,
+            sample_request: {
+              media_buy_id: '$context.media_buy_id',
+              paused: true,
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const dispatchedRequests = [];
+
+  const result = await runStoryboard('https://agent.example/mcp', storyboard, {
+    _profile: {
+      tools: ['get_adcp_capabilities', 'create_media_buy', 'update_media_buy'],
+      raw_capabilities: { creative: { has_creative_library: false } },
+    },
+    agentTools: ['get_adcp_capabilities', 'create_media_buy', 'update_media_buy'],
+    _client: {
+      resetContext() {},
+      async createMediaBuy(request) {
+        dispatchedRequests.push(request);
+        throw new Error('capability-gated setup must not execute');
+      },
+      async updateMediaBuy(request) {
+        dispatchedRequests.push(request);
+        throw new Error('dependent phase must not execute');
+      },
+    },
+  });
+
+  assert.deepEqual(dispatchedRequests, []);
+  assert.equal(result.failed_count, 0);
+  assert.equal(result.phases[0].steps[0].skip_reason, 'not_applicable');
+  const dependent = result.phases[1].steps[0];
+  assert.equal(dependent.skip_reason, 'capability_prerequisite_unavailable');
+  assert.equal(dependent.skip.reason, 'not_applicable');
+  assert.match(dependent.skip.detail, /create_buy.*not_applicable/);
+});
+
 test('runStoryboard skips an equals-gated storyboard when the capability path is absent', async () => {
   const storyboard = {
     id: 'equals_absent_regression',

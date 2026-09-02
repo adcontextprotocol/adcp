@@ -103,7 +103,7 @@ without asking the seller to author a media plan:
 
 ```javascript
 const result = await seller.listProducts({
-  adcp_version: '3.2-beta.9',
+  adcp_version: '3.2-beta.10',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: {
@@ -155,7 +155,7 @@ structured criteria to StreamHaus while keeping strategy in prose:
 
 ```javascript
 const response = await seller.requestProposals({
-  adcp_version: '3.2-beta.9',
+  adcp_version: '3.2-beta.10',
   idempotency_key: 'acme-q2-proposals-001',
   account: { account_id: 'account_123' },
   brand: { domain: 'acme-outdoor.example' },

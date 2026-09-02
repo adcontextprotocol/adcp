@@ -23,20 +23,20 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-08-30.*
+*Last updated: 2026-09-02.*
 
 | SDK | Current package | 3.2 beta support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.22` | Exact `3.2.0-beta.9` support | ✅ | ✅ | ✅ | ✅ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.27` | Exact `3.2.0-beta.10` support | ✅ | ✅ | ✅ | ✅ |
 | **`adcp`** (Python) | `8.0.0b10` | Exact `3.2.0-beta.9` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.0.0` | Pending exact 3.2 support | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
 <Warning>
-**3.2 packages are prereleases.** The TypeScript and Python betas support the
-exact beta.9 protocol checkpoint; neither implies compatibility with a later
-checkpoint. Go has not published an exact
+**3.2 packages are prereleases.** TypeScript beta.27 supports the exact beta.10
+protocol checkpoint; Python beta.10 supports the exact beta.9 checkpoint.
+Neither implies compatibility with a later checkpoint. Go has not published an exact
 3.2 support statement yet. See the [3.2 beta program](/docs/reference/3-2-beta).
 </Warning>
 
@@ -59,7 +59,7 @@ and the [Slack community](/docs/community/joining-slack).
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.22
+npm install @adcp/sdk@14.0.0-beta.27
 ```
 
 ```javascript
@@ -73,7 +73,7 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.listProducts({
-  adcp_version: '3.2-beta.9',
+  adcp_version: '3.2-beta.10',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: { channels: ['ctv'] },
@@ -168,11 +168,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-beta.22 --help
-npx @adcp/sdk@14.0.0-beta.22 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-beta.22 my-agent list_products '{"adcp_version":"3.2-beta.9","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-beta.27 --help
+npx @adcp/sdk@14.0.0-beta.27 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-beta.27 my-agent list_products '{"adcp_version":"3.2-beta.10","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-beta.22 test-mcp list_products '{"adcp_version":"3.2-beta.9"}'
+npx @adcp/sdk@14.0.0-beta.27 test-mcp list_products '{"adcp_version":"3.2-beta.10"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
