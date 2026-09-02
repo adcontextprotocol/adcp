@@ -5,6 +5,7 @@ import {
   hasActiveCertificationProgress,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
+  selectBoundedRoutedToolSets,
   selectSlackToolSets,
   SYSTEM_CHANNEL_TOOL_SETS,
   type SystemChannelRole,
@@ -189,6 +190,106 @@ describe('Slack tool-set selection policy', () => {
       source: 'channel',
       isAdmin: true,
     })).toEqual([]);
+  });
+
+  it('bounds reaction response plans by member/admin and public/private policy', () => {
+    const member = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['member_billing'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+    });
+    expect(member.useSafeFallback).toBe(false);
+    expect(member.selectedToolSets).toEqual(['member_billing']);
+    expect(member.allowedToolNames).toContain('create_payment_link');
+
+    const publicMember = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['member_billing'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: true,
+    });
+    expect(publicMember.allowedToolNames).not.toContain('create_payment_link');
+    expect(publicMember.allowedToolNames).not.toContain('get_account_link');
+
+    const admin = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+      isPublicChannel: false,
+    });
+    expect(admin.useSafeFallback).toBe(false);
+    expect(admin.allowedToolNames).toContain('add_prospect');
+  });
+
+  it.each([
+    ['non-response action', { action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }],
+    ['stale alias', { action: 'respond', tool_sets: ['admin'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+  ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {
+    const selection = selectBoundedRoutedToolSets({
+      plan,
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: false,
+      activeCertificationKind: 'mixed',
+      hasSponsoredIntelligenceContext: true,
+      systemRole: 'billing',
+    });
+    expect(selection.useSafeFallback).toBe(true);
+    expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
+    expect(selection.selectedToolSets).not.toContain('sponsored_intelligence');
+    expect(selection.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'capture_learning', 'set_outreach_preference', 'create_payment_link',
+      'add_prospect', 'send_to_si_agent', 'start_certification_module',
+    ]));
+  });
+
+  it('uses the mutation-free fallback when the reaction router is unavailable', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: null,
+      routerAvailable: false,
+      source: 'channel',
+      isAdmin: true,
+      isPublicChannel: false,
+      activeCertificationKind: 'learning',
+      hasSponsoredIntelligenceContext: true,
+    });
+    expect(selection.useSafeFallback).toBe(true);
+    expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
+    expect(selection.allowedToolNames).not.toContain('resolve_escalation');
+    expect(selection.allowedToolNames).not.toContain('start_certification_module');
+    expect(selection.allowedToolNames).not.toContain('send_to_si_agent');
+  });
+
+  it('does not expose a routed domain when one of its tools lacks a paired handler', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['member_billing'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isToolAvailable: (name) => name !== 'create_payment_link',
+    });
+    expect(selection.useSafeFallback).toBe(true);
+    expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
+    expect(selection.allowedToolNames).not.toContain('create_payment_link');
+  });
+
+  it('withholds escalation records from public admin reactions', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+      isPublicChannel: true,
+    });
+    expect(selection.allowedToolNames).not.toContain('resolve_escalation');
+    expect(selection.allowedToolNames).not.toContain('list_escalations');
   });
 
   it('returns verified channel context from the required resolver', async () => {

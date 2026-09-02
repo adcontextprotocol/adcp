@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "24b1ae25ef363383f47a58d0d87b5703669ca2bfeb6140ddc69058562ea0f3ef",
-  "profile_contract_sha256": "9805570b53d3f4a405a1c39d027733b11db5860fb947e29d6abdb1d4921ab992",
+  "profile_ids_sha256": "44f7619cdb90fa75646034b2e9c750684af254be19a0b6ebb2ee0db9353e3c2d",
+  "profile_contract_sha256": "864713aa3cab55f5991a26a7bd26c19d18ffe1af71b91602c035f7bc60605fce",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -55,10 +55,10 @@
     "legacy_slack:member_mention": { "custom_tool_count": 133, "wire_schema_bytes": 117335, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "mcp_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "official_docs_replay:evaluation_only": { "custom_tool_count": 2, "wire_schema_bytes": 1873, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
-    "slack_bolt_reaction:admin": { "custom_tool_count": 243, "wire_schema_bytes": 191322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "slack_bolt_reaction:member": { "custom_tool_count": 163, "wire_schema_bytes": 139685, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "slack_bolt_reaction:public_channel": { "custom_tool_count": 162, "wire_schema_bytes": 137874, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "slack_bolt_reaction:public_channel_admin": { "custom_tool_count": 242, "wire_schema_bytes": 189511, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "slack_bolt_reaction:admin": { "custom_tool_count": 36, "wire_schema_bytes": 36467, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "slack_bolt_reaction:member": { "custom_tool_count": 34, "wire_schema_bytes": 34173, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "slack_bolt_reaction:public_channel": { "custom_tool_count": 33, "wire_schema_bytes": 33700, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
+    "slack_bolt_reaction:public_channel_admin": { "custom_tool_count": 33, "wire_schema_bytes": 33700, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt:admin_dm": { "custom_tool_count": 219, "wire_schema_bytes": 173278, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt:admin_working_group": { "custom_tool_count": 219, "wire_schema_bytes": 173278, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "slack_bolt:member_dm": { "custom_tool_count": 153, "wire_schema_bytes": 131695, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
