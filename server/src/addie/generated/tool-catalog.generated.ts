@@ -56,7 +56,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
 - **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member
-- **admin_organizations** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains, update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
+- **admin_organization_integrity** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains
+- **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
 - **admin_workflows** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation, set_reminder, my_upcoming_tasks, complete_task, log_conversation
 - **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
 - **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact

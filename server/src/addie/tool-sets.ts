@@ -128,11 +128,13 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "add_working_group_member",
     "remove_working_group_member",
   ],
-  admin_organizations: [
+  admin_organization_integrity: [
     "merge_organizations",
     "find_duplicate_orgs",
     "check_domain_health",
     "manage_organization_domains",
+  ],
+  admin_organization_member_records: [
     "update_org_member_role",
     "list_slack_users_by_org",
     "list_paying_members",
@@ -159,6 +161,18 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "list_orphaned_brands",
   ],
 } as const;
+
+/** Admin-only organization identity, duplicate, and verified-domain maintenance. */
+export const ADMIN_ORGANIZATION_INTEGRITY_TOOLS = ADMIN_DOMAIN_TOOL_SETS.admin_organization_integrity;
+
+/** Admin-only organization memberships, Slack roster, and directory-record maintenance. */
+export const ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS = ADMIN_DOMAIN_TOOL_SETS.admin_organization_member_records;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_ORGANIZATIONS_TOOLS = [
+  ...ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
+  ...ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
+] as const;
 
 /** Bounded member account/profile surface for new router plans. */
 export const MEMBER_PROFILE_TOOLS = [
@@ -815,12 +829,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
+  admin_organization_integrity: {
+    name: "admin_organization_integrity",
+    description:
+      "Diagnose and reconcile duplicate member organizations and their verified domains (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organization_integrity],
+    adminOnly: true,
+  },
+
+  admin_organization_member_records: {
+    name: "admin_organization_member_records",
+    description:
+      "Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organization_member_records],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded organization domains.
   admin_organizations: {
     name: "admin_organizations",
-    description:
-      "Manage member organizations, domains, roles, directory profiles, and duplicate organizations (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_organizations],
+    description: "Legacy combined organization-administration compatibility surface",
+    tools: [...ADMIN_ORGANIZATIONS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_workflows: {

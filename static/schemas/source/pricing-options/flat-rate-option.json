@@ -46,9 +46,21 @@
         },
         "sov_percentage": {
           "type": "number",
-          "description": "Guaranteed share of voice as a percentage (0-100)",
+          "description": "Guaranteed share of voice on a 0-100 percentage scale. To compare this contracted value with delivery dooh_metrics.sov_achieved, divide sov_percentage by 100. Share is time-weighted: the sum of the reserved segment durations divided by the full loop duration. On equal-duration loops this equals the slot-count ratio.",
           "minimum": 0,
           "maximum": 100
+        },
+        "slot_span": {
+          "type": "integer",
+          "description": "Number of consecutive loop slots reserved by this seller-declared pre-packaged offer. Contiguity is guaranteed; position is not guaranteed unless loop_position is also present. This field does not carry a buyer-requested custom span for an offer the seller has not pre-packaged.",
+          "minimum": 1,
+          "x-added-in": "3.2.0"
+        },
+        "loop_position": {
+          "type": "string",
+          "description": "Seller-defined position label for the reserved span within the loop, such as any, first, last, or adjacent_to_content_break. This is deliberately an open string because network vocabularies differ. Consumers MUST accept unrecognized values as opaque and treat them as conveying no position guarantee the consumer understands; an unrecognized value is not a protocol error.",
+          "minLength": 1,
+          "x-added-in": "3.2.0"
         },
         "loop_duration_seconds": {
           "type": "integer",

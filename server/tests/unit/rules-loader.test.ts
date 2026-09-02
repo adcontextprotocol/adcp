@@ -288,6 +288,28 @@ describe('Addie tool reference', () => {
     expect(reference).not.toContain('### Admin workflow operations');
   });
 
+  it('keeps organization-integrity and member-record guidance request-scoped', () => {
+    const integrity = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_organization_integrity'], true, false),
+      selectedToolSetNames: ['admin_organization_integrity'],
+    });
+    const memberRecords = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_organization_member_records'], true, false),
+      selectedToolSetNames: ['admin_organization_member_records'],
+    });
+
+    expect(integrity).toContain('### Admin organization integrity');
+    expect(integrity).toContain('- **admin_organization_integrity** *(admin only)*');
+    expect(integrity).toContain('merge_organizations');
+    expect(integrity).not.toContain('### Admin organization member records');
+    expect(integrity).not.toContain('update_org_member_role');
+    expect(memberRecords).toContain('### Admin organization member records');
+    expect(memberRecords).toContain('- **admin_organization_member_records** *(admin only)*');
+    expect(memberRecords).toContain('update_org_member_role');
+    expect(memberRecords).not.toContain('### Admin organization integrity');
+    expect(memberRecords).not.toContain('merge_organizations');
+  });
+
   it('scopes group-admin guidance to the selected domain', () => {
     const leadership = buildAddieToolReference({
       availableToolNames: getToolsForSets(['admin_group_leadership'], true, false),
