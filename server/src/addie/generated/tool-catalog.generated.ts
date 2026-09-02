@@ -41,7 +41,10 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
 - **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
-- **meetings** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
+- **meeting_attendance** — list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, add_meeting_attendee
+- **meeting_scheduling** — schedule_meeting, list_upcoming_meetings, cancel_meeting, update_meeting
+- **meeting_series_topics** — list_upcoming_meetings, cancel_meeting_series, update_topic_subscriptions, manage_committee_topics
+- **meeting_full_administration** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
 - **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_prospects** *(admin only)* — add_prospect, update_prospect, enrich_company, query_prospects, prospect_search_lusha, claim_prospect, triage_prospect_domain, suggest_prospects

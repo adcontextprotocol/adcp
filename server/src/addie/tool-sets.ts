@@ -246,6 +246,52 @@ export const CERTIFICATION_ASSESSMENT_TOOLS = [
   "call_adcp_task",
 ] as const;
 
+/** Calendar lookup, RSVP, and invitation attendance workflow. */
+export const MEETING_ATTENDANCE_TOOLS = [
+  "list_upcoming_meetings",
+  "get_my_meetings",
+  "get_meeting_details",
+  "rsvp_to_meeting",
+  "add_meeting_attendee",
+] as const;
+
+/** Create, change, or cancel one scheduled meeting. */
+export const MEETING_SCHEDULING_TOOLS = [
+  "schedule_meeting",
+  "list_upcoming_meetings",
+  "cancel_meeting",
+  "update_meeting",
+] as const;
+
+/** Recurring-series lifecycle and working-group invitation-topic administration. */
+export const MEETING_SERIES_TOPIC_TOOLS = [
+  "list_upcoming_meetings",
+  "cancel_meeting_series",
+  "update_topic_subscriptions",
+  "manage_committee_topics",
+] as const;
+
+/**
+ * One long cross-workflow meeting request; preserves the exact legacy union.
+ * Kept as a literal because this router-visible set is statically cataloged.
+ */
+export const MEETING_FULL_ADMINISTRATION_TOOLS = [
+  "schedule_meeting",
+  "list_upcoming_meetings",
+  "get_my_meetings",
+  "get_meeting_details",
+  "rsvp_to_meeting",
+  "cancel_meeting",
+  "cancel_meeting_series",
+  "update_meeting",
+  "add_meeting_attendee",
+  "update_topic_subscriptions",
+  "manage_committee_topics",
+] as const;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const MEETING_TOOLS = MEETING_FULL_ADMINISTRATION_TOOLS;
+
 /** Publisher registry, configuration, authorization, and cached-status checks. */
 export const AGENT_REGISTRY_TOOLS = [
   "validate_adagents",
@@ -588,23 +634,43 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  meeting_attendance: {
+    name: "meeting_attendance",
+    description:
+      "Check meeting agendas, RSVP, and manage attendance",
+    tools: [...MEETING_ATTENDANCE_TOOLS],
+  },
+
+  meeting_scheduling: {
+    name: "meeting_scheduling",
+    description:
+      "Schedule, update, or cancel one meeting",
+    tools: [...MEETING_SCHEDULING_TOOLS],
+  },
+
+  meeting_series_topics: {
+    name: "meeting_series_topics",
+    description:
+      "Manage recurring series and invitation topics",
+    tools: [...MEETING_SERIES_TOPIC_TOOLS],
+  },
+
+  // An explicit parity exception for one long request that genuinely spans
+  // scheduling, attendance, and recurring-series/topic administration.
+  meeting_full_administration: {
+    name: "meeting_full_administration",
+    description:
+      "Handle one long request across meeting scheduling, attendance, and series or topics",
+    tools: [...MEETING_FULL_ADMINISTRATION_TOOLS],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use the narrow domains or the explicit full exception above.
   meetings: {
     name: "meetings",
-    description:
-      "Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links",
-    tools: [
-      "schedule_meeting",
-      "list_upcoming_meetings",
-      "get_my_meetings",
-      "get_meeting_details",
-      "rsvp_to_meeting",
-      "cancel_meeting",
-      "cancel_meeting_series",
-      "update_meeting",
-      "add_meeting_attendee",
-      "update_topic_subscriptions",
-      "manage_committee_topics",
-    ],
+    description: "Legacy combined meetings compatibility surface",
+    tools: [...MEETING_TOOLS],
+    routerVisible: false,
   },
 
   committee_leadership: {

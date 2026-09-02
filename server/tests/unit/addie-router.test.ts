@@ -136,14 +136,19 @@ describe('Addie router prompt policy', () => {
     expect(mentionPrompt).toContain('Ignore off-topic requests');
   });
 
-  it('disambiguates working group meetings from working group membership', () => {
+  it('disambiguates working group meeting attendance from working group membership', () => {
     const prompt = buildRoutingPrompt({
       message: 'What is on the next working group meeting agenda?',
       source: 'dm',
     });
 
     expect(prompt).toContain('Working group membership or participation');
-    expect(prompt).toContain('select ["meetings"] and do NOT add ["community_groups"]');
+    expect(prompt).toContain('select the applicable meeting domain and do NOT add ["community_groups"]');
+    expect(prompt).toContain('→ ["meeting_attendance"]');
+    expect(prompt).toContain('→ ["meeting_scheduling"]');
+    expect(prompt).toContain('→ ["meeting_series_topics"]');
+    expect(prompt).toContain('→ exactly ["meeting_full_administration"]');
+    expect(prompt).toContain('never exceed the global two-domain cap');
   });
 });
 

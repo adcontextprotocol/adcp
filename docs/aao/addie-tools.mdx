@@ -962,9 +962,129 @@ Register the current user's interest in an event. Use when someone asks to be no
 
 *Source: `server/src/addie/mcp/event-tools.ts`*
 
-## meetings
+## meeting_attendance
 
-Schedule, list, update, and cancel meetings - add or remove attendees, RSVP, manage recurring series, handle calendar invites and Zoom links
+Check meeting agendas, RSVP, and manage attendance
+
+### `list_upcoming_meetings`
+
+List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `get_my_meetings`
+
+Get the user's upcoming meetings. Use this when someone asks "what meetings do I have?" or "what's on my calendar?"
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `get_meeting_details`
+
+Get details about a specific meeting including attendees and RSVP status.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `rsvp_to_meeting`
+
+RSVP to a meeting. Use this when someone says they want to attend a meeting or needs to decline.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `add_meeting_attendee`
+
+Add a person to an existing meeting by email. Call this once per person. Use list_upcoming_meetings first to get the meeting_id.
+
+Example: "add Karen, Brian, and Jonathan to the call" requires:
+1. list_upcoming_meetings to find the meeting_id
+2. add_meeting_attendee for Karen
+3. add_meeting_attendee for Brian
+4. add_meeting_attendee for Jonathan
+
+When add_to_series is true, adds them to all upcoming meetings in the same series.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+## meeting_scheduling
+
+Schedule, update, or cancel one meeting
+
+### `schedule_meeting`
+
+Schedule a new working group meeting. Use this when someone asks to schedule a meeting, call, or discussion.
+The meeting will be created with a Zoom link. For one-time meetings, calendar invites are sent to working group members by default.
+
+For recurring meetings, calendar invites are sent to working group members by default (same as one-time meetings).
+
+If the user is in a channel associated with a working group, you can omit working_group_slug and it will be inferred from the channel context.
+
+For recurring meetings, use the recurrence parameter with freq, interval, count, and byDay.
+
+Required: title, start_time (RFC 3339 with an explicit offset)
+Optional: working_group_slug (auto-detected from channel), description, agenda, duration_minutes, timezone, topic_slugs, recurrence
+
+IMPORTANT: The numeric offset in start_time must agree with timezone at that instant. For example, 2pm New York in January is "2026-01-15T14:00:00-05:00" with timezone "America/New_York". This prevents daylight-saving and server-timezone ambiguity.
+
+Example prompts this handles:
+- "Schedule a technical working group call for next Tuesday at 2pm ET"
+- "Set up a bylaws subcommittee meeting for Jan 15 at 3pm PT"
+- "Schedule weekly governance calls every Thursday at 3pm for the next 8 weeks"
+- "Create a recurring creative WG meeting every other Tuesday at 2pm"
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `list_upcoming_meetings`
+
+List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `cancel_meeting`
+
+Cancel a scheduled meeting. Sends cancellation notices to all attendees.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `update_meeting`
+
+Update an existing meeting's details. Use this when someone wants to change the time, title, description, or agenda of a scheduled meeting.
+
+This will update the meeting in the database, Zoom (if configured), and Google Calendar.
+
+IMPORTANT: start_time must be RFC 3339 with an explicit offset that agrees with the IANA timezone.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+## meeting_series_topics
+
+Manage recurring series and invitation topics
+
+### `list_upcoming_meetings`
+
+List upcoming meetings. Use this when someone asks about scheduled meetings, what's coming up, or the meeting calendar. Also use this as a first step when you need a meeting_id for add_meeting_attendee, cancel_meeting, or update_meeting. Use my_committees_only to filter to committees the user is a member of.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `cancel_meeting_series`
+
+Cancel a recurring meeting series. Cancels all upcoming meetings in the series (Zoom + calendar) and archives the series record. Use this when someone wants to stop a recurring series entirely.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `update_topic_subscriptions`
+
+Update meeting topic subscriptions for a user in a working group. Use this when someone wants to change which types of meetings they're invited to.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+### `manage_committee_topics`
+
+Manage topics for a working group/committee. Topics help organize meetings and filter invitations. Each topic can optionally have its own Slack channel for subgroup discussions. Use action='list' to see current topics, action='add' to create a new topic, action='update' to modify an existing topic, or action='remove' to delete a topic.
+
+*Source: `server/src/addie/mcp/meeting-tools.ts`*
+
+## meeting_full_administration
+
+Handle one long request across meeting scheduling, attendance, and series or topics
 
 ### `schedule_meeting`
 

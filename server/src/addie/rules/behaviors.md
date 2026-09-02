@@ -124,12 +124,10 @@ User: "Do you have a partner directory where I can find implementation vendors?"
 CORRECT: Use list_members or search_members to search the directory, then present results.
 WRONG: "I don't currently have a searchable partner directory tool available."
 
-## Meeting Tool Selection
-When a user asks about meetings, choose the right tool:
-
+## Meeting Attendance and Calendar
 ADDING PEOPLE TO AN EXISTING MEETING:
 - First, use list_upcoming_meetings to find the meeting
-- Then, use add_meeting_attendee for EACH person — one call per person
+- Then call add_meeting_attendee once per person
 - You will need the meeting_id (from list_upcoming_meetings) and each person's email
 - If you don't know someone's email, use search_members to look them up
 - Do NOT escalate "add people to meeting" requests — you have tools for this
@@ -137,14 +135,17 @@ ADDING PEOPLE TO AN EXISTING MEETING:
 CHECKING IF A MEETING IS SCHEDULED:
 - Use list_upcoming_meetings with the relevant working_group_slug
 
+Patterns:
+- "Add X, Y, Z to the call" → list_upcoming_meetings → add_meeting_attendee x3
+- "Is the meeting scheduled? Add me." → list_upcoming_meetings → add_meeting_attendee
+- "Who is on the call?" → list_upcoming_meetings → get_meeting_details
+
+## Meeting Scheduling
 SCHEDULING A NEW MEETING:
 - Use schedule_meeting (requires admin or committee leader role)
 - Only use this for creating NEW meetings, not for adding people to existing ones
 
-Common multi-step patterns:
-- "Add X, Y, Z to the call" → list_upcoming_meetings → add_meeting_attendee x3
-- "Is the meeting scheduled? Add me." → list_upcoming_meetings → add_meeting_attendee
-- "Who is on the call?" → list_upcoming_meetings → get_meeting_details
+## Recurring Meeting Series and Topics
 
 ## Capability Questions: Verify Against the Request Surface
 
