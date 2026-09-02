@@ -1504,6 +1504,124 @@ function filterToolsBySet(
   };
 }
 
+function filterToolsByAllowedNames(
+  userTools: RequestTools,
+  allowedToolNames: readonly string[],
+): RequestTools {
+  const allowed = new Set(allowedToolNames);
+  return {
+    tools: userTools.tools.filter((tool) => allowed.has(tool.name)),
+    handlers: new Map(
+      [...userTools.handlers].filter(([name]) => allowed.has(name)),
+    ),
+  };
+}
+
+export interface RoutedDirectSlackTools {
+  tools: RequestTools;
+  unavailableHint: string;
+  selectedToolSets: string[];
+  allowedToolNames: string[];
+  useSafeFallback: boolean;
+  requiresPrecision: boolean;
+  requiresDepth: boolean;
+  confidence: ConfidenceTier;
+}
+
+/**
+ * Select the request-scoped capability surface for a direct Slack response.
+ * This is shared by regular DMs, Assistant-thread DMs, and app mentions;
+ * channel-thread replies retain the established legacy selector below.
+ */
+export async function selectRoutedDirectSlackTools(input: {
+  message: string;
+  source: 'dm' | 'mention';
+  memberContext: MemberContext | null;
+  threadId: string;
+  channelName?: string;
+  isThread?: boolean;
+  isAAOAdmin: boolean;
+  requestTools: RequestTools;
+  router: Pick<AddieRouter, 'quickMatch' | 'route'> | null;
+  hasRegisteredTools?: (toolNames: string[]) => boolean;
+  activeCertificationKind?: ActiveCertificationKind | null;
+  hasSponsoredIntelligenceContext?: boolean;
+  threadMessages?: string[];
+  isPublicChannel?: boolean;
+}): Promise<RoutedDirectSlackTools> {
+  let plan: ExecutionPlan | null = null;
+  let routerAvailable = input.router !== null;
+  const routingContext: RoutingContext = {
+    message: input.message,
+    source: input.source,
+    memberContext: input.memberContext,
+    isThread: input.isThread,
+    isAAOAdmin: input.isAAOAdmin,
+    channelName: input.channelName,
+    threadMessages: input.threadMessages,
+  };
+
+  if (input.router) {
+    try {
+      plan = input.router.quickMatch(routingContext)
+        ?? await input.router.route(routingContext, { failureMode: 'throw' });
+    } catch (error) {
+      routerAvailable = false;
+      logger.warn({ error, threadId: input.threadId }, 'Addie Bolt: Direct-response router unavailable; using safe read-only fallback');
+    }
+  }
+
+  const requestDefinitionNames = new Set(input.requestTools.tools.map((tool) => tool.name));
+  const requestHandlerNames = new Set(input.requestTools.handlers.keys());
+  const selection = selectBoundedRoutedToolSets({
+    plan,
+    routerAvailable,
+    source: input.source,
+    isAdmin: input.isAAOAdmin,
+    isPublicChannel: input.isPublicChannel,
+    activeCertificationKind: input.activeCertificationKind,
+    hasSponsoredIntelligenceContext: input.hasSponsoredIntelligenceContext,
+    isToolAvailable: (name) => (
+      (requestDefinitionNames.has(name) && requestHandlerNames.has(name))
+      || input.hasRegisteredTools?.([name]) === true
+    ),
+  });
+  const tools = filterToolsByAllowedNames(input.requestTools, selection.allowedToolNames);
+  // Only a selection that survived the bounded-policy and availability checks
+  // may affect model choice or confidence. A malformed/stale response plan is
+  // no more trustworthy for those controls than a missing router.
+  const respondPlan = !selection.useSafeFallback && routerAvailable && plan?.action === 'respond'
+    ? plan
+    : null;
+
+  logger.debug(
+    {
+      source: input.source,
+      action: plan?.action ?? null,
+      reason: plan?.reason ?? null,
+      selectedSets: selection.selectedToolSets,
+      activeCertificationKind: input.activeCertificationKind ?? null,
+      filteredToolCount: tools.tools.length,
+      totalToolCount: input.requestTools.tools.length,
+      requiresPrecision: respondPlan ? !!respondPlan.requires_precision : false,
+      requiresDepth: respondPlan ? !!respondPlan.requires_depth : false,
+      useSafeFallback: selection.useSafeFallback,
+    },
+    'Addie Bolt: Routed direct conversational tools',
+  );
+
+  return {
+    tools,
+    unavailableHint: selection.unavailableHint,
+    selectedToolSets: selection.selectedToolSets,
+    allowedToolNames: selection.allowedToolNames,
+    useSafeFallback: selection.useSafeFallback,
+    requiresPrecision: respondPlan ? !!respondPlan.requires_precision : false,
+    requiresDepth: respondPlan ? !!respondPlan.requires_depth : false,
+    confidence: respondPlan ? respondPlan.confidence : 'high',
+  };
+}
+
 async function selectRoutedToolsForSlackResponse(
   messageText: string,
   source: 'dm' | 'mention' | 'channel',
@@ -1529,6 +1647,34 @@ async function selectRoutedToolsForSlackResponse(
     threadContext,
     source,
   );
+
+  // Direct DMs and mentions use the provider-neutral bounded policy. Keep the
+  // established channel selection below untouched because channel response
+  // suppression and server-owned channel overlays are intentionally legacy.
+  if (source === 'dm' || source === 'mention') {
+    const directTools = await selectRoutedDirectSlackTools({
+      message: messageText,
+      source,
+      memberContext,
+      threadId,
+      channelName: threadContext?.viewing_channel_name,
+      isThread: options?.isThread,
+      isAAOAdmin: userIsAdmin,
+      requestTools: userTools,
+      router: addieRouter,
+      hasRegisteredTools: claudeClient
+        ? (toolNames) => claudeClient!.hasRegisteredTools(toolNames)
+        : undefined,
+      activeCertificationKind: options?.activeCertificationKind,
+      hasSponsoredIntelligenceContext: hasCachedSiSession(threadId),
+      threadMessages: options?.threadMessages,
+      isPublicChannel: threadContext?.viewing_channel_is_private === false,
+    });
+    return {
+      ...directTools,
+      isAAOAdmin: userIsAdmin,
+    };
+  }
 
   if (!addieRouter) {
     logger.warn('Addie Bolt: Router unavailable, defaulting to knowledge tool set');
@@ -1574,12 +1720,9 @@ async function selectRoutedToolsForSlackResponse(
   };
 
   const plan = addieRouter.quickMatch(routingContext) ?? await addieRouter.route(routingContext);
-  // Direct interactions (DMs, mentions, assistant threads) always respond.
-  // Non-respond router actions only make sense for channel messages where Addie can stay silent.
-  const isDirectInteraction = source === 'dm' || source === 'mention';
   const routerSelectedSets = plan.action === 'respond'
     ? [...plan.tool_sets]
-    : isDirectInteraction ? [...SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS] : [];
+    : [];
   const selectedSets = selectSlackToolSets({
     routerSelectedSets,
     routerAvailable: true,
@@ -2413,12 +2556,22 @@ async function handleUserMessage({
 /**
  * Handle @mention in a channel
  */
-async function handleAppMention({
+type AppMentionHandlerDependencies = {
+  claudeClient?: AddieClaudeClient;
+  resolveChannelContext?: (channelId: string) => Promise<ThreadContext | null>;
+  getThreadService?: typeof getThreadService;
+  selectRoutedTools?: typeof selectRoutedToolsForSlackResponse;
+  buildCurrentChannelCostOptions?: typeof buildCurrentChannelCostOptions;
+  logInteraction?: typeof logInteraction;
+};
+
+export async function handleAppMention({
   event,
   say,
   context,
-}: SlackEventMiddlewareArgs<'app_mention'> & { context: { botUserId?: string } }): Promise<void> {
-  if (!claudeClient) {
+}: SlackEventMiddlewareArgs<'app_mention'> & { context: { botUserId?: string } }, dependencies?: AppMentionHandlerDependencies): Promise<void> {
+  const activeClaudeClient = dependencies?.claudeClient ?? claudeClient;
+  if (!activeClaudeClient) {
     logger.warn('Addie Bolt: Claude client not initialized');
     return;
   }
@@ -2430,8 +2583,6 @@ async function handleAppMention({
   }
 
   const startTime = Date.now();
-  const threadService = getThreadService();
-
   // Strip bot mention
   let rawText = event.text || '';
   if (context.botUserId) {
@@ -2473,8 +2624,19 @@ async function handleAppMention({
   // Sanitize input
   const inputValidation = sanitizeInput(rawText);
 
-  // Fetch channel info for context
-  const mentionChannelContext = await buildChannelContext(channelId) as ThreadContext;
+  // App mentions are user-visible in a channel. Do not select tools or
+  // generate a response until Slack has verified whether that channel is
+  // private; an unresolved classification must not fall through as private.
+  const mentionChannelContext = await (dependencies?.resolveChannelContext
+    ?? ((id: string) => resolveRequiredSlackChannelContext(id, buildChannelContext)))(channelId);
+  if (!mentionChannelContext) {
+    logger.warn(
+      { event: 'addie_app_mention_channel_context_unavailable' },
+      'Addie Bolt: Skipping app mention because channel privacy could not be verified',
+    );
+    return;
+  }
+  const threadService = (dependencies?.getThreadService ?? getThreadService)();
 
   // Fetch surrounding conversation context for the mention.
   // For threaded mentions: fetch thread replies.
@@ -2666,7 +2828,7 @@ async function handleAppMention({
     ? buildThreadSummaryForRouter(mentionRawMessages, context.botUserId || '', event.ts, userId)
     : undefined;
 
-  const routedTools = await selectRoutedToolsForSlackResponse(
+  const routedTools = await (dependencies?.selectRoutedTools ?? selectRoutedToolsForSlackResponse)(
     inputValidation.sanitized,
     'mention',
     memberContext,
@@ -2701,14 +2863,14 @@ async function handleAppMention({
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
-    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
+    ...(await (dependencies?.buildCurrentChannelCostOptions ?? buildCurrentChannelCostOptions)(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -2791,7 +2953,7 @@ async function handleAppMention({
   }
 
   // Also log to security audit (keeps existing behavior)
-  logInteraction({
+  (dependencies?.logInteraction ?? logInteraction)({
     id: thread.thread_id,
     timestamp: new Date(),
     event_type: 'mention',

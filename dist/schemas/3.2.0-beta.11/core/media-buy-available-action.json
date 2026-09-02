@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/media-buy-available-action.json",
+  "title": "Media Buy Available Action",
+  "description": "An action currently available on a media buy, resolved against the buy's current status, accepted commercial_terms.change_terms, account authorization, and applicable governance delegation. Authoritative for current availability, but not a replacement for negotiated rights: when explicit change_terms exist, this projection may temporarily omit an action because state changed, but MUST NOT silently replace its negotiated service mode, SLA, constraints, conditions, or contract reference. The containing array is uniquely keyed by action.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "change_term_link": "When change_term_id is present, it resolves to exactly one accepted_proposal.commercial_terms.change_terms[].term_id whose action, service_mode, and processing_sla agree with this projection.",
+      "legacy_alias_agreement": "When change_term_id and deprecated terms_ref are both present and terms_ref is being used as the proposal-term link, their values are identical. A 3.1 terms_ref with no accepted change term remains an opaque legacy commercial pointer and MUST NOT be reinterpreted as authority."
+    }
+  },
+  "type": "object",
+  "properties": {
+    "action": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/media-buy-valid-action.json",
+      "description": "The action identifier."
+    },
+    "mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/media-buy-action-mode.json",
+      "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, conditional handling, or an asynchronous approval callback."
+    },
+    "task": {
+      "type": "string",
+      "enum": [
+        "control_media_buy",
+        "refine_proposals",
+        "sync_creatives"
+      ],
+      "description": "Compact-lifecycle task for this resolved action: operational control, commercial refinement, or creative lifecycle mutation."
+    },
+    "sla": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/sla-window.json",
+      "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
+    },
+    "change_term_id": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/media-buy-change-term-id.json"
+    },
+    "terms_ref": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/media-buy-legacy-terms-ref.json"
+    }
+  },
+  "required": [
+    "action",
+    "mode"
+  ],
+  "additionalProperties": false
+}

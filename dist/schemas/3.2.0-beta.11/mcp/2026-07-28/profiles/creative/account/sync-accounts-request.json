@@ -1,0 +1,2609 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/mcp/2026-07-28/profiles/creative/account/sync-accounts-request.json",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "accounts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "#/$defs/external:core~1account-ref.json"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "operator_identity": {
+            "$ref": "#/$defs/external:core~1operator-identity.json"
+          },
+          "destination_billing_entity": {
+            "$ref": "#/$defs/external:core~1business-entity.json"
+          },
+          "brand": {
+            "$ref": "#/$defs/external:core~1brand-ref.json"
+          },
+          "operator": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "operator_unit": {
+            "$ref": "#/$defs/external:core~1operator-unit.json"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "billing": {
+            "$ref": "#/$defs/external:enums~1billing-party.json"
+          },
+          "billing_entity": {
+            "$ref": "#/$defs/external:core~1business-entity.json"
+          },
+          "payment_terms": {
+            "$ref": "#/$defs/external:enums~1payment-terms.json"
+          },
+          "sandbox": {
+            "type": "boolean"
+          },
+          "preferred_reporting_protocol": {
+            "$ref": "#/$defs/external:enums~1cloud-storage-protocol.json"
+          },
+          "reporting_delivery_configs": {
+            "type": "array",
+            "x-status": "experimental",
+            "items": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-config.json"
+            },
+            "maxItems": 16,
+            "x-adcp-validation": {
+              "unique_config_generation": "Reject the account entry when two items share delivery_config_id and delivery_config_version.",
+              "immutable_generation": "A previously observed tuple must retain identical feed/profile/scope/finality/schedule/method/destination content. Only active and revocation_effective_at are mutable lifecycle intent.",
+              "authorization": "Verify authenticated-caller authority for the account, requested reporting scope, recipient, and destination before applying."
+            }
+          },
+          "notification_configs": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/external:core~1notification-config.json"
+                },
+                {
+                  "if": {
+                    "required": [
+                      "authentication"
+                    ]
+                  },
+                  "then": {
+                    "properties": {
+                      "authentication": {
+                        "required": [
+                          "credentials"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "maxItems": 16
+          }
+        },
+        "oneOf": [
+          {
+            "required": [
+              "brand",
+              "operator",
+              "billing"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "account"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "revision"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_identity"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "destination_billing_entity"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "required": [
+              "account"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "required": [
+                    "brand"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "operator_unit"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "currency"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "timezone"
+                  ]
+                }
+              },
+              {
+                "not": {
+                  "required": [
+                    "billing"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "additionalProperties": true,
+        "dependentRequired": {
+          "operator_identity": [
+            "revision"
+          ],
+          "destination_billing_entity": [
+            "operator_identity",
+            "revision"
+          ]
+        }
+      },
+      "maxItems": 1000
+    },
+    "delete_missing": {
+      "type": "boolean",
+      "default": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false
+    },
+    "push_notification_config": {
+      "$ref": "#/$defs/external:core~1push-notification-config.json"
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "accounts"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/account-ref.json": {
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-ref.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-ref.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "industries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data_subject_contestation": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "languages": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "url"
+              ]
+            },
+            {
+              "required": [
+                "email"
+              ]
+            }
+          ],
+          "additionalProperties": false
+        },
+        "brand_kit_override": {
+          "type": "object",
+          "properties": {
+            "logo": {
+              "$ref": "#/$defs/external:core~1assets~1image-asset.json"
+            },
+            "colors": {
+              "type": "object",
+              "properties": {
+                "primary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "secondary": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "accent": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                }
+              },
+              "additionalProperties": true
+            },
+            "voice": {
+              "type": "string"
+            },
+            "tagline": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/assets/image-asset.json": {
+      "type": "object",
+      "properties": {
+        "asset_type": {
+          "type": "string",
+          "const": "image"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "file_size_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixel_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "state_id": {
+          "type": "string"
+        },
+        "breakpoint_id": {
+          "type": "string"
+        },
+        "focal_point": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "format": {
+          "type": "string"
+        },
+        "alt_text": {
+          "type": "string",
+          "x-accessibility": true
+        },
+        "provenance": {
+          "$ref": "#/$defs/external:core~1provenance.json"
+        }
+      },
+      "required": [
+        "asset_type",
+        "url",
+        "width",
+        "height"
+      ],
+      "additionalProperties": true
+    },
+    "external:core/provenance.json": {
+      "type": "object",
+      "properties": {
+        "digital_source_type": {
+          "$ref": "#/$defs/external:enums~1digital-source-type.json"
+        },
+        "synthetic_depiction": {
+          "type": "boolean"
+        },
+        "ai_tool": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ]
+        },
+        "human_oversight": {
+          "type": "string",
+          "enum": [
+            "none",
+            "prompt_only",
+            "selected",
+            "edited",
+            "directed"
+          ]
+        },
+        "declared_by": {
+          "type": "object",
+          "properties": {
+            "agent_url": {
+              "type": "string",
+              "format": "uri"
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "creator",
+                "advertiser",
+                "agency",
+                "platform",
+                "tool"
+              ]
+            }
+          },
+          "required": [
+            "role"
+          ]
+        },
+        "declared_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "created_time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "c2pa": {
+          "type": "object",
+          "properties": {
+            "manifest_url": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "manifest_url"
+          ]
+        },
+        "embedded_provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "$ref": "#/$defs/external:enums~1embedded-provenance-method.json"
+              },
+              "standard": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "method",
+              "provider"
+            ]
+          }
+        },
+        "watermarks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "media_type": {
+                "$ref": "#/$defs/external:enums~1watermark-media-type.json"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "verify_agent": {
+                "type": "object",
+                "properties": {
+                  "agent_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                  },
+                  "feature_id": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent_url"
+                ],
+                "additionalProperties": false
+              },
+              "c2pa_action": {
+                "$ref": "#/$defs/external:enums~1c2pa-watermark-action.json"
+              },
+              "embedded_at": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "media_type",
+              "provider"
+            ]
+          }
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "required": {
+              "type": "boolean"
+            },
+            "jurisdictions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "country": {
+                    "type": "string"
+                  },
+                  "region": {
+                    "type": "string"
+                  },
+                  "regulation": {
+                    "type": "string"
+                  },
+                  "label_text": {
+                    "type": "string"
+                  },
+                  "render_guidance": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "properties": {
+                      "persistence": {
+                        "$ref": "#/$defs/external:enums~1disclosure-persistence.json"
+                      },
+                      "min_duration_ms": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "positions": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/external:enums~1disclosure-position.json"
+                        },
+                        "minItems": 1,
+                        "uniqueItems": true
+                      },
+                      "ext": {
+                        "$ref": "#/$defs/external:core~1ext.json"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "country",
+                  "regulation"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "required"
+          ]
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "verified_by": {
+                "type": "string"
+              },
+              "verified_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "result": {
+                "type": "string",
+                "enum": [
+                  "authentic",
+                  "ai_generated",
+                  "ai_modified",
+                  "inconclusive"
+                ]
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "details_url": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "required": [
+              "verified_by",
+              "result"
+            ]
+          }
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      }
+    },
+    "external:enums/digital-source-type.json": {
+      "type": "string",
+      "enum": [
+        "digital_capture",
+        "digital_creation",
+        "trained_algorithmic_media",
+        "composite_with_trained_algorithmic_media",
+        "algorithmic_media",
+        "composite_capture",
+        "composite_synthetic",
+        "human_edits",
+        "data_driven_media"
+      ]
+    },
+    "external:enums/embedded-provenance-method.json": {
+      "type": "string",
+      "enum": [
+        "manifest_wrapper",
+        "provenance_markers"
+      ]
+    },
+    "external:enums/watermark-media-type.json": {
+      "type": "string",
+      "enum": [
+        "audio",
+        "image",
+        "video",
+        "text"
+      ]
+    },
+    "external:enums/c2pa-watermark-action.json": {
+      "type": "string",
+      "enum": [
+        "c2pa.watermarked.bound",
+        "c2pa.watermarked.unbound"
+      ]
+    },
+    "external:enums/disclosure-persistence.json": {
+      "type": "string",
+      "enum": [
+        "continuous",
+        "initial",
+        "flexible"
+      ]
+    },
+    "external:enums/disclosure-position.json": {
+      "type": "string",
+      "enum": [
+        "prominent",
+        "footer",
+        "audio",
+        "subtitle",
+        "overlay",
+        "end_card",
+        "pre_roll",
+        "companion"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/operator-identity.json": {
+      "type": "object",
+      "properties": {
+        "operator": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "x-entity": "operator"
+        },
+        "operator_unit": {
+          "$ref": "#/$defs/external:core~1operator-unit.json"
+        }
+      },
+      "required": [
+        "operator"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/business-entity.json": {
+      "type": "object",
+      "properties": {
+        "legal_name": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "vat_id": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}[A-Z0-9]{2,13}$"
+        },
+        "tax_id": {
+          "type": "string",
+          "maxLength": 30
+        },
+        "registration_number": {
+          "type": "string",
+          "maxLength": 50
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "city": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "postal_code": {
+              "type": "string",
+              "maxLength": 20
+            },
+            "region": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "country": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          },
+          "required": [
+            "street",
+            "city",
+            "postal_code",
+            "country"
+          ],
+          "additionalProperties": false
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": [
+                  "billing",
+                  "legal",
+                  "creative",
+                  "general"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "maxLength": 254
+              },
+              "phone": {
+                "type": "string",
+                "maxLength": 30
+              }
+            },
+            "required": [
+              "role"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 10
+        },
+        "bank": {
+          "type": "object",
+          "writeOnly": true,
+          "properties": {
+            "account_holder": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "iban": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}[0-9]{2}[A-Z0-9]{4,30}$"
+            },
+            "bic": {
+              "type": "string",
+              "pattern": "^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$"
+            },
+            "routing_number": {
+              "type": "string",
+              "maxLength": 30
+            },
+            "account_number": {
+              "type": "string",
+              "maxLength": 30
+            }
+          },
+          "required": [
+            "account_holder"
+          ],
+          "additionalProperties": false
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "legal_name"
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/billing-party.json": {
+      "type": "string",
+      "enum": [
+        "operator",
+        "agent",
+        "advertiser"
+      ]
+    },
+    "external:enums/payment-terms.json": {
+      "type": "string",
+      "enum": [
+        "net_15",
+        "net_30",
+        "net_45",
+        "net_60",
+        "net_90",
+        "prepay"
+      ]
+    },
+    "external:enums/cloud-storage-protocol.json": {
+      "type": "string",
+      "enum": [
+        "s3",
+        "gcs",
+        "azure_blob"
+      ]
+    },
+    "external:core/reporting-delivery-config.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "delivery_config_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+          "x-entity": "reporting_delivery_config"
+        },
+        "delivery_config_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "offering_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+          "x-entity": "reporting_offering"
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "feed_purpose": {
+          "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition"
+        },
+        "reporting_profile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+        },
+        "scope": {
+          "type": "object",
+          "properties": {
+            "all_media_buys": {
+              "type": "boolean",
+              "const": true
+            },
+            "media_buy_ids": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "minProperties": 1,
+          "maxProperties": 1,
+          "additionalProperties": false
+        },
+        "coverage_requirement": {
+          "type": "string",
+          "enum": [
+            "full",
+            "allow_partial"
+          ]
+        },
+        "required_finality": {
+          "$ref": "#/$defs/external:enums~1reporting-finality.json"
+        },
+        "reconciliation_mode": {
+          "$ref": "#/$defs/external:core~1reporting-reconciliation-mode.json"
+        },
+        "schedule": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json"
+        },
+        "method": {
+          "$ref": "#/$defs/external:core~1reporting-delivery-method.json"
+        },
+        "revocation_effective_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "delivery_config_id",
+        "delivery_config_version",
+        "offering_id",
+        "active",
+        "feed_purpose",
+        "report_definition_id",
+        "reporting_profile",
+        "scope",
+        "coverage_requirement",
+        "required_finality",
+        "reconciliation_mode",
+        "schedule"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "required_finality": {
+                "const": "official"
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "tier_boundaries": "method is present when and only when the selected offering declares one. A configuration selecting a Core (API-delivered) offering involves no destination, manifest, canonicalization, or receipt machinery.",
+        "offering_applicability": "Resolve the seller-wide offering through every selected product's reporting_capabilities.reporting_delivery_offering_ids, then apply account, seat, credential, provider, and API constraints. Seller-wide advertisement alone is not proof that an individual package is eligible.",
+        "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
+      },
+      "additionalProperties": false
+    },
+    "external:core/reporting-delivery-offering.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+          "x-entity": "reporting_offering"
+        },
+        "feed_purpose": {
+          "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition"
+        },
+        "report_definition_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+        },
+        "report_definition_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "reporting_profile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "schema_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+            },
+            "schema_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            },
+            "schema_dialect": {
+              "type": "string",
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "schema_ref_policy": {
+              "type": "string",
+              "const": "local_fragment_only"
+            },
+            "grain": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "primary_keys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "canonicalization_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "canonicalization_contract_version": {
+              "type": "string",
+              "const": "1.0"
+            },
+            "canonicalization_media_type": {
+              "type": "string",
+              "const": "application/vnd.adcp.reporting-canonicalization+json"
+            },
+            "canonicalization_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+            },
+            "canonicalization_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "schema_uri",
+            "schema_sha256",
+            "schema_dialect",
+            "schema_ref_policy",
+            "grain",
+            "primary_keys"
+          ],
+          "additionalProperties": false
+        },
+        "schedule": {
+          "$ref": "#/$defs/external:core~1reporting-schedule-offering.json"
+        },
+        "supported_finality": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1reporting-finality.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reconciliation_mode": {
+          "$ref": "#/$defs/external:core~1reporting-reconciliation-mode.json"
+        },
+        "method": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingDeliveryPattern"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination_modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "provision",
+                  "existing"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ]
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "producer_identity": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                    }
+                  },
+                  "required": [
+                    "domain"
+                  ],
+                  "additionalProperties": false
+                },
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "provider",
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            },
+            "reader_compatibility": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination_modes"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "provider"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "file_transfer"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "format"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "dataset_share"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "access_mode"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "offering_id",
+        "feed_purpose",
+        "report_definition_id",
+        "report_definition_uri",
+        "report_definition_sha256",
+        "reporting_profile",
+        "schedule",
+        "supported_finality",
+        "reconciliation_mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            },
+            "required": [
+              "reconciliation_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reporting_profile": {
+                "required": [
+                  "canonicalization_id",
+                  "canonicalization_contract_version",
+                  "canonicalization_media_type",
+                  "canonicalization_uri",
+                  "canonicalization_sha256"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "tier_boundaries": "An offering without method is Core: delivered through existing API transports, no destination, manifest, or canonicalization knowledge required. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires the reconciled_billing capability, and such offerings MUST carry the full canonicalization_* contract in reporting_profile. delivery_only offerings omit canonicalization.",
+        "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
+        "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingFeedPurpose": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "pacing",
+            "analytics",
+            "billing"
+          ]
+        },
+        "ReportingDeliveryPattern": {
+          "type": "string",
+          "enum": [
+            "file_transfer",
+            "dataset_share",
+            "warehouse_materialization"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-canonicalization-contract.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "media_type": {
+          "type": "string",
+          "const": "application/vnd.adcp.reporting-canonicalization+json"
+        },
+        "algorithm": {
+          "type": "string",
+          "const": "adcp_jcs_rows_v1"
+        },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "primary_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "golden_vectors": {
+          "type": "object",
+          "properties": {
+            "empty_report": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "empty_report"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "maxItems": 0
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "const": "W10="
+                },
+                "sha256": {
+                  "type": "string",
+                  "const": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "ordering_encoding": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "ordering_encoding"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "minItems": 2
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[A-Fa-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "additional": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "const": "additional"
+                  },
+                  "input_rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "canonical_utf8_base64": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[A-Fa-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "name",
+                  "purpose",
+                  "input_rows",
+                  "canonical_utf8_base64",
+                  "sha256"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "empty_report",
+            "ordering_encoding"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contract_version",
+        "media_type",
+        "algorithm",
+        "schema_sha256",
+        "primary_keys",
+        "golden_vectors"
+      ],
+      "x-adcp-validation": {
+        "algorithm": "adcp_jcs_rows_v1 rejects duplicate JSON object keys, non-finite numbers, lone Unicode surrogates, missing/non-scalar primary keys, and duplicate primary-key tuples. Validate every row against the pinned row schema; do not normalize Unicode. RFC 8785-encode each primary-key value array and sort rows by unsigned lexicographic comparison of those UTF-8 bytes. RFC 8785-encode each complete row, then emit the UTF-8 bytes for '[' + the encoded rows joined by ',' + ']'. SHA-256 is computed over exactly those bytes.",
+        "binding": "schema_sha256 and primary_keys MUST exactly equal the selected offering. Golden-vector names MUST be unique across empty_report, ordering_encoding, and additional. empty_report is the exact [] case. ordering_encoding is non-trivial: its input row order differs from canonical primary-key order and its object member order differs from JCS order. SDKs MUST strictly base64-decode canonical_utf8_base64, reproduce every golden vector's exact bytes and sha256, and reject any mismatch before using the contract."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingPrimaryKey": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:core/reporting-schedule-offering.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor_policy": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "configurable"
+          ]
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor_policy"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "period_anchor_policy": {
+                      "const": "fixed"
+                    }
+                  },
+                  "required": [
+                    "period_anchor_policy"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "period_anchor",
+                    "period_timezone"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "period_anchor"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "period_timezone"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "period_anchor_policy"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_anchor"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_timezone"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "installed_schedule_match": "period_duration, alignment, and delivery_sla MUST equal the installed configuration. For fixed billing_cycle offerings, period_anchor and period_timezone MUST also equal it. For configurable billing_cycle offerings, the installed configuration supplies both values. utc and account_timezone use the normative origins in reporting-schedule.json, so even multi-unit durations have one independently derivable phase."
+      },
+      "additionalProperties": false
+    },
+    "external:core/reporting-schedule.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor",
+              "period_timezone"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "period_anchor"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_timezone"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "period_generation": "Producer and consumer MUST derive the same ordered half-open intervals from period_duration, alignment, period_anchor, and period_timezone when applicable. utc alignment uses 1970-01-01T00:00:00Z as interval zero. account_timezone uses 1970-01-01T00:00:00 in the account's resolved IANA timezone as interval zero. billing_cycle uses its explicit period_anchor expressed in period_timezone. Every boundary is calculated directly from that origin and the interval ordinal by multiplying each ISO 8601 duration component by the ordinal and applying years, months, days, hours, minutes, then seconds. Calendar durations use local civil-time arithmetic in the selected IANA timezone, including DST transitions; they are not converted to fixed seconds. Month/year addition preserves the origin's local day and time, clamping to the target month's final valid day when necessary. A nonexistent local boundary advances by the timezone gap; an ambiguous local boundary uses the earlier offset. Thus a clamped February boundary does not shift a March 31 anchor."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingScheduleAlignment": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "utc",
+            "account_timezone",
+            "billing_cycle"
+          ]
+        }
+      }
+    },
+    "external:enums/reporting-finality.json": {
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "official"
+      ]
+    },
+    "external:core/reporting-reconciliation-mode.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "delivery_only",
+        "consumer_receipt"
+      ]
+    },
+    "external:core/reporting-delivery-method.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "file_transfer"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ]
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination",
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "dataset_share"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "warehouse_materialization"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "ReportingOrchestration": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "producer_managed",
+            "consumer_managed"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-write-destination.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination"
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "location"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "destination_proof": "Before ready, prove destination control and caller authority for every selected account, feed, and media-buy scope. A proof-bound coordinate or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Revoke grants when the configuration, caller authorization, or account becomes inactive."
+      }
+    },
+    "external:core/reporting-dataset-share-destination.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination"
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "recipient": {
+              "type": "object",
+              "properties": {
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "access_mode",
+            "recipient"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected account, feed, and media-buy scope. A proof-bound recipient or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
+      },
+      "$defs": {
+        "ReportingCloud": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "aws",
+            "azure",
+            "gcp"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-resource.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "resource_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_resource"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "manifest",
+            "dataset",
+            "warehouse_relation"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "native_version_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "manifest_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "immutability": {
+          "type": "string",
+          "enum": [
+            "immutable_location",
+            "native_version"
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reader_compatibility": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "resource_ref",
+        "kind",
+        "location",
+        "immutability",
+        "expires_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "manifest"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "manifest_version",
+              "manifest_sha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "immutability": {
+                "const": "native_version"
+              }
+            },
+            "required": [
+              "immutability"
+            ]
+          },
+          "then": {
+            "required": [
+              "native_version_ref"
+            ]
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "retention": "expires_at MUST be no earlier than the owning obligation.resource_retained_until and publication plus advertised resource_retention_days. A completed obligation cannot rely on deterministic rematerialization in place of a readable exact resource."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingReaderCompatibilityItem": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:core/reporting-coverage.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "full",
+            "partial",
+            "none",
+            "unknown"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "fully_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "partially_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "covered_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "offering_unsupported",
+                  "account_entitlement_unavailable",
+                  "credential_scope_insufficient",
+                  "provider_limitation",
+                  "capability_unknown"
+                ]
+              },
+              "media_buy_id": {
+                "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+              },
+              "package_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "reason",
+              "media_buy_id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at",
+        "media_buy_ids",
+        "fully_covered_media_buy_ids",
+        "partially_covered_media_buy_ids",
+        "unsupported_media_buy_ids",
+        "unknown_media_buy_ids",
+        "package_ids",
+        "covered_package_ids",
+        "unsupported_package_ids",
+        "unknown_package_ids",
+        "limitations"
+      ],
+      "x-adcp-validation": {
+        "partition": "The four media-buy classification arrays MUST be pairwise disjoint and their union MUST equal media_buy_ids. The three package classification arrays MUST be pairwise disjoint and their union MUST equal package_ids. Every limitation media_buy_id and package_id MUST belong to those denominators.",
+        "status": "full requires every media buy to be fully covered and every package covered; the explicit empty denominator is full. partial requires at least one covered package or fully covered media buy and at least one partial, unsupported, or unknown item. none requires a nonempty denominator, no covered item, at least one unsupported item, and no unknown item. unknown requires a nonempty denominator, no covered item, and at least one unknown item.",
+        "aggregation": "Metrics computed only over covered_package_ids MUST be labeled partial whenever status is not full and MUST NOT be represented as complete media-buy or campaign totals. Implementations MUST NOT weaken the selected report definition to create an undeclared lowest-common-denominator profile."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingMediaBuyId": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "ReportingPackageId": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "package"
+        }
+      }
+    },
+    "external:core/notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "creative.status_changed",
+              "creative.assignment_changed",
+              "indicators.changed",
+              "creative.purged",
+              "account.status_changed",
+              "account.change_recorded",
+              "product.created",
+              "product.updated",
+              "product.priced",
+              "product.removed",
+              "signal.created",
+              "signal.updated",
+              "signal.priced",
+              "signal.removed",
+              "wholesale_feed.bulk_change",
+              "reporting.delivery_ready",
+              "reporting.status_changed"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "product_payload_view": {
+          "type": "string",
+          "enum": [
+            "canonical",
+            "legacy"
+          ],
+          "default": "legacy"
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes"
+          ],
+          "additionalProperties": false
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "product_payload_view"
+            ]
+          },
+          "then": {
+            "properties": {
+              "event_types": {
+                "contains": {
+                  "enum": [
+                    "product.created",
+                    "product.updated",
+                    "product.priced",
+                    "product.removed"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/push-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "operation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+        },
+        "token": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 4096
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account entry:\n\n- **Provisioning mode** (`brand` + `operator` + `billing` at the entry root): the agent declares the advertiser identity, operator, optional operator-owned buying unit, optional fixed account currency, conditionally required buyer-selected account timezone, sandbox disposition, and billing model. The seller provisions or links the corresponding advertiser object via upsert. `brand.countries`, `operator_unit.id`, `currency`, buyer-selected `timezone`, and `sandbox` participate in the buyer-declared natural key when present; `operator_unit.name` is display metadata only. The seller MAY echo a seller-assigned account_id but MUST continue accepting the complete natural-key AccountRef.\n\n- **Settings-update mode** (`account` field carrying an [`AccountRef`](/schemas/core/account-ref.json)): targets an existing account by seller/storefront `account_id` or buyer-declared natural key. The seller updates settable state without provisioning side effects. A complete `operator_identity` value reconciles the existing account to the buyer's desired operator domain and optional operator unit; omission leaves identity unchanged.\n\nExactly one key shape is allowed per entry. Sellers that do not implement one mode return `UNSUPPORTED_PROVISIONING` for that mode. Identity reconciliation is additionally gated by `get_adcp_capabilities.account.identity_updates`."
+}
