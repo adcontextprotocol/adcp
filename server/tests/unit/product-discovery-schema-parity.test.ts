@@ -119,10 +119,10 @@ describe('product discovery MCP schema parity', () => {
     // four-tool surface bounded. targeting_overlay.collection_selection (the
     // committed collection-selection echo contract) bundles ~0.4 KiB into
     // each of the four tools; 133 → 135 KiB carries collection selection and
-    // 135 → 137 KiB carries product-scoped daypart timezone modes and exact
-    // IANA subsets. These are measured, deliberate increases, not headroom
-    // for incidental growth.
-    expect(totalBytes).toBeLessThanOrEqual(137 * 1024);
+    // 135 → 138 KiB carries product-scoped daypart timezone modes and exact
+    // IANA subsets through shared, SDK-safe schemas. These are measured,
+    // deliberate increases, not headroom for incidental growth.
+    expect(totalBytes).toBeLessThanOrEqual(138 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

@@ -72,22 +72,14 @@
           "properties": {
             "timezone_modes": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "enum": ["inventory_local", "iana"]
-              },
+              "items": { "$ref": "/schemas/enums/daypart-timezone-mode.json" },
               "minItems": 1,
               "uniqueItems": true
             },
             "iana_timezones": {
               "type": "array",
               "description": "Exact concrete IANA timezone identifiers that must remain selectable after discovery. Valid only when timezone_modes includes iana.",
-              "items": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "pattern": "^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$"
-              },
+              "items": { "$ref": "/schemas/core/iana-timezone.json" },
               "minItems": 1,
               "uniqueItems": true
             }

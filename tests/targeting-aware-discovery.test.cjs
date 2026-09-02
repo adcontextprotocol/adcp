@@ -400,14 +400,35 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
   const daypartSchema = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "core", "daypart-target.json"), "utf8")
   );
+  const ianaTimezoneSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "iana-timezone.json"), "utf8")
+  );
+  const requirementSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-requirements.json"), "utf8")
+  );
+  const supportSchema = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting-overlay-support.json"), "utf8")
+  );
   assert.equal(daypartSchema.properties.timezone.default, "inventory_local");
+  assert.equal(
+    daypartSchema.properties.timezone.anyOf[1].$ref,
+    "/schemas/core/iana-timezone.json"
+  );
+  assert.equal(
+    requirementSchema.definitions.daypartRequirement.anyOf[1].properties.timezone_modes.items.$ref,
+    "/schemas/enums/daypart-timezone-mode.json"
+  );
+  assert.equal(
+    supportSchema.definitions.daypartSupport.anyOf[1].properties.iana_timezones.anyOf[1].items.$ref,
+    "/schemas/core/iana-timezone.json"
+  );
   assert.equal(
     validateDaypart({ ...base, timezone: "user_timezone" }),
     true,
     "schema only constrains IANA identifier shape; runtime verifies TZDB membership"
   );
   assert.match(
-    daypartSchema.properties.timezone["x-adcp-validation"].iana_timezone,
+    ianaTimezoneSchema["x-adcp-validation"].iana_timezone,
     /IANA_TZDB/
   );
 });

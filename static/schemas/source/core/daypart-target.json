@@ -35,15 +35,9 @@
           "const": "inventory_local"
         },
         {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$"
+          "$ref": "/schemas/core/iana-timezone.json"
         }
-      ],
-      "x-adcp-validation": {
-        "iana_timezone": "every_value_other_than_inventory_local_must_resolve_in_the_implementations_supported_IANA_TZDB"
-      }
+      ]
     },
     "label": {
       "type": "string",

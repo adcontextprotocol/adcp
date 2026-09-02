@@ -181,10 +181,7 @@
           "properties": {
             "timezone_modes": {
               "type": "array",
-              "items": {
-                "type": "string",
-                "enum": ["inventory_local", "iana"]
-              },
+              "items": { "$ref": "/schemas/enums/daypart-timezone-mode.json" },
               "minItems": 1,
               "uniqueItems": true
             },
@@ -197,12 +194,7 @@
                 },
                 {
                   "type": "array",
-                  "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 255,
-                    "pattern": "^[A-Za-z0-9._+-]+(?:/[A-Za-z0-9._+-]+)*$"
-                  },
+                  "items": { "$ref": "/schemas/core/iana-timezone.json" },
                   "minItems": 1,
                   "uniqueItems": true
                 }
