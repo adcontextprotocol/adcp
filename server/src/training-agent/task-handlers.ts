@@ -7120,7 +7120,7 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'acceptance_policy_profile_ids',
   'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'is_custom', 'overlay_support',
+  'sponsored_placement_types', 'is_custom', 'overlay_support', 'identity',
   'targeting_resolution', 'collections', 'collection_targeting_allowed',
   'installments', 'ext',
 ]);
@@ -14102,8 +14102,22 @@ async function handleCreateMediaBuyUnlocked(
         targetingPath,
       )
       : undefined;
-    if (ordinaryDaypartError) {
-      errors.push(ordinaryDaypartError);
+    // Frequency-cap execution requires the product's existing overlay_support
+    // declaration just like other concrete package targeting. This is kept
+    // explicit while older direct-purchase targeting fields retain their
+    // compatibility behavior above.
+    const ordinaryFrequencyCapError = requestedTargeting?.frequency_cap !== undefined
+      && configuredTargeting === undefined
+      && inherentPlacementMatch === undefined
+      ? concreteTargetingError(
+        product,
+        { frequency_cap: requestedTargeting.frequency_cap },
+        targetingPath,
+      )
+      : undefined;
+    const ordinaryTargetingError = ordinaryDaypartError ?? ordinaryFrequencyCapError;
+    if (ordinaryTargetingError) {
+      errors.push(ordinaryTargetingError);
     } else if (resolvedTargeting.errorPath) {
       errors.push({
         code: 'UNSUPPORTED_FEATURE',
@@ -17349,7 +17363,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)

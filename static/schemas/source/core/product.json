@@ -235,6 +235,11 @@
       "$ref": "/schemas/core/targeting-overlay-support.json",
       "description": "Binding product-scoped targeting dimensions the buyer may set independently on packages after discovery. Presence guarantees selectable capability subject to disclosed limits, not inventory or a forecast for every possible value. Targeting satisfied only through inherent product scope does not appear here. Returned products MUST cover every field requested through get_products.required_overlay_support. A later supported selection with no available inventory returns PRODUCT_UNAVAILABLE on create; an update outside the original priced envelope may return REQUOTE_REQUIRED."
     },
+    "identity": {
+      "$ref": "/schemas/core/product-identity.json",
+      "x-status": "experimental",
+      "x-added-in": "3.2.0"
+    },
     "targeting_resolution": {
       "$ref": "/schemas/core/product-targeting-resolution.json",
       "description": "Discovery-time targeting resolution bound to this configured product. modifications sparsely disclose product-specific differences from get_products.targeting_overlay. Request-level brief interpretation is returned once on GetProductsResponse.targeting_resolution. Exact structured overlay values are not repeated. Selecting product_id accepts the disclosed modifications; product forecast and pricing MUST reflect them."
@@ -687,6 +692,27 @@
           }
         },
         "required": ["signal_targeting_allowed"]
+      }
+    },
+    {
+      "description": "A product that declares identity absence cannot promise identifier-backed frequency-cap execution.",
+      "if": {
+        "properties": {
+          "identity": {
+            "properties": {
+              "persistent_identifier": { "const": false }
+            },
+            "required": ["persistent_identifier"]
+          }
+        },
+        "required": ["identity"]
+      },
+      "then": {
+        "properties": {
+          "overlay_support": {
+            "not": { "required": ["frequency_cap"] }
+          }
+        }
       }
     },
     {

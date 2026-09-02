@@ -1787,6 +1787,7 @@ describe('createTrainingAgentServer', () => {
     );
     const currentCaps = currentResult as Record<string, any>;
     expect(currentCaps.experimental_features).toContain('media_buy.audience_activation');
+    expect(currentCaps.experimental_features).toContain('media_buy.product_identity');
     expect(currentCaps.media_buy.audience_targeting.supported_activation_methods).toEqual([
       { pattern: 'sync_audiences' },
       { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
@@ -1804,6 +1805,7 @@ describe('createTrainingAgentServer', () => {
     );
     const legacyCaps = legacyResult as Record<string, any>;
     expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.audience_activation');
+    expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.product_identity');
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 

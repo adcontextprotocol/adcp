@@ -74,6 +74,9 @@ fixtures:
           property_tags: ["transit_venues"]
       channels: ["dooh"]
       delivery_type: "non_guaranteed"
+      identity:
+        persistent_identifier: false
+        reach_methodology: "Venue and dwell-modelled aggregate audience measurement; not identity-resolved."
       format_options:
         - format_option_id: "dooh_portrait_image_1080x1920"
           format_kind: "image"
@@ -172,6 +175,10 @@ phases:
             path: "media_buy.portfolio.primary_channels[*]"
             value: "dooh"
             description: "Portfolio routing scope includes DOOH"
+          - check: field_contains
+            path: "experimental_features[*]"
+            value: "media_buy.product_identity"
+            description: "Seller opts in to the experimental product identity surface"
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--get_capabilities"
@@ -234,6 +241,16 @@ phases:
             path: "products[0].delivery_type"
             value: "non_guaranteed"
             description: "Returned product uses the non-guaranteed path"
+          - check: field_value
+            path: "products[0].identity.persistent_identifier"
+            value: false
+            description: "DOOH product declares identity absence at product scope"
+          - check: field_present
+            path: "products[0].identity.reach_methodology"
+            description: "Custom reach reporting has a discoverable methodology path"
+          - check: field_absent
+            path: "products[0].overlay_support.frequency_cap"
+            description: "Product that cannot enforce caps does not advertise frequency-cap support"
           - check: field_value
             path: "products[0].format_options[0].format_kind"
             value: "image"
@@ -300,6 +317,62 @@ phases:
             path: "context.correlation_id"
             value: "sales_dooh--get_dooh_products"
             description: "Context correlation_id returned unchanged"
+
+  - id: identity_absence
+    title: "Reject identity-dependent frequency capping"
+    narrative: |
+      The product's identity declaration is a discovery fact, not a seller-wide
+      promise. Because this DOOH product has no persistent identifier and does
+      not advertise overlay_support.frequency_cap, the buyer's capped purchase
+      must be rejected before it creates a buy. The following uncapped purchase
+      remains valid and is reconciled normally.
+    steps:
+      - id: reject_frequency_capped_buy
+        title: "Reject a frequency cap the DOOH product cannot enforce"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: identity_absence_rejection
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with UNSUPPORTED_FEATURE. The product has not declared
+          overlay_support.frequency_cap, so accepting and ignoring the cap
+          would violate the package's exact-apply-or-reject contract.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+            sandbox: true
+          start_time: "asap"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: "$context.dooh_product_id"
+              budget: 10000
+              pricing_option_id: "dooh_transit_flat_unequal_loop"
+              targeting_overlay:
+                frequency_cap:
+                  max_impressions: 3
+                  per: "individuals"
+                  window:
+                    interval: 1
+                    unit: "days"
+          idempotency_key: "$generate:uuid_v4#sales_dooh_identity_absence_reject_frequency_cap"
+          context:
+            correlation_id: "sales_dooh--reject_frequency_cap"
+        validations:
+          - check: error_code
+            value: "UNSUPPORTED_FEATURE"
+            description: "Unsupported frequency cap is rejected rather than accepted and ignored"
+          - check: field_value
+            path: "errors[0].field"
+            value: "packages[0].targeting_overlay.frequency_cap"
+            description: "Error identifies the unsupported package targeting field"
 
   - id: creative_sync
     title: "Sync a screen-compatible creative"
@@ -599,6 +672,14 @@ phases:
             path: "media_buy_deliveries[0].totals.dooh_metrics.sov_achieved"
             value: 0.25
             description: "Buy totals reproduce duration-weighted share of voice for the unequal-segment loop"
+          - check: field_value_or_absent
+            path: "media_buy_deliveries[0].totals.reach_unit"
+            allowed_values: ["individuals", "households", "custom"]
+            description: "Identity-absent DOOH delivery never labels reach as devices, accounts, or cookies"
+          - check: field_value_or_absent
+            path: "media_buy_deliveries[0].by_package[0].reach_unit"
+            allowed_values: ["individuals", "households", "custom"]
+            description: "Package delivery preserves the identity-absence reach-unit restriction"
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--get_delivery"

@@ -669,6 +669,7 @@ describe('tenant routing smoke', () => {
         expect(capabilities?.experimental_features).toContain('governance.campaign');
         if (tenant === 'sales') {
           expect(capabilities?.experimental_features).toContain('media_buy.audience_activation');
+          expect(capabilities?.experimental_features).toContain('media_buy.product_identity');
           expect(capabilities?.media_buy?.audience_targeting?.supported_activation_methods).toEqual([
             { pattern: 'sync_audiences' },
             { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },

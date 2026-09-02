@@ -44,6 +44,12 @@
     "signal_targeting_allowed": { "type": "boolean" },
     "signal_targeting_rules": { "$ref": "/schemas/core/signal-targeting-rules.json" },
     "demographic_targeting": { "$ref": "/schemas/core/demographic-targeting-capability.json" },
+    "identity": {
+      "$ref": "/schemas/core/product-identity.json",
+      "x-status": "experimental",
+      "x-added-in": "3.2.0",
+      "description": "Experimental product-scoped identity and reach-measurement facts. See Product.identity for the cross-object delivery and frequency-cap rules."
+    },
     "audience_evidence": {
       "type": "array",
       "items": { "$ref": "/schemas/core/canonical-audience-evidence.json" },

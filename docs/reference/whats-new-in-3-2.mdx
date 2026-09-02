@@ -119,6 +119,18 @@ credential to the same stable principal. The surface remains experimental so
 implementers can validate rotation, multi-account destination reuse,
 revocation timing, and delegated-operator boundaries before it freezes.
 
+### Truthful identity-absence declarations for mixed inventory
+
+Products may now experimentally declare `identity.persistent_identifier` and,
+when needed, `identity.reach_methodology`. The declaration is product-scoped,
+so a mixed DOOH and CTV seller does not make one misleading agent-wide claim.
+Products without persistent identifiers do not advertise package
+`frequency_cap` support and reject a capped purchase rather than accepting it
+without enforcement. Their delivery may still report modeled people or
+households; custom reach units disclose their methodology, including on a
+frequency-only report. Sellers opt in with
+`media_buy.product_identity` in `experimental_features`.
+
 ### Targeting that survives discovery and execution
 
 Targeting-aware discovery separates concrete constraints from future
