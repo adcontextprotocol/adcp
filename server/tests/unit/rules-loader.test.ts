@@ -182,6 +182,23 @@ describe('Rules Loader', () => {
     expect(schemaRules).toContain('If `draft_github_issue` appears in the request-scoped catalog');
   });
 
+  it('keeps composite agent diagnosis behavior while preserving narrow route scoping', () => {
+    const endToEndRules = loadScopedRules(['agent_end_to_end']);
+    const registryRules = loadScopedRules(['agent_registry']);
+    const qualityRules = loadScopedRules(['agent_quality']);
+    const authenticationRules = loadScopedRules(['agent_authentication']);
+
+    expect(endToEndRules).toContain('## Compliance Controller Skip Framing');
+    expect(endToEndRules).toContain('## Publisher and Agent Setup Diagnosis');
+
+    expect(registryRules).toContain('## Publisher and Agent Setup Diagnosis');
+    expect(registryRules).not.toContain('## Compliance Controller Skip Framing');
+    expect(qualityRules).toContain('## Compliance Controller Skip Framing');
+    expect(qualityRules).not.toContain('## Publisher and Agent Setup Diagnosis');
+    expect(authenticationRules).not.toContain('## Compliance Controller Skip Framing');
+    expect(authenticationRules).not.toContain('## Publisher and Agent Setup Diagnosis');
+  });
+
   it('separates cacheable core rules from route-specific rules', () => {
     const coreRules = loadCoreRules();
     const constraints = loadConstraintRules();
