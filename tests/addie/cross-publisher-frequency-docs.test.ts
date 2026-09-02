@@ -1,5 +1,9 @@
 import { describe, expect, it, beforeAll } from 'vitest';
-import { initializeDocsIndex, searchDocs } from '../../server/src/addie/mcp/docs-indexer.js';
+import {
+  initializeDocsIndex,
+  resolveDocsVersion,
+  searchDocs,
+} from '../../server/src/addie/mcp/docs-indexer.js';
 import { MODULE_RESOURCES } from '../../server/src/addie/mcp/certification-tools.js';
 
 describe('TMP coverage in docs and training', () => {
@@ -10,9 +14,13 @@ describe('TMP coverage in docs and training', () => {
   it('surfaces TMP and AdCP/OpenRTB docs in Addie search', () => {
     const results = searchDocs('cross-publisher frequency capping TMP Trusted Match OpenRTB', { limit: 5 });
     const urls = results.map((result) => result.sourceUrl);
+    const stableVersion = resolveDocsVersion();
 
-    expect(urls).toContain('https://docs.adcontextprotocol.org/dist/docs/3.1.19/trusted-match');
-    expect(urls).toContain('https://docs.adcontextprotocol.org/dist/docs/3.1.19/building/concepts/adcp-vs-openrtb');
+    expect(stableVersion).not.toBeNull();
+    const stableDocsRoot = `https://docs.adcontextprotocol.org/dist/docs/${stableVersion!.artifactVersion}`;
+
+    expect(urls).toContain(`${stableDocsRoot}/trusted-match`);
+    expect(urls).toContain(`${stableDocsRoot}/building/concepts/adcp-vs-openrtb`);
   });
 
   it('includes TMP in all relevant training modules', () => {

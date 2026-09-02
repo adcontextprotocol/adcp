@@ -125,3 +125,5 @@ jobs:
           add-paths: |
             dist/docs/${{ steps.version.outputs.version }}/
             docs.json
+            .dockerignore
+            server/src/addie/mcp/schema-tools.ts

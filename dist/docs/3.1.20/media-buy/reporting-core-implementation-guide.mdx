@@ -1,0 +1,119 @@
+---
+title: "Implementing reporting.core"
+description: "The required reporting tier: obligations, five health states, and get_reporting_status — over the transports you already have."
+"og:title": "AdCP — Implementing reporting.core"
+---
+
+<Warning>
+Managed reporting is experimental in 3.2. `reporting.core` is its required
+tier; `managed_delivery` and `reconciled_billing` are separately advertised
+optional tiers.
+</Warning>
+
+Every buyer eventually asks one question: **"do I have definitive reporting
+for this period — and if not, whose problem is it?"** `reporting.core` makes
+that question machine-answerable. It is deliberately small: a seller that
+already serves [`get_media_buy_delivery`](/dist/docs/3.1.20/media-buy/task-reference/get_media_buy_delivery)
+and fires the existing `reporting_webhook` implements Core **without any
+destination, manifest, canonicalization, digest, receipt, or push code**.
+
+## What Core is
+
+Four ideas, one task:
+
+1. **Obligations exist before reports.** For every active delivery
+   configuration and period, the seller records what *should* exist — so a
+   missing first report is detectable, not silent.
+2. **A zero-row report differs from no report.** An empty period commits a
+   revision like any other; absence means something is wrong.
+3. **Revisions are immutable logical content.** A restatement is a new
+   revision superseding the old one, never an edit.
+4. **[`get_reporting_status`](/dist/docs/3.1.20/media-buy/task-reference/get_reporting_status)
+   answers "where am I?"** — one authoritative read over the obligation
+   ledger, summarized by five health states.
+
+| Health | Meaning |
+|---|---|
+| `healthy` | Everything due has been produced. |
+| `waiting` | Nothing is due yet. |
+| `delayed` | Something due is late, automated recovery is still running. |
+| `action_required` | A human on the named `responsible_party` must act. |
+| `complete` | The queried scope is closed and every final obligation is satisfied. |
+
+## What Core is not
+
+- **No push requirement.** Polling `get_reporting_status` is the
+  authoritative recovery path; a polling-only seller is fully conformant.
+  If you do offer push, Core's doorbell is `reporting.status_changed` — an
+  invalidation for health transitions in either direction, with stable
+  `issue_ids`. `reporting.delivery_ready` belongs to the managed-delivery
+  tier and never fires for Core configurations.
+- **No delivery machinery.** Core offerings omit `method`: rows flow through
+  `get_media_buy_delivery` and the `reporting_webhook` you already serve.
+  Destinations, manifests, and provisioning belong to the `managed_delivery`
+  tier.
+- **No canonical hashing or receipts.** `reconciliation_mode` is
+  `delivery_only`, offering profiles omit the `canonicalization_*` contract,
+  and `sync_reporting_receipts` does not exist for you. Those belong to the
+  `reconciled_billing` tier.
+
+The boundary is executable: the `reporting-core` fixture test in the
+protocol repository implements a complete polling-only seller and asserts
+its source contains none of
+`destination | manifest | canonical | digest | receipt | readiness | webhook`.
+
+## Build order for a seller
+
+1. **Advertise the tier.** In `get_adcp_capabilities`, add
+   `media_buy.reporting_delivery` with `supported: true`, `configuration_task`,
+   `status_task`, at least one offering, `automated_recovery_window_seconds`,
+   and `status_retention_days` — and add `media_buy.reporting_delivery` to
+   `experimental_features`. Do not set `managed_delivery` or
+   `reconciled_billing` until you implement them.
+2. **Define one Core offering.** Feed purpose, an immutable
+   `report_definition_id`, a content-addressed reporting profile (schema URI
+   + SHA-256, grain, primary keys), a schedule (`period_duration`,
+   `alignment`, `delivery_sla`), supported finality, and
+   `reconciliation_mode: "delivery_only"`. No `method`.
+3. **Generate obligations.** When an account installs a delivery
+   configuration through [`sync_accounts`](/dist/docs/3.1.20/accounts/tasks/sync_accounts),
+   derive one obligation per period from the schedule and the frozen
+   media-buy scope. Campaign starts, stops, and configuration generations
+   change *future* obligations, never past ones.
+4. **Commit revisions.** When a period's data is final enough for its
+   declared finality, record an immutable revision — including zero-row
+   periods. Restatements create superseding revisions.
+5. **Project status.** Serve `get_reporting_status`: summary and periods
+   views over a consistent ledger snapshot, health computed from obligations
+   versus revisions versus the clock, `issues[]` carrying the typed code,
+   `responsible_party`, and `recommended_action` whenever health is
+   `delayed` or `action_required`.
+6. **Escalate honestly.** A due obligation stays `delayed` while automated
+   recovery runs, for at most `automated_recovery_window_seconds`; after
+   that it is `action_required`. Never park a dead feed in `delayed`.
+
+## How to verify
+
+- The **`reporting-core` universal storyboard** grades your capability
+  declaration and tier boundaries.
+- The **reporting-core fixture test** is the tier boundary stated as code —
+  copy its Core capability block and offering as your starting fixtures.
+- Buyers verify you the same way their SDKs do: webhook or not, they poll
+  `get_reporting_status` and reconcile obligations against what they
+  received.
+
+## The ladder above Core
+
+Nothing in Core obligates you to climb, and each rung is separately
+advertised:
+
+- **`managed_delivery: true`** adds offerings with a `method` —
+  file transfer, dataset shares, warehouse materialization — plus
+  exact-resource retention and authorization-revocation bounds, bound to
+  principal-layer destinations ([`sync_principal`](/dist/docs/3.1.20/protocol/sync_principal)).
+- **`reconciled_billing: true`** adds `receipt_task`
+  ([`sync_reporting_receipts`](/dist/docs/3.1.20/media-buy/task-reference/sync_reporting_receipts)),
+  `consumer_receipt` reconciliation, and the canonical-digest contract —
+  bilateral agreement on exact logical content, for billing.
+
+Start with Core. It solves the problem everyone actually has.
