@@ -15,6 +15,7 @@ import { assembleAddieSystemPrompt } from '../server/src/addie/prompt-assembly.j
 import { buildAddieToolReference } from '../server/src/addie/prompts.js';
 import {
   ADMIN_CHANNEL_WG_SLUG,
+  selectBoundedRoutedToolSets,
   selectSlackToolSets,
   SYSTEM_CHANNEL_TOOL_SETS,
   type SlackToolSource,
@@ -456,28 +457,99 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       conditionalMaximums: ['server_configured_system_channel', 'router_returns_all_valid_tool_sets', 'google_docs_configured', 'nonstreaming_web_search'],
     }));
   }
-  profiles.push(
-    profile({
-      id: 'slack_bolt_reaction:member:maximum', runtime: 'slack_bolt_reaction', audience: 'member',
-      globalTools, requestTools: memberRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'member_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'slack_bolt_reaction:admin:maximum', runtime: 'slack_bolt_reaction', audience: 'admin',
-      globalTools, requestTools: adminRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'slack_bolt_reaction:public_channel:maximum', runtime: 'slack_bolt_reaction', audience: 'public_channel',
-      globalTools, requestTools: publicRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'slack_bolt_reaction:public_channel_admin:maximum', runtime: 'slack_bolt_reaction', audience: 'public_channel_admin',
-      globalTools, requestTools: buildRequest(true, true), providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-  );
+  // Reaction-triggered replies use the same bounded response-plan policy as
+  // other direct, user-visible routes. Record each metric's actual maximum,
+  // plus the explicit router-failure surface, rather than modeling the old
+  // unrestricted request registry as reachable at runtime.
+  const reactionSurfaces = [
+    { audience: 'member', isAdmin: false, isPublic: false, available: memberRequest },
+    { audience: 'admin', isAdmin: true, isPublic: false, available: adminRequest },
+    { audience: 'public_channel', isAdmin: false, isPublic: true, available: publicRequest },
+    { audience: 'public_channel_admin', isAdmin: true, isPublic: true, available: buildRequest(true, true) },
+  ];
+  for (const surface of reactionSurfaces) {
+    const availableReactionToolNames = new Set([
+      ...globalTools,
+      ...surface.available,
+    ].map((tool) => tool.name));
+    const routerVisibleSetNames = Object.values(toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false && (surface.isAdmin || !set.adminOnly))
+      .map((set) => set.name);
+    const combinations = routerVisibleSetNames.map((setName) => [setName]);
+    for (let first = 0; first < routerVisibleSetNames.length; first += 1) {
+      for (let second = first + 1; second < routerVisibleSetNames.length; second += 1) {
+        combinations.push([routerVisibleSetNames[first], routerVisibleSetNames[second]]);
+      }
+    }
+    const candidates = combinations.flatMap((toolSetsForPlan) => [false, true].map((hasSponsoredIntelligenceContext) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: toolSetsForPlan,
+          confidence: 'high',
+          reason: 'inventory bounded reaction route',
+          decision_method: 'quick_match',
+        },
+        routerAvailable: true,
+        source: 'channel',
+        isAdmin: surface.isAdmin,
+        isPublicChannel: surface.isPublic,
+        hasSponsoredIntelligenceContext,
+        isToolAvailable: (name) => availableReactionToolNames.has(name),
+      });
+      return profile({
+        id: `slack_bolt_reaction:${surface.audience}:candidate:${toolSetsForPlan.join('+')}${hasSponsoredIntelligenceContext ? ':si_context' : ''}`,
+        runtime: 'slack_bolt_reaction',
+        audience: surface.audience,
+        route: toolSetsForPlan.join('+'),
+        selectedToolSets: selection.selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        globalTools,
+        requestTools: surface.available,
+        providerToolCount: 1,
+        conditionalMaximums: [
+          'router_selected_up_to_two_bounded_domains',
+          ...(hasSponsoredIntelligenceContext ? ['active_sponsored_intelligence_session'] : []),
+          'google_docs_configured',
+          'nonstreaming_web_search',
+        ],
+      });
+    }));
+    const maximums = new Map<string, Profile>();
+    for (const metric of ['custom_tool_count', 'wire_schema_bytes', 'tool_reference_bytes'] as const) {
+      const maximum = Math.max(...candidates.map((candidate) => candidate[metric]));
+      const candidate = candidates.find((entry) => entry[metric] === maximum)!;
+      maximums.set(metric, {
+        ...candidate,
+        id: metric === 'custom_tool_count'
+          ? `slack_bolt_reaction:${surface.audience}:maximum`
+          : `slack_bolt_reaction:${surface.audience}:maximum_${metric}`,
+      });
+    }
+    const fallback = selectBoundedRoutedToolSets({
+      plan: null,
+      routerAvailable: false,
+      source: 'channel',
+      isAdmin: surface.isAdmin,
+      isPublicChannel: surface.isPublic,
+      hasSponsoredIntelligenceContext: true,
+      activeCertificationKind: 'mixed',
+      systemRole: 'billing',
+      isToolAvailable: (name) => availableReactionToolNames.has(name),
+    });
+    profiles.push(...maximums.values(), profile({
+      id: `slack_bolt_reaction:${surface.audience}:safe_fallback`,
+      runtime: 'slack_bolt_reaction',
+      audience: surface.audience,
+      route: 'safe_fallback',
+      selectedToolSets: fallback.selectedToolSets,
+      allowedToolNames: fallback.allowedToolNames,
+      globalTools,
+      requestTools: surface.available,
+      providerToolCount: 1,
+      conditionalMaximums: ['router_unavailable', 'nonstreaming_web_search'],
+    }));
+  }
   return profiles;
 }
 
@@ -1048,8 +1120,11 @@ async function buildSnapshot() {
   const runtimeToolsMissingFromCatalog = [...runtimeNames]
     .filter((name) => !catalogTokens.has(name))
     .sort();
+  // The catalog also documents conditionally registered, non-routed tools.
+  // Inventory parity is a runtime safety property: every tool a router can
+  // select must have a definition/handler on at least one modeled runtime.
   const catalogToolsMissingFromRuntime = [...catalogTokens]
-    .filter((name) => !runtimeNames.has(name))
+    .filter((name) => routedNames.has(name) && !runtimeNames.has(name))
     .sort();
 
   const snapshot = {

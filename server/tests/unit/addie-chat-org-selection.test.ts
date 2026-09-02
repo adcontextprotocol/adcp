@@ -14,10 +14,27 @@ const siMocks = vi.hoisted(() => ({
 
 const siHostMocks = vi.hoisted(() => ({
   hasCachedSiSession: vi.fn(),
+  toolNames: [
+    'get_si_availability',
+    'list_si_agents',
+    'connect_to_si_agent',
+    'send_to_si_agent',
+    'end_si_session',
+    'get_si_session_status',
+  ],
 }));
 
 const directoryMocks = vi.hoisted(() => ({
   createHandlers: vi.fn(),
+  toolNames: [
+    'list_members',
+    'get_member',
+    'list_agents',
+    'get_agent',
+    'validate_agent',
+    'lookup_domain',
+    'list_publishers',
+  ],
 }));
 
 const threadMocks = vi.hoisted(() => ({
@@ -42,20 +59,29 @@ vi.mock('../../src/addie/services/si-retriever.js', () => ({
 }));
 
 vi.mock('../../src/addie/mcp/directory-tools.js', () => ({
-  DIRECTORY_TOOLS: [{
-    name: 'list_agents',
-    description: 'Test directory tool',
+  DIRECTORY_TOOLS: directoryMocks.toolNames.map((name) => ({
+    name,
+    description: `Test ${name}`,
     input_schema: { type: 'object', properties: {} },
-  }],
+  })),
   createDirectoryToolHandlers: (context: unknown) => {
     directoryMocks.createHandlers(context);
-    return new Map([['list_agents', async () => JSON.stringify({ scoped: true })]]);
+    return new Map(directoryMocks.toolNames.map((name) => [
+      name,
+      async () => JSON.stringify({ scoped: true }),
+    ]));
   },
 }));
 
 vi.mock('../../src/addie/mcp/si-host-tools.js', () => ({
-  SI_HOST_TOOLS: [],
-  createSiHostToolHandlers: () => new Map(),
+  SI_HOST_TOOLS: siHostMocks.toolNames.map((name) => ({
+    name,
+    description: `Test ${name}`,
+    input_schema: { type: 'object', properties: {} },
+  })),
+  createSiHostToolHandlers: () => new Map(
+    siHostMocks.toolNames.map((name) => [name, async () => '{}']),
+  ),
   hasCachedSiSession: siHostMocks.hasCachedSiSession,
 }));
 
@@ -91,6 +117,8 @@ import {
   prepareRequestWithMemberTools,
 } from '../../src/routes/addie-chat.js';
 import { MAX_INPUT_LENGTH } from '../../src/addie/security.js';
+import { DIRECTORY_TOOLS } from '../../src/addie/mcp/directory-tools.js';
+import { ANONYMOUS_SAFE_KNOWLEDGE_TOOLS } from '../../src/mcp/chat-tool.js';
 import { issueAnonymousSessionCapability } from '../../src/routes/helpers/anonymous-session-capability.js';
 
 describe('prepareRequestWithMemberTools organization selection', () => {
@@ -155,6 +183,14 @@ describe('prepareRequestWithMemberTools organization selection', () => {
 
 describe('mounted Addie web-thread ownership', () => {
   const chatClient = {
+    // Production globally registers public directory, search-member, and
+    // anonymous-safe knowledge tools. SI host tools remain request-scoped
+    // because their handlers bind the external conversation id.
+    getRegisteredTools: vi.fn(() => [
+      ...DIRECTORY_TOOLS.map((tool) => tool.name),
+      'search_members',
+      ...ANONYMOUS_SAFE_KNOWLEDGE_TOOLS,
+    ]),
     processMessage: vi.fn().mockResolvedValue({
       text: 'Hello',
       tools_used: [],
