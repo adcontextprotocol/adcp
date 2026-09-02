@@ -152,9 +152,115 @@ Run the WorkOS DNS lookup against a previously-issued challenge for the selected
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-## community_groups
+## community_group_discovery
 
-Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents
+Browse working groups and councils, inspect one group, review personal memberships, and read committee documents
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_working_group`
+
+Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_my_working_groups`
+
+Get the current user's working group memberships. Shows which groups they belong to and their role in each.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `list_committee_documents`
+
+List documents tracked by a committee. Shows document titles, status, and summaries.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## community_group_membership
+
+Inspect a working group, join a public group, or request an invitation to a private group
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_working_group`
+
+Get details about a specific working group including its description, leaders, member count, and recent posts. Use the group slug (URL-friendly name). Pass include_members: true to get the full member list with names, org, and email (admins only for private groups).
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `join_working_group`
+
+Join a working group on behalf of the current user. If the group is private, suggests using request_working_group_invitation instead. The user must be a member of AgenticAdvertising.org.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `request_working_group_invitation`
+
+Request an invitation to a private working group on behalf of the user. Creates an escalation so an admin can process the invite. Use this when join_working_group fails because a group is private.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## council_interest
+
+Browse councils and manage the current member's future-council interest signups
+
+### `list_working_groups`
+
+List active committees in AgenticAdvertising.org. Can filter by type: working groups (technical), councils (industry verticals), or chapters (regional). Shows public groups to everyone, and includes private groups for members.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `express_council_interest`
+
+Express interest in joining an industry council or other committee that is not yet launched. The user can indicate whether they want to be a participant or a potential leader. This helps gauge interest before the council officially launches.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `withdraw_council_interest`
+
+Withdraw interest in a council or committee. Use this when the user no longer wants to be notified when the council launches.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `get_my_council_interests`
+
+Get the current user's council interest signups. Shows which councils they've expressed interest in joining.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+## community_group_contribution
+
+Review the current member's working groups, create a post, or save a community resource
+
+### `get_my_working_groups`
+
+Get the current user's working group memberships. Shows which groups they belong to and their role in each.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `create_working_group_post`
+
+Create a post in a working group on behalf of the current user. The user must be a member of the working group. Supports article, link, and discussion post types.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `bookmark_resource`
+
+Save a useful web resource to the knowledge base for future reference. Use this when you find valuable external content during web search that would be helpful for future questions. The content will be fetched, summarized, and indexed.
+
+*Source: `server/src/addie/mcp/knowledge-search.ts`*
+
+## community_group_full_participation
+
+Handle one long request across at least three group participation workflows
 
 ### `list_working_groups`
 

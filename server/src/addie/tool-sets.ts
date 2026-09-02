@@ -171,8 +171,42 @@ export const MEMBER_PROFILE_TOOLS = [
   "verify_brand_domain_challenge",
 ] as const;
 
-/** Bounded group participation and community contribution surface. */
-export const COMMUNITY_GROUP_TOOLS = [
+/** Browse groups, inspect one group, review personal memberships, and read tracked documents. */
+export const COMMUNITY_GROUP_DISCOVERY_TOOLS = [
+  "list_working_groups",
+  "get_working_group",
+  "get_my_working_groups",
+  "list_committee_documents",
+] as const;
+
+/** Join a public group or request access to a private one after inspecting it. */
+export const COMMUNITY_GROUP_MEMBERSHIP_TOOLS = [
+  "list_working_groups",
+  "get_working_group",
+  "join_working_group",
+  "request_working_group_invitation",
+] as const;
+
+/** Manage the current member's interest in future councils. */
+export const COUNCIL_INTEREST_TOOLS = [
+  "list_working_groups",
+  "express_council_interest",
+  "withdraw_council_interest",
+  "get_my_council_interests",
+] as const;
+
+/** Create a group contribution or save an explicitly supplied community resource. */
+export const COMMUNITY_GROUP_CONTRIBUTION_TOOLS = [
+  "get_my_working_groups",
+  "create_working_group_post",
+  "bookmark_resource",
+] as const;
+
+/**
+ * Exact full legacy group-participation union, retained as a literal because
+ * the router-visible composite is statically cataloged.
+ */
+export const COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS = [
   "list_working_groups",
   "get_working_group",
   "join_working_group",
@@ -185,6 +219,9 @@ export const COMMUNITY_GROUP_TOOLS = [
   "bookmark_resource",
   "list_committee_documents",
 ] as const;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const COMMUNITY_GROUP_TOOLS = COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS;
 
 /** Author-owned submission, document import, asset, and cover-image workflow. */
 export const PUBLISHING_AUTHOR_TOOLS = [
@@ -405,11 +442,51 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [...MEMBER_PROFILE_TOOLS],
   },
 
+  community_group_discovery: {
+    name: "community_group_discovery",
+    description:
+      "Browse working groups and councils, inspect one group, review personal memberships, and read committee documents",
+    tools: [...COMMUNITY_GROUP_DISCOVERY_TOOLS],
+  },
+
+  community_group_membership: {
+    name: "community_group_membership",
+    description:
+      "Inspect a working group, join a public group, or request an invitation to a private group",
+    tools: [...COMMUNITY_GROUP_MEMBERSHIP_TOOLS],
+  },
+
+  council_interest: {
+    name: "council_interest",
+    description:
+      "Browse councils and manage the current member's future-council interest signups",
+    tools: [...COUNCIL_INTEREST_TOOLS],
+  },
+
+  community_group_contribution: {
+    name: "community_group_contribution",
+    description:
+      "Review the current member's working groups, create a post, or save a community resource",
+    tools: [...COMMUNITY_GROUP_CONTRIBUTION_TOOLS],
+  },
+
+  // An explicit parity exception for one long request that genuinely spans
+  // at least three group workflows: discovery, membership, council interest,
+  // and/or contribution work.
+  community_group_full_participation: {
+    name: "community_group_full_participation",
+    description:
+      "Handle one long request across at least three group participation workflows",
+    tools: [...COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use the narrow domains or the explicit full exception above.
   community_groups: {
     name: "community_groups",
-    description:
-      "Browse and join working groups, manage the current member's group and council participation, create group posts, save community resources, and list committee documents",
+    description: "Legacy combined community-group compatibility surface",
     tools: [...COMMUNITY_GROUP_TOOLS],
+    routerVisible: false,
   },
 
   directory: {
