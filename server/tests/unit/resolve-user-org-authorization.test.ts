@@ -121,6 +121,19 @@ describe("resolveUserOrgAuthorization", () => {
     });
   });
 
+  it("definitively denies a complete exact membership below the required role", () => {
+    expect(evaluateUserOrgRoleAuthorization({
+      status: "authorized",
+      membership: {
+        organizationId: ORGANIZATION_ID,
+        role: "member",
+        source: "workos",
+      },
+      complete: true,
+      unavailableSources: [],
+    }, "admin")).toEqual({ status: "forbidden" });
+  });
+
   it("chooses the highest role while retaining its authority source", async () => {
     queryMock.mockResolvedValue({
       rows: [{ workos_organization_id: ORGANIZATION_ID, role: "owner" }],
