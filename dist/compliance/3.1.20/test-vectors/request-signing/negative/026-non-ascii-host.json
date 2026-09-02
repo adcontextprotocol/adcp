@@ -1,0 +1,31 @@
+{
+  "name": "URL authority contains raw IDN U-label (non-ASCII bytes in host)",
+  "spec_reference": "#adcp-rfc-9421-profile (@target-uri canonicalization: hosts MUST be ASCII A-labels; RFC 5891 §4.4)",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://bücher.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;nonce=\"KXYnfEfJ0PBRZXQyVXfVQA\";keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": [
+      "create_media_buy"
+    ]
+  },
+  "jwks_ref": [
+    "test-ed25519-2026"
+  ],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_header_malformed",
+    "failed_step": 1
+  },
+  "$comment": "Host label 'bücher' is a Unicode U-label; the AdCP @target-uri algorithm requires A-label (Punycode, 'xn--bcher-kva') form. Accepting a raw U-label on the wire risks a canonicalization-differential: UTS-46 Nontransitional processing produces one A-label, naive lowercase + Punycode produces another (see canonicalization.json case 'idn-mixed-case-to-punycode'), and non-ASCII-aware libraries may round-trip the bytes unchanged. Verifier MUST reject at parse rather than guess. Companion canonicalization.json cases 'idn-to-punycode' and 'idn-mixed-case-to-punycode' exercise the SIGNER side (expect A-label output from U-label input after explicit UTS-46 processing); this vector exercises the VERIFIER side (reject U-label bytes received on the wire inside a signed request)."
+}
