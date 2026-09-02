@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/placement-delivery-metrics.json",
+  "title": "Placement Delivery Metrics",
+  "description": "Delivery metrics for one placement. The flat placement_id remains required for 3.1 consumer compatibility. New 3.2 sellers MUST also emit placement_identity so the authority is self-contained; legacy rows without it remain scoped to the enclosing package.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "placement_id_consistency": "placement_id MUST equal placement_identity.placement_id when placement_identity is present",
+      "publisher_domain_consistency": "for publisher_ref identity, publisher_domain when present MUST equal placement_identity.publisher_domain"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "placement_identity": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/placement-identity.json",
+          "description": "Self-contained identity. publisher_ref resolves in adagents.json; seller_inline is scoped by seller_agent."
+        },
+        "placement_name": {
+          "type": "string",
+          "description": "Current human-readable placement name. Convenience metadata only; placement_identity is stable identity."
+        },
+        "placement_id": {
+          "type": "string",
+          "description": "Required flat compatibility identity. It MUST equal placement_identity.placement_id when placement_identity is present.",
+          "x-entity": "placement"
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Legacy publisher attribution. For publisher_ref identity it MUST equal placement_identity.publisher_domain. For seller_inline it identifies inventory context only and is not identity authority."
+        }
+      },
+      "required": [
+        "placement_id",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

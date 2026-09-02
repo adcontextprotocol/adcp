@@ -1,0 +1,296 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-materialization.json",
+  "title": "Reporting Materialization",
+  "x-status": "experimental",
+  "description": "One attempt to expose an immutable reporting revision through a configured durable delivery method. Automated retry creates a new materialization and attempt number while preserving reporting_revision_id. available is a verified producer-hosted pull/share claim; delivered is a verified recipient/destination claim. Existing per-buy inline reporting remains on its existing data API and is outside this v1 managed ledger.",
+  "type": "object",
+  "properties": {
+    "reporting_materialization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_materialization"
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation",
+      "description": "Destination-specific obligation this materialization attempts to satisfy."
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config",
+      "description": "Durable configuration that requested this materialization."
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "destination_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "reporting_destination",
+      "description": "Immutable caller-owned destination generation selected by the account-authorized obligation. It may be reused by the same caller across other independently authorized accounts."
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "file_transfer",
+        "dataset_share",
+        "warehouse_materialization"
+      ]
+    },
+    "transport": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_.-]*$"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "available",
+        "delivered",
+        "failed"
+      ],
+      "description": "Lifecycle of this attempt. pending may transition once to available, delivered, or failed; terminal evidence is immutable. Staleness is evaluated in get_reporting_status health, not stored as a materialization state."
+    },
+    "ready_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When consumer-path or destination verification completed."
+    },
+    "failed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "failure_code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Z][A-Z0-9_]*$",
+      "description": "Stable safe failure classification. MUST NOT include credentials or provider response bodies."
+    },
+    "resource": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-resource.json"
+    },
+    "verification": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-verification.json"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "reporting_materialization_id",
+    "reporting_revision_id",
+    "reporting_obligation_id",
+    "delivery_config_id",
+    "delivery_config_version",
+    "destination_ref",
+    "feed_purpose",
+    "method",
+    "attempt",
+    "status",
+    "created_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "available",
+              "delivered"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "ready_at",
+          "resource",
+          "verification"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "failed_at",
+          "failure_code"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "file_transfer"
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "kind": {
+                "const": "manifest"
+              }
+            }
+          },
+          "verification": {
+            "properties": {
+              "physical_checksums": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "physical_checksums"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "dataset_share"
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "kind": {
+                "const": "dataset"
+              }
+            }
+          },
+          "verification": {
+            "properties": {
+              "verification_path": {
+                "const": "representative_consumer"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "method": {
+            "const": "warehouse_materialization"
+          }
+        },
+        "required": [
+          "method"
+        ]
+      },
+      "then": {
+        "properties": {
+          "resource": {
+            "properties": {
+              "kind": {
+                "const": "warehouse_relation"
+              }
+            }
+          },
+          "verification": {
+            "properties": {
+              "verification_path": {
+                "const": "destination"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "feed_purpose": {
+            "const": "billing"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "delivered"
+            ]
+          }
+        },
+        "required": [
+          "feed_purpose",
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "verification": {
+            "properties": {
+              "verification_profile": {
+                "const": "canonical_digest"
+              }
+            },
+            "required": [
+              "canonical_content_digest",
+              "verification_profile"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "revision_match": "reporting_revision_id names destination-independent content. verification.row_count and control_totals MUST equal that revision; canonical_content_digest MUST also equal it when present.",
+    "obligation_match": "reporting_obligation_id, delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method MUST match one caller/account-bound obligation. This join is what permits one revision to fan out to many destinations and principals.",
+    "authorization": "The caller MUST be authorized for the referenced account and destination binding. Cross-caller and cross-account identifiers MUST be rejected without revealing whether they exist."
+  },
+  "additionalProperties": false
+}

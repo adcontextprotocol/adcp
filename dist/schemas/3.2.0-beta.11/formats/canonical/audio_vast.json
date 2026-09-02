@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/formats/canonical/audio_vast.json",
+  "title": "Canonical Format: VAST Audio",
+  "description": "VAST-tag-delivered audio creative. Standardized VAST audio support begins at 4.1; a seller may explicitly advertise older VAST versions only for legacy audio interoperability. Slot: `vast_tag` (vast asset, URL or inline XML). Tracking is inherent to VAST, including impression, start, quartiles, complete, click, error, pause/resume, and mute/unmute events. Distinct from `audio_hosted` (direct audio bytes) and `audio_daast` (legacy DAAST tag delivery).",
+  "properties": {
+    "slots": {
+      "default": [
+        {
+          "asset_group_id": "vast_tag",
+          "asset_type": "vast",
+          "required": true
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": false
+        }
+      ],
+      "description": "Default slots for the audio_vast canonical. The buyer supplies a VAST tag (URL or inline XML) plus an optional clickthrough URL, which falls back to the VAST ClickThrough when omitted. Tracking events and companion creatives carried by the VAST document do not require separate slots."
+    },
+    "vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/vast-version.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "VAST audio versions accepted by this product format option. Standardized audio support begins at VAST 4.1; listing 2.0, 3.0, or 4.0 explicitly declares seller-supported legacy audio interoperability rather than standards-conformant VAST audio. The asset declares exactly one vast_version; compatibility requires membership in this set and the seller-wide execution set."
+    },
+    "vast_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/vast-version.json",
+      "deprecated": true,
+      "description": "Deprecated one-element alias for vast_versions. Producers use either the singular legacy alias or the plural 3.2 field, never both. VAST 4.1+ is the standards-conformant audio profile; older values declare legacy audio interoperability."
+    },
+    "media_file_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/vast-media-file-requirements.json",
+      "description": "Technical acceptance constraints for alternative audio MediaFile renditions in each resolved InLine linear creative. Declared MIME types must be audio/*; visual-dimension constraints are invalid because VAST represents audio MediaFiles with width and height 0."
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. duration_ms_exact takes precedence when both fields are present; SDKs SHOULD warn when both are supplied."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, the resolved audio creative duration must equal this value. Takes precedence over duration_ms_range."
+    },
+    "skippable_after_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "When skippable, the buyer-side skip threshold in milliseconds."
+    },
+    "max_wrapper_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum VAST wrapper redirect depth permitted."
+    },
+    "ssl_required": {
+      "type": "boolean"
+    },
+    "companion_image_required": {
+      "type": "boolean",
+      "description": "Whether the resolved VAST audio ad must include a companion creative."
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/formats/canonical/_base.json"
+    }
+  ],
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "audio_profile": "The resolved InLine creative MUST be Linear and supply a playable audio MediaFile; VAST 4.1+ documents MUST declare Ad adType audio. Video and hybrid ads do not satisfy audio_vast.",
+      "audio_media_files": "Every playable MediaFile used to satisfy the declaration MUST have an audio/* MIME type and the VAST-required width and height values of 0.",
+      "audio_version_compatibility": "VAST 4.1+ is the standards-conformant audio profile. A seller accepts 2.0, 3.0, or 4.0 only by listing that version explicitly as legacy audio interoperability."
+    },
+    "spec": "docs/creative/channels/audio.mdx"
+  },
+  "additionalProperties": true,
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "vast_version",
+          "vast_versions"
+        ]
+      },
+      {
+        "properties": {
+          "media_file_requirements": {
+            "properties": {
+              "mime_types": {
+                "contains": {
+                  "not": {
+                    "pattern": "^[Aa][Uu][Dd][Ii][Oo]/"
+                  }
+                }
+              }
+            },
+            "required": [
+              "mime_types"
+            ]
+          }
+        },
+        "required": [
+          "media_file_requirements"
+        ]
+      },
+      {
+        "properties": {
+          "media_file_requirements": {
+            "anyOf": [
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        },
+        "required": [
+          "media_file_requirements"
+        ]
+      }
+    ]
+  }
+}

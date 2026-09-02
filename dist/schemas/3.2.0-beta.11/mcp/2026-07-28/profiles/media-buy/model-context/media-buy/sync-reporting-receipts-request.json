@@ -1,0 +1,372 @@
+{
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1reporting-receipt.json"
+          },
+          {
+            "not": {
+              "required": [
+                "received_at"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key",
+    "receipts"
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string"
+        },
+        "adcp_major_version": {
+          "type": "integer"
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "account_id"
+          ]
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "sandbox": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ]
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    },
+    "external:core/brand-id.json": {
+      "type": "string"
+    },
+    "external:core/operator-unit.json": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ]
+    },
+    "external:core/reporting-receipt.json": {
+      "type": "object",
+      "properties": {
+        "reporting_receipt_id": {
+          "type": "string"
+        },
+        "reporting_obligation_id": {
+          "type": "string"
+        },
+        "reporting_revision_id": {
+          "type": "string"
+        },
+        "reporting_materialization_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "verification_profile": {
+          "$ref": "#/$defs/external:core~1reporting-verification-profile.json"
+        },
+        "observed_row_count": {
+          "type": "integer"
+        },
+        "observed_control_totals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-control-total.json"
+          }
+        },
+        "observed_canonical_content_digest": {
+          "$ref": "#/$defs/external:core~1reporting-canonical-content-digest.json"
+        },
+        "observed_manifest_sha256": {
+          "type": "string"
+        },
+        "observed_native_version_ref": {
+          "type": "string"
+        },
+        "consumer_commit_ref": {
+          "type": "string"
+        },
+        "rejection_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "observed_at": {
+          "type": "string"
+        },
+        "received_at": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reporting_receipt_id",
+        "reporting_obligation_id",
+        "reporting_revision_id",
+        "reporting_materialization_id",
+        "status",
+        "verification_profile",
+        "observed_row_count",
+        "observed_control_totals",
+        "observed_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "rejection_codes"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "canonical_digest"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_canonical_content_digest"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "manifest_checksums"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_manifest_sha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "native_commit"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_native_version_ref"
+            ]
+          }
+        }
+      ]
+    },
+    "external:core/reporting-verification-profile.json": {
+      "enum": [
+        "native_commit",
+        "manifest_checksums",
+        "canonical_digest"
+      ]
+    },
+    "external:core/reporting-control-total.json": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "value_type": {
+              "const": "integer"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value",
+            "value_type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "value_type": {
+              "const": "decimal"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value",
+            "value_type"
+          ]
+        }
+      ]
+    },
+    "external:core/reporting-canonical-content-digest.json": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "const": "sha256"
+        },
+        "value": {
+          "type": "string"
+        },
+        "canonicalization_id": {
+          "type": "string"
+        },
+        "canonicalization_uri": {
+          "type": "string"
+        },
+        "canonicalization_sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value",
+        "canonicalization_id",
+        "canonicalization_uri",
+        "canonicalization_sha256"
+      ]
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

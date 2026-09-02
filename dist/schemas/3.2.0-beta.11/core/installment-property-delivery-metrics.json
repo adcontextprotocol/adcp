@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/installment-property-delivery-metrics.json",
+  "title": "Installment Property Delivery Metrics",
+  "description": "Delivery metrics at the intersection of one installment and one publisher property. The property operational key is (publisher_domain, identifier.type, identifier.value). This row proves where a specific airing, episode, issue, or programming block delivered; independent by_installment and by_property marginals do not.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "property_domain_consistency": "property_ref.publisher_domain MUST equal publisher_domain when property_ref is present"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "installment_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/installment-ref.json"
+        },
+        "installment_name": {
+          "type": "string",
+          "description": "Current human-readable installment name. Convenience metadata only."
+        },
+        "scheduled_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Convenience echo of the installment's scheduled publication or air time."
+        },
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Publisher or platform authority that namespaces the property identifier, including for an unregistered surface."
+        },
+        "identifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/identifier.json",
+          "description": "Operational identity of the property that delivered the installment."
+        },
+        "property_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/property-ref.json",
+          "description": "Canonical publisher-scoped catalog identity when available. Its publisher_domain MUST equal the row's publisher_domain."
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Current human-readable property name. Convenience metadata only."
+        }
+      },
+      "required": [
+        "installment_ref",
+        "publisher_domain",
+        "identifier",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}
