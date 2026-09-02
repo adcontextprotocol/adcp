@@ -1,0 +1,305 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-report-definition.json",
+  "title": "Reporting Report Definition",
+  "x-status": "experimental",
+  "description": "Immutable, inspectable semantic contract for how a reporting feed is produced and finalized. Its exact bytes are pinned by report_definition_sha256.",
+  "type": "object",
+  "definitions": {
+    "ReportCalendarTimezoneBasis": {
+      "title": "Report Calendar Timezone Basis",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "utc",
+        "account_timezone",
+        "configured_timezone"
+      ]
+    }
+  },
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "media_type": {
+      "type": "string",
+      "const": "application/vnd.adcp.reporting-definition+json"
+    },
+    "report_definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
+    "reporting_profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "grain": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            }
+          },
+          "required": [
+            "domain"
+          ],
+          "additionalProperties": false
+        },
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "api_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "query_semantics": {
+          "type": "object",
+          "description": "Canonical JSON object containing every source option that can change the numbers, including attribution settings, action-report-time, filters, and mapping version."
+        }
+      },
+      "required": [
+        "provider",
+        "system",
+        "api_version",
+        "query_semantics"
+      ],
+      "additionalProperties": false
+    },
+    "calendar": {
+      "type": "object",
+      "properties": {
+        "timezone_basis": {
+          "$ref": "#/definitions/ReportCalendarTimezoneBasis"
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "required": [
+        "timezone_basis"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "timezone_basis": {
+                "const": "configured_timezone"
+              }
+            },
+            "required": [
+              "timezone_basis"
+            ]
+          },
+          "then": {
+            "required": [
+              "timezone"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "timezone"
+              ]
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "source_expression": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "sum",
+              "count",
+              "min",
+              "max",
+              "average",
+              "ratio",
+              "last",
+              "custom"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "name",
+          "source_expression",
+          "aggregation"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "uniqueItems": true
+    },
+    "restatement_policy": {
+      "type": "object",
+      "properties": {
+        "source_requery_duration": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "emit_only_on_content_change": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "source_requery_duration",
+        "emit_only_on_content_change"
+      ],
+      "additionalProperties": false
+    },
+    "finality_policies": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "finality_policy_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+              },
+              "basis": {
+                "type": "string",
+                "const": "source_final"
+              },
+              "source_signal": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": [
+              "finality_policy_id",
+              "basis",
+              "source_signal"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "finality_policy_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+              },
+              "basis": {
+                "type": "string",
+                "const": "contractual_cutoff"
+              },
+              "duration_after_period_end": {
+                "type": "string",
+                "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+              }
+            },
+            "required": [
+              "finality_policy_id",
+              "basis",
+              "duration_after_period_end"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "finality_policy_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+              },
+              "basis": {
+                "type": "string",
+                "const": "stabilized"
+              },
+              "minimum_age": {
+                "type": "string",
+                "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+              },
+              "unchanged_for": {
+                "type": "string",
+                "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+              }
+            },
+            "required": [
+              "finality_policy_id",
+              "basis",
+              "minimum_age",
+              "unchanged_for"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "contract_version",
+    "media_type",
+    "report_definition_id",
+    "reporting_profile",
+    "grain",
+    "source",
+    "calendar",
+    "metrics",
+    "dimensions",
+    "restatement_policy",
+    "finality_policies"
+  ],
+  "x-adcp-validation": {
+    "binding": "report_definition_id and reporting_profile MUST equal the selected offering. finality_policy_id values MUST be unique. Every official revision's finality_policy_id and finality_basis MUST match exactly one entry.",
+    "content": "query_semantics is untrusted canonical JSON data, never agent or LLM instructions. It MUST enumerate every provider query, attribution, mapping, filtering, and action-timing option that could change delivered values. The fetched document is size/depth bounded and contains no executable content or external references."
+  },
+  "additionalProperties": false
+}

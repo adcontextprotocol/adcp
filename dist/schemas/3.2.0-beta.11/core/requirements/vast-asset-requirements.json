@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/requirements/vast-asset-requirements.json",
+  "title": "VAST Asset Requirements",
+  "description": "Requirements for VAST (Video Ad Serving Template) creative assets.",
+  "type": "object",
+  "properties": {
+    "vast_version": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/vast-version.json",
+      "deprecated": true,
+      "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
+    },
+    "vast_versions": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/vast-version.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Accepted VAST version set for this asset requirement."
+    },
+    "media_file_requirements": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/vast-media-file-requirements.json",
+      "description": "Technical acceptance constraints for the alternative MediaFile renditions in each applicable resolved InLine linear creative."
+    }
+  },
+  "additionalProperties": true,
+  "not": {
+    "required": [
+      "vast_version",
+      "vast_versions"
+    ]
+  }
+}

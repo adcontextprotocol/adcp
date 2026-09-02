@@ -1,0 +1,109 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-delivery-ready-webhook.json",
+  "title": "Reporting Delivery Ready Webhook",
+  "x-status": "experimental",
+  "description": "Compact account-anchored readiness doorbell registered through sync_accounts notification_configs using reporting.delivery_ready. Managed-delivery tier only: it names a materialization at a destination, so Core (API-delivered) configurations never fire it — Core consumers subscribe to reporting.status_changed and poll get_reporting_status. The named revision/materialization MUST already be observable through the intended consumer path. Transport retries are deduplicated by (authenticated sender, idempotency_key); downstream ingestion is deduplicated independently by reporting_revision_id and reporting_materialization_id. Ordering is unconstrained and receivers repair through authenticated get_reporting_status. The event MUST be signed using the advertised AdCP webhook-signing profile and MUST NOT contain rows, object lists, signed URLs, activation URLs, credentials, or access tokens.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "description": "Stable across transport retries of this fire; new for a later re-emission."
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Stable for this logical materialization-ready event across re-emissions."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "reporting.delivery_ready"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "account"
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "reporting_materialization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_materialization"
+    },
+    "readiness": {
+      "type": "string",
+      "enum": [
+        "available",
+        "delivered"
+      ]
+    },
+    "finality": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/reporting-finality.json"
+    },
+    "data_through": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "delivery_config_id",
+    "delivery_config_version",
+    "feed_purpose",
+    "reporting_revision_id",
+    "reporting_materialization_id",
+    "readiness",
+    "finality",
+    "data_through"
+  ],
+  "x-adcp-validation": {
+    "authorization": "The authenticated webhook signer, subscriber_id, account_id, configuration generation, revision, and materialization MUST belong to one caller/account binding; receivers MUST repair through an authenticated status read rather than trusting event contents alone.",
+    "deduplication": "Deduplicate transport retries by (authenticated sender, idempotency_key), then deduplicate ingestion independently by reporting_revision_id and reporting_materialization_id."
+  },
+  "additionalProperties": false
+}

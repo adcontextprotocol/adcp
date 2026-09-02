@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/collection-distribution.json",
+  "title": "Collection Distribution",
+  "description": "A collection's presence on a specific publisher platform. For a channel collection, this is a carriage assertion: property_ids identify the host surfaces carrying the channel, while identifiers identify the channel in the host's catalog or an independent metadata system. This publisher-authored assertion supports discovery and cross-seller matching but does not authorize a sale; authorization remains rooted in the host publisher's collection-scoped authorized_agents entry.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "type": "string",
+      "description": "Domain of the publisher platform where the collection is distributed (e.g., 'youtube.com', 'spotify.com'). Property IDs and publisher-scoped identifiers in this object resolve in this publisher's namespace."
+    },
+    "property_ids": {
+      "type": "array",
+      "description": "Publisher-scoped property IDs from publisher_domain's adagents.json that carry this collection. For owner-sold channel inventory, these identify the host apps without requiring the host to publish channel-owner placement definitions.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/core/property-id.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "identifiers": {
+      "type": "array",
+      "description": "Identifiers for the collection on this publisher, including publisher-scoped channel/EPG identifiers and platform-independent metadata identifiers",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.11/enums/distribution-identifier-type.json",
+            "description": "Type of distribution identifier"
+          },
+          "value": {
+            "type": "string",
+            "description": "The identifier value"
+          }
+        },
+        "required": [
+          "type",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "publisher_domain"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "property_ids"
+      ]
+    },
+    {
+      "required": [
+        "identifiers"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}
