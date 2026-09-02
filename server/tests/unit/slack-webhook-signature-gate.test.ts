@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   handleSlashCommand: vi.fn(),
   handleSlackEvent: vi.fn(),
+  getAddieBoltRouter: vi.fn(),
 }));
 
 vi.mock('../../src/slack/commands.js', () => ({
@@ -17,7 +18,7 @@ vi.mock('../../src/slack/events.js', () => ({
 }));
 
 vi.mock('../../src/addie/index.js', () => ({
-  getAddieBoltRouter: vi.fn(() => null),
+  getAddieBoltRouter: (...args: unknown[]) => mocks.getAddieBoltRouter(...args),
 }));
 
 import { createSlackRouter } from '../../src/routes/slack.js';
@@ -45,8 +46,9 @@ function mountRouter(signingSecret: string | null = SIGNING_SECRET) {
   }
 
   const app = express();
-  const { aaobotRouter } = createSlackRouter();
+  const { aaobotRouter, addieRouter } = createSlackRouter();
   app.use('/api/slack/aaobot', aaobotRouter);
+  app.use('/api/slack/addie', addieRouter);
   return app;
 }
 
@@ -62,6 +64,7 @@ describe('AAO Slack webhook signature gate', () => {
     vi.clearAllMocks();
     mocks.handleSlashCommand.mockResolvedValue({ response_type: 'ephemeral', text: 'ok' });
     mocks.handleSlackEvent.mockResolvedValue(undefined);
+    mocks.getAddieBoltRouter.mockReturnValue(null);
   });
 
   afterEach(() => {
@@ -265,6 +268,42 @@ describe('AAO Slack webhook signature gate', () => {
       type: 'event_callback',
     });
     expect(mocks.handleSlashCommand).not.toHaveBeenCalled();
+  });
+
+  it('keeps AAO bot events on the non-Addie dispatcher', async () => {
+    const app = mountRouter();
+    const body = JSON.stringify({
+      type: 'event_callback',
+      event: { type: 'message', channel_type: 'im', text: 'hello' },
+    });
+    const headers = signedHeaders(body);
+
+    const response = await request(app)
+      .post('/api/slack/aaobot/events')
+      .set('Content-Type', 'application/json')
+      .set('X-Slack-Request-Timestamp', headers.requestTimestamp)
+      .set('X-Slack-Signature', headers.requestSignature)
+      .send(body);
+
+    expect(response.status).toBe(200);
+    expect(mocks.handleSlackEvent).toHaveBeenCalledOnce();
+    expect(mocks.getAddieBoltRouter).not.toHaveBeenCalled();
+  });
+
+  it('delegates active Addie events to the Bolt router', async () => {
+    mocks.getAddieBoltRouter.mockReturnValue((_req: express.Request, res: express.Response) => {
+      res.status(204).send();
+    });
+    const app = mountRouter();
+
+    const response = await request(app)
+      .post('/api/slack/addie/events')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ type: 'event_callback', event: { type: 'app_mention' } }));
+
+    expect(response.status).toBe(204);
+    expect(mocks.getAddieBoltRouter).toHaveBeenCalledOnce();
+    expect(mocks.handleSlackEvent).not.toHaveBeenCalled();
   });
 
   it('rejects a valid signature when exact raw-body capture middleware is missing', async () => {
