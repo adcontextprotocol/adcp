@@ -13,8 +13,8 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Beta** | 3.2 (current prerelease: `beta.9`) | `"3.2-beta.9"` | Development and staging only. Beta.9 is the current protocol checkpoint; TypeScript SDK beta.22 and Python beta.10 embed it exactly. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
-| **Active** | 3.1 (current stable: 3.1.19) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
+| **Beta** | 3.2 (current prerelease: `beta.10`) | `"3.2-beta.10"` | Development and staging only. Beta.10 is the current protocol checkpoint; TypeScript SDK beta.28 and Python beta.11 embed it exactly. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Active** | 3.1 (current stable: 3.1.20) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.26) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
 | **Planned** | 4.0 | — | Target in [planned releases](/docs/reference/versioning#planned-releases). |
@@ -37,7 +37,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 | 3.1.1 | 2026-06-30 | Patch. Wire-compatible with 3.1.0. |
 | 3.1.2 | 2026-07-08 | Patch. Wire-compatible with 3.1.0. |
 | 3.1.3 | 2026-07-13 | **Withdrawn. Do not use.** It added a stable schema field in a patch release and included an incorrect publisher-domain filter implementation. The artifacts remain available only for auditability. Use 3.1.2 instead. |
-| 3.1.4 through **3.1.19** | 2026-07-18 to 2026-08-21 | Patches. **3.1.19 is the latest stable patch.** Wire-compatible with 3.1.0. |
+| 3.1.4 through **3.1.20** | 2026-07-18 to 2026-09-02 | Patches. **3.1.20 is the latest stable patch.** Wire-compatible with 3.1.0. |
 
 Supported patches don't change the wire contract. Upgrading within 3.0.x is always safe, and 3.1 remains additive over 3.0. The withdrawn 3.1.3 release is not a supported patch or implementation target. For per-version detail, see [Release Notes](/docs/reference/release-notes) (curated narrative) and the [Changelog](/docs/reference/changelog) (full technical history).
 
@@ -45,7 +45,8 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.2.0-beta.9** | 2026-08-28 | Current protocol checkpoint. Adds the draft account change feed, product-scoped inventory-list receipts, authority-discriminated inventory delivery identity, seller policy and change-right contracts, and broader conformance coverage. TypeScript SDK beta.22 and Python SDK beta.10 embed it exactly; use `"3.2-beta.9"` only with peers that explicitly advertise it. |
+| **3.2.0-beta.10** | 2026-09-01 | Current protocol checkpoint. Adds managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, and committed collection selection. TypeScript SDK beta.28 and Python SDK beta.11 embed it exactly; use `"3.2-beta.10"` only with peers that explicitly advertise it. |
+| 3.2.0-beta.9 | 2026-08-28 | Previous protocol checkpoint. Adds the draft account change feed, product-scoped inventory-list receipts, authority-discriminated inventory delivery identity, seller policy and change-right contracts, and broader conformance coverage. |
 | 3.2.0-beta.8 | 2026-08-27 | Previous protocol checkpoint. Proves metric-container subsumption behavior end to end and repairs versioned documentation snapshot builds. |
 | 3.2.0-beta.7 | 2026-08-27 | Previous protocol checkpoint. Adds audience activation and external-source contracts, creative delivery and tracker execution contracts, static OOH and radio measurement declarations, viewed-seconds distributions, and expanded conformance coverage. |
 | 3.2.0-beta.6 | 2026-08-23 | Previous SDK-backed checkpoint. `@adcp/sdk@14.0.0-beta.13` and Python `adcp==8.0.0b9` embed this exact bundle. |
@@ -75,7 +76,7 @@ The entire 2.x line has been fully deprecated since August 1, 2026 (UTC). The 2.
 ## FAQ
 
 ### What's "current"?
-For new production integrations, **3.1.19** is current; pin your integration to `"3.1"` (not `"3.1.19"`). Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate. Use 3.2 only for beta testing with an exact advertised prerelease pin. See [Version negotiation](/docs/reference/versioning#version-negotiation).
+For new production integrations, **3.1.20** is current; pin your integration to `"3.1"` (not `"3.1.20"`). Existing 3.0 integrations can remain pinned to `"3.0"` while they migrate. Use 3.2 only for beta testing with an exact advertised prerelease pin. See [Version negotiation](/docs/reference/versioning#version-negotiation).
 
 ### What happened to 2.2, 2.3, 2.4, 2.6?
 The 2.x line skipped version numbers during its working-group cycle. Some appear as in-flight changelog entries but were never released — the changes were rolled forward into the next published version or deferred to 3.0. The six published 2.x releases are 2.0.0, 2.1.0, 2.5.0, 2.5.1, 2.5.2, and 2.5.3.
@@ -94,8 +95,8 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 | If you are… | Use |
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
-| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.9** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
-| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.22` or Python `adcp==8.0.0b10` with exact wire pin `"3.2-beta.9"`; use Go only after its support matrix row names an exact checkpoint. |
+| Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.10** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
+| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.28` or Python `adcp==8.0.0b11` with exact wire pin `"3.2-beta.10"`; use Go only after its support matrix row names an exact checkpoint. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |
 | Running a 2.0 or 2.1 integration | Upgrade now — out of support. |

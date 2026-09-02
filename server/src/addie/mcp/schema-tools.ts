@@ -23,7 +23,7 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 // Keep schema selection aligned with the frozen releases exposed in docs.json.
 // Legacy aliases remain available for callers that already use them.
 export const DOCS_SCHEMA_RELEASES = Object.freeze({
-  '3.1': '3.1.19',
+  '3.1': '3.1.20',
   '3.2-beta': '3.2.0-beta.10',
   '3.0': '3.0.26',
   '2.5': '2.5.3',
@@ -82,12 +82,11 @@ function resolveSchemaVersion(requested?: unknown, fallback = DEFAULT_VERSION): 
   return canonical;
 }
 
-const INFERRED_PRERELEASE_RANGES: Readonly<
+const HISTORICAL_PRERELEASE_RANGES: Readonly<
   Record<string, Partial<Record<'beta' | 'rc', readonly [number, number]>>>
 > = Object.freeze({
   '3.0': Object.freeze({ beta: [1, 3] as const, rc: [1, 3] as const }),
   '3.1': Object.freeze({ beta: [0, 7] as const, rc: [1, 15] as const }),
-  '3.2-beta': Object.freeze({ beta: [0, 10] as const }),
 });
 
 /**
@@ -106,11 +105,23 @@ function resolveInferredSchemaVersion(requested: string): string {
   if (prereleaseMatch) {
     const [, releaseLine, prereleaseKind, prereleaseNumberText] = prereleaseMatch;
     const canonical = releaseLine === '3.2' ? '3.2-beta' : releaseLine;
-    const range = INFERRED_PRERELEASE_RANGES[canonical]?.[
+    const historicalRange = HISTORICAL_PRERELEASE_RANGES[canonical]?.[
       prereleaseKind as 'beta' | 'rc'
     ];
+    const frozenVersion = DOCS_SCHEMA_RELEASES[
+      canonical as keyof typeof DOCS_SCHEMA_RELEASES
+    ];
+    const frozenPrerelease = frozenVersion?.match(
+      new RegExp(`^${releaseLine.replace('.', '\\.')}\\.0-${prereleaseKind}\\.(\\d+)$`)
+    );
     const prereleaseNumber = Number(prereleaseNumberText);
-    if (range && prereleaseNumber >= range[0] && prereleaseNumber <= range[1]) {
+    const inHistoricalRange = historicalRange
+      && prereleaseNumber >= historicalRange[0]
+      && prereleaseNumber <= historicalRange[1];
+    const inCurrentPreviewRange = frozenPrerelease
+      && prereleaseNumber >= 0
+      && prereleaseNumber <= Number(frozenPrerelease[1]);
+    if (inHistoricalRange || inCurrentPreviewRange) {
       return canonical;
     }
   }
@@ -750,9 +761,9 @@ ${formatCandidates(requestedPath, registry)}`);
 | Version | URL | Notes |
 |---------|-----|-------|
 | 3.1 | ${SCHEMA_BASE_URLS['3.1']} | Current stable schema snapshot (${DOCS_SCHEMA_RELEASES['3.1']}) |
-| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (3.2.0-beta.10) |
-| 3.0 | ${SCHEMA_BASE_URLS['3.0']} | Previous 3.x snapshot (3.0.26) |
-| 2.5 | ${SCHEMA_BASE_URLS['2.5']} | Archived snapshot (2.5.3) |
+| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (${DOCS_SCHEMA_RELEASES['3.2-beta']}) |
+| 3.0 | ${SCHEMA_BASE_URLS['3.0']} | Previous 3.x snapshot (${DOCS_SCHEMA_RELEASES['3.0']}) |
+| 2.5 | ${SCHEMA_BASE_URLS['2.5']} | Archived snapshot (${DOCS_SCHEMA_RELEASES['2.5']}) |
 | v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |
 
 ### Key Differences: v2 vs v3

@@ -64,6 +64,7 @@ import { loadResponseStyle, loadRules } from '../../src/addie/rules/index.js';
 import { ADMIN_TOOLS } from '../../src/addie/mcp/admin-tools.js';
 import { BILLING_TOOLS } from '../../src/addie/mcp/billing-tools.js';
 import { KNOWLEDGE_TOOLS } from '../../src/addie/mcp/knowledge-search.js';
+import { MEETING_TOOLS } from '../../src/addie/mcp/meeting-tools.js';
 import { MEMBER_TOOLS } from '../../src/addie/mcp/member-tools.js';
 import type { AddieTool } from '../../src/addie/types.js';
 
@@ -76,6 +77,20 @@ interface ProviderPlan {
   judge: FixedTraceJudgeConfig;
 }
 
+const MEETING_FULL_ADMINISTRATION_FIXTURE_NAMES = [
+  'schedule_meeting',
+  'list_upcoming_meetings',
+  'get_my_meetings',
+  'get_meeting_details',
+  'rsvp_to_meeting',
+  'cancel_meeting',
+  'cancel_meeting_series',
+  'update_meeting',
+  'add_meeting_attendee',
+  'update_topic_subscriptions',
+  'manage_committee_topics',
+] as const;
+
 const TOOL_NAMES = new Set([
   'search_docs',
   'get_doc',
@@ -83,7 +98,13 @@ const TOOL_NAMES = new Set([
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',
+  ...MEETING_FULL_ADMINISTRATION_FIXTURE_NAMES,
 ]);
+
+// The confirmed long meeting trace needs four sequential requested tools and
+// one final response. It is deliberately narrower than the synthetic loop's
+// 11-tool-union ceiling, which protects the evaluator from runaway replay.
+const MEETING_FULL_REQUEST_GENERATION_TURNS = 5;
 
 const PRICING = {
   anthropicRouter: {
@@ -143,6 +164,7 @@ function canonicalToolDefinitions(): AddieTool[] {
     ...MEMBER_TOOLS,
     ...ADMIN_TOOLS,
     ...BILLING_TOOLS,
+    ...MEETING_TOOLS,
   ].filter((tool) => TOOL_NAMES.has(tool.name));
   const byName = new Map<string, AddieTool>();
   for (const definition of definitions) {
@@ -210,7 +232,7 @@ function providerPlans(
         ModelConfig.primary,
         'provider_default',
         900,
-        4,
+        MEETING_FULL_REQUEST_GENERATION_TURNS,
         PRICING.anthropicGeneration,
       ),
       judge: {
@@ -242,7 +264,7 @@ function providerPlans(
         OPENAI_ROUTER_MODEL,
         'none',
         900,
-        4,
+        MEETING_FULL_REQUEST_GENERATION_TURNS,
         PRICING.openai,
       ),
       judge: {
@@ -274,7 +296,7 @@ function providerPlans(
         GOOGLE_ROUTER_MODEL,
         'low',
         1_200,
-        4,
+        MEETING_FULL_REQUEST_GENERATION_TURNS,
         PRICING.google,
       ),
       judge: {

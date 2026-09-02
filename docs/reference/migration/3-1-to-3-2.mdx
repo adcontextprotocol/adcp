@@ -8,8 +8,8 @@ description: "Role-based migration checklist for adopting the AdCP 3.2 beta whil
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed beta.9 exactly.
+**3.2 is in beta.** Beta.10 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.28` and Python `adcp==8.0.0b11` embed beta.10 exactly.
 Python higher-level helpers remain partial, and Go exact support remains
 pending. Keep production traffic pinned to `"3.1"` while validating 3.2 in
 staging.
@@ -47,20 +47,20 @@ surfaces by hand.
 | Step | Who | Action |
 |---|---|---|
 | 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 beta artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.9` protocol tarball, not `main` or `/schemas/latest/`. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.10` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
 | 4 | Buyers | Send `adcp_version: "3.2-beta.N"` only after exact capability discovery; never silently move between beta pins. |
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test beta.9 from its signed assets, or pair `@adcp/sdk@14.0.0-beta.22` or Python `adcp==8.0.0b10` with exact beta.9; retain the exact package and wire versions. |
+| 8 | Compliance operators | Test beta.10 from its signed assets, or pair `@adcp/sdk@14.0.0-beta.28` or Python `adcp==8.0.0b11` with exact beta.10; retain the exact package and wire versions. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During beta, prerelease matching is exact. A seller serving beta.9 advertises
-`"3.2-beta.9"`. Do not advertise stable `"3.2"` before GA, silently negotiate
+During beta, prerelease matching is exact. A seller serving beta.10 advertises
+`"3.2-beta.10"`. Do not advertise stable `"3.2"` before GA, silently negotiate
 between beta ordinals, or treat a major-only declaration as evidence of 3.2
 support.
 
@@ -192,8 +192,8 @@ See [Cross-role governance enforcement](/docs/reference/migration/cross-role-gov
 | Creative agent | Canonical supported-format capabilities, operation selection, and explicit compatibility handling for legacy named formats. |
 | Signals or measurement agent | Exact beta pin and only the attestation, targeting, or feedback capabilities actually implemented. |
 | Governance provider/service | Exact beta pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
-| SDK maintainer | Signed beta.9 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the release candidate. |
-| Compliance operator | Matching beta.9 assets and SDK support end to end; no 3.2 badge from a beta checkpoint. |
+| SDK maintainer | Signed beta.10 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the release candidate. |
+| Compliance operator | Matching beta.10 assets and SDK support end to end; no 3.2 badge from a beta checkpoint. |
 
 ## Rollback
 

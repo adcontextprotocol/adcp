@@ -542,7 +542,7 @@ The deterministic training profiles expose the exact `3.2-beta.10` proposal-nego
 | Constrained seller | `/sales/profiles/constrained-seller/mcp` | USD floors, product conflicts, and at most two available alternatives |
 | Finalization failure | `/sales/profiles/finalization-failure/mcp` | `hold_unavailable` plus `batch_aborted` siblings with no committed successors |
 
-Pin the beta exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into beta behavior. SDK 14 beta.27 accepts `wireAdcpVersion: "3.2-beta.10"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
+Pin the beta exactly on every call. A stable `3.2` selector intentionally negotiates to the seller's stable compatibility response instead of silently opting into beta behavior. SDK 14 beta.28 accepts `wireAdcpVersion: "3.2-beta.10"` on its single- and multi-agent client configuration; raw calls remain useful for inspecting the exact envelope as below.
 
 ### Try the lifecycle with Addie or Sage
 

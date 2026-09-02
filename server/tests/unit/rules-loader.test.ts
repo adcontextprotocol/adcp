@@ -154,7 +154,9 @@ describe('Rules Loader', () => {
 
   it('loads only behavior sections relevant to the selected route domains', () => {
     const knowledgeRules = loadRules({ selectedToolSetNames: ['knowledge'] });
-    const meetingRules = loadRules({ selectedToolSetNames: ['meetings'] });
+    const attendanceRules = loadRules({ selectedToolSetNames: ['meeting_attendance'] });
+    const schedulingRules = loadRules({ selectedToolSetNames: ['meeting_scheduling'] });
+    const seriesTopicRules = loadRules({ selectedToolSetNames: ['meeting_series_topics'] });
     const directoryRules = loadRules({ selectedToolSetNames: ['directory'] });
     const memberRules = loadRules({ selectedToolSetNames: ['member_profile'] });
     const schemaRules = loadRules({ selectedToolSetNames: ['schema_reference'] });
@@ -165,10 +167,15 @@ describe('Rules Loader', () => {
     expect(knowledgeRules).not.toContain('## Meeting Tool Selection');
     expect(knowledgeRules).not.toContain('## Partner Directory');
 
-    expect(meetingRules).not.toContain('# Knowledge');
-    expect(meetingRules).toContain('## Meeting Tool Selection');
-    expect(meetingRules).toContain('## Post-Exploration Channel Summary');
-    expect(meetingRules).not.toContain('## Knowledge Search First');
+    expect(attendanceRules).not.toContain('# Knowledge');
+    expect(attendanceRules).toContain('## Meeting Attendance and Calendar');
+    expect(attendanceRules).toContain('## Post-Exploration Channel Summary');
+    expect(attendanceRules).not.toContain('## Meeting Scheduling');
+    expect(schedulingRules).toContain('## Meeting Scheduling');
+    expect(schedulingRules).not.toContain('## Meeting Attendance and Calendar');
+    expect(seriesTopicRules).toContain('## Recurring Meeting Series and Topics');
+    expect(seriesTopicRules).not.toContain('## Meeting Attendance and Calendar');
+    expect(attendanceRules).not.toContain('## Knowledge Search First');
 
     expect(directoryRules).toContain('## Honest Reporting After Search');
     expect(directoryRules).toContain('Registry visibility is not registry completeness');
@@ -334,9 +341,17 @@ describe('Addie tool reference', () => {
       availableToolNames: getToolsForSets(['publishing_promotion'], false, false),
       selectedToolSetNames: ['publishing_promotion'],
     });
-    const meetings = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['meetings'], false, false),
-      selectedToolSetNames: ['meetings'],
+    const attendance = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meeting_attendance'], false, false),
+      selectedToolSetNames: ['meeting_attendance'],
+    });
+    const scheduling = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meeting_scheduling'], false, false),
+      selectedToolSetNames: ['meeting_scheduling'],
+    });
+    const fullAdministration = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['meeting_full_administration'], false, false),
+      selectedToolSetNames: ['meeting_full_administration'],
     });
 
     expect(profile).toContain('### Member profile and company-listing operations');
@@ -348,8 +363,37 @@ describe('Addie tool reference', () => {
     expect(promotion).toContain('### Member content operations');
     expect(promotion).not.toContain('### Working-group operations');
     expect(profile).not.toContain('### Meeting operations');
-    expect(meetings).toContain('### Meeting operations');
-    expect(meetings).not.toContain('### Member profile and company-listing operations');
+    expect(attendance).toContain('### Meeting attendance');
+    expect(attendance).not.toContain('### Meeting scheduling');
+    expect(scheduling).toContain('### Meeting scheduling');
+    expect(scheduling).not.toContain('### Meeting attendance');
+    expect(fullAdministration).toContain('### Full meeting administration');
+    const fullMeetingTools = [
+      'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
+      'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
+      'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee',
+      'update_topic_subscriptions', 'manage_committee_topics',
+    ];
+    expect(fullAdministration).toContain(
+      `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
+    );
+    expect(attendance).not.toContain('### Member profile and company-listing operations');
+  });
+
+  it('omits duplicate full-meeting guidance only from the synthetic all-domain profile', () => {
+    const selectedToolSetNames = [
+      'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
+    ];
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(selectedToolSetNames, false, false),
+      selectedToolSetNames,
+    });
+
+    expect(reference).toContain('### Meeting attendance');
+    expect(reference).toContain('### Meeting scheduling');
+    expect(reference).toContain('### Recurring meeting series and topics');
+    expect(reference).not.toContain('### Full meeting administration');
+    expect(reference).not.toContain('- **meeting_full_administration**');
   });
 
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
@@ -809,5 +853,29 @@ describe('Addie tool reference', () => {
     expect(mdxTools.length).toBeGreaterThan(50);
     const missing = mdxTools.filter(name => !new RegExp(`\\b${name}\\b`).test(catalog));
     expect(missing).toEqual([]);
+  });
+
+  it('keeps the visible full-meeting composite exact in generated docs and catalog', async () => {
+    const fullMeetingTools = [
+      'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
+      'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
+      'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee',
+      'update_topic_subscriptions', 'manage_committee_topics',
+    ];
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const repoRoot = path.resolve(__dirname, '../../..');
+    const mdx = fs.readFileSync(path.join(repoRoot, 'docs/aao/addie-tools.mdx'), 'utf8');
+    const catalog = fs.readFileSync(path.join(repoRoot, 'server/src/addie/generated/tool-catalog.generated.ts'), 'utf8');
+    const sectionStart = mdx.indexOf('## meeting_full_administration');
+    const sectionEnd = mdx.indexOf('\n## ', sectionStart + 1);
+    const section = mdx.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd);
+
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    expect(Array.from(section.matchAll(/^### `([a-z_][a-z_0-9]*)`/gm)).map((match) => match[1]))
+      .toEqual(fullMeetingTools);
+    expect(catalog).toContain(
+      `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
+    );
   });
 });

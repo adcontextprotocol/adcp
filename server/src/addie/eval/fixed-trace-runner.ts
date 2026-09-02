@@ -32,6 +32,7 @@ import type {
 import {
   executeFixedTraceToolLoop,
   FixedTraceToolLoopBoundaryError,
+  MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS,
 } from './fixed-trace-tool-loop.js';
 import { FixedTraceBudgetAdmissionError } from './fixed-trace-budget.js';
 import {
@@ -118,8 +119,12 @@ function validateStageConfig(name: string, config: FixedTraceProviderStageConfig
   if (!Number.isSafeInteger(config.timeoutMs) || config.timeoutMs < 1) {
     throw new Error(`${name} timeoutMs must be a positive integer`);
   }
-  if (!Number.isSafeInteger(config.maxIterations) || config.maxIterations < 1 || config.maxIterations > 8) {
-    throw new Error(`${name} maxIterations must be between 1 and 8`);
+  if (
+    !Number.isSafeInteger(config.maxIterations)
+    || config.maxIterations < 1
+    || config.maxIterations > MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS
+  ) {
+    throw new Error(`${name} maxIterations must be between 1 and ${MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS}`);
   }
   if (
     config.samplingMode === 'temperature_zero' && config.temperature !== 0
