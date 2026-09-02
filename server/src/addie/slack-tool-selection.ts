@@ -40,6 +40,16 @@ const PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET = new Set<string>(
   PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
 );
 
+function retainPublicMentionReadOnlyTools(
+  source: SlackToolSource,
+  isPublicChannel: boolean | undefined,
+  toolNames: string[],
+): string[] {
+  return source === 'mention' && isPublicChannel
+    ? toolNames.filter((name) => PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET.has(name))
+    : toolNames;
+}
+
 /** Tool sets required by server-owned channel configuration. */
 export const SYSTEM_CHANNEL_TOOL_SETS: Readonly<Record<SystemChannelRole, readonly string[]>> = {
   prospect: ['admin_prospects', 'outreach'],
@@ -225,11 +235,11 @@ export function selectBoundedRoutedToolSets(
   let allowedToolNames = useSafeFallback
     ? getSafeReadOnlyFallbackTools()
     : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
-  if (input.source === 'mention' && input.isPublicChannel) {
-    allowedToolNames = allowedToolNames.filter((name) =>
-      PUBLIC_MENTION_READ_ONLY_TOOL_NAME_SET.has(name),
-    );
-  }
+  allowedToolNames = retainPublicMentionReadOnlyTools(
+    input.source,
+    input.isPublicChannel,
+    allowedToolNames,
+  );
   const isToolAvailable = input.isToolAvailable;
   const activeCertificationSets = trustedActiveCertificationKind === 'mixed'
     ? ['certification_learning', 'certification_assessment']
@@ -264,6 +274,11 @@ export function selectBoundedRoutedToolSets(
       hasSponsoredIntelligenceContext: false,
     });
     allowedToolNames = getSafeReadOnlyFallbackTools();
+    allowedToolNames = retainPublicMentionReadOnlyTools(
+      input.source,
+      input.isPublicChannel,
+      allowedToolNames,
+    );
   }
 
   // The provider-managed web search tool has no custom handler. Every other
