@@ -1283,6 +1283,8 @@ test('generated role profiles are host-compatible discovery catalogs with bounde
     .map(([toolName]) => toolName)
     .filter(toolName => toolName !== 'build_creative');
   for (const toolName of activeMediaBuyTools) assert.ok(mediaBuyTools.has(toolName), toolName);
+  assert.ok(mediaBuyTools.has('get_principal'));
+  assert.ok(mediaBuyTools.has('sync_principal'));
   assert.ok(mediaBuyTools.has('sync_creatives'));
   assert.ok(mediaBuyTools.has('sync_governance'));
   assert.ok(mediaBuyTools.has('provide_performance_feedback'));
