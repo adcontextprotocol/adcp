@@ -101,12 +101,16 @@ describe('storyboard runner option helpers', () => {
     expect(() => authForStoryboard('security_baseline', kit, 'default-token')).toThrow(/both auth\.api_key and auth\.basic/);
   });
 
-  it('keeps billing_gate_dispatch on the kit API key and other storyboards on the default token', () => {
+  it('keeps credential-gated storyboards on the kit API key and other storyboards on the default token', () => {
     const kit: LoadedTestKit = {
       auth: { api_key: 'kit-api-key', probe_task: 'list_creatives' },
     };
 
     expect(authForStoryboard('billing_gate_dispatch', kit, 'default-token')).toEqual({
+      type: 'bearer',
+      token: 'kit-api-key',
+    });
+    expect(authForStoryboard('comply_controller_mode_gate', kit, 'default-token')).toEqual({
       type: 'bearer',
       token: 'kit-api-key',
     });
