@@ -71,7 +71,12 @@ export function authForStoryboard(
     );
   }
 
-  if ((storyboardId === 'billing_gate_dispatch' || storyboardId === 'security_baseline') && kit?.auth?.api_key) {
+  if (
+    (storyboardId === 'billing_gate_dispatch' ||
+      storyboardId === 'comply_controller_mode_gate' ||
+      storyboardId === 'security_baseline') &&
+    kit?.auth?.api_key
+  ) {
     return { type: 'bearer', token: kit.auth.api_key };
   }
 
