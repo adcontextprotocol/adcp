@@ -1370,7 +1370,7 @@ Forecast points can also carry `dimensions` when a seller needs to expose availa
 
 Forecast points may include measurement-aware forecasts alongside standard delivery metrics:
 - **`viewability`** mirrors the `get_media_buy_delivery` `viewability` block, but numeric values use ForecastRange objects. Sellers SHOULD only emit forecast viewability when the product can report corresponding delivery viewability. Forecast `standard` is required whenever forecast viewability values are present because MRC and GroupM rows are not interchangeable; delivery `viewability.standard` remains optional for 3.x compatibility but SHOULD be populated.
-- **`vendor_metric_values`** mirrors delivery reporting for vendor-defined metrics, but `value` and `measurable_impressions` use ForecastRange objects. Sellers SHOULD only forecast vendor metrics that the product declares in `reporting_capabilities.vendor_metrics`.
+- **`vendor_metric_values`** mirrors delivery reporting for vendor-defined metrics, but `value` and the coverage denominators (`measurable_impressions`, or `measurable_plays` / `measurable_screen_seconds` for play-based channels) use ForecastRange objects. Sellers SHOULD only forecast vendor metrics that the product declares in `reporting_capabilities.vendor_metrics`.
 
 #### Forecast Range Units
 

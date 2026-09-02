@@ -248,6 +248,10 @@
                 "$ref": "/schemas/core/vendor-metric-id.json",
                 "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
               },
+              "methodology_version": {
+                "type": "string",
+                "description": "Optional buyer-proposed pin of the vendor's `measurement.metrics[].methodology_version`. The seller accepts by echoing it on the confirmed package's `committed_metrics` entry, normalizes to the version it can actually deliver, or rejects with `TERMS_REJECTED`. Opaque string — equality comparison only."
+              },
               "qualifier": {
                 "type": "object",
                 "description": "Optional disambiguator for vendor metrics committed under more than one methodology or window — same closed key set as standard-scope entries.",

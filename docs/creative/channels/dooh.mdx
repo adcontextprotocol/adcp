@@ -276,14 +276,41 @@ Attention measurement is optional and is not required to claim `sales-dooh`. Whe
 {
   "reporting_capabilities": {
     "vendor_metrics": [
-      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "people_in_frame" },
-      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "gaze_attention_seconds" }
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "people_in_frame", "measurement_source": "third_party" },
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "gaze_attention_seconds", "measurement_source": "third_party" }
     ]
   }
 }
 ```
 
-The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. The existing `media_buy_seller/vendor_metric_accountability` scenario verifies declaration, commitment, and delivery for sellers whose conformance profile selects that contract; it is not part of the core `sales-dooh` claim. Ordinary play-reporting DOOH sellers do not need vendor metrics. AdCP does not require a persistent person or device identifier for these aggregate observations. A seller must not manufacture one merely to fit an impression-oriented workflow. Standard DOOH delivery facts such as raw plays, installed surfaces used, active time, share of voice, and venue breakdown use `plays` and the applicable fields in `dooh_metrics`.
+The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. When the seller operates the sensors itself — the common DOOH case, since the camera is bolted to the seller's own screen — the `vendor` is the seller's own `brand.json` and the entry declares `"measurement_source": "first_party"`. The seller still publishes the metric catalog like any vendor; `first_party` is a disclosure that lets a buyer agent discount or corroborate, not an exemption.
+
+Coverage for these rows is measured over plays, not impressions. A DOOH `impressions` figure is `plays × audience multiplier`, so `measurable_impressions / impressions` would divide a measured count by a model output. Report `measurable_plays` (or `measurable_screen_seconds` when the vendor meters duration) instead:
+
+```json
+{
+  "vendor_metric_values": [
+    {
+      "vendor": { "domain": "dooh-seller.example" },
+      "metric_id": "gaze_attention_seconds",
+      "value": 7242008.3,
+      "unit": "seconds",
+      "measurable_plays": 964984,
+      "measurement_source": "first_party"
+    },
+    {
+      "vendor": { "domain": "dooh-seller.example" },
+      "metric_id": "people_in_frame",
+      "value": 1481441,
+      "unit": "persons",
+      "measurable_plays": 964984,
+      "measurement_source": "first_party"
+    }
+  ]
+}
+```
+
+People in frame and gaze-attention seconds are separate rows on purpose: people present and people looking are different observations with different denominators, and folding either into `impressions` destroys the measured one. The existing `media_buy_seller/vendor_metric_accountability` scenario verifies declaration, commitment, and delivery for sellers whose conformance profile selects that contract; it is not part of the core `sales-dooh` claim. Ordinary play-reporting DOOH sellers do not need vendor metrics. AdCP does not require a persistent person or device identifier for these aggregate observations. A seller must not manufacture one merely to fit an impression-oriented workflow. Standard DOOH delivery facts such as raw plays, installed surfaces used, active time, share of voice, and venue breakdown use `plays` and the applicable fields in `dooh_metrics`.
 
 ## Storyboard coverage
 

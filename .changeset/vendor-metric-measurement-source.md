@@ -1,0 +1,5 @@
+---
+"adcontextprotocol": minor
+---
+
+Make first-party measurement legible on the vendor-metric surface (#7150). Add the closed `measurement_source` enum (`first_party` / `affiliated` / `third_party`) to `reporting_capabilities.vendor_metrics[]` so a seller declares its relationship to the measurement vendor — including the case where the vendor is the seller itself — and MAY echo it on `vendor_metric_values[]` rows; methodology stays at the vendor catalog's `methodology_url` / `methodology_version` rather than as free text on the row. Add `measurable_plays` and `measurable_screen_seconds` coverage denominators to `vendor-metric-value` and `forecast-vendor-metric-value` for play-based channels (DOOH, cinema, place-based) where `impressions` is itself modelled. Add `methodology_version` to vendor-scope `committed_metrics` entries (request and response) so the version pin the measurement catalog already promises exists on the contract. Document that a seller MAY be its own measurement vendor when it publishes the metric catalog like any other vendor and declares `first_party`.

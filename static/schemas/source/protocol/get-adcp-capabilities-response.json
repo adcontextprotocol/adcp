@@ -3091,7 +3091,7 @@
               },
               "methodology_version": {
                 "type": "string",
-                "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version on `committed_metrics` so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
+                "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version via `committed_metrics[].methodology_version` (vendor scope) so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
                 "examples": ["v2.1", "2026-Q1", "1.0"]
               },
               "ext": {

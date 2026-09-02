@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/forecast-vendor-metric-value.json",
   "title": "Forecast Vendor Metric Value",
-  "description": "A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values parallel to delivery-metrics vendor_metric_values. The envelope mirrors VendorMetricValue but uses ForecastRange for value and measurable_impressions because forecasts may carry low/mid/high bounds instead of actual delivered values.",
+  "description": "A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values parallel to delivery-metrics vendor_metric_values. The envelope mirrors VendorMetricValue but uses ForecastRange for value and the coverage denominators (measurable_impressions, measurable_plays, measurable_screen_seconds) because forecasts may carry low/mid/high bounds instead of actual delivered values.",
   "type": "object",
   "properties": {
     "vendor": {
@@ -24,7 +24,15 @@
     },
     "measurable_impressions": {
       "$ref": "/schemas/core/forecast-range.json",
-      "description": "Forecasted number of impressions the vendor expects to be able to measure. Coverage denominator for the vendor metric; buyers compute estimated coverage as measurable_impressions / impressions when both are present."
+      "description": "Forecasted number of impressions the vendor expects to be able to measure. Coverage denominator for the vendor metric; buyers compute estimated coverage as measurable_impressions / impressions when both are present. For play-based channels (DOOH, cinema, place-based) forecast measurable_plays or measurable_screen_seconds instead."
+    },
+    "measurable_plays": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Forecasted number of plays the vendor expects to be able to measure. Coverage denominator for channels where a play, not an impression, is the atomic observation unit; buyers compute estimated coverage as measurable_plays / plays when both are present."
+    },
+    "measurable_screen_seconds": {
+      "$ref": "/schemas/core/forecast-range.json",
+      "description": "Forecasted screen-seconds the vendor expects to be able to measure. Coverage denominator when the vendor meters exposure duration rather than discrete plays."
     },
     "breakdown": {
       "type": "object",
