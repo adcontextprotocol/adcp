@@ -65,7 +65,51 @@ function sampleConfig() {
 }
 
 (async () => {
-  const { updateDocsConfig } = await import('../scripts/update-release-docs-nav.mjs');
+  const { updateDocsConfig, updateDockerignore, updateSchemaTools } = await import('../scripts/update-release-docs-nav.mjs');
+
+  test('adds a released snapshot to the Docker build context exactly once', () => {
+    const initial = [
+      'dist/docs/*',
+      '!dist/docs/3.1.19',
+      '!dist/docs/3.1.19/**',
+      '!dist/schemas',
+      '',
+    ].join('\n');
+    const updated = updateDockerignore(initial, '3.1.20');
+
+    assert.equal(
+      updated,
+      [
+        'dist/docs/*',
+        '!dist/docs/3.1.19',
+        '!dist/docs/3.1.19/**',
+        '!dist/docs/3.1.20',
+        '!dist/docs/3.1.20/**',
+        '!dist/schemas',
+        '',
+      ].join('\n')
+    );
+    assert.equal(updateDockerignore(updated, '3.1.20'), updated);
+  });
+
+  test('keeps Addie schema routing on the same frozen release as docs', () => {
+    const source = [
+      'export const DOCS_SCHEMA_RELEASES = Object.freeze({',
+      "  '3.1': '3.1.19',",
+      "  '3.2-beta': '3.2.0-beta.10',",
+      '});',
+      '',
+    ].join('\n');
+
+    assert.equal(
+      updateSchemaTools(source, '3.1.20', '3.1'),
+      source.replace("'3.1.19'", "'3.1.20'")
+    );
+    assert.equal(
+      updateSchemaTools(source, '3.2.0-beta.11', '3.2-beta'),
+      source.replace("'3.2.0-beta.10'", "'3.2.0-beta.11'")
+    );
+  });
 
   test('adds a new snapshot version from the default nav and flattens the wrapper group', () => {
     const config = sampleConfig();
@@ -189,6 +233,49 @@ function sampleConfig() {
     assert.ok(strings.includes('docs/intro'));
     assert.ok(strings.includes('docs/quickstart'));
     assert.ok(strings.includes('dist/docs/3.0.1/old'));
+  });
+
+  test('retargets clean-route aliases with an existing default snapshot', () => {
+    const config = sampleConfig();
+    config.navigation.versions[0].groups = [
+      {
+        group: 'Getting Started',
+        pages: [
+          'dist/docs/3.0.0/intro',
+          'dist/docs/3.0.0/quickstart',
+        ],
+      },
+    ];
+    config.redirects = [
+      {
+        source: '/docs/intro',
+        destination: '/dist/docs/3.0.0/intro',
+        permanent: false,
+      },
+      {
+        source: '/unrelated',
+        destination: '/docs/faq',
+      },
+    ];
+
+    updateDocsConfig(config, '3.0.1', '3.0');
+
+    assert.deepEqual(config.redirects, [
+      {
+        source: '/docs/intro',
+        destination: '/dist/docs/3.0.1/intro',
+        permanent: false,
+      },
+      {
+        source: '/unrelated',
+        destination: '/docs/faq',
+      },
+      {
+        source: '/docs/quickstart',
+        destination: '/dist/docs/3.0.1/quickstart',
+        permanent: false,
+      },
+    ]);
   });
 
   test('adds a new version from the first entry when no default is marked', () => {

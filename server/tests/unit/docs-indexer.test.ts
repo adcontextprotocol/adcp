@@ -32,6 +32,9 @@ import {
 import { DOCS_SCHEMA_RELEASES } from '../../src/addie/mcp/schema-tools.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
 
+const STABLE_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.1'];
+const BETA_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.2-beta'];
+
 /**
  * Docs Indexer Tests
  *
@@ -125,7 +128,7 @@ describe('docs-indexer', () => {
     it('uses an explicit version for legacy unversioned IDs', () => {
       const doc = getDocById('media-buy/task-reference/get_products', { version: '3.2-beta' });
       expect(doc?.id).toBe('doc:3.2-beta:media-buy/task-reference/get_products');
-      expect(doc?.sourceUrl).toContain('/dist/docs/3.2.0-beta.10/');
+      expect(doc?.sourceUrl).toContain(`/dist/docs/${BETA_SNAPSHOT}/`);
     });
 
     it('rejects a canonical versioned ID when the explicit version does not match', () => {
@@ -146,12 +149,7 @@ describe('docs-indexer', () => {
   describe('protocol version isolation', () => {
     it('loads every public docs version and keeps 3.1 as stable default', () => {
       const versions = getSupportedDocsVersions();
-      expect(versions.map(({ version, artifactVersion }) => ({ version, artifactVersion }))).toEqual([
-        { version: '3.1', artifactVersion: '3.1.19' },
-        { version: '3.2-beta', artifactVersion: '3.2.0-beta.10' },
-        { version: '3.0', artifactVersion: '3.0.26' },
-        { version: '2.5', artifactVersion: '2.5.3' },
-      ]);
+      expect(versions.map(({ version }) => version)).toEqual(['3.1', '3.2-beta', '3.0', '2.5']);
       expect(resolveDocsVersion()?.version).toBe('3.1');
       expect(resolveDocsVersion('latest')?.version).toBe('3.1');
       expect(resolveDocsVersion('3.2')?.version).toBe('3.2-beta');
@@ -161,12 +159,7 @@ describe('docs-indexer', () => {
     });
 
     it('returns protocol results only from the requested version', () => {
-      const snapshots = new Map([
-        ['3.1', '3.1.19'],
-        ['3.2-beta', '3.2.0-beta.10'],
-        ['3.0', '3.0.26'],
-        ['2.5', '2.5.3'],
-      ]);
+      const snapshots = new Map(Object.entries(DOCS_SCHEMA_RELEASES));
 
       for (const [version, artifactVersion] of snapshots) {
         const results = searchDocs('protocol', { version, limit: 20 });
@@ -188,12 +181,7 @@ describe('docs-indexer', () => {
     });
 
     it('returns headings only from the requested protocol version', () => {
-      const snapshots = new Map([
-        ['3.1', '3.1.19'],
-        ['3.2-beta', '3.2.0-beta.10'],
-        ['3.0', '3.0.26'],
-        ['2.5', '2.5.3'],
-      ]);
+      const snapshots = new Map(Object.entries(DOCS_SCHEMA_RELEASES));
 
       for (const [version, artifactVersion] of snapshots) {
         const headings = searchHeadings('protocol', { version, limit: 20 });
@@ -254,15 +242,15 @@ describe('docs-indexer', () => {
       expect(getDoc).toBeDefined();
 
       const stableResults = await search!({ query: 'ACCOUNT_REQUIRED', version: '3.1' });
-      expect(stableResults).toContain('No documentation found in AdCP 3.1 (snapshot 3.1.19)');
+      expect(stableResults).toContain(`No documentation found in AdCP 3.1 (snapshot ${STABLE_SNAPSHOT})`);
 
       const results = await search!({ query: 'ACCOUNT_REQUIRED', version: '3.2-beta' });
-      expect(results).toContain('Searching AdCP 3.2-beta (snapshot 3.2.0-beta.10)');
-      expect(results).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.10)');
+      expect(results).toContain(`Searching AdCP 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
+      expect(results).toContain(`**Version:** 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
       expect(results).toContain('ACCOUNT_REQUIRED');
 
       const detail = await getDoc!({ doc_id: 'schema:3.2-beta:enums/error-code' });
-      expect(detail).toContain('**Version:** 3.2-beta (snapshot 3.2.0-beta.10)');
+      expect(detail).toContain(`**Version:** 3.2-beta (snapshot ${BETA_SNAPSHOT})`);
       expect(detail).toContain('ACCOUNT_REQUIRED');
     });
 
