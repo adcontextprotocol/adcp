@@ -2075,6 +2075,22 @@ describe('comply_test_controller', () => {
 
     it('dispatches a sales controller adapter with an explicit sandbox account', async () => {
       const config = buildSalesComplyConfig();
+      await expect((config.seed.account as any)({
+        account_id: 'v6_sandbox_gate_account',
+        fixture: {
+          brand: { domain: 'v6-sandbox-gate.example' },
+          operator: 'comply-tester',
+          billing: 'operator',
+          sandbox: true,
+          status: 'active',
+        },
+      }, {
+        input: {
+          scenario: 'seed.account',
+          account: ACCOUNT,
+          brand: BRAND,
+        },
+      })).resolves.toBeUndefined();
       await expect((config.seed.product as any)({
         product_id: 'v6_sandbox_gate_product',
         fixture: {

@@ -83,6 +83,12 @@ test('orchestrator does not load the training agent or SDK', () => {
   assert.match(source, /process\.platform === 'win32' \? pid : -pid/);
 });
 
+test('Linux RSS sampling tolerates processes exiting during /proc scans', () => {
+  const source = fs.readFileSync(ORCHESTRATOR, 'utf8');
+  assert.match(source, /readdirSync\('\/proc'\)/);
+  assert.doesNotMatch(source, /readdirSync\('\/proc',\s*\{\s*withFileTypes:\s*true\s*\}\)/);
+});
+
 test('child V8 heap is bounded without discarding caller Node options', (t) => {
   const { result } = runFixture(t, ['node_options'], [], { NODE_OPTIONS: '--trace-warnings' });
 
