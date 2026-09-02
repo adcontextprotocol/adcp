@@ -145,6 +145,12 @@ export interface BoundedRoutedToolSetSelection {
 export function selectBoundedRoutedToolSets(
   input: BoundedRoutedToolSetSelectionInput,
 ): BoundedRoutedToolSetSelection {
+  // Certification state is an authoritative routing overlay only for direct
+  // conversations. Non-DM delivery surfaces may carry this context, but must
+  // retain their ordinary bounded router route.
+  const trustedActiveCertificationKind = input.source === 'dm'
+    ? input.activeCertificationKind ?? null
+    : null;
   const validToolSets = getValidToolSetNames(input.isAdmin);
   const respondPlan = input.plan?.action === 'respond' ? input.plan : null;
   const hasValidRespondPlan = input.routerAvailable
@@ -167,7 +173,7 @@ export function selectBoundedRoutedToolSets(
     isAdmin: input.isAdmin,
     workingGroupSlug: useSafeFallback ? undefined : input.workingGroupSlug,
     systemRole: useSafeFallback ? undefined : input.systemRole,
-    activeCertificationKind: useSafeFallback ? null : input.activeCertificationKind,
+    activeCertificationKind: useSafeFallback ? null : trustedActiveCertificationKind,
     hasSponsoredIntelligenceContext: useSafeFallback
       ? false
       : input.hasSponsoredIntelligenceContext,
@@ -180,7 +186,7 @@ export function selectBoundedRoutedToolSets(
   if (
     !useSafeFallback
     && (input.source === 'dm' || input.source === 'mention')
-    && !input.activeCertificationKind
+    && !trustedActiveCertificationKind
     && !respondPlan?.tool_sets.includes('knowledge')
   ) {
     selectedToolSets = selectedToolSets.filter((name) => name !== 'knowledge');
@@ -189,10 +195,10 @@ export function selectBoundedRoutedToolSets(
     ? getSafeReadOnlyFallbackTools()
     : getToolsForSets(selectedToolSets, input.isAdmin, input.isPublicChannel);
   const isToolAvailable = input.isToolAvailable;
-  const activeCertificationSets = input.activeCertificationKind === 'mixed'
+  const activeCertificationSets = trustedActiveCertificationKind === 'mixed'
     ? ['certification_learning', 'certification_assessment']
-    : input.activeCertificationKind
-      ? [`certification_${input.activeCertificationKind}`]
+    : trustedActiveCertificationKind
+      ? [`certification_${trustedActiveCertificationKind}`]
       : [];
   // Direct certification sessions retain the legacy learning workflow and
   // authoritative docs. Some delivery surfaces intentionally lack optional

@@ -134,6 +134,43 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.allowedToolNames).toContain('search_docs');
   });
 
+  it.each(['mention', 'channel'] as const)(
+    'keeps a %s with accidental certification context on its ordinary bounded route',
+    (source) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        routerAvailable: true,
+        source,
+        isAdmin: false,
+        activeCertificationKind: 'learning',
+        isToolAvailable: () => true,
+      });
+
+      expect(selection.useSafeFallback).toBe(false);
+      expect(selection.selectedToolSets).toEqual(['directory']);
+      expect(selection.allowedToolNames).toContain('search_members');
+      expect(selection.allowedToolNames).not.toContain('search_docs');
+    },
+  );
+
+  it.each(['mention', 'channel'] as const)(
+    'falls back when a required %s route tool is unavailable despite accidental certification context',
+    (source) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        routerAvailable: true,
+        source,
+        isAdmin: false,
+        activeCertificationKind: 'learning',
+        isToolAvailable: (name) => name !== 'search_members',
+      });
+
+      expect(selection.useSafeFallback).toBe(true);
+      expect(selection.selectedToolSets).toEqual(safeKnowledgeFallback);
+      expect(selection.allowedToolNames).not.toContain('search_members');
+    },
+  );
+
   it('keeps trusted active-certification knowledge when optional Slack retrieval is unavailable', () => {
     const selection = selectBoundedRoutedToolSets({
       plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
