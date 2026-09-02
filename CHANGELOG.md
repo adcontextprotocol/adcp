@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.20
+
+### Patch Changes
+
+- 301573a: Use the media-buy request schema when validating the universal creative-format pagination storyboard, avoiding spurious `input_schema_field_stripped` notices when the target is a media-buy agent.
+- 6dae516: Correct the OpenRTB/AdCOM `cattax` mappings documented for IAB Content Taxonomy 3.0 and 2.2.
+
 ## 3.1.19
 
 ### Patch Changes
