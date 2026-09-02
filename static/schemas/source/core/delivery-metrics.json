@@ -270,7 +270,7 @@
         },
         "sov_achieved": {
           "type": "number",
-          "description": "Actual share of voice delivered (0.0 to 1.0)",
+          "description": "Actual share of voice delivered on a 0.0-1.0 scale. To compare this achieved value with the selected flat-rate DOOH parameters.sov_percentage, multiply sov_achieved by 100. Share is time-weighted: the sum of the delivered segment durations divided by the full loop duration. On equal-duration loops this equals the slot-count ratio. See also ooh_metrics.share_of_voice_contracted, which uses the same 0.0-1.0 scale.",
           "minimum": 0,
           "maximum": 1
         },
@@ -384,7 +384,7 @@
         },
         "share_of_voice_contracted": {
           "type": "number",
-          "description": "Contracted share of voice where the buy is rotation-based (e.g., rotary bulletin programs) rather than an exclusive face (0.0 to 1.0)",
+          "description": "Contracted share of voice where the buy is rotation-based (e.g., rotary bulletin programs) rather than an exclusive face, on a 0.0-1.0 scale. Share is time-weighted: the sum of contracted display durations divided by the full rotation duration. On equal-duration rotations this equals the slot-count ratio.",
           "minimum": 0,
           "maximum": 1
         },

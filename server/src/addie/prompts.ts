@@ -540,8 +540,14 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
 - List working groups before adding, removing, or reviewing committee leaders.`,
   admin_group_membership: `### Admin group-membership operations
 - List working groups before adding or removing working-group members.`,
-  admin_organizations: `### Admin organization operations
-- Diagnose domains and duplicates; inspect membership and roles; maintain profiles and logos. Profiles default to hidden until published, so check subscription and publication state before changing them.`,
+  admin_organization_integrity: `### Admin organization integrity
+- Diagnose duplicates and domain health before a merge or reconciliation.
+- merge_organizations: preview first; execute only for explicit confirmed records and preserve the Stripe-resolution boundary.
+- manage_organization_domains: list first when state is ungrounded; reconcile WorkOS only for the named organization.`,
+  admin_organization_member_records: `### Admin organization member records
+- Update a role only for the explicitly named person and organization; never infer a role change.
+- List Slack or paying-member records only for the requested administrative purpose.
+- update_member_logo and update_member_profile change directory records; check subscription and publication state first.`,
   admin_workflows: `### Admin workflow operations
 - Query analytics, review flagged conversations, maintain reminders and tasks, and log member or prospect interactions.`,
   admin_brands: `### Admin brand-registry operations

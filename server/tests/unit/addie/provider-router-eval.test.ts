@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(86);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(86);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(88);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(88);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
@@ -152,18 +152,19 @@ describe('strict router eval', () => {
       'member_billing', 'billing', 'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
-      'admin_organizations', 'admin_workflows', 'admin_brands',
+      'admin_organization_integrity', 'admin_organization_member_records', 'admin_workflows', 'admin_brands',
       'outreach', 'collaboration',
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(85);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(87);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
     expect(expectedSets).not.toContain('meetings');
     expect(expectedSets).not.toContain('community_groups');
+    expect(expectedSets).not.toContain('admin_organizations');
   });
 
   it('selects the exact full meeting union for a long three-workflow request', async () => {
@@ -217,6 +218,38 @@ describe('strict router eval', () => {
     expect(bookmarkResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
     expect(pairedResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
     expect(pairedResult.plan?.tool_sets).toHaveLength(2);
+  });
+
+  it('selects only the bounded organization domain needed by an admin request', async () => {
+    const integrity = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-organization-integrity')!;
+    const memberRecords = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-organization-member-records')!;
+    const integrityResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_organization_integrity"],"confidence":"high","requires_depth":false,"reason":"duplicate investigation"}',
+    ), 'router-model', 'prompt_parity', integrity);
+    const memberRecordsResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_organization_member_records"],"confidence":"high","requires_depth":false,"reason":"member records"}',
+    ), 'router-model', 'prompt_parity', memberRecords);
+
+    expect(integrityResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(memberRecordsResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+  });
+
+  it('grades the documented bounded dual-domain organization case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-organization-integrity-and-member-records')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_organization_member_records","admin_organization_integrity"],"confidence":"high","requires_depth":false,"reason":"two independent read workflows"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_organization_integrity"],"confidence":"high","requires_depth":false,"reason":"incomplete workflow selection"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual([
+      'admin_organization_integrity',
+      'admin_organization_member_records',
+    ]);
+    expect(testCase.expected.toolSets).toHaveLength(2);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
   });
 
   it('preserves every stage of the long agent diagnosis in one bounded domain', async () => {
@@ -277,6 +310,9 @@ describe('strict router eval', () => {
     expect(admin).toContain('→ ["admin_group_structure"]');
     expect(admin).toContain('→ ["admin_group_leadership"]');
     expect(admin).toContain('→ ["admin_group_membership"]');
+    expect(admin).toContain('→ ["admin_organization_integrity"]');
+    expect(admin).toContain('→ ["admin_organization_member_records"]');
+    expect(admin).not.toContain('→ ["admin_organizations"]');
   });
 
   it('routes equivalent conceptual protocol requirements to the same retrieval domain', () => {
