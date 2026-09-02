@@ -14,6 +14,7 @@ import {
 import {
   AGENT_END_TO_END_TOOLS,
   getToolsForSets,
+  MEETING_FULL_ADMINISTRATION_TOOLS,
   MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
 } from '../../../src/addie/tool-sets.js';
 
@@ -436,10 +437,28 @@ describe('Slack tool-set selection policy', () => {
     expect(selection.allowedToolNames).not.toContain('search_docs');
   });
 
+  it('allows only the explicit full meeting composite and preserves its exact legacy union', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['meeting_full_administration'], confidence: 'high', reason: 'long meeting administration', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['meeting_full_administration']);
+    expect(selection.selectedToolSets.length).toBeLessThanOrEqual(MAX_DIRECT_ROUTED_TOOL_SET_COUNT);
+    expect(selection.allowedToolNames.filter((name) =>
+      (MEETING_FULL_ADMINISTRATION_TOOLS as readonly string[]).includes(name),
+    )).toEqual(MEETING_FULL_ADMINISTRATION_TOOLS);
+  });
+
   it.each([
     ['non-response action', { action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }],
     ['stale alias', { action: 'respond', tool_sets: ['admin'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy agent-validation union', { action: 'respond', tool_sets: ['agent_validation'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy meetings union', { action: 'respond', tool_sets: ['meetings'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
   ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {

@@ -141,15 +141,15 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(76);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(76);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(79);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(79);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
-      'member_billing', 'billing', 'events', 'meetings',
+      'member_billing', 'billing', 'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
       'committee_leadership', 'admin_events', 'admin_prospects', 'admin_feeds',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
       'admin_organizations', 'admin_workflows', 'admin_brands',
@@ -157,11 +157,26 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(75);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(78);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
+    expect(expectedSets).not.toContain('meetings');
+  });
+
+  it('selects the exact full meeting union for a long three-workflow request', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'meeting-full-administration')!;
+    const result = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["meeting_full_administration"],"confidence":"high","requires_depth":true,"reason":"one long cross-workflow meeting request"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(result.plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['meeting_full_administration'],
+      requires_depth: true,
+    });
+    expect(result.scores).toMatchObject({ actionExact: true, toolsExact: true });
   });
 
   it('preserves every stage of the long agent diagnosis in one bounded domain', async () => {

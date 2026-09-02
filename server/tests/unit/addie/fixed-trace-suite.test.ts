@@ -128,8 +128,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v8');
-    expect(FIXED_TRACE_SUITE).toHaveLength(12);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v9');
+    expect(FIXED_TRACE_SUITE).toHaveLength(13);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -159,13 +159,28 @@ describe('fixed cross-provider trace suite', () => {
     expect(Object.isFrozen(FIXED_TRACE_SUITE[0].request)).toBe(true);
   });
 
+  it('retains the exact legacy meeting union for a confirmed long three-workflow request', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'meeting-full-administration-confirmed')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['meeting_full_administration'] });
+    expect(trace.expectation.allowedTools).toEqual([
+      'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
+      'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
+      'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee',
+      'update_topic_subscriptions', 'manage_committee_topics',
+    ]);
+    expect(trace.expectation.requiredTools).toEqual([
+      'schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('confirmed');
+  });
+
   it('passes the deterministic smoke vector without consulting subjective rubrics', () => {
     const observations = FIXED_TRACE_SUITE.map(passingObservation);
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 12,
-      observed: 12,
+      expected: 13,
+      observed: 13,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -176,11 +191,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 12);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.0105);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 13);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.011);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 9,
+      complete: 10,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -329,7 +344,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 12, observed: 3, omitted: 9, complete: false });
+    expect(summary).toMatchObject({ expected: 13, observed: 3, omitted: 10, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

@@ -699,8 +699,12 @@ ${isAAOAdmin
     ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
-- Scheduling meetings, calendar, covering topics, joining a call, meeting agendas → ["meetings"]
-- When "working group" only identifies which meeting or agenda the user means, select ["meetings"] and do NOT add ["community_groups"]. Add ["community_groups"] only when the user is asking about working group membership, participation, group information, or documents.
+- Meeting calendar, agendas/details, RSVPs, or adding attendees → ["meeting_attendance"]
+- Scheduling a new meeting or updating/cancelling one meeting → ["meeting_scheduling"]
+- Cancelling a recurring series or managing meeting topics or topic subscriptions → ["meeting_series_topics"]
+- A single long meeting request that explicitly spans scheduling, attendance, and recurring-series or topic administration → exactly ["meeting_full_administration"]. Use the narrow meeting domains for ordinary requests.
+- Requests that need two meeting workflows may select the applicable two meeting domains; never exceed the global two-domain cap.
+- When "working group" only identifies which meeting or agenda the user means, select the applicable meeting domain and do NOT add ["community_groups"]. Add ["community_groups"] only when the user is asking about working group membership, participation, group information, or documents.
 ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage registrations → always select exactly ["events", "admin_events"] so the handler can inspect current event state before using admin mutations
 - Prospect research, pipeline updates, claiming or triaging prospect domains → ["admin_prospects"]
 - Industry feeds, feed proposals, or media contacts → ["admin_feeds"]

@@ -14,6 +14,11 @@ import {
   CERTIFICATION_OVERVIEW_TOOLS,
   COMMUNITY_GROUP_TOOLS,
   MEMBER_PROFILE_TOOLS,
+  MEETING_ATTENDANCE_TOOLS,
+  MEETING_FULL_ADMINISTRATION_TOOLS,
+  MEETING_SCHEDULING_TOOLS,
+  MEETING_SERIES_TOPIC_TOOLS,
+  MEETING_TOOLS,
   PUBLISHING_AUTHOR_TOOLS,
   PUBLISHING_PROMOTION_TOOLS,
   PUBLISHING_REVIEW_TOOLS,
@@ -246,6 +251,50 @@ describe('getToolsForSets', () => {
         expect(admin).not.toContain('compare_media_kit');
       },
     );
+  });
+
+  describe('bounded meeting domains', () => {
+    it('keeps scheduling, attendance, and recurring-topic workflows small while retaining the exact hidden legacy union', () => {
+      expect(MEETING_ATTENDANCE_TOOLS).toEqual([
+        'list_upcoming_meetings', 'get_my_meetings', 'get_meeting_details',
+        'rsvp_to_meeting', 'add_meeting_attendee',
+      ]);
+      expect(MEETING_SCHEDULING_TOOLS).toEqual([
+        'schedule_meeting', 'list_upcoming_meetings', 'cancel_meeting', 'update_meeting',
+      ]);
+      expect(MEETING_SERIES_TOPIC_TOOLS).toEqual([
+        'list_upcoming_meetings', 'cancel_meeting_series', 'update_topic_subscriptions',
+        'manage_committee_topics',
+      ]);
+      expect(MEETING_TOOLS).toEqual([
+        'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
+        'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
+        'cancel_meeting_series', 'update_meeting', 'add_meeting_attendee',
+        'update_topic_subscriptions', 'manage_committee_topics',
+      ]);
+      expect(MEETING_FULL_ADMINISTRATION_TOOLS).toEqual(MEETING_TOOLS);
+      expect(TOOL_SETS.meetings.tools).toEqual(MEETING_TOOLS);
+      expect(TOOL_SETS.meetings.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('meetings')).toBe(false);
+      for (const name of [
+        'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
+      ]) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+        expect(TOOL_SETS[name].tools.length, name).toBeLessThanOrEqual(11);
+      }
+    });
+
+    it('keeps the read-before-mutation tool paired with each applicable meeting workflow', () => {
+      expect(getToolsForSets(['meeting_attendance'], false, false)).toEqual(expect.arrayContaining([
+        'list_upcoming_meetings', 'add_meeting_attendee',
+      ]));
+      expect(getToolsForSets(['meeting_scheduling'], false, false)).toEqual(expect.arrayContaining([
+        'list_upcoming_meetings', 'cancel_meeting', 'update_meeting',
+      ]));
+      expect(getToolsForSets(['meeting_series_topics'], false, false)).toEqual(expect.arrayContaining([
+        'list_upcoming_meetings', 'cancel_meeting_series',
+      ]));
+    });
   });
 
   describe('brand canonical-document workflow', () => {
