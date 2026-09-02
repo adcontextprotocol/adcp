@@ -29,7 +29,7 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current prerelease schema bundle shipped by the server SDK. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.9' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.10' as const;
 
 /** Release checkpoints the reference training agent can serve. */
 export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [

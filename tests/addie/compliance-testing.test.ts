@@ -179,6 +179,74 @@ describe('compliance result adapter', () => {
     });
   });
 
+  it('does not degrade capability-gated dependent phases from the SDK runner', () => {
+    const result = baseResult({
+      tracks: [
+        {
+          track: 'core',
+          label: 'Core',
+          status: 'pass',
+          duration_ms: 1,
+          scenarios: [
+            {
+              scenario: 'media_buy_state_machine/setup',
+              overall_passed: true,
+              steps: [
+                {
+                  step: 'Create media buy',
+                  step_id: 'create_buy',
+                  task: 'create_media_buy',
+                  passed: true,
+                  skipped: true,
+                  skip_reason: 'not_applicable',
+                  skip: {
+                    reason: 'not_applicable',
+                    detail: 'Capability predicate `creative.has_creative_library === true` not satisfied: agent declared false.',
+                  },
+                },
+              ],
+            },
+            {
+              scenario: 'media_buy_state_machine/state_transitions',
+              overall_passed: true,
+              steps: [
+                {
+                  step: 'Pause media buy',
+                  step_id: 'pause_buy',
+                  task: 'update_media_buy',
+                  passed: true,
+                  skipped: true,
+                  skip_reason: 'capability_prerequisite_unavailable',
+                  skip: {
+                    reason: 'not_applicable',
+                    detail: 'Skipped: prior stateful step "create_buy" skipped (not_applicable); state never materialized.',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(deriveStoryboardStatuses(result)).toEqual([
+      {
+        storyboard_id: 'media_buy_state_machine',
+        status: 'untested',
+        steps_passed: 0,
+        steps_total: 0,
+      },
+    ]);
+
+    const dbInput = complianceResultToDbInput(result, 'https://agent.example/mcp', 'production');
+    expect(dbInput.overall_status).toBe('passing');
+    expect(dbInput.tracks_partial).toBe(0);
+    expect(dbInput.tracks_json[0]).toMatchObject({
+      track: 'core',
+      has_coverage_gap_skip: false,
+    });
+  });
+
   it('keeps non-idempotency missing runner contracts visible as coverage gaps', () => {
     const result = baseResult({
       tracks: [
