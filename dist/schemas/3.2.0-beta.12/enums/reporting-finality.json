@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-finality.json",
+  "title": "Reporting Finality",
+  "description": "Finality of a reporting revision, aligned with the delivery-revision vocabulary proposed in #6122. Finality is independent of immutable revision identity: both snapshot and official revisions may be superseded by later revisions.",
+  "type": "string",
+  "enum": [
+    "snapshot",
+    "official"
+  ],
+  "enumDescriptions": {
+    "snapshot": "Provisional seller/source reporting evidence; not sufficient by itself for billing.",
+    "official": "The seller considers the represented period finalized, subject to separate measurement, billing, and settlement terms."
+  }
+}

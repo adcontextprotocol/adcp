@@ -1,0 +1,146 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/creative-representation.json",
+  "title": "Creative Representation",
+  "description": "One equivalent trafficking representation retained within a CreativeRepresentationSet before seller binding. `representation_id` is stable within its parent revision and identifies a representation, not rotation, A/B content, build output, locale, or a seller's served execution variant.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/creative-manifest.json"
+    },
+    {
+      "required": [
+        "format_kind"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "format_id"
+            ]
+          },
+          {
+            "required": [
+              "format_option_ref"
+            ]
+          },
+          {
+            "required": [
+              "representation_selection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "$comment": "The opt-in late-bound VAST representation path requires one exact asset version. Existing video_vast and named-format CreativeManifest/CreativeAsset payloads retain additive 3.x compatibility; audio_vast is new in 3.2 and already requires the exact version in the base manifest.",
+      "if": {
+        "properties": {
+          "format_kind": {
+            "enum": [
+              "video_vast",
+              "audio_vast"
+            ]
+          }
+        },
+        "required": [
+          "format_kind"
+        ]
+      },
+      "then": {
+        "properties": {
+          "assets": {
+            "patternProperties": {
+              ".*": {
+                "allOf": [
+                  {
+                    "if": {
+                      "type": "object",
+                      "properties": {
+                        "asset_type": {
+                          "const": "vast"
+                        }
+                      },
+                      "required": [
+                        "asset_type"
+                      ]
+                    },
+                    "then": {
+                      "required": [
+                        "vast_version"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "type": "array"
+                    },
+                    "then": {
+                      "items": {
+                        "if": {
+                          "type": "object",
+                          "properties": {
+                            "asset_type": {
+                              "const": "vast"
+                            }
+                          },
+                          "required": [
+                            "asset_type"
+                          ]
+                        },
+                        "then": {
+                          "required": [
+                            "vast_version"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "representation_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "x-entity": "creative_representation",
+      "description": "Stable representation identifier, unique within the enclosing CreativeRepresentationSet revision."
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source system namespace."
+        },
+        "source_representation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source system's human-readable name for this representation."
+        },
+        "source_id": {
+          "type": "string",
+          "description": "Optional immutable source-system identifier for this representation."
+        }
+      },
+      "required": [
+        "system",
+        "source_representation"
+      ],
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "representation_id",
+    "source",
+    "format_kind"
+  ],
+  "additionalProperties": true
+}

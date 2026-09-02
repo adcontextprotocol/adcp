@@ -1,0 +1,486 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/mcp/2026-07-28/profiles/production/media-buy/sync-reporting-receipts-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_version"
+    },
+    "adcp_major_version": {
+      "$ref": "#/$defs/external:core~1version-envelope.json/properties/adcp_major_version"
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/external:core~1reporting-receipt.json"
+          },
+          {
+            "not": {
+              "required": [
+                "received_at"
+              ]
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "idempotency_key",
+    "receipts"
+  ],
+  "x-adcp-validation": {
+    "batch_identity": "reporting_receipt_id values MUST be unique within the batch. Every referenced obligation, revision, and materialization MUST resolve within the authenticated caller and account or fail with an indistinguishable unavailable result.",
+    "partial_results": "Each receipt is independent. One failed result does not roll back successfully recorded receipts; retries use the same receipt IDs and content."
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/reporting-receipt.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "reporting_receipt_id": {
+          "type": "string",
+          "minLength": 16,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+          "x-entity": "reporting_receipt"
+        },
+        "reporting_obligation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_obligation"
+        },
+        "reporting_revision_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_revision"
+        },
+        "reporting_materialization_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_materialization"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "accepted",
+            "rejected"
+          ]
+        },
+        "verification_profile": {
+          "$ref": "#/$defs/external:core~1reporting-verification-profile.json"
+        },
+        "observed_row_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_control_totals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-control-total.json"
+          },
+          "uniqueItems": true
+        },
+        "observed_canonical_content_digest": {
+          "$ref": "#/$defs/external:core~1reporting-canonical-content-digest.json"
+        },
+        "observed_manifest_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "observed_native_version_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "consumer_commit_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "rejection_codes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "received_at": {
+          "type": "string",
+          "format": "date-time",
+          "readOnly": true
+        }
+      },
+      "required": [
+        "reporting_receipt_id",
+        "reporting_obligation_id",
+        "reporting_revision_id",
+        "reporting_materialization_id",
+        "status",
+        "verification_profile",
+        "observed_row_count",
+        "observed_control_totals",
+        "observed_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "rejection_codes"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "canonical_digest"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_canonical_content_digest"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "manifest_checksums"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_manifest_sha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "verification_profile": {
+                "const": "native_commit"
+              },
+              "status": {
+                "const": "accepted"
+              }
+            },
+            "required": [
+              "verification_profile",
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "observed_native_version_ref"
+            ]
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "The seller derives the consumer principal from authenticated transport and accepts receipts only for that principal's account-bound obligation and materialization. Unknown, unauthorized, cross-account, and cross-caller identifiers are indistinguishable.",
+        "acceptance_match": "accepted requires exact equality with the selected materialization verification evidence: row count and control totals always; canonical digest or manifest digest when selected. A mismatch MUST be submitted or recorded as rejected.",
+        "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict."
+      },
+      "additionalProperties": false
+    },
+    "external:core/reporting-verification-profile.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "native_commit",
+        "manifest_checksums",
+        "canonical_digest"
+      ]
+    },
+    "external:core/reporting-control-total.json": {
+      "x-status": "experimental",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^-?(?:0|[1-9][0-9]*)$"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "integer"
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          },
+          "required": [
+            "name",
+            "value",
+            "value_type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$"
+            },
+            "value_type": {
+              "type": "string",
+              "const": "decimal"
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          },
+          "required": [
+            "name",
+            "value",
+            "value_type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/reporting-canonical-content-digest.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "const": "sha256"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "canonicalization_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "canonicalization_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+        },
+        "canonicalization_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "algorithm",
+        "value",
+        "canonicalization_id",
+        "canonicalization_uri",
+        "canonicalization_sha256"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Submit durable authenticated consumer reconciliation results for reporting materializations. This is a batched idempotent upsert, not an acknowledgement of mere webhook receipt. Identity comes from authenticated transport; the request MUST NOT assert a buyer or governance principal."
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/property-delivery-metrics.json",
+  "title": "Property Delivery Metrics",
+  "description": "Delivery metrics for one publisher property. The stable operational key is (publisher_domain, identifier.type, identifier.value); property_ref adds catalog identity when resolution is available.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "property_domain_consistency": "property_ref.publisher_domain MUST equal publisher_domain when property_ref is present"
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "publisher_domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+          "description": "Publisher or platform authority that namespaces the operational identifier, including when the surface is not registered in adagents.json."
+        },
+        "identifier": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/identifier.json",
+          "description": "Primary operational identifier of the property that delivered. Required even when catalog enrichment is unavailable."
+        },
+        "property_ref": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/property-ref.json",
+          "description": "Canonical publisher-scoped catalog identity when the delivered property resolves to adagents.json. Its publisher_domain MUST equal the row's publisher_domain."
+        },
+        "property_name": {
+          "type": "string",
+          "description": "Current human-readable property name. Convenience metadata only; property_ref is stable identity."
+        }
+      },
+      "required": [
+        "publisher_domain",
+        "identifier",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

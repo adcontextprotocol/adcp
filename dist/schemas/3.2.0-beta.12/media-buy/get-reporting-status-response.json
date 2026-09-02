@@ -1,0 +1,747 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/media-buy/get-reporting-status-response.json",
+  "title": "Get Reporting Status Response",
+  "x-status": "experimental",
+  "description": "Authoritative caller/account-isolated reporting status response. The view echoes the request and discriminates summary, periods, exact revision, and fatal error shapes. Every identifier, cursor, ledger snapshot, destination, revision, materialization, and resource is scoped to the authenticated caller and account.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "const": "complete"
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "scope_closed": {
+                "const": true
+              },
+              "coverage_complete": {
+                "const": true
+              }
+            },
+            "required": [
+              "scope_closed",
+              "coverage_complete"
+            ]
+          }
+        },
+        "not": {
+          "required": [
+            "next_expected_at"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "const": "action_required"
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 1,
+            "contains": {
+              "properties": {
+                "severity": {
+                  "const": "action_required"
+                }
+              },
+              "required": [
+                "severity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "const": "delayed"
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 1,
+            "items": {
+              "properties": {
+                "severity": {
+                  "const": "delayed"
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "enum": [
+              "healthy",
+              "waiting",
+              "complete"
+            ]
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "issues"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "coverage_complete": {
+                "const": false
+              }
+            },
+            "required": [
+              "coverage_complete"
+            ]
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "health": {
+            "const": "action_required"
+          },
+          "issues": {
+            "minItems": 1,
+            "contains": {
+              "properties": {
+                "code": {
+                  "const": "HISTORY_UNAVAILABLE"
+                },
+                "severity": {
+                  "const": "action_required"
+                }
+              },
+              "required": [
+                "code",
+                "severity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "issues"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "view": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/media-buy/get-reporting-status-request.json#/definitions/ReportingStatusView"
+    },
+    "ledger_snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value."
+    },
+    "ledger_as_of": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "account",
+      "description": "Resolved seller/storefront account identifier."
+    },
+    "scope": {
+      "type": "object",
+      "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
+      "properties": {
+        "period_start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "scope_closed": {
+          "type": "boolean",
+          "description": "True only when no new obligation can enter this evaluated scope."
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "all_accessible_media_buys": {
+          "type": "boolean",
+          "description": "True when media_buy_ids was omitted and the scope covers all caller-accessible account buys."
+        },
+        "delivery_config_generations": {
+          "type": "array",
+          "description": "Exact independently reconciled configuration generations in the denominator.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "delivery_config_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64,
+                "x-entity": "reporting_delivery_config"
+              },
+              "delivery_config_version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "feed_purpose": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+              }
+            },
+            "required": [
+              "delivery_config_id",
+              "delivery_config_version",
+              "feed_purpose"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        },
+        "feed_purposes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+          },
+          "uniqueItems": true
+        },
+        "finality": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-finality.json"
+          },
+          "uniqueItems": true
+        },
+        "ledger_retained_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Earliest period boundary for which anti-entropy metadata is retained for every selected configuration generation."
+        },
+        "coverage_complete": {
+          "type": "boolean",
+          "description": "Whether the requested horizon is fully inside retained ledger coverage. False means health cannot prove completeness for the whole requested horizon."
+        }
+      },
+      "required": [
+        "period_start",
+        "period_end",
+        "scope_closed",
+        "all_accessible_media_buys",
+        "delivery_config_generations",
+        "feed_purposes",
+        "finality",
+        "ledger_retained_from",
+        "coverage_complete"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "all_accessible_media_buys": {
+                "const": false
+              }
+            },
+            "required": [
+              "all_accessible_media_buys"
+            ]
+          },
+          "then": {
+            "required": [
+              "media_buy_ids"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "health": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-health.json"
+    },
+    "coverage": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-coverage.json",
+      "description": "Aggregated effective coverage for the exact selected scope. This remains independent of reporting health and finality so a fresh covered subset cannot look like complete campaign reporting."
+    },
+    "data_through": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "Conservative latest included event time across satisfied obligations in scope, or null when unavailable/unknown."
+    },
+    "next_expected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Next obligation due time for an open scope. Omitted for a closed complete scope."
+    },
+    "obligation_counts": {
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "waiting": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "healthy": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_required": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "complete": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "total",
+        "waiting",
+        "healthy",
+        "delayed",
+        "action_required",
+        "complete"
+      ],
+      "additionalProperties": false
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-status-issue.json"
+      }
+    },
+    "periods": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-obligation.json"
+      }
+    },
+    "revisions": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-revision.json"
+      },
+      "description": "Revision ledger records on this page. Pagination is over the flat union of obligations, revisions, materializations, and receipts, avoiding unbounded nested history."
+    },
+    "pagination": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/pagination-response.json"
+    },
+    "revision": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-revision.json"
+    },
+    "materializations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-materialization.json"
+      }
+    },
+    "receipts": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-receipt.json"
+      },
+      "description": "Authenticated caller's durable reconciliation receipts. Receipts from another consumer principal are never disclosed."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/error.json"
+      }
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "title": "Successful lookup",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "completed"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "oneOf": [
+        {
+          "title": "Summary view",
+          "properties": {
+            "view": {
+              "type": "string",
+              "const": "summary"
+            }
+          },
+          "required": [
+            "view",
+            "ledger_snapshot_id",
+            "ledger_as_of",
+            "account_id",
+            "scope",
+            "health",
+            "coverage",
+            "data_through",
+            "obligation_counts",
+            "issues"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "periods"
+                ]
+              },
+              {
+                "required": [
+                  "revisions"
+                ]
+              },
+              {
+                "required": [
+                  "pagination"
+                ]
+              },
+              {
+                "required": [
+                  "revision"
+                ]
+              },
+              {
+                "required": [
+                  "materializations"
+                ]
+              },
+              {
+                "required": [
+                  "receipts"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "Periods view",
+          "properties": {
+            "view": {
+              "type": "string",
+              "const": "periods"
+            },
+            "pagination": {
+              "required": [
+                "has_more",
+                "total_count"
+              ]
+            }
+          },
+          "required": [
+            "view",
+            "ledger_snapshot_id",
+            "ledger_as_of",
+            "account_id",
+            "scope",
+            "periods",
+            "revisions",
+            "materializations",
+            "receipts",
+            "pagination"
+          ],
+          "not": {
+            "required": [
+              "revision"
+            ]
+          }
+        },
+        {
+          "title": "Revision view",
+          "properties": {
+            "view": {
+              "type": "string",
+              "const": "revision"
+            },
+            "pagination": {
+              "required": [
+                "has_more",
+                "total_count"
+              ]
+            }
+          },
+          "required": [
+            "view",
+            "ledger_snapshot_id",
+            "ledger_as_of",
+            "account_id",
+            "revision",
+            "materializations",
+            "receipts",
+            "pagination"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "scope"
+                ]
+              },
+              {
+                "required": [
+                  "health"
+                ]
+              },
+              {
+                "required": [
+                  "periods"
+                ]
+              },
+              {
+                "required": [
+                  "revisions"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "title": "Failed lookup",
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "failed"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "oneOf": [
+        {
+          "title": "Unavailable lookup",
+          "type": "object",
+          "properties": {
+            "adcp_version": {
+              "type": "string"
+            },
+            "adcp_major_version": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string",
+              "const": "failed"
+            },
+            "view": {
+              "enum": [
+                "summary",
+                "periods",
+                "revision"
+              ]
+            },
+            "failure_kind": {
+              "type": "string",
+              "const": "lookup_unavailable"
+            },
+            "context_id": {
+              "type": "string"
+            },
+            "context": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/context.json"
+            },
+            "message": {
+              "const": "Reporting status resource is unavailable."
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "replayed": {
+              "type": "boolean"
+            },
+            "adcp_error": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "const": "NOT_FOUND"
+                },
+                "message": {
+                  "const": "Reporting status resource is unavailable."
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": false
+            },
+            "errors": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "const": "NOT_FOUND"
+                  },
+                  "message": {
+                    "const": "Reporting status resource is unavailable."
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "status",
+            "view",
+            "failure_kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Operational failure",
+          "type": "object",
+          "properties": {
+            "adcp_version": {
+              "type": "string"
+            },
+            "adcp_major_version": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string",
+              "const": "failed"
+            },
+            "view": {
+              "enum": [
+                "summary",
+                "periods",
+                "revision"
+              ]
+            },
+            "failure_kind": {
+              "type": "string",
+              "const": "operational"
+            },
+            "context_id": {
+              "type": "string"
+            },
+            "context": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/context.json"
+            },
+            "message": {
+              "type": "string"
+            },
+            "timestamp": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "replayed": {
+              "type": "boolean"
+            },
+            "adcp_error": {
+              "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/error.json"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/error.json"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "status",
+            "view",
+            "failure_kind",
+            "errors"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  ],
+  "x-adcp-validation": {
+    "caller_isolation": "Derive caller identity only from authenticated transport. Every account, configuration generation, cursor, ledger snapshot, revision, materialization, resource, and destination must belong to that caller/account; unknown and unauthorized identifiers must use the identical lookup_unavailable shape. operational failures MUST NOT be used for identifier resolution or authorization failures.",
+    "empty_scope": "After the caller intentionally applies reporting_delivery_configs: [], or before it creates any configuration, an unfiltered account has no caller-owned reporting configuration generations. delivery_config_generations, feed_purposes, and finality MUST all be empty; obligation counts and every periods-view record array MUST be empty; data_through MUST be null. This is a valid vacuously complete closed scope, not an inaccessible-identifier signal. A request naming an unknown or unauthorized delivery_config_id still uses lookup_unavailable.",
+    "snapshot_consistency": "All pages reached from a cursor MUST preserve ledger_snapshot_id and ledger_as_of. A cursor is unusable by another caller or account.",
+    "resource_retention": "A complete obligation must retain at least one readable verified exact materialization through its resource_retained_until. Metadata retention does not imply resource readability after that boundary.",
+    "coverage_aggregation": "Summary coverage is full only when every selected obligation is full. It is partial when the selected scope contains both covered and unsupported/unknown packages, none when nothing is covered and support is known absent, and unknown when nothing is covered and any applicability remains unknown. Delivery health is computed separately. Covered-subset metrics MUST NOT be presented as complete totals for the selected media-buy scope."
+  },
+  "additionalProperties": true
+}

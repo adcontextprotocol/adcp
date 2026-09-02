@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-file-manifest.json",
+  "title": "Reporting File Manifest",
+  "x-status": "experimental",
+  "description": "Normative manifest for one completed file-transfer materialization. Producers write every data object first and publish this manifest last. Its appearance is the commit point: consumers MUST ignore unlisted objects and MUST NOT process the materialization before a digest-valid complete manifest is visible.",
+  "type": "object",
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "complete": {
+      "type": "boolean",
+      "const": true
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation"
+    },
+    "reporting_materialization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_materialization"
+    },
+    "period": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_timezone": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "source_timezone"
+      ],
+      "additionalProperties": false
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "jsonl",
+        "csv",
+        "parquet",
+        "avro",
+        "orc"
+      ]
+    },
+    "compression": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-file-compression.json"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-file-entry.json"
+      },
+      "minItems": 1
+    },
+    "total_size_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "row_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "control_totals": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-control-total.json"
+      },
+      "uniqueItems": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "manifest_version",
+    "complete",
+    "reporting_revision_id",
+    "reporting_obligation_id",
+    "reporting_materialization_id",
+    "period",
+    "format",
+    "compression",
+    "files",
+    "total_size_bytes",
+    "row_count",
+    "control_totals",
+    "created_at"
+  ],
+  "x-adcp-validation": {
+    "manifest_digest": "reporting_resource.manifest_sha256 MUST equal SHA-256 over the exact manifest bytes before parsing.",
+    "object_set": "object_ref values MUST be unique. total_size_bytes and row_count MUST equal the sums across files. Every file checksum MUST be verified before downstream commit.",
+    "identity_match": "The revision, obligation, materialization, period, format, row count, and control totals MUST equal the referenced ledger records and verification evidence."
+  },
+  "additionalProperties": false
+}

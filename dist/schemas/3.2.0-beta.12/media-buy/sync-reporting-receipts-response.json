@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/media-buy/sync-reporting-receipts-response.json",
+  "title": "Sync Reporting Receipts Response",
+  "x-status": "experimental",
+  "description": "Per-receipt durable recording results. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/version-envelope.json"
+    },
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/protocol-envelope.json"
+    }
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "completed",
+      "description": "Receipt batches complete synchronously with one result per submitted receipt."
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "title": "Recorded reporting receipt",
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "string",
+                "const": "recorded"
+              },
+              "receipt": {
+                "allOf": [
+                  {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-receipt.json"
+                  },
+                  {
+                    "required": [
+                      "received_at"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "result",
+              "receipt"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "title": "Unchanged reporting receipt",
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "string",
+                "const": "unchanged"
+              },
+              "receipt": {
+                "allOf": [
+                  {
+                    "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-receipt.json"
+                  },
+                  {
+                    "required": [
+                      "received_at"
+                    ]
+                  }
+                ]
+              }
+            },
+            "required": [
+              "result",
+              "receipt"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "title": "Failed reporting receipt",
+            "type": "object",
+            "properties": {
+              "result": {
+                "type": "string",
+                "const": "failed"
+              },
+              "reporting_receipt_id": {
+                "type": "string",
+                "minLength": 16,
+                "maxLength": 255,
+                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+                "x-entity": "reporting_receipt"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/error.json"
+                },
+                "minItems": 1,
+                "maxItems": 16
+              }
+            },
+            "required": [
+              "result",
+              "reporting_receipt_id",
+              "errors"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "context": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/context.json"
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/ext.json"
+    }
+  },
+  "required": [
+    "status",
+    "results"
+  ],
+  "additionalProperties": true
+}

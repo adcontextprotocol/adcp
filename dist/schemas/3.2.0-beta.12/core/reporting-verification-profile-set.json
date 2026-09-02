@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-verification-profile-set.json",
+  "title": "Reporting Verification Profile Set",
+  "description": "Verification profiles the destination can accept. native_commit requires provider-native transaction/version evidence plus counts and control totals; manifest_checksums requires a committed file manifest with cryptographic checksums; canonical_digest requires recomputation of the canonical logical-content digest. A reporting feed selects one profile from this allowed set according to the seller offering and the feed's strictness requirements.",
+  "type": "array",
+  "items": {
+    "type": "string",
+    "enum": [
+      "native_commit",
+      "manifest_checksums",
+      "canonical_digest"
+    ]
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

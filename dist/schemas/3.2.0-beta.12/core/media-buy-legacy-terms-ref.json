@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/media-buy-legacy-terms-ref.json",
+  "title": "Media Buy Terms Reference",
+  "type": "string",
+  "deprecated": true,
+  "x-deprecated-in": "3.2.0",
+  "x-removed-in": "4.0.0",
+  "description": "Deprecated 3.1 opaque commercial-terms pointer. A 3.2 compatibility projection MAY echo change_term_id here for older buyers, but new buyers MUST prefer change_term_id and MUST NOT assume an arbitrary 3.1 value identifies an accepted change term."
+}

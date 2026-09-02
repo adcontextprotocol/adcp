@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-status-changed-webhook.json",
+  "title": "Reporting Status Changed Webhook",
+  "x-status": "experimental",
+  "description": "Account-anchored invalidation fired when a reporting obligation or configuration health state transitions in either direction — including purely clock-driven waiting-to-delayed and delayed-to-action_required transitions that no positive doorbell announces, and recovery back to healthy or complete. Valid in every reporting tier including Core: it names no destination or materialization. The payload is an invalidation signal carrying identifiers, the new health, and stable issue ids — never report rows or credentials. Receivers repair every fire, missed fire, and duplicate through get_reporting_status; push is optional in every tier and polling remains the authoritative recovery path.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "notification_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Stable per logical health transition; re-emissions reuse it, and a later distinct transition receives a new id."
+    },
+    "notification_type": {
+      "type": "string",
+      "const": "reporting.status_changed"
+    },
+    "fired_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subscriber_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "description": "Identifies which account-level notification_configs[] entry is receiving this fire."
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "account"
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "description": "Present when the transition is obligation-scoped; absent for configuration-level transitions."
+    },
+    "health": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-health.json",
+      "description": "The health state after this transition."
+    },
+    "previous_health": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-health.json"
+    },
+    "issue_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255,
+        "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      },
+      "maxItems": 16,
+      "uniqueItems": true,
+      "description": "Stable identifiers of the open issues that caused or survived this transition, matching issues[].issue_id on get_reporting_status, so consumers can project AdCP reporting issues into durable work items. Empty or absent on recovery transitions."
+    },
+    "ext": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "notification_id",
+    "notification_type",
+    "fired_at",
+    "subscriber_id",
+    "account_id",
+    "delivery_config_id",
+    "delivery_config_version",
+    "feed_purpose",
+    "health"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "enum": [
+              "delayed",
+              "action_required"
+            ]
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issue_ids": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "issue_ids"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "description": "Clock-driven transition to delayed with a stable issue id",
+      "data": {
+        "idempotency_key": "3d1b9a70-52f4-4b28-a1c9-8f4f2f6d0c11",
+        "notification_id": "rst_ob_01K4E2Q0_delayed",
+        "notification_type": "reporting.status_changed",
+        "fired_at": "2026-08-27T05:00:02Z",
+        "subscriber_id": "reporting-health",
+        "account_id": "acc_123",
+        "delivery_config_id": "analytics-daily",
+        "delivery_config_version": 1,
+        "feed_purpose": "analytics",
+        "reporting_obligation_id": "ob_01K4E2Q0V5T2C9XWJ7R4BAAA",
+        "health": "delayed",
+        "previous_health": "waiting",
+        "issue_ids": [
+          "iss_01K4E2Q0_report_overdue"
+        ]
+      }
+    }
+  ]
+}

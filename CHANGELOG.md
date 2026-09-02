@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.2.0-beta.12
+
+### Minor Changes
+
+- efa8dbc: Add explicit inventory-local and IANA timezone semantics to daypart targeting, with product-scoped timezone-mode capability declarations.
+
+### Patch Changes
+
+- 91cbf0e: Grade current-source storyboard jobs for pull requests targeting main and pushes to main with the explicit candidate-version resolver, while keeping immutable 3.0 compatibility runs strict.
+- cd63082: Advance stable schema discovery aliases to the published 3.1.20 bundle and refresh the 3.2 beta documentation for the beta.10 TypeScript and Python SDK wave.
+
 ## 3.2.0-beta.11
 
 ### Patch Changes

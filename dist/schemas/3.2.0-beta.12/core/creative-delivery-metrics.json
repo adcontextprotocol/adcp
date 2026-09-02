@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/creative-delivery-metrics.json",
+  "title": "Creative Delivery Metrics",
+  "description": "Delivery metrics row for one creative within a package.",
+  "allOf": [
+    {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "creative_id": {
+          "type": "string",
+          "description": "Creative identifier matching the creative assignment",
+          "x-entity": "creative"
+        },
+        "creative_name": {
+          "type": "string",
+          "description": "Optional human-readable creative name current when the report is generated. Convenience metadata only: names may change and buyers MUST use creative_id as the stable identity."
+        },
+        "weight": {
+          "type": "number",
+          "description": "Observed delivery share for this creative within the package during the reporting period, expressed as a percentage (0-100). Reflects actual delivery distribution, not a configured setting.",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "creative_id",
+        "impressions",
+        "spend"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/assets/url-asset.json",
+  "title": "URL Asset",
+  "$comment": "Fallback table is also rendered in docs/creative/asset-types.mdx (URL Asset section). Keep the two in sync — schema description is the normative source for conformance tools; mdx is the human-readable copy.",
+  "description": "URL reference asset. `url_type` declares the mechanism a receiver uses to invoke the URL (`clickthrough`, display `ad_request`, `tracker_pixel`, or `tracker_script`) and is distinct from the URL's purpose, which the format declares in `url-asset-requirements.role`. Senders SHOULD include `url_type` on every URL asset. When `url_type` is absent, receivers SHOULD fall back to the format's role: clickthrough/landing_page → `clickthrough`; impression_tracker/click_tracker → `tracker_pixel`; viewability_tracker → `tracker_script`; third_party_tracker and display ad requests have no safe fallback. When neither `url_type` nor a format-side role is available, receivers MUST NOT silently pick a mechanism. VAST/DAAST tag URLs are not URL assets — use `asset_type: \"vast\"` or `asset_type: \"daast\"`.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "url",
+      "description": "Discriminator identifying this as a URL asset. See /schemas/creative/asset-types for the registry."
+    },
+    "url": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/macro-bearing-url.json",
+      "description": "URL reference carrying plain, AdCP, IAB, or declared vendor macro syntax. Buyers preserve token delimiters; the authoritative declaration determines the processing operation and encoding."
+    },
+    "url_type": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/url-asset-type.json",
+      "description": "Mechanism a receiver uses to invoke this URL: `clickthrough` for a user destination, `ad_request` for a third-party display creative request, `tracker_pixel` for an event HTTP request, or `tracker_script` for a script include. SHOULD be present on every URL asset."
+    },
+    "macro_declarations": {
+      "type": "array",
+      "items": {
+        "allOf": [
+          {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/macro-declaration.json"
+          },
+          {
+            "properties": {
+              "location": {
+                "properties": {
+                  "field": {
+                    "const": "url"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "minItems": 1,
+      "description": "One declaration per token occurrence in `url`; declaration_id values MUST be unique and every location MUST identify an existing occurrence. Absence retains legacy opaque transport behavior."
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this URL points to"
+    },
+    "state_id": {
+      "type": "string",
+      "description": "Binding used only when this URL populates a `seller_rendered_stateful_display` `state_click_urls` slot. It MUST match one declared `states[].state_id` (semantic validators resolve it); at most one entry per state. Omit for ordinary URL slots."
+    },
+    "provenance": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "url"
+  ],
+  "additionalProperties": true
+}

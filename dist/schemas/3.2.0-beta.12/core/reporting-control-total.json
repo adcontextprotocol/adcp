@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-control-total.json",
+  "title": "Reporting Control Total",
+  "x-status": "experimental",
+  "description": "One profile-defined aggregate used to reconcile a reporting revision without rereading every row. Names and units are defined by the immutable report definition. Values use canonical strings so currency and large integer comparisons are exact across SDKs.",
+  "oneOf": [
+    {
+      "title": "IntegerReportingControlTotal",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)$",
+          "description": "Canonical base-10 integer with no exponent, grouping separator, decimal point, or insignificant leading zeroes."
+        },
+        "value_type": {
+          "type": "string",
+          "const": "integer"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "value_type"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "DecimalReportingControlTotal",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
+          "description": "Canonical base-10 decimal with no exponent, grouping separator, or insignificant leading zeroes."
+        },
+        "value_type": {
+          "type": "string",
+          "const": "decimal"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "value_type"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

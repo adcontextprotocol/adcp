@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-schedule.json",
+  "title": "Reporting Schedule",
+  "x-status": "experimental",
+  "description": "The period and deadline contract from which reporting obligations are created. Every elapsed period produces an obligation even when it has zero rows or production fails, so a consumer can distinguish empty from missing.",
+  "type": "object",
+  "definitions": {
+    "ReportingScheduleAlignment": {
+      "title": "Reporting Schedule Alignment",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "utc",
+        "account_timezone",
+        "billing_cycle"
+      ],
+      "description": "Calendar used to establish exact period boundaries. The obligation echoes resolved timestamps and source timezone."
+    }
+  },
+  "properties": {
+    "period_duration": {
+      "type": "string",
+      "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+      "description": "Strictly positive ISO 8601 duration of each reporting period, such as PT15M, P1D, or P1M."
+    },
+    "alignment": {
+      "$ref": "#/definitions/ReportingScheduleAlignment"
+    },
+    "period_anchor": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Required for billing_cycle alignment. This immutable instant anchors the recurring half-open billing periods so producer and consumer derive the same month, quarter, or other contractual cycle."
+    },
+    "period_timezone": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Required IANA timezone for billing_cycle calendar arithmetic. A numeric UTC offset is not sufficient because it does not define DST transitions."
+    },
+    "delivery_sla": {
+      "type": "string",
+      "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$",
+      "description": "Non-negative maximum time after period end before the required revision is due. PT0S means due at period close; expected_at equals the resolved period end plus this duration."
+    }
+  },
+  "required": [
+    "period_duration",
+    "alignment",
+    "delivery_sla"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "alignment": {
+            "const": "billing_cycle"
+          }
+        },
+        "required": [
+          "alignment"
+        ]
+      },
+      "then": {
+        "required": [
+          "period_anchor",
+          "period_timezone"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "period_anchor"
+              ]
+            },
+            {
+              "required": [
+                "period_timezone"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "period_generation": "Producer and consumer MUST derive the same ordered half-open intervals from period_duration, alignment, period_anchor, and period_timezone when applicable. utc alignment uses 1970-01-01T00:00:00Z as interval zero. account_timezone uses 1970-01-01T00:00:00 in the account's resolved IANA timezone as interval zero. billing_cycle uses its explicit period_anchor expressed in period_timezone. Every boundary is calculated directly from that origin and the interval ordinal by multiplying each ISO 8601 duration component by the ordinal and applying years, months, days, hours, minutes, then seconds. Calendar durations use local civil-time arithmetic in the selected IANA timezone, including DST transitions; they are not converted to fixed seconds. Month/year addition preserves the origin's local day and time, clamping to the target month's final valid day when necessary. A nonexistent local boundary advances by the timezone gap; an ambiguous local boundary uses the earlier offset. Thus a clamped February boundary does not shift a March 31 anchor."
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-config.json",
+  "title": "Reporting Delivery Configuration",
+  "x-status": "experimental",
+  "description": "Desired durable reporting delivery for one account. Entries are owned by (authenticated caller, account) and keyed by (delivery_config_id, delivery_config_version). The generation's feed, report definition, profile, scope, coverage requirement, finality, schedule, method, and immutable destination generation are fixed; only lifecycle intent (`active` and `revocation_effective_at`) may change without a new generation. Sellers reject a reused version with different immutable content. sync_accounts replacement semantics apply only to the calling principal's set. Omission leaves that set unchanged; [] deactivates that caller's set and stops new publication without affecting another caller. Sellers implementing this schema MUST advertise media_buy.reporting_delivery in experimental_features.",
+  "type": "object",
+  "properties": {
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config",
+      "description": "Caller-selected stable identifier, unique within the authenticated caller and account."
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Caller-selected immutable semantic generation. Increment when feed/profile/scope/finality/schedule/method/destination changes; lifecycle fields may change in place."
+    },
+    "offering_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "x-entity": "reporting_offering",
+      "description": "Atomic reporting offering advertised by the seller that binds feed, profile, schedule, finality, and delivery support."
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether new reporting obligations should use this configuration. Inactive configurations remain visible for historical resolution."
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "report_definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_definition",
+      "description": "Exact immutable semantic definition selected from the offering. This makes the expected obligation identity independently derivable and prevents attribution, timezone, source-mapping, or restatement-policy drift behind a profile label."
+    },
+    "reporting_profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+      "description": "Versioned semantic profile for the aggregate report, such as media_buy_delivery_v1. It MUST match the selected offering."
+    },
+    "scope": {
+      "type": "object",
+      "description": "Media buys covered by this configuration.",
+      "properties": {
+        "all_media_buys": {
+          "type": "boolean",
+          "const": true
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "coverage_requirement": {
+      "type": "string",
+      "enum": [
+        "full",
+        "allow_partial"
+      ],
+      "description": "Whether every package in the resolved media-buy scope must support the exact selected offering. full fails closed when any package is unsupported or unknown. allow_partial permits publication only for the explicitly covered package denominator; every revision and status response still exposes partial coverage and MUST NOT present covered-subset totals as whole-buy totals."
+    },
+    "required_finality": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/reporting-finality.json",
+      "description": "Finality the durable path must ultimately provide. Snapshot delivery may still precede an official requirement."
+    },
+    "reconciliation_mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-reconciliation-mode.json",
+      "description": "Whether producer-side delivery evidence is sufficient or the selected consumer must submit an authenticated matching receipt. Billing MUST use consumer_receipt."
+    },
+    "schedule": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-schedule.json"
+    },
+    "method": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/reporting-delivery-method.json"
+    },
+    "revocation_effective_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional requested cutoff for deactivation. No new publication may begin after the applied cutoff; historical access is limited to the contracted recovery window."
+    }
+  },
+  "required": [
+    "delivery_config_id",
+    "delivery_config_version",
+    "offering_id",
+    "active",
+    "feed_purpose",
+    "report_definition_id",
+    "reporting_profile",
+    "scope",
+    "coverage_requirement",
+    "required_finality",
+    "reconciliation_mode",
+    "schedule"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "feed_purpose": {
+            "const": "billing"
+          }
+        },
+        "required": [
+          "feed_purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "feed_purpose": {
+            "const": "billing"
+          }
+        },
+        "required": [
+          "feed_purpose"
+        ]
+      },
+      "then": {
+        "properties": {
+          "required_finality": {
+            "const": "official"
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "tier_boundaries": "method is present when and only when the selected offering declares one. A configuration selecting a Core (API-delivered) offering involves no destination, manifest, canonicalization, or receipt machinery.",
+    "offering_applicability": "Resolve the seller-wide offering through every selected product's reporting_capabilities.reporting_delivery_offering_ids, then apply account, seat, credential, provider, and API constraints. Seller-wide advertisement alone is not proof that an individual package is eligible.",
+    "coverage_requirement": "A full configuration MUST NOT become ready for a current nonempty partial, none, or unknown scope and any later incomplete period becomes action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial MAY become ready when some scope is covered, but every obligation and revision freezes exact coverage and aggregate consumers keep the partial label."
+  },
+  "additionalProperties": false
+}

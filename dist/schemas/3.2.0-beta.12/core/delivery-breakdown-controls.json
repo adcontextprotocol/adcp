@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/delivery-breakdown-controls.json",
+  "title": "Delivery Breakdown Controls",
+  "description": "Common limit and ordering controls for an opt-in delivery-reporting dimension.",
+  "type": "object",
+  "properties": {
+    "limit": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 25,
+      "description": "Maximum number of rows to return. Defaults to 25."
+    },
+    "sort_by": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/sort-metric.json",
+      "description": "Metric used to order rows. Falls back to spend when unavailable at this row grain; on fallback sort_direction resets to desc. Rows lacking a value for the applied sort metric order last regardless of direction.",
+      "default": "spend"
+    },
+    "sort_direction": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/enums/sort-direction.json",
+      "description": "Direction for sort_by ordering. Sellers MUST apply the requested direction to the applied sort metric; direction has no availability fallback.",
+      "default": "desc"
+    }
+  },
+  "additionalProperties": true
+}

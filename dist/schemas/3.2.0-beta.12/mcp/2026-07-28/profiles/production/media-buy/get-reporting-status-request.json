@@ -1,0 +1,1584 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/mcp/2026-07-28/profiles/production/media-buy/get-reporting-status-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "x-mutates-state": false,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "account": {
+      "$ref": "#/$defs/external:core~1canonical-account-ref.json"
+    },
+    "view": {
+      "$ref": "#/$defs/ReportingStatusView"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Omit for every accessible media buy in the account."
+    },
+    "delivery_config_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+        "x-entity": "reporting_delivery_config"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "description": "Optional summary/periods scope. Use to reconcile billing, analytics, and pacing independently. Omit for every active caller-owned configuration."
+    },
+    "feed_purposes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Optional summary/periods feed filter. The response echoes exact resolved configuration generations so this never creates an opaque aggregate."
+    },
+    "period": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": false,
+      "description": "Half-open summary/periods horizon. Omit for the seller's documented operational default horizon; the response always echoes the evaluated scope."
+    },
+    "health": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-health.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Periods-view result filter only; it never changes summary health."
+    },
+    "finality": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/external:enums~1reporting-finality.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision",
+      "description": "Exact retained revision to resolve in revision view."
+    },
+    "pagination": {
+      "$ref": "#/$defs/external:core~1pagination-request.json",
+      "description": "Periods or revision-view pagination. Cursors are bound to the authenticated caller, account, filters, and ledger snapshot."
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "account",
+    "view"
+  ],
+  "$defs": {
+    "ReportingStatusView": {
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "enum": [
+        "summary",
+        "periods",
+        "revision"
+      ]
+    },
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:core/canonical-account-ref.json": {
+      "type": "object",
+      "anyOf": [
+        {
+          "properties": {
+            "account_id": {
+              "type": "string",
+              "minLength": 1,
+              "x-entity": "account"
+            }
+          },
+          "required": [
+            "account_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "brand": {
+              "$ref": "#/$defs/external:core~1brand-key.json"
+            },
+            "operator": {
+              "type": "string",
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+              "x-entity": "operator"
+            },
+            "operator_unit": {
+              "$ref": "#/$defs/external:core~1operator-unit.json"
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            "timezone": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sandbox": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "required": [
+            "brand",
+            "operator"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "external:core/brand-key.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "brand_id": {
+          "$ref": "#/$defs/external:core~1brand-id.json"
+        },
+        "countries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/brand-id.json": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$",
+      "x-entity": "advertiser_brand"
+    },
+    "external:core/operator-unit.json": {
+      "x-entity": "operator_unit",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/reporting-coverage.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "full",
+            "partial",
+            "none",
+            "unknown"
+          ]
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "fully_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "partially_covered_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_media_buy_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+          },
+          "uniqueItems": true
+        },
+        "package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "covered_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unsupported_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "unknown_package_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+          },
+          "uniqueItems": true
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "offering_unsupported",
+                  "account_entitlement_unavailable",
+                  "credential_scope_insufficient",
+                  "provider_limitation",
+                  "capability_unknown"
+                ]
+              },
+              "media_buy_id": {
+                "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingMediaBuyId"
+              },
+              "package_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/external:core~1reporting-coverage.json/$defs/ReportingPackageId"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "reason",
+              "media_buy_id"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "status",
+        "evaluated_at",
+        "media_buy_ids",
+        "fully_covered_media_buy_ids",
+        "partially_covered_media_buy_ids",
+        "unsupported_media_buy_ids",
+        "unknown_media_buy_ids",
+        "package_ids",
+        "covered_package_ids",
+        "unsupported_package_ids",
+        "unknown_package_ids",
+        "limitations"
+      ],
+      "x-adcp-validation": {
+        "partition": "The four media-buy classification arrays MUST be pairwise disjoint and their union MUST equal media_buy_ids. The three package classification arrays MUST be pairwise disjoint and their union MUST equal package_ids. Every limitation media_buy_id and package_id MUST belong to those denominators.",
+        "status": "full requires every media buy to be fully covered and every package covered; the explicit empty denominator is full. partial requires at least one covered package or fully covered media buy and at least one partial, unsupported, or unknown item. none requires a nonempty denominator, no covered item, at least one unsupported item, and no unknown item. unknown requires a nonempty denominator, no covered item, and at least one unknown item.",
+        "aggregation": "Metrics computed only over covered_package_ids MUST be labeled partial whenever status is not full and MUST NOT be represented as complete media-buy or campaign totals. Implementations MUST NOT weaken the selected report definition to create an undeclared lowest-common-denominator profile."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingMediaBuyId": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "media_buy"
+        },
+        "ReportingPackageId": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "x-entity": "package"
+        }
+      }
+    },
+    "external:core/reporting-delivery-offering.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "offering_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.:-]{1,128}$",
+          "x-entity": "reporting_offering"
+        },
+        "feed_purpose": {
+          "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingFeedPurpose"
+        },
+        "report_definition_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_definition"
+        },
+        "report_definition_uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+        },
+        "report_definition_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "reporting_profile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "schema_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+            },
+            "schema_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            },
+            "schema_dialect": {
+              "type": "string",
+              "const": "https://json-schema.org/draft/2020-12/schema"
+            },
+            "schema_ref_policy": {
+              "type": "string",
+              "const": "local_fragment_only"
+            },
+            "grain": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "primary_keys": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "canonicalization_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "canonicalization_contract_version": {
+              "type": "string",
+              "const": "1.0"
+            },
+            "canonicalization_media_type": {
+              "type": "string",
+              "const": "application/vnd.adcp.reporting-canonicalization+json"
+            },
+            "canonicalization_uri": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\\[)(?!\\d+(?:\\.\\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\\.)+[A-Za-z]{2,}(?::\\d+)?(?:/|$)"
+            },
+            "canonicalization_sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "schema_uri",
+            "schema_sha256",
+            "schema_dialect",
+            "schema_ref_policy",
+            "grain",
+            "primary_keys"
+          ],
+          "additionalProperties": false
+        },
+        "schedule": {
+          "$ref": "#/$defs/external:core~1reporting-schedule-offering.json"
+        },
+        "supported_finality": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:enums~1reporting-finality.json"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "reconciliation_mode": {
+          "$ref": "#/$defs/external:core~1reporting-reconciliation-mode.json"
+        },
+        "method": {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-offering.json/$defs/ReportingDeliveryPattern"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination_modes": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "provision",
+                  "existing"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ]
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "producer_identity": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                    }
+                  },
+                  "required": [
+                    "domain"
+                  ],
+                  "additionalProperties": false
+                },
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "provider",
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            },
+            "reader_compatibility": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination_modes"
+          ],
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "provider"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "file_transfer"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "format"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "pattern": {
+                    "const": "dataset_share"
+                  }
+                },
+                "required": [
+                  "pattern"
+                ]
+              },
+              "then": {
+                "required": [
+                  "access_mode"
+                ]
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "offering_id",
+        "feed_purpose",
+        "report_definition_id",
+        "report_definition_uri",
+        "report_definition_sha256",
+        "reporting_profile",
+        "schedule",
+        "supported_finality",
+        "reconciliation_mode"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "feed_purpose": {
+                "const": "billing"
+              }
+            },
+            "required": [
+              "feed_purpose"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reconciliation_mode": {
+                "const": "consumer_receipt"
+              }
+            },
+            "required": [
+              "reconciliation_mode"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reporting_profile": {
+                "required": [
+                  "canonicalization_id",
+                  "canonicalization_contract_version",
+                  "canonicalization_media_type",
+                  "canonicalization_uri",
+                  "canonicalization_sha256"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "tier_boundaries": "An offering without method is Core: delivered through existing API transports, no destination, manifest, or canonicalization knowledge required. method requires the managed_delivery capability. reconciliation_mode consumer_receipt requires the reconciled_billing capability, and such offerings MUST carry the full canonicalization_* contract in reporting_profile. delivery_only offerings omit canonicalization.",
+        "safe_schema_fetch": "schema_uri, canonicalization_uri, and report_definition_uri origins must be the authenticated seller, the named provider, or an AdCP registry. Reject userinfo, IP literals, localhost, private/reserved DNS results, redirects, and DNS/connect-target mismatch; pin resolution, cap bytes/time, require the expected content type, verify the corresponding SHA-256 before parsing, and cache by digest. The canonicalization and report-definition documents MUST validate against their AdCP contract schemas. The fetched row schema's $schema MUST equal schema_dialect, whose metaschema is SDK-bundled and never network-fetched. Before compiling with no network-capable resolver installed, recursively reject every $ref not beginning with #, all $dynamicRef and $recursiveRef keywords, cyclic references, excessive depth/node count, oversized regexes, and unsupported vocabularies. Fetched content and annotations are untrusted data, never agent or LLM instructions.",
+        "snapshot_declaration": "A snapshot claim is the atomic combination of supported_finality containing snapshot, this exact schedule, report definition/profile, and delivery method. Sellers MUST NOT imply a faster snapshot cadence from polling, webhook, or transport support that is not advertised by such an offering."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingFeedPurpose": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "pacing",
+            "analytics",
+            "billing"
+          ]
+        },
+        "ReportingDeliveryPattern": {
+          "type": "string",
+          "enum": [
+            "file_transfer",
+            "dataset_share",
+            "warehouse_materialization"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-canonicalization-contract.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "contract_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "media_type": {
+          "type": "string",
+          "const": "application/vnd.adcp.reporting-canonicalization+json"
+        },
+        "algorithm": {
+          "type": "string",
+          "const": "adcp_jcs_rows_v1"
+        },
+        "schema_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "primary_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-canonicalization-contract.json/$defs/ReportingPrimaryKey"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "golden_vectors": {
+          "type": "object",
+          "properties": {
+            "empty_report": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "empty_report"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "maxItems": 0
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "const": "W10="
+                },
+                "sha256": {
+                  "type": "string",
+                  "const": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "ordering_encoding": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                },
+                "purpose": {
+                  "type": "string",
+                  "const": "ordering_encoding"
+                },
+                "input_rows": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "minItems": 2
+                },
+                "canonical_utf8_base64": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[A-Fa-f0-9]{64}$"
+                }
+              },
+              "required": [
+                "name",
+                "purpose",
+                "input_rows",
+                "canonical_utf8_base64",
+                "sha256"
+              ],
+              "additionalProperties": false
+            },
+            "additional": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "const": "additional"
+                  },
+                  "input_rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "canonical_utf8_base64": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[A-Fa-f0-9]{64}$"
+                  }
+                },
+                "required": [
+                  "name",
+                  "purpose",
+                  "input_rows",
+                  "canonical_utf8_base64",
+                  "sha256"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "empty_report",
+            "ordering_encoding"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "contract_version",
+        "media_type",
+        "algorithm",
+        "schema_sha256",
+        "primary_keys",
+        "golden_vectors"
+      ],
+      "x-adcp-validation": {
+        "algorithm": "adcp_jcs_rows_v1 rejects duplicate JSON object keys, non-finite numbers, lone Unicode surrogates, missing/non-scalar primary keys, and duplicate primary-key tuples. Validate every row against the pinned row schema; do not normalize Unicode. RFC 8785-encode each primary-key value array and sort rows by unsigned lexicographic comparison of those UTF-8 bytes. RFC 8785-encode each complete row, then emit the UTF-8 bytes for '[' + the encoded rows joined by ',' + ']'. SHA-256 is computed over exactly those bytes.",
+        "binding": "schema_sha256 and primary_keys MUST exactly equal the selected offering. Golden-vector names MUST be unique across empty_report, ordering_encoding, and additional. empty_report is the exact [] case. ordering_encoding is non-trivial: its input row order differs from canonical primary-key order and its object member order differs from JCS order. SDKs MUST strictly base64-decode canonical_utf8_base64, reproduce every golden vector's exact bytes and sha256, and reject any mismatch before using the contract."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingPrimaryKey": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:core/reporting-schedule-offering.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor_policy": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "configurable"
+          ]
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor_policy"
+            ],
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "period_anchor_policy": {
+                      "const": "fixed"
+                    }
+                  },
+                  "required": [
+                    "period_anchor_policy"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "period_anchor",
+                    "period_timezone"
+                  ]
+                },
+                "else": {
+                  "not": {
+                    "anyOf": [
+                      {
+                        "required": [
+                          "period_anchor"
+                        ]
+                      },
+                      {
+                        "required": [
+                          "period_timezone"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "period_anchor_policy"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_anchor"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_timezone"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "installed_schedule_match": "period_duration, alignment, and delivery_sla MUST equal the installed configuration. For fixed billing_cycle offerings, period_anchor and period_timezone MUST also equal it. For configurable billing_cycle offerings, the installed configuration supplies both values. utc and account_timezone use the normative origins in reporting-schedule.json, so even multi-unit durations have one independently derivable phase."
+      },
+      "additionalProperties": false
+    },
+    "external:core/reporting-schedule.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "period_duration": {
+          "type": "string",
+          "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        },
+        "alignment": {
+          "$ref": "#/$defs/external:core~1reporting-schedule.json/$defs/ReportingScheduleAlignment"
+        },
+        "period_anchor": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "period_timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "delivery_sla": {
+          "type": "string",
+          "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+        }
+      },
+      "required": [
+        "period_duration",
+        "alignment",
+        "delivery_sla"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "alignment": {
+                "const": "billing_cycle"
+              }
+            },
+            "required": [
+              "alignment"
+            ]
+          },
+          "then": {
+            "required": [
+              "period_anchor",
+              "period_timezone"
+            ]
+          },
+          "else": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "period_anchor"
+                  ]
+                },
+                {
+                  "required": [
+                    "period_timezone"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "period_generation": "Producer and consumer MUST derive the same ordered half-open intervals from period_duration, alignment, period_anchor, and period_timezone when applicable. utc alignment uses 1970-01-01T00:00:00Z as interval zero. account_timezone uses 1970-01-01T00:00:00 in the account's resolved IANA timezone as interval zero. billing_cycle uses its explicit period_anchor expressed in period_timezone. Every boundary is calculated directly from that origin and the interval ordinal by multiplying each ISO 8601 duration component by the ordinal and applying years, months, days, hours, minutes, then seconds. Calendar durations use local civil-time arithmetic in the selected IANA timezone, including DST transitions; they are not converted to fixed seconds. Month/year addition preserves the origin's local day and time, clamping to the target month's final valid day when necessary. A nonexistent local boundary advances by the timezone gap; an ambiguous local boundary uses the earlier offset. Thus a clamped February boundary does not shift a March 31 anchor."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingScheduleAlignment": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "utc",
+            "account_timezone",
+            "billing_cycle"
+          ]
+        }
+      }
+    },
+    "external:enums/reporting-finality.json": {
+      "type": "string",
+      "enum": [
+        "snapshot",
+        "official"
+      ]
+    },
+    "external:core/reporting-reconciliation-mode.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "delivery_only",
+        "consumer_receipt"
+      ]
+    },
+    "external:core/reporting-delivery-method.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "file_transfer"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            },
+            "format": {
+              "type": "string",
+              "enum": [
+                "jsonl",
+                "csv",
+                "parquet",
+                "avro",
+                "orc"
+              ]
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination",
+            "format"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "dataset_share"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "warehouse_materialization"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "orchestration": {
+              "$ref": "#/$defs/external:core~1reporting-delivery-method.json/$defs/ReportingOrchestration"
+            },
+            "destination": {
+              "$ref": "#/$defs/external:core~1reporting-write-destination.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "transport",
+            "orchestration",
+            "destination"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "$defs": {
+        "ReportingOrchestration": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "producer_managed",
+            "consumer_managed"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-write-destination.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination"
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "location"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "destination_proof": "Before ready, prove destination control and caller authority for every selected account, feed, and media-buy scope. A proof-bound coordinate or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Revoke grants when the configuration, caller authorization, or account becomes inactive."
+      }
+    },
+    "external:core/reporting-dataset-share-destination.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "oneOf": [
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "existing"
+            },
+            "destination_ref": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255,
+              "x-entity": "reporting_destination"
+            }
+          },
+          "required": [
+            "mode",
+            "destination_ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "const": "provision"
+            },
+            "provider": {
+              "type": "object",
+              "properties": {
+                "domain": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+                }
+              },
+              "required": [
+                "domain"
+              ],
+              "additionalProperties": false
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "recipient": {
+              "type": "object",
+              "properties": {
+                "identity": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "cloud": {
+                  "$ref": "#/$defs/external:core~1reporting-dataset-share-destination.json/$defs/ReportingCloud"
+                },
+                "region": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "required": [
+                "identity"
+              ],
+              "additionalProperties": false,
+              "dependentRequired": {
+                "cloud": [
+                  "region"
+                ],
+                "region": [
+                  "cloud"
+                ]
+              }
+            }
+          },
+          "required": [
+            "mode",
+            "provider",
+            "access_mode",
+            "recipient"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "authorization": "Bind every destination_ref to the stable authenticated caller. Reuse across that caller's accounts is permitted only after each account configuration independently verifies disclosure authority for its feed and media-buy scope. Reject unknown, unauthorized, and cross-caller refs indistinguishably.",
+        "recipient_proof": "Before ready, prove recipient control and caller authority to disclose every selected account, feed, and media-buy scope. A proof-bound recipient or delivery-contract change creates a new destination_ref; old references remain stable for retained configurations and history. Voluntary configuration deactivation stops new publication but may preserve still-authorized historical access through seller_managed_access_ends_at. Caller authorization loss, account closure, or recipient revocation overrides that window and revokes the grant within authorization_revocation_seconds."
+      },
+      "$defs": {
+        "ReportingCloud": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "enum": [
+            "aws",
+            "azure",
+            "gcp"
+          ]
+        }
+      }
+    },
+    "external:core/reporting-resource.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "resource_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+          "x-entity": "reporting_resource"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "manifest",
+            "dataset",
+            "warehouse_relation"
+          ]
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "native_version_ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "manifest_version": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[A-Fa-f0-9]{64}$"
+        },
+        "immutability": {
+          "type": "string",
+          "enum": [
+            "immutable_location",
+            "native_version"
+          ]
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reader_compatibility": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1reporting-resource.json/$defs/ReportingReaderCompatibilityItem"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "resource_ref",
+        "kind",
+        "location",
+        "immutability",
+        "expires_at"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "manifest"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "manifest_version",
+              "manifest_sha256"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "immutability": {
+                "const": "native_version"
+              }
+            },
+            "required": [
+              "immutability"
+            ]
+          },
+          "then": {
+            "required": [
+              "native_version_ref"
+            ]
+          }
+        }
+      ],
+      "x-adcp-validation": {
+        "retention": "expires_at MUST be no earlier than the owning obligation.resource_retained_until and publication plus advertised resource_retention_days. A completed obligation cannot rely on deterministic rematerialization in place of a readable exact resource."
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "ReportingReaderCompatibilityItem": {
+          "x-adcp-model-context-inline": true,
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    },
+    "external:enums/reporting-health.json": {
+      "type": "string",
+      "enum": [
+        "healthy",
+        "waiting",
+        "delayed",
+        "action_required",
+        "complete"
+      ]
+    },
+    "external:core/pagination-request.json": {
+      "type": "object",
+      "properties": {
+        "max_results": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "cursor": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "Authoritative caller/account-isolated reporting reliability read. The authenticated caller identity comes only from transport authentication, never request fields. summary answers the operational question for independently selected delivery configurations/feeds; periods returns a cursor-paginated obligation ledger; revision resolves one exact retained revision and its materializations/resources. Unknown, unauthorized, cross-caller, and cross-account identifiers MUST be indistinguishable. Sellers implementing this task MUST advertise media_buy.reporting_delivery in experimental_features."
+}

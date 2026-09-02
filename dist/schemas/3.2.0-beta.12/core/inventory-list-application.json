@@ -1,0 +1,164 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-beta.12/core/inventory-list-application.json",
+  "title": "Inventory List Application",
+  "description": "Seller-issued, product-scoped receipt showing how one effective property- or collection-list targeting reference intersected the inventory represented by a returned product. Each receipt compares its resolved entries independently against the same product inventory before any effective list is applied; product pricing and forecasts reflect the eligible inventory after all effective lists are composed. Sellers MUST NOT echo auth_token or other separately supplied fetch credentials; the closed receipt shape defines no credential field.",
+  "type": "object",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "effective_list_coverage": "exactly_one_receipt_per_effective_property_or_collection_targeting_reference_on_each_returned_product",
+      "request_binding": "list_type_effect_agent_url_and_list_id_equal_the_effective_targeting_reference",
+      "common_inventory_baseline": "every_receipt_is_evaluated_independently_against_the_same_product_inventory_before_any_effective_list_is_applied",
+      "inclusion_eligibility": "a_product_with_zero_matches_for_any_effective_include_application_is_not_returned",
+      "commercial_binding": "product_pricing_and_forecast_reflect_inventory_after_all_effective_lists_are_composed"
+    },
+    "spec": "docs/media-buy/product-discovery/media-products.mdx#property-and-collection-list-application-receipts"
+  },
+  "discriminator": {
+    "propertyName": "list_type"
+  },
+  "oneOf": [
+    {
+      "title": "Property list application",
+      "type": "object",
+      "properties": {
+        "list_type": {
+          "type": "string",
+          "const": "property",
+          "description": "The receipt describes a property list."
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "include",
+            "exclude"
+          ],
+          "description": "Whether matching properties were retained as an allowlist or removed as a blocklist."
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Agent URL from the effective property-list targeting reference."
+        },
+        "list_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier from the effective property-list targeting reference.",
+          "x-entity": "property_list"
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp identifying the complete resolved-list snapshot the seller evaluated. If the list response supplied resolved_at, the seller MUST copy it; otherwise the seller records when it completed assembling the snapshot, including all fetched pages."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller intersected that snapshot with this product's then-current inventory."
+        },
+        "summary": {
+          "type": "object",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
+          "properties": {
+            "matched": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Resolved entries that matched at least one property in this product."
+            },
+            "unmatched": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Resolved entries that did not match a property in this product."
+            }
+          },
+          "required": [
+            "matched",
+            "unmatched"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "list_type",
+        "effect",
+        "agent_url",
+        "list_id",
+        "resolved_at",
+        "evaluated_at",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "title": "Collection list application",
+      "type": "object",
+      "properties": {
+        "list_type": {
+          "type": "string",
+          "const": "collection",
+          "description": "The receipt describes a collection list."
+        },
+        "effect": {
+          "type": "string",
+          "enum": [
+            "include",
+            "exclude"
+          ],
+          "description": "Whether matching collections were retained as an allowlist or removed as a blocklist."
+        },
+        "agent_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Agent URL from the effective collection-list targeting reference."
+        },
+        "list_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Identifier from the effective collection-list targeting reference.",
+          "x-entity": "collection_list"
+        },
+        "resolved_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp identifying the complete resolved-list snapshot the seller evaluated. If the list response supplied resolved_at, the seller MUST copy it; otherwise the seller records when it completed assembling the snapshot, including all fetched pages."
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the seller intersected that snapshot with this product's then-current inventory."
+        },
+        "summary": {
+          "type": "object",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
+          "properties": {
+            "matched": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Resolved entries that matched at least one collection in this product."
+            },
+            "unmatched": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Resolved entries that did not match a collection in this product."
+            }
+          },
+          "required": [
+            "matched",
+            "unmatched"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "list_type",
+        "effect",
+        "agent_url",
+        "list_id",
+        "resolved_at",
+        "evaluated_at",
+        "summary"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}
