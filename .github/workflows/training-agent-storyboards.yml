@@ -237,7 +237,7 @@ jobs:
           PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
           ADCP_COMPLIANCE_DIR: ${{ matrix.surface == 'current' && 'dist/compliance/latest' || steps.compat-bundle.outputs.dir }}
           ADCP_SCHEMA_ROOT: ${{ matrix.surface == 'current' && 'dist/schemas/latest' || steps.compat-bundle.outputs.schema_dir }}
-          ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: ${{ matrix.surface == 'current' && github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main' && '1' || '0' }}
+          ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: ${{ matrix.surface == 'current' && ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && '1' || '0' }}
         run: |
           set -uo pipefail
           # Creative-builder retains a large generated-schema graph after its
@@ -473,7 +473,7 @@ jobs:
       SALES_ORCHESTRATOR_COUNT: 8
       ADCP_COMPLIANCE_DIR: dist/compliance/latest
       ADCP_SCHEMA_ROOT: dist/schemas/latest
-      ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: ${{ github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main' && '1' || '0' }}
+      ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: ${{ ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && '1' || '0' }}
       # SDK beta.11 keeps each storyboard inside the 4 GiB RSS envelope, but
       # the heaviest lifecycle flows can approach two minutes on a loaded
       # runner. Preserve the hard memory bound and allow teardown headroom.
