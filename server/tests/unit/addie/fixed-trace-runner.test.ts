@@ -17,6 +17,7 @@ import {
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
+import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -134,20 +135,9 @@ const TOOL_DEFINITIONS = [
   'get_doc',
   'get_my_profile',
   'find_duplicate_orgs',
-  'schedule_meeting',
-  'list_upcoming_meetings',
-  'get_my_meetings',
-  'get_meeting_details',
-  'rsvp_to_meeting',
-  'cancel_meeting',
-  'cancel_meeting_series',
-  'update_meeting',
-  'add_meeting_attendee',
-  'update_topic_subscriptions',
-  'manage_committee_topics',
   'send_invoice',
   'confirm_send_invoice',
-].map(tool);
+].map(tool).concat(CANONICAL_MEETING_TOOLS);
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {
   return {
@@ -252,6 +242,61 @@ describe('fixed trace artifact runner', () => {
     });
   });
 
+  it('replays four requested long-meeting mutations through canonical schemas', async () => {
+    const selectedTrace = trace('meeting-full-administration-confirmed');
+    const router = new ScriptedProvider([routeResponse('respond', ['meeting_full_administration'])]);
+    const generation = new ScriptedProvider([
+      response([{
+        type: 'tool_call',
+        id: 'meeting-tool-1',
+        name: 'schedule_meeting',
+        input: {
+          working_group_slug: 'governance',
+          title: 'Quarterly governance meeting',
+          start_time: '2026-09-03T14:00:00-04:00',
+          timezone: 'America/New_York',
+          recurrence: { freq: 'weekly', by_day: ['TH'], count: 12 },
+        },
+      }], 'tool_calls', 'meeting-schedule'),
+      response([{
+        type: 'tool_call',
+        id: 'meeting-tool-2',
+        name: 'add_meeting_attendee',
+        input: { meeting_id: 'synthetic-meeting-1', email: 'new-attendee@synthetic.invalid', add_to_series: true },
+      }], 'tool_calls', 'meeting-attendee'),
+      response([{
+        type: 'tool_call',
+        id: 'meeting-tool-3',
+        name: 'rsvp_to_meeting',
+        input: { meeting_id: 'synthetic-meeting-1', response: 'accepted' },
+      }], 'tool_calls', 'meeting-rsvp'),
+      response([{
+        type: 'tool_call',
+        id: 'meeting-tool-4',
+        name: 'update_topic_subscriptions',
+        input: { working_group_slug: 'governance', topic_slugs: ['governance'] },
+      }], 'tool_calls', 'meeting-topics'),
+      response([{
+        type: 'text',
+        text: 'Scheduled the recurring meeting, added the attendee, recorded the RSVP, and updated topic subscriptions.',
+      }], 'stop', 'meeting-final'),
+    ]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: stage(generation, 5),
+    }));
+
+    expect(generation.respondCalls).toHaveLength(5);
+    expect(generation.respondCalls[0]?.tools.map((definition) => definition.name)).toEqual(
+      selectedTrace.toolFixtures.map((fixture) => fixture.name),
+    );
+    expect(observation.tools.map((execution) => execution.name)).toEqual([
+      'schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions',
+    ]);
+    expect(observation.tools.every((execution) => execution.policyDisposition === 'allowed' && execution.simulated)).toBe(true);
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ deterministicPass: true });
+  });
+
   it('forces official-doc retrieval only when the exact knowledge route exposes search_docs', () => {
     const selectedTrace = trace('knowledge-task-model');
     const exactKnowledge = buildFixedTraceGenerationRequest(
@@ -336,6 +381,20 @@ describe('fixed trace artifact runner', () => {
     });
     expect(generation.respondCalls).toHaveLength(0);
     expect(gradeFixedTrace(selectedTrace, observation).deterministicPass).toBe(true);
+  });
+
+  it('accepts the synthetic loop ceiling for the full provider-visible meeting union', async () => {
+    const router = new ScriptedProvider([routeResponse('ignore')]);
+    const generation = new ScriptedProvider([]);
+    const selectedTrace = trace('surface-channel-chatter');
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      router: stage(router, 12),
+      generation: stage(generation, 12),
+    }));
+
+    expect(observation.terminalStatus).toBe('ignored');
+    expect(generation.respondCalls).toHaveLength(0);
   });
 
   it('omits provider-default reasoning from adapters without reasoning support', async () => {

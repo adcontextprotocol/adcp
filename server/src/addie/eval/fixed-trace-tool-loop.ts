@@ -30,7 +30,7 @@ import type {
 // The bounded full-meeting compatibility route can legitimately use its exact
 // 11-tool union, followed by one final model turn. This applies only to the
 // synthetic replay harness, never to production request routing.
-const MAX_ITERATIONS = 12;
+export const MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS = 12;
 
 export type FixedTraceToolLoopReason = FixedTraceBoundaryReason;
 
@@ -124,8 +124,8 @@ function registerFixtures(
 
 function safeIterationLimit(trace: FixedTraceCase, requested?: number): number {
   const limit = requested ?? Math.max(1, trace.toolFixtures.length + 1);
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ITERATIONS) {
-    throw new RangeError(`Fixed trace iteration limit must be between 1 and ${MAX_ITERATIONS}`);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS) {
+    throw new RangeError(`Fixed trace iteration limit must be between 1 and ${MAX_FIXED_TRACE_TOOL_LOOP_ITERATIONS}`);
   }
   return limit;
 }
