@@ -7,8 +7,18 @@ import { serveHtmlWithConfig } from "../utils/html-config.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { AddieClaudeClient, type AddieResponse, type RequestTools } from "../addie/claude-client.js";
+import {
+  type AddieRouter,
+  type ExecutionPlan,
+  type RoutingContext,
+} from "../addie/router.js";
+import { createProductionRouter } from "../addie/router-runtime.js";
+import { selectBoundedRoutedToolSets } from "../addie/slack-tool-selection.js";
 import { sanitizeSpeakerName } from "../addie/prompts.js";
-import { resolveUserTierFromDb } from "../addie/claude-cost-tracker.js";
+import {
+  checkCostCap,
+  resolveUserTierFromDb,
+} from "../addie/claude-cost-tracker.js";
 import {
   initializeKnowledgeSearch,
   KNOWLEDGE_TOOLS,
@@ -110,7 +120,12 @@ const __dirname = path.dirname(__filename);
 const logger = createLogger("tavus-routes");
 
 let claudeClient: AddieClaudeClient | null = null;
+let tavusRouter: TavusVoiceRouter | null = null;
 let initPromise: Promise<void> | null = null;
+
+type TavusVoiceRouter = Pick<AddieRouter, 'quickMatch' | 'route'>;
+type TavusVoiceClient = Pick<AddieClaudeClient, 'processMessageStream'>
+  & Partial<Pick<AddieClaudeClient, 'getRegisteredTools'>>;
 
 async function initializeTavusClient(): Promise<void> {
   if (initPromise) return initPromise;
@@ -121,6 +136,7 @@ async function initializeTavusClient(): Promise<void> {
       return;
     }
     claudeClient = new AddieClaudeClient(apiKey, AddieModelConfig.voice);
+    tavusRouter = createProductionRouter(apiKey, process.env.OPENAI_API_KEY?.trim()).router;
     await initializeKnowledgeSearch();
     const knowledgeHandlers = createKnowledgeToolHandlers({
       slackAccess: { kind: 'public-only' },
@@ -176,7 +192,12 @@ function validateLlmSecret(req: Request): boolean {
 async function buildVoiceRequestTools(
   userId: string,
   threadId: string,
-): Promise<{ requestTools: RequestTools; requestContext: string; memberContext: MemberContext | null }> {
+): Promise<{
+  requestTools: RequestTools;
+  requestContext: string;
+  memberContext: MemberContext | null;
+  isAAOAdmin: boolean;
+}> {
   let memberContext: MemberContext | null = null;
   try {
     memberContext = await getWebMemberContext(userId);
@@ -281,6 +302,85 @@ async function buildVoiceRequestTools(
     requestTools: { tools: allTools, handlers: combinedHandlers },
     requestContext: contextSections.join('\n\n'),
     memberContext,
+    isAAOAdmin: userIsAdmin,
+  };
+}
+
+export interface RoutedTavusVoiceTools {
+  requestTools: RequestTools;
+  selectedToolSets: string[];
+  allowedToolNames: string[];
+  unavailableHint: string;
+}
+
+/**
+ * Select the request-scoped voice capability surface for an authenticated
+ * direct response. This owns only provider-neutral routing and exact
+ * definition/handler pairing; Tavus delivery, SSE, transcripts, billing, and
+ * conversation lifecycle remain at the route boundary.
+ */
+export async function selectRoutedTavusVoiceTools(input: {
+  message: string;
+  memberContext: MemberContext | null;
+  threadId: string;
+  isAAOAdmin: boolean;
+  requestTools: RequestTools;
+  router: TavusVoiceRouter | null;
+  /** Globally registered definitions whose handlers were paired at registration time. */
+  globalToolNames?: readonly string[];
+  threadMessages?: string[];
+}): Promise<RoutedTavusVoiceTools> {
+  let plan: ExecutionPlan | null = null;
+  let routerAvailable = input.router !== null;
+
+  if (input.router) {
+    const routingContext: RoutingContext = {
+      message: input.message,
+      source: 'dm',
+      memberContext: input.memberContext,
+      isThread: true,
+      isAAOAdmin: input.isAAOAdmin,
+      threadMessages: input.threadMessages,
+    };
+    try {
+      plan = input.router.quickMatch(routingContext)
+        ?? await input.router.route(routingContext, { failureMode: 'throw' });
+    } catch (error) {
+      routerAvailable = false;
+      logger.warn({ error, threadId: input.threadId }, 'Tavus: Router unavailable; using safe read-only fallback');
+    }
+  }
+
+  const definitions = new Map(input.requestTools.tools.map((tool) => [tool.name, tool]));
+  const globalToolNames = new Set(input.globalToolNames ?? []);
+  // web_search is provider-managed and deliberately has no custom handler.
+  // Global registrations were paired at startup; request-local tools must be
+  // paired at this boundary before their schemas can reach the model.
+  const isToolAvailable = (name: string) => name === 'web_search'
+    || ((definitions.has(name) || globalToolNames.has(name))
+      && (input.requestTools.handlers.has(name) || globalToolNames.has(name)));
+  const selection = selectBoundedRoutedToolSets({
+    plan,
+    routerAvailable,
+    source: 'dm',
+    isAdmin: input.isAAOAdmin,
+    isToolAvailable,
+  });
+  const matchedToolNames = selection.allowedToolNames.filter(isToolAvailable);
+  const matched = new Set(matchedToolNames);
+
+  return {
+    requestTools: {
+      tools: input.requestTools.tools.filter((tool) => matched.has(tool.name)),
+      handlers: new Map(
+        [...input.requestTools.handlers].filter(([name]) => matched.has(name)),
+      ),
+    },
+    selectedToolSets: selection.selectedToolSets,
+    // Keep provider-managed web_search in the client allowlist even though it
+    // has no custom handler. The client scopes global tools with this list.
+    allowedToolNames: selection.allowedToolNames,
+    unavailableHint: selection.unavailableHint,
   };
 }
 
@@ -320,7 +420,12 @@ const endRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export function createTavusRouter() {
+export function createTavusRouter(options?: {
+  /** Deterministic test seam; production uses the initialized voice client. */
+  voiceClient?: TavusVoiceClient;
+  /** An explicit null exercises the safe router-unavailable fallback. */
+  router?: TavusVoiceRouter | null;
+}) {
   // Page router: serves GET /video and GET /video/lab.
   // Both routes go through serveHtmlWithConfig so the global app config and
   // csrf.js (which patches fetch to attach the X-CSRF-Token header) get
@@ -559,11 +664,17 @@ export function createTavusRouter() {
       return res.status(401).json({ error: { message: "Unauthorized" } });
     }
 
-    await initializeTavusClient();
+    if (!options?.voiceClient) {
+      await initializeTavusClient();
+    }
 
-    if (!claudeClient) {
+    const activeVoiceClient = options?.voiceClient ?? claudeClient;
+    if (!activeVoiceClient) {
       return res.status(503).json({ error: { message: "LLM not available" } });
     }
+    const resolveRouter = (): TavusVoiceRouter | null => Object.hasOwn(options ?? {}, 'router')
+      ? options?.router ?? null
+      : (options?.voiceClient ? null : tavusRouter);
 
     const { messages } = req.body as { messages?: TavusRawMessage[] };
 
@@ -603,6 +714,13 @@ export function createTavusRouter() {
     // Look up the thread to get user identity and build user-scoped tools.
     // This gives voice Addie the same capabilities as chat Addie.
     let voiceRequestTools: RequestTools | undefined;
+    let routedVoiceTools: RoutedTavusVoiceTools | null = null;
+    let pendingVoiceToolSelection: {
+      memberContext: MemberContext | null;
+      isAAOAdmin: boolean;
+      requestTools: RequestTools;
+      globalToolNames?: readonly string[];
+    } | null = null;
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
@@ -620,15 +738,44 @@ export function createTavusRouter() {
             thread.context?.video_session_guidance
           );
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
-          voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
-          logger.debug(
-            { userId: thread.user_id, toolCount: voiceRequestTools.tools.length },
-            "Tavus: Built user-scoped tools for voice"
-          );
+          try {
+            pendingVoiceToolSelection = {
+              memberContext: result.memberContext,
+              isAAOAdmin: result.isAAOAdmin,
+              requestTools: result.requestTools,
+              globalToolNames: activeVoiceClient.getRegisteredTools?.(),
+            };
+          } catch (error) {
+            // Global pairing inspection is part of capability assembly. It
+            // must never leave the broad registry eligible for dispatch.
+            logger.warn({ error, threadId }, 'Tavus: Global tool inspection failed; preparing safe read-only fallback');
+            pendingVoiceToolSelection = {
+              memberContext: result.memberContext,
+              isAAOAdmin: result.isAAOAdmin,
+              requestTools: result.requestTools,
+            };
+          }
         }
       } catch (err) {
-        logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools, using baseline");
+        logger.warn({ err, threadId }, "Tavus: Failed to build user-scoped tools; using safe read-only fallback");
+        // A verified video thread still represents an authenticated direct
+        // response even when its dynamic capability assembly fails. Never
+        // fall through to the mutable global baseline in that case.
+        if (voiceUserId) {
+          let globalToolNames: readonly string[] | undefined;
+          try {
+            globalToolNames = activeVoiceClient.getRegisteredTools?.();
+          } catch (globalToolError) {
+            logger.warn({ globalToolError, threadId }, 'Tavus: Could not inspect global tools for safe fallback');
+          }
+          pendingVoiceToolSelection = {
+            memberContext: null,
+            isAAOAdmin: false,
+            requestTools: { tools: [], handlers: new Map() },
+            globalToolNames,
+          };
+        }
       }
     }
 
@@ -672,9 +819,6 @@ export function createTavusRouter() {
       "When using tools, summarize results conversationally — don't read data verbatim.",
     );
     const voiceContext = voiceContextLines.join("\n");
-
-    // Combine voice instructions with member context
-    const requestContext = [voiceContext, memberRequestContext].filter(Boolean).join("\n\n");
 
     const completionId = `chatcmpl-${uuidv4().replace(/-/g, "").slice(0, 28)}`;
     const created = Math.floor(Date.now() / 1000);
@@ -745,15 +889,71 @@ export function createTavusRouter() {
       const voiceScope = voiceUserId
         ? { userId: voiceUserId, tier: await resolveUserTierFromDb(voiceUserId) }
         : null;
+      const costScope = voiceScope ?? {
+        userId: `tavus:ip:${req.ip ?? 'unknown'}`,
+        tier: 'anonymous' as const,
+      };
 
-      for await (const event of claudeClient.processMessageStream(
+      // Do the existing provider-neutral admission read before selecting a
+      // live router plan. The client repeats this immediately before model
+      // dispatch, which preserves its race-safe final admission boundary.
+      // A refused or unavailable admission must never initiate paid routing.
+      const costAdmission = await checkCostCap(costScope.userId, costScope.tier, {
+        selection: { provider: 'anthropic', model: AddieModelConfig.voice },
+      });
+      const routerForTurn = costAdmission.ok ? resolveRouter() : null;
+
+      if (pendingVoiceToolSelection) {
+        try {
+          routedVoiceTools = await selectRoutedTavusVoiceTools({
+            // Route the sanitized spoken turn, after Tavus has delivered its
+            // immediate stream/filler but before prompt/tool dispatch.
+            message: spokenMessage,
+            threadId: threadId!,
+            threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+            router: routerForTurn,
+            ...pendingVoiceToolSelection,
+          });
+        } catch (error) {
+          logger.warn({ error, threadId }, 'Tavus: Tool selection failed; using safe read-only fallback');
+          routedVoiceTools = await selectRoutedTavusVoiceTools({
+            message: spokenMessage,
+            threadId: threadId!,
+            threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
+            router: null,
+            memberContext: pendingVoiceToolSelection.memberContext,
+            isAAOAdmin: pendingVoiceToolSelection.isAAOAdmin,
+            requestTools: pendingVoiceToolSelection.requestTools,
+          });
+        }
+        voiceRequestTools = routedVoiceTools.requestTools;
+        logger.debug(
+          {
+            userId: voiceUserId,
+            toolCount: voiceRequestTools.tools.length,
+            selectedToolSets: routedVoiceTools.selectedToolSets,
+            costAdmitted: costAdmission.ok,
+          },
+          'Tavus: Selected bounded voice tools for stream dispatch',
+        );
+      }
+
+      const requestContext = [
+        voiceContext,
+        memberRequestContext,
+        routedVoiceTools?.unavailableHint,
+      ].filter(Boolean).join("\n\n");
+
+      for await (const event of activeVoiceClient.processMessageStream(
         currentMessage,
         threadContext,
         voiceRequestTools,
         {
           requestContext,
           currentSpeakerName: voiceSpeakerName,
-          costScope: voiceScope ?? { userId: `tavus:ip:${req.ip ?? 'unknown'}`, tier: 'anonymous' as const },
+          selectedToolSetNames: routedVoiceTools?.selectedToolSets,
+          allowedToolNames: routedVoiceTools?.allowedToolNames,
+          costScope,
         }
       )) {
         if (connectionClosed) break;

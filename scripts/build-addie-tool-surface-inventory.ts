@@ -769,7 +769,7 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   const {
     knowledge, directory, member, brand, billing, schema, property, siHost,
     adcp, escalation, admin, events, meetings, collaboration, committee,
-    moltbook, chatTool,
+    moltbook, toolSets, chatTool,
   } = defs;
   const anonymousKnowledge = knowledge.KNOWLEDGE_TOOLS.filter(
     (tool) => chatTool.ANONYMOUS_SAFE_KNOWLEDGE_TOOLS.has(tool.name),
@@ -824,6 +824,90 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...meetings.MEETING_TOOLS,
     ...tavusTailRequest,
   ];
+  // Authenticated Tavus turns now use the same bounded direct-response
+  // selection as web chat and Slack reactions. Record each surface's actual
+  // reachable maximum (one or two routed domains) and the explicit safe
+  // fallback; do not model the request registry as a prompt-visible union.
+  const buildTavusRoutedProfiles = (
+    audience: 'member' | 'committee_leader' | 'admin',
+    isAdmin: boolean,
+    requestTools: AddieTool[],
+    conditionalMaximums: string[],
+  ): Profile[] => {
+    const availableToolNames = new Set([...tavusGlobal, ...requestTools].map((tool) => tool.name));
+    const routerVisibleSetNames = Object.values(toolSets.TOOL_SETS)
+      .filter((set) => set.routerVisible !== false && (isAdmin || !set.adminOnly))
+      .map((set) => set.name);
+    const combinations = routerVisibleSetNames.map((setName) => [setName]);
+    for (let first = 0; first < routerVisibleSetNames.length; first += 1) {
+      for (let second = first + 1; second < routerVisibleSetNames.length; second += 1) {
+        combinations.push([routerVisibleSetNames[first], routerVisibleSetNames[second]]);
+      }
+    }
+    const candidates = combinations.map((toolSetsForPlan) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: toolSetsForPlan,
+          confidence: 'high',
+          reason: 'inventory bounded Tavus voice route',
+          decision_method: 'quick_match',
+        },
+        routerAvailable: true,
+        source: 'dm',
+        isAdmin,
+        isToolAvailable: (name) => availableToolNames.has(name),
+      });
+      return profile({
+        id: `tavus_voice:${audience}:candidate:${toolSetsForPlan.join('+')}`,
+        runtime: 'tavus_voice',
+        audience,
+        route: toolSetsForPlan.join('+'),
+        selectedToolSets: selection.selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        globalTools: tavusGlobal,
+        requestTools,
+        providerToolCount: 0,
+        conditionalMaximums: [
+          'router_selected_up_to_two_bounded_domains',
+          ...conditionalMaximums,
+        ],
+      });
+    });
+    const maximums = new Map<string, Profile>();
+    for (const metric of ['custom_tool_count', 'wire_schema_bytes', 'tool_reference_bytes'] as const) {
+      const maximum = Math.max(...candidates.map((candidate) => candidate[metric]));
+      const candidate = candidates.find((entry) => entry[metric] === maximum)!;
+      maximums.set(metric, {
+        ...candidate,
+        id: metric === 'custom_tool_count'
+          ? `tavus_voice:${audience}:maximum`
+          : `tavus_voice:${audience}:maximum_${metric}`,
+      });
+    }
+    const fallback = selectBoundedRoutedToolSets({
+      plan: null,
+      routerAvailable: false,
+      source: 'dm',
+      isAdmin,
+      isToolAvailable: (name) => availableToolNames.has(name),
+    });
+    return [
+      ...maximums.values(),
+      profile({
+        id: `tavus_voice:${audience}:router_unavailable`,
+        runtime: 'tavus_voice',
+        audience,
+        route: 'router_unavailable',
+        selectedToolSets: fallback.selectedToolSets,
+        allowedToolNames: fallback.allowedToolNames,
+        globalTools: tavusGlobal,
+        requestTools,
+        providerToolCount: 0,
+        conditionalMaximums: ['router_unavailable', ...conditionalMaximums],
+      }),
+    ];
+  };
   return [
     profile({
       id: 'mcp_chat:anonymous:exact', runtime: 'mcp_chat', audience: 'anonymous',
@@ -840,21 +924,19 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       globalTools: tavusGlobal, providerToolCount: 0,
       conditionalMaximums: ['thread_or_identity_unavailable'],
     }),
-    profile({
-      id: 'tavus_voice:member:maximum', runtime: 'tavus_voice', audience: 'member',
-      globalTools: tavusGlobal, requestTools: tavusMemberRequest, providerToolCount: 0,
-      conditionalMaximums: ['moltbook_configured'],
-    }),
-    profile({
-      id: 'tavus_voice:committee_leader:maximum', runtime: 'tavus_voice', audience: 'committee_leader',
-      globalTools: tavusGlobal, requestTools: tavusLeaderRequest, providerToolCount: 0,
-      conditionalMaximums: ['committee_leader_meeting_permissions', 'moltbook_configured'],
-    }),
-    profile({
-      id: 'tavus_voice:admin:maximum', runtime: 'tavus_voice', audience: 'admin',
-      globalTools: tavusGlobal, requestTools: tavusAdminRequest, providerToolCount: 0,
-      conditionalMaximums: ['admin_event_and_meeting_permissions', 'moltbook_configured'],
-    }),
+    ...buildTavusRoutedProfiles('member', false, tavusMemberRequest, ['moltbook_configured']),
+    ...buildTavusRoutedProfiles(
+      'committee_leader',
+      false,
+      tavusLeaderRequest,
+      ['committee_leader_meeting_permissions', 'moltbook_configured'],
+    ),
+    ...buildTavusRoutedProfiles(
+      'admin',
+      true,
+      tavusAdminRequest,
+      ['admin_event_and_meeting_permissions', 'moltbook_configured'],
+    ),
   ];
 }
 
