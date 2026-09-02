@@ -174,7 +174,7 @@ phases:
           non-terminal. The runner captures `pagination.cursor` for the
           follow-up step.
         task: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
+        schema_ref: "media-buy/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
         comply_scenario: pagination_integrity
@@ -225,7 +225,7 @@ phases:
           `cursor` field. A cursor on `has_more=false` is a stale token
           that invites callers to follow it past the end of results.
         task: list_creative_formats
-        schema_ref: "creative/list-creative-formats-request.json"
+        schema_ref: "media-buy/list-creative-formats-request.json"
         response_schema_ref: "creative/list-creative-formats-response.json"
         doc_ref: "/creative/task-reference/list_creative_formats"
         comply_scenario: pagination_integrity
