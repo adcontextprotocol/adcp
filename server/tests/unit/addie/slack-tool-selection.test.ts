@@ -101,7 +101,61 @@ describe('Slack tool-set selection policy', () => {
     },
   );
 
-  it('adds authoritative knowledge to a narrow direct route without changing channel routes', () => {
+  it('leaves bounded channel selection unchanged', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: false,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['directory']);
+  });
+
+  it('keeps the trusted active-certification direct overlay unchanged', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      activeCertificationKind: 'learning',
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual([
+      'certification_learning',
+      ...safeKnowledgeFallback,
+      'illustrations',
+    ]);
+    expect(selection.allowedToolNames).toContain('search_docs');
+  });
+
+  it('keeps trusted active-certification knowledge when optional Slack retrieval is unavailable', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'continue course', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      activeCertificationKind: 'learning',
+      isToolAvailable: (name) => !['fetch_url', 'read_slack_file'].includes(name),
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual([
+      'certification_learning',
+      ...safeKnowledgeFallback,
+      'illustrations',
+    ]);
+    expect(selection.allowedToolNames).toContain('search_docs');
+    expect(selection.allowedToolNames).not.toContain('fetch_url');
+    expect(selection.allowedToolNames).not.toContain('read_slack_file');
+  });
+
+  it('keeps the non-bounded legacy direct route unchanged', () => {
     expect(selectSlackToolSets({
       routerSelectedSets: ['directory'],
       routerAvailable: true,
@@ -260,13 +314,64 @@ describe('Slack tool-set selection policy', () => {
       isToolAvailable: () => true,
     });
     expect(selection.useSafeFallback).toBe(false);
-    expect(selection.selectedToolSets).toEqual(['agent_end_to_end', 'knowledge']);
-    expect(selection.selectedToolSets).toHaveLength(MAX_DIRECT_ROUTED_TOOL_SET_COUNT);
+    expect(selection.selectedToolSets).toEqual(['agent_end_to_end']);
+    expect(selection.selectedToolSets.length).toBeLessThanOrEqual(MAX_DIRECT_ROUTED_TOOL_SET_COUNT);
     const endToEndTools = selection.allowedToolNames.filter((name) =>
       (AGENT_END_TO_END_TOOLS as readonly string[]).includes(name),
     );
     expect(endToEndTools).toEqual(AGENT_END_TO_END_TOOLS);
     expect(endToEndTools).toHaveLength(10);
+  });
+
+  it.each(['dm', 'mention'] as const)(
+    'does not append knowledge to a trusted narrow bounded %s response plan',
+    (source) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: { action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'directory request', decision_method: 'quick_match' },
+        routerAvailable: true,
+        source,
+        isAdmin: false,
+        isToolAvailable: () => true,
+      });
+
+      expect(selection.useSafeFallback).toBe(false);
+      expect(selection.selectedToolSets).toEqual(['directory']);
+      expect(selection.allowedToolNames).not.toContain('search_docs');
+    },
+  );
+
+  it.each([
+    [['knowledge']],
+    [['knowledge', 'directory']],
+  ] as const)(
+    'preserves explicitly router-selected knowledge in bounded direct plans',
+    (tool_sets) => {
+      const selection = selectBoundedRoutedToolSets({
+        plan: { action: 'respond', tool_sets: [...tool_sets], confidence: 'high', reason: 'documented request', decision_method: 'quick_match' },
+        routerAvailable: true,
+        source: 'dm',
+        isAdmin: false,
+        isToolAvailable: () => true,
+      });
+
+      expect(selection.useSafeFallback).toBe(false);
+      expect(selection.selectedToolSets).toEqual(tool_sets);
+    },
+  );
+
+  it('accepts exactly two explicitly routed direct domains without an implicit overlay', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['member_billing', 'directory'], confidence: 'high', reason: 'billing directory request', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['member_billing', 'directory']);
+    expect(selection.allowedToolNames).toContain('create_payment_link');
+    expect(selection.allowedToolNames).not.toContain('search_docs');
   });
 
   it.each([

@@ -605,18 +605,25 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
   const buildRoutedAuthenticatedProfiles = (isAdmin: boolean): Profile[] => {
     const audience = isAdmin ? 'authenticated_admin' : 'authenticated_member';
     const authenticatedRequest = buildAuthenticatedRequest(isAdmin);
-    const selectedFor = (routerSelectedSets: string[], hasSponsoredIntelligenceContext = false) => selectSlackToolSets({
-      routerSelectedSets,
+    const availableToolNames = new Set([...globalTools, ...authenticatedRequest].map((tool) => tool.name));
+    const selectedFor = (routerSelectedSets: string[], hasSponsoredIntelligenceContext = false) => selectBoundedRoutedToolSets({
+      plan: {
+        action: 'respond',
+        tool_sets: routerSelectedSets,
+        confidence: 'high',
+        reason: 'inventory bounded web route',
+        decision_method: 'quick_match',
+      },
       routerAvailable: true,
       source: 'dm',
       isAdmin,
       hasSponsoredIntelligenceContext,
+      isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
     });
     const profileFor = (
       id: string,
-      selectedToolSets: string[],
+      selection: ReturnType<typeof selectBoundedRoutedToolSets>,
       conditionalMaximums: string[],
-      safeFallback = false,
     ) =>
       profile({
         id: `web_chat:${audience}:${id}`,
@@ -624,10 +631,8 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
         audience,
         globalTools,
         requestTools: authenticatedRequest,
-        allowedToolNames: safeFallback
-          ? defs.toolSets.getSafeReadOnlyFallbackTools()
-          : defs.toolSets.getToolsForSets(selectedToolSets, isAdmin),
-        selectedToolSets,
+        allowedToolNames: selection.allowedToolNames,
+        selectedToolSets: selection.selectedToolSets,
         providerToolCount: 1,
         conditionalMaximums,
       });
@@ -672,9 +677,14 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
     }
     const fallback = profileFor(
       'safe_fallback',
-      selectSlackToolSets({ routerAvailable: false, source: 'dm', isAdmin }),
+      selectBoundedRoutedToolSets({
+        plan: null,
+        routerAvailable: false,
+        source: 'dm',
+        isAdmin,
+        isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
+      }),
       ['router_unavailable', 'nonstreaming_web_search'],
-      true,
     );
     const activeCertification = ([
       ['active_certification_learning', 'learning'],
@@ -682,11 +692,19 @@ function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Pr
       ['active_certification_mixed', 'mixed'],
     ] as const).map(([id, activeCertificationKind]) => profileFor(
       id,
-      selectSlackToolSets({
+      selectBoundedRoutedToolSets({
+        plan: {
+          action: 'respond',
+          tool_sets: ['knowledge'],
+          confidence: 'high',
+          reason: 'inventory trusted certification session',
+          decision_method: 'quick_match',
+        },
         routerAvailable: true,
         source: 'dm',
         isAdmin,
         activeCertificationKind,
+        isToolAvailable: (name) => name === 'web_search' || availableToolNames.has(name),
       }),
       ['active_certification_session', 'nonstreaming_web_search'],
     ));
@@ -1025,6 +1043,33 @@ function assertCertificationWireContract(profiles: Profile[]): void {
   }
 }
 
+/**
+ * Web search is provider-managed: it intentionally has no custom definition
+ * or handler in the web inventory. Keep its availability treatment aligned
+ * with the runtime selector so a valid knowledge plan cannot be mistaken for
+ * an incomplete registration and silently become the broad safe fallback.
+ */
+function assertWebProviderManagedToolParity(profiles: Profile[]): void {
+  const errors: string[] = [];
+  for (const audience of ['authenticated_member', 'authenticated_admin']) {
+    const entry = profiles.find((profile) =>
+      profile.id === `web_chat:${audience}:routed:knowledge`);
+    if (!entry) {
+      errors.push(`Addie tool inventory has no web knowledge profile for ${audience}`);
+      continue;
+    }
+    if (JSON.stringify(entry.selected_tool_sets) !== JSON.stringify(['knowledge'])) {
+      errors.push(`${entry.id} must retain its exact knowledge route`);
+    }
+    if (JSON.stringify(entry.maximum_provider_tool_names) !== JSON.stringify(['web_search'])) {
+      errors.push(`${entry.id} must model provider-managed web_search`);
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`Web provider-managed tool parity failed:\n- ${errors.join('\n- ')}`);
+  }
+}
+
 function loadBudget(): BudgetFile | null {
   if (!fs.existsSync(BUDGET_FILE)) return null;
   const parsed = JSON.parse(fs.readFileSync(BUDGET_FILE, 'utf8')) as BudgetFile;
@@ -1102,6 +1147,7 @@ async function buildSnapshot() {
     buildBoundedReplayProfile(defs),
   ].sort((left, right) => left.id.localeCompare(right.id));
   assertCertificationWireContract(profiles);
+  assertWebProviderManagedToolParity(profiles);
   const routedNames = new Set([
     ...defs.toolSets.ALWAYS_AVAILABLE_TOOLS,
     ...defs.toolSets.ALWAYS_AVAILABLE_ADMIN_TOOLS,

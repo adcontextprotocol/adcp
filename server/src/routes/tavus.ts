@@ -720,6 +720,7 @@ export function createTavusRouter(options?: {
       isAAOAdmin: boolean;
       requestTools: RequestTools;
       globalToolNames?: readonly string[];
+      forceSafeFallback?: boolean;
     } | null = null;
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
@@ -754,6 +755,7 @@ export function createTavusRouter(options?: {
               memberContext: result.memberContext,
               isAAOAdmin: result.isAAOAdmin,
               requestTools: result.requestTools,
+              forceSafeFallback: true,
             };
           }
         }
@@ -911,7 +913,7 @@ export function createTavusRouter(options?: {
             message: spokenMessage,
             threadId: threadId!,
             threadMessages: threadContext.slice(-6).map((turn) => `${turn.user}: ${turn.text}`),
-            router: routerForTurn,
+            router: pendingVoiceToolSelection.forceSafeFallback ? null : routerForTurn,
             ...pendingVoiceToolSelection,
           });
         } catch (error) {

@@ -323,7 +323,7 @@ describe('mounted Addie web-thread ownership', () => {
     const streamOptions = chatClient.processMessageStream.mock.calls[0]?.[3];
 
     expect(jsonTools).toEqual(streamTools);
-    expect(jsonOptions.selectedToolSetNames).toEqual(['directory', 'knowledge']);
+    expect(jsonOptions.selectedToolSetNames).toEqual(['directory']);
     expect(streamOptions.selectedToolSetNames).toEqual(jsonOptions.selectedToolSetNames);
     expect(streamOptions.allowedToolNames).toEqual(jsonOptions.allowedToolNames);
   });
@@ -358,7 +358,7 @@ describe('mounted Addie web-thread ownership', () => {
 
     expect(siHostMocks.hasCachedSiSession).toHaveBeenCalledWith(conversationId);
     expect(processMessage.mock.calls[0]?.[optionsArgument]?.selectedToolSetNames)
-      .toEqual(['directory', 'knowledge', 'sponsored_intelligence']);
+      .toEqual(['directory', 'sponsored_intelligence']);
   });
 
   it('issues an HttpOnly owner capability cookie when an anonymous POST creates a thread', async () => {

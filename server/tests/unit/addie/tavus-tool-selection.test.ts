@@ -52,20 +52,14 @@ async function select(
 }
 
 describe('authenticated Tavus voice Addie tool routing', () => {
-  it('selects a bounded member domain and preserves paired request-local tools', async () => {
+  it('selects a bounded member domain without an implicit knowledge overlay', async () => {
     const router = routerFor(['member_billing']);
     const selected = await select(router);
 
-    expect(selected.selectedToolSets).toEqual(['member_billing', 'knowledge']);
+    expect(selected.selectedToolSets).toEqual(['member_billing']);
     expect(selected.allowedToolNames).toContain('create_payment_link');
-    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual([
-      'search_docs',
-      'create_payment_link',
-    ]);
-    expect([...selected.requestTools.handlers.keys()]).toEqual([
-      'search_docs',
-      'create_payment_link',
-    ]);
+    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual(['create_payment_link']);
+    expect([...selected.requestTools.handlers.keys()]).toEqual(['create_payment_link']);
     expect(router.route).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'Test spoken request',
@@ -76,6 +70,20 @@ describe('authenticated Tavus voice Addie tool routing', () => {
       }),
       { failureMode: 'throw' },
     );
+  });
+
+  it('preserves an explicit knowledge plus member-domain Tavus plan', async () => {
+    const selected = await select(routerFor(['knowledge', 'member_billing']));
+
+    expect(selected.selectedToolSets).toEqual(['knowledge', 'member_billing']);
+    expect(selected.requestTools.tools.map((tool) => tool.name)).toEqual([
+      'search_docs',
+      'create_payment_link',
+    ]);
+    expect([...selected.requestTools.handlers.keys()]).toEqual([
+      'search_docs',
+      'create_payment_link',
+    ]);
   });
 
   it('permits an admin domain only for an authenticated admin voice caller', async () => {
