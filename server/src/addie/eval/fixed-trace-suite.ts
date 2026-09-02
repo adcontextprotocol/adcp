@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v14';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v16';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -403,13 +403,34 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
     category: 'admin_read',
     privacy: 'synthetic',
     request: { source: 'dm', message: 'Find duplicate organizations before I review any merge.', nowUtc: NOW, isAdmin: true },
-    routing: { action: 'respond', toolSets: ['admin_organizations'] },
+    routing: { action: 'respond', toolSets: ['admin_organization_integrity'] },
     toolFixtures: [{ name: 'find_duplicate_orgs', effect: 'read', resultStatus: 'empty', result: 'No duplicate synthetic organizations found.' }],
     expectation: {
       terminalStatuses: ['complete'], requiredTools: ['find_duplicate_orgs'], allowedTools: ['find_duplicate_orgs'], forbiddenTools: ['merge_organizations'], mutationAuthorization: 'none',
       requiredTextAny: [['no duplicate', 'none']], maxWords: 100,
     },
     answerRubric: ['Reports the empty result without claiming a merge occurred.'],
+  },
+  {
+    id: 'admin-member-records-without-slack',
+    category: 'admin_read',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'List paying members who do not have Slack accounts.', nowUtc: NOW, isAdmin: true },
+    routing: { action: 'respond', toolSets: ['admin_organization_member_records'] },
+    toolFixtures: [
+      { name: 'list_paying_members', effect: 'read', resultStatus: 'ok', result: 'Synthetic paid member records: synthetic-member-alpha and synthetic-member-bravo.' },
+      { name: 'list_slack_users_by_org', effect: 'read', resultStatus: 'ok', result: 'Synthetic Slack roster: synthetic-member-alpha.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_paying_members', 'list_slack_users_by_org'],
+      allowedTools: ['list_paying_members', 'list_slack_users_by_org'],
+      forbiddenTools: ['update_org_member_role', 'update_member_logo', 'update_member_profile', 'merge_organizations'],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic-member-bravo', 'bravo']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports the synthetic read-only comparison without claiming any record changed.'],
   },
   {
     id: 'meeting-full-administration-confirmed',

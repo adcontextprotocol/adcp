@@ -7,6 +7,9 @@ import {
   AGENT_REGISTRY_TOOLS,
   AGENT_VALIDATION_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
+  ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
+  ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
+  ADMIN_ORGANIZATIONS_TOOLS,
   ALWAYS_AVAILABLE_ADMIN_TOOLS,
   ALWAYS_AVAILABLE_TOOLS,
   CERTIFICATION_ASSESSMENT_TOOLS,
@@ -94,7 +97,9 @@ describe('getToolsForSets', () => {
 
     it('generates the compact catalog from router-visible domains only', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_prospects**');
-      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organizations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -104,6 +109,45 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_overview**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_learning**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **certification_assessment**');
+    });
+
+    it('keeps organization integrity and member records separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_ORGANIZATION_INTEGRITY_TOOLS).toEqual([
+        'merge_organizations', 'find_duplicate_orgs', 'check_domain_health', 'manage_organization_domains',
+      ]);
+      expect(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS).toEqual([
+        'update_org_member_role', 'list_slack_users_by_org', 'list_paying_members', 'update_member_logo', 'update_member_profile',
+      ]);
+      expect(ADMIN_ORGANIZATIONS_TOOLS).toEqual([
+        ...ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
+        ...ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
+      ]);
+      expect(ADMIN_ORGANIZATIONS_TOOLS).toHaveLength(9);
+      expect(TOOL_SETS.admin_organizations.tools).toEqual(ADMIN_ORGANIZATIONS_TOOLS);
+      expect(TOOL_SETS.admin_organizations.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_organizations')).toBe(false);
+      for (const name of ['admin_organization_integrity', 'admin_organization_member_records']) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+      }
+      expect(getToolsForSets(['admin_organization_integrity'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_ORGANIZATION_INTEGRITY_TOOLS),
+      );
+      expect(getToolsForSets(['admin_organization_integrity'], true, false)).not.toEqual(
+        expect.arrayContaining(['update_org_member_role', 'list_paying_members']),
+      );
+      expect(getToolsForSets(['admin_organization_member_records'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS),
+      );
+      expect(getToolsForSets(['admin_organization_member_records'], true, false)).not.toEqual(
+        expect.arrayContaining(['merge_organizations', 'check_domain_health']),
+      );
+      expect(getToolsForSets(['admin_organizations'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_ORGANIZATIONS_TOOLS),
+      );
+      expect(getToolsForSets(['admin_organization_member_records'], false, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS),
+      );
     });
   });
 

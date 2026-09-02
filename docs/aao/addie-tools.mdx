@@ -1616,9 +1616,9 @@ Remove a user from a working group, council, chapter, or industry gathering. The
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_organizations (admin only)
+## admin_organization_integrity (admin only)
 
-Manage member organizations, domains, roles, directory profiles, and duplicate organizations (admin only)
+Diagnose and reconcile duplicate member organizations and their verified domains (admin only)
 
 ### `merge_organizations`
 
@@ -1643,6 +1643,10 @@ Check domain health for data quality issues: orphan domains, conflicts, misalign
 Add, remove, list, set primary, or reconcile verified domains for an organization. Syncs to WorkOS.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_organization_member_records (admin only)
+
+Manage organization-member roles, Slack rosters, paid-member records, and directory profiles (admin only)
 
 ### `update_org_member_role`
 
