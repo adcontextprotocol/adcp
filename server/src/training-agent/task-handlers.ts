@@ -1950,6 +1950,49 @@ function packageReadinessFields(pkg: PackageState, session: SessionState): Recor
 const MAX_URL_LEN = 2048;
 const MAX_ID_LEN = 256;
 const MAX_TOKEN_LEN = 4096;
+const DAYPART_IANA_TIMEZONE_SHAPE = /^[A-Za-z0-9._+-]+(?:\/[A-Za-z0-9._+-]+)*$/;
+
+function isValidDaypartTimezone(value: unknown): boolean {
+  if (value === undefined || value === 'inventory_local') return true;
+  if (typeof value !== 'string' || !DAYPART_IANA_TIMEZONE_SHAPE.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function validateDaypartTargets(value: unknown, pathLabel: string): TaskError[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length === 0) {
+    return [{
+      code: 'INVALID_REQUEST',
+      message: `${pathLabel}: must be a non-empty array`,
+      field: pathLabel,
+    }];
+  }
+  const errors: TaskError[] = [];
+  for (const [index, entry] of value.entries()) {
+    const entryPath = `${pathLabel}[${index}]`;
+    if (!isRecord(entry)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}: must be an object`,
+        field: entryPath,
+      });
+      continue;
+    }
+    if (!isValidDaypartTimezone(entry.timezone)) {
+      errors.push({
+        code: 'INVALID_REQUEST',
+        message: `${entryPath}.timezone: must be inventory_local, UTC, or a valid IANA timezone identifier`,
+        field: `${entryPath}.timezone`,
+      });
+    }
+  }
+  return errors;
+}
 
 function validateListRef(ref: unknown, pathLabel: string): { ref?: ListReference; error?: TaskError } {
   if (ref === undefined || ref === null) return {};
@@ -2004,6 +2047,7 @@ function validateTargeting(t: unknown, pathLabel: string): { targeting?: Package
   };
   const audienceInclude = validateAudienceIds(src.audience_include, 'audience_include');
   const audienceExclude = validateAudienceIds(src.audience_exclude, 'audience_exclude');
+  errors.push(...validateDaypartTargets(src.daypart_targets, `${pathLabel}.daypart_targets`));
   if (pl.error) errors.push(pl.error);
   if (ple.error) errors.push(ple.error);
   if (cl.error) errors.push(cl.error);
@@ -7123,8 +7167,18 @@ function compactLifecycleProduct(
  * use subset semantics; nested objects use recursive containment. Seller-only
  * limits and provenance fields are ignored because the buyer did not request
  * them. */
-function overlaySupportContains(support: unknown, requirement: unknown): boolean {
-  if (support === true) return true;
+function overlaySupportContains(
+  support: unknown,
+  requirement: unknown,
+  capabilityField?: string,
+): boolean {
+  if (support === true) {
+    if (capabilityField === 'daypart_targets' && isRecord(requirement)) {
+      const modes = requirement.timezone_modes;
+      return Array.isArray(modes) && modes.every(mode => mode === 'inventory_local');
+    }
+    return true;
+  }
   if (requirement === true) return support === true || isRecord(support);
   if (Array.isArray(requirement)) {
     return Array.isArray(support)
@@ -7135,12 +7189,29 @@ function overlaySupportContains(support: unknown, requirement: unknown): boolean
   return Object.entries(requirement).every(([field, requiredValue]) => {
     if (field === 'ext') return true;
     return support[field] !== undefined
-      && overlaySupportContains(support[field], requiredValue);
+      && overlaySupportContains(support[field], requiredValue, field);
   });
 }
 
 function concreteTargetingSupported(field: string, support: unknown, value: unknown): boolean {
-  if (support === true) return true;
+  if (
+    field === 'daypart_targets'
+    && (
+      !Array.isArray(value)
+      || value.length === 0
+      || value.some(entry => !isRecord(entry) || !isValidDaypartTimezone(entry.timezone))
+    )
+  ) {
+    // Input validation owns malformed and unknown-zone errors; capability
+    // matching must not turn them into UNSUPPORTED_FEATURE.
+    return true;
+  }
+  if (support === true) {
+    if (field !== 'daypart_targets') return true;
+    return Array.isArray(value) && value.every(entry => (
+      isRecord(entry) && (entry.timezone === undefined || entry.timezone === 'inventory_local')
+    ));
+  }
   if (!isRecord(support)) return false;
   if (field === 'placement_selection') {
     if (!isRecord(value) || value.mode === 'default') return isRecord(value);
@@ -7206,6 +7277,20 @@ function concreteTargetingSupported(field: string, support: unknown, value: unkn
         && typeof entry.match_type === 'string'
         && supportedMatchTypes.includes(entry.match_type)
       ));
+    }
+    if (field === 'daypart_targets') {
+      const timezoneModes = support.timezone_modes;
+      return Array.isArray(timezoneModes) && value.every(entry => {
+        if (!isRecord(entry)) return false;
+        const timezone = entry.timezone ?? 'inventory_local';
+        if (typeof timezone !== 'string') return false;
+        const mode = timezone === 'inventory_local' ? 'inventory_local' : 'iana';
+        if (!timezoneModes.includes(mode)) return false;
+        if (mode === 'inventory_local') return true;
+        const ianaTimezones = support.iana_timezones;
+        return ianaTimezones === true
+          || (Array.isArray(ianaTimezones) && ianaTimezones.includes(timezone));
+      });
     }
     if (field === 'geo_proximity') {
       const supportedTransportModes = support.transport_modes;
@@ -9422,6 +9507,29 @@ async function handleGetProductsUnlocked(
       }] as TaskError[],
     };
   }
+  const request = req as unknown as Record<string, unknown>;
+  const discoveryDaypartErrors: TaskError[] = [];
+  if (isRecord(request.targeting_overlay)) {
+    discoveryDaypartErrors.push(...validateDaypartTargets(
+      request.targeting_overlay.daypart_targets,
+      'targeting_overlay.daypart_targets',
+    ));
+  }
+  if (isRecord(request.required_overlay_support)
+    && isRecord(request.required_overlay_support.daypart_targets)
+    && Array.isArray(request.required_overlay_support.daypart_targets.iana_timezones)) {
+    for (const [index, timezone] of request.required_overlay_support.daypart_targets.iana_timezones.entries()) {
+      if (timezone === 'inventory_local' || !isValidDaypartTimezone(timezone)) {
+        const field = `required_overlay_support.daypart_targets.iana_timezones[${index}]`;
+        discoveryDaypartErrors.push({
+          code: 'INVALID_REQUEST',
+          message: `${field}: must be a valid IANA timezone identifier`,
+          field,
+        });
+      }
+    }
+  }
+  if (discoveryDaypartErrors.length > 0) return { errors: discoveryDaypartErrors };
   if (buyingMode !== 'wholesale' && (req as WholesaleFeedRequest).if_wholesale_feed_version !== undefined) {
     return {
       errors: [{
@@ -13985,7 +14093,18 @@ async function handleCreateMediaBuyUnlocked(
           targetingPath,
           )
           : { targeting: requestedTargeting };
-    if (resolvedTargeting.errorPath) {
+    const ordinaryDaypartError = requestedTargeting?.daypart_targets !== undefined
+      && configuredTargeting === undefined
+      && inherentPlacementMatch === undefined
+      ? concreteTargetingError(
+        product,
+        { daypart_targets: requestedTargeting.daypart_targets },
+        targetingPath,
+      )
+      : undefined;
+    if (ordinaryDaypartError) {
+      errors.push(ordinaryDaypartError);
+    } else if (resolvedTargeting.errorPath) {
       errors.push({
         code: 'UNSUPPORTED_FEATURE',
         message: `${pkgLabel}: Targeting is not supported by the selected product.`,
@@ -16067,12 +16186,19 @@ async function handleUpdateMediaBuyUnlocked(
     const inherentPlacementMatch = product
       ? matchesInherentPlacementSelection(product, requested)
       : undefined;
-    const targetingError = product && (
+    const enforceFullTargeting = product && (
       packageState.productId.startsWith('configured_')
       || inherentPlacementMatch !== undefined
-    )
+    );
+    const targetingError = enforceFullTargeting
       ? concreteTargetingError(product, requested, targetingPath)
-      : undefined;
+      : product && requested.daypart_targets !== undefined
+        ? concreteTargetingError(
+          product,
+          { daypart_targets: requested.daypart_targets },
+          targetingPath,
+        )
+        : undefined;
     if (targetingError) return { errors: [targetingError] };
     const support = product && isRecord((product as unknown as Record<string, unknown>).overlay_support)
       ? (product as unknown as Record<string, unknown>).overlay_support as Record<string, unknown>

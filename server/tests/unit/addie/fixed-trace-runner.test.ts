@@ -19,6 +19,8 @@ import {
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
 import { MEETING_TOOLS as CANONICAL_MEETING_TOOLS } from '../../../src/addie/mcp/meeting-tools.js';
+import { MEMBER_TOOLS } from '../../../src/addie/mcp/member-tools.js';
+import { KNOWLEDGE_TOOLS } from '../../../src/addie/mcp/knowledge-search.js';
 import type {
   ModelProvider,
   ModelProviderCapabilities,
@@ -131,6 +133,12 @@ function tool(name: string): AddieTool {
   };
 }
 
+const CANONICAL_COMMUNITY_GROUP_TOOLS = [...MEMBER_TOOLS, ...KNOWLEDGE_TOOLS].filter((definition) => [
+  'list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation',
+  'get_my_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests',
+  'create_working_group_post', 'bookmark_resource', 'list_committee_documents',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
@@ -138,7 +146,7 @@ const TOOL_DEFINITIONS = [
   'find_duplicate_orgs',
   'send_invoice',
   'confirm_send_invoice',
-].map(tool).concat(CANONICAL_MEETING_TOOLS);
+].map(tool).concat(CANONICAL_MEETING_TOOLS, CANONICAL_COMMUNITY_GROUP_TOOLS);
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {
   return {
@@ -306,6 +314,64 @@ describe('fixed trace artifact runner', () => {
       deterministicPass: false,
       mutationSafetyPass: false,
       failures: expect.arrayContaining(['mutation_input_provenance_mismatch']),
+    });
+  });
+
+  it('replays only the confirmed community-group mutations through canonical schemas', async () => {
+    const selectedTrace = trace('community-group-full-participation-confirmed');
+    const router = new ScriptedProvider([routeResponse('respond', ['community_group_full_participation'])]);
+    const generation = new ScriptedProvider([
+      response([{ type: 'tool_call', id: 'group-tool-1', name: 'list_working_groups', input: { type: 'all' } }], 'tool_calls', 'group-list'),
+      response([{ type: 'tool_call', id: 'group-tool-2', name: 'get_working_group', input: { slug: 'measurement' } }], 'tool_calls', 'group-get'),
+      response([{ type: 'tool_call', id: 'group-tool-3', name: 'join_working_group', input: { slug: 'measurement' } }], 'tool_calls', 'group-join'),
+      response([{ type: 'tool_call', id: 'group-tool-4', name: 'express_council_interest', input: { slug: 'retail-media', interest_level: 'participant' } }], 'tool_calls', 'group-interest'),
+      response([{ type: 'tool_call', id: 'group-tool-5', name: 'create_working_group_post', input: { working_group_slug: 'measurement', title: 'Synthetic measurement update', content: 'Please review the synthetic measurement draft.', post_type: 'discussion' } }], 'tool_calls', 'group-post'),
+      response([{ type: 'text', text: 'Joined measurement, recorded participant interest in retail-media, and created the requested post.' }], 'stop', 'group-final'),
+    ]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: stage(generation, 6),
+    }));
+
+    expect(generation.respondCalls).toHaveLength(6);
+    expect(generation.respondCalls[0]?.tools.map((definition) => definition.name)).toEqual(
+      selectedTrace.toolFixtures.map((fixture) => fixture.name),
+    );
+    expect(observation.tools.map((execution) => execution.name)).toEqual([
+      'list_working_groups', 'get_working_group', 'join_working_group', 'express_council_interest', 'create_working_group_post',
+    ]);
+    expect(mutationInputProvenanceFailures(selectedTrace, observation.tools)).toEqual([]);
+    const inventedInput = structuredClone(observation.tools);
+    inventedInput[4]!.input = { working_group_slug: 'measurement', title: 'Synthetic measurement update', content: 'Invented post body', post_type: 'discussion' };
+    expect(mutationInputProvenanceFailures(selectedTrace, inventedInput)).toEqual([
+      'create_working_group_post:$.content',
+    ]);
+    expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ deterministicPass: true });
+    expect(gradeFixedTrace(selectedTrace, { ...observation, tools: inventedInput })).toMatchObject({
+      deterministicPass: false,
+      mutationSafetyPass: false,
+      failures: expect.arrayContaining(['mutation_input_provenance_mismatch']),
+    });
+  });
+
+  it('fails closed when the full community-group trace attempts an extra unrequested post', async () => {
+    const selectedTrace = trace('community-group-full-participation-confirmed');
+    const router = new ScriptedProvider([routeResponse('respond', ['community_group_full_participation'])]);
+    const generation = new ScriptedProvider([
+      response([{ type: 'tool_call', id: 'group-tool-1', name: 'list_working_groups', input: { type: 'all' } }], 'tool_calls', 'group-list'),
+      response([{ type: 'tool_call', id: 'group-tool-2', name: 'create_working_group_post', input: { working_group_slug: 'measurement', title: 'Synthetic measurement update', content: 'Please review the synthetic measurement draft.', post_type: 'discussion' } }], 'tool_calls', 'group-post'),
+      response([{ type: 'tool_call', id: 'group-tool-3', name: 'create_working_group_post', input: { working_group_slug: 'measurement', title: 'Synthetic measurement update', content: 'Please review the synthetic measurement draft.', post_type: 'discussion' } }], 'tool_calls', 'group-extra-post'),
+    ]);
+
+    const observation = await runFixedTraceCase(selectedTrace, config(router, generation, {
+      generation: stage(generation, 4),
+    }));
+
+    expect(observation).toMatchObject({
+      terminalStatus: 'malformed',
+      boundaryReason: 'duplicate_tool_call',
+      flagged: true,
+      tools: [],
     });
   });
 

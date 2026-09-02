@@ -37,6 +37,8 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
     ORGANIZATION_DOMAINS_READ: "organization_domains_read",
     ORGANIZATION_PENDING_JOIN_REQUEST_COUNT_READ:
       "organization_pending_join_request_count_read",
+    ORGANIZATION_PENDING_JOIN_REQUESTS_READ:
+      "organization_pending_join_requests_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -193,6 +195,24 @@ describe("organization authorization runtime admin setting", () => {
       {
         enabled: true,
         boundaries: ["organization_pending_join_request_count_read"],
+      },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("persists the pending-requests boundary independently", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_pending_join_requests_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      {
+        enabled: true,
+        boundaries: ["organization_pending_join_requests_read"],
       },
       "user_authenticated_admin",
     );

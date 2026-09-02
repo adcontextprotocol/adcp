@@ -181,6 +181,10 @@
           "$ref": "/schemas/core/targeting-overlay-requirements.json",
           "description": "Buyer requirements for product-scoped targeting dimensions that must remain selectable on packages"
         },
+        "iana-timezone": {
+          "$ref": "/schemas/core/iana-timezone.json",
+          "description": "Concrete IANA Time Zone Database identifier"
+        },
         "geo-region-requirement": {
           "$ref": "/schemas/core/geo-region-requirement.json",
           "description": "Buyer country/value requirements for ISO subdivision targeting selected later"
@@ -1557,6 +1561,10 @@
         "transport-mode": {
           "$ref": "/schemas/enums/transport-mode.json",
           "description": "Transportation modes for isochrone-based catchment area calculations (walking, cycling, driving, public_transport)"
+        },
+        "daypart-timezone-mode": {
+          "$ref": "/schemas/enums/daypart-timezone-mode.json",
+          "description": "Supported clock mode for daypart targeting"
         },
         "distance-unit": {
           "$ref": "/schemas/enums/distance-unit.json",

@@ -12,7 +12,12 @@ import {
   CERTIFICATION_ASSESSMENT_TOOLS,
   CERTIFICATION_LEARNING_TOOLS,
   CERTIFICATION_OVERVIEW_TOOLS,
+  COMMUNITY_GROUP_CONTRIBUTION_TOOLS,
+  COMMUNITY_GROUP_DISCOVERY_TOOLS,
+  COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
+  COMMUNITY_GROUP_MEMBERSHIP_TOOLS,
   COMMUNITY_GROUP_TOOLS,
+  COUNCIL_INTEREST_TOOLS,
   MEMBER_PROFILE_TOOLS,
   MEETING_ATTENDANCE_TOOLS,
   MEETING_FULL_ADMINISTRATION_TOOLS,
@@ -385,7 +390,11 @@ describe('getToolsForSets', () => {
   describe('bounded member-facing domains', () => {
     it.each([
       ['member_profile', 7],
-      ['community_groups', 11],
+      ['community_group_discovery', 4],
+      ['community_group_membership', 4],
+      ['council_interest', 4],
+      ['community_group_contribution', 3],
+      ['community_group_full_participation', 11],
       ['publishing_author', 6],
       ['publishing_review', 4],
       ['publishing_promotion', 2],
@@ -409,16 +418,41 @@ describe('getToolsForSets', () => {
       expect(TOOL_SETS[name].tools.length).toBeLessThanOrEqual(12);
     });
 
-    it('keeps profile and community-group routes visible', () => {
+    it('keeps narrow group routes visible and the exact legacy union hidden', () => {
       expect(MEMBER_PROFILE_TOOLS).toHaveLength(7);
       expect(COMMUNITY_GROUP_TOOLS).toHaveLength(11);
+      expect(COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS).toEqual(COMMUNITY_GROUP_TOOLS);
+      expect(COMMUNITY_GROUP_TOOLS).toBe(COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS);
+      expect(COMMUNITY_GROUP_DISCOVERY_TOOLS).toEqual([
+        'list_working_groups', 'get_working_group', 'get_my_working_groups', 'list_committee_documents',
+      ]);
+      expect(COMMUNITY_GROUP_MEMBERSHIP_TOOLS).toEqual([
+        'list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation',
+      ]);
+      expect(COUNCIL_INTEREST_TOOLS).toEqual([
+        'list_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests',
+      ]);
+      expect(COMMUNITY_GROUP_CONTRIBUTION_TOOLS).toEqual([
+        'get_my_working_groups', 'create_working_group_post', 'bookmark_resource',
+      ]);
       expect(getValidToolSetNames(false).has('member_profile')).toBe(true);
-      expect(getValidToolSetNames(false).has('community_groups')).toBe(true);
+      for (const name of [
+        'community_group_discovery', 'community_group_membership', 'council_interest',
+        'community_group_contribution', 'community_group_full_participation',
+      ]) {
+        expect(getValidToolSetNames(false).has(name), name).toBe(true);
+      }
+      expect(TOOL_SETS.community_groups.tools).toEqual(COMMUNITY_GROUP_TOOLS);
+      expect(TOOL_SETS.community_groups.routerVisible).toBe(false);
+      expect(getValidToolSetNames(false).has('community_groups')).toBe(false);
     });
 
     it('keeps profile, community-group, and bounded publishing workflows isolated', () => {
       const profile = getToolsForSets(['member_profile'], false, false);
-      const groups = getToolsForSets(['community_groups'], false, false);
+      const discovery = getToolsForSets(['community_group_discovery'], false, false);
+      const membership = getToolsForSets(['community_group_membership'], false, false);
+      const councilInterest = getToolsForSets(['council_interest'], false, false);
+      const contribution = getToolsForSets(['community_group_contribution'], false, false);
       const author = getToolsForSets(['publishing_author'], false, false);
       const review = getToolsForSets(['publishing_review'], false, false);
       const promotion = getToolsForSets(['publishing_promotion'], false, false);
@@ -426,10 +460,17 @@ describe('getToolsForSets', () => {
       expect(profile).toContain('get_my_profile');
       expect(profile).not.toContain('join_working_group');
       expect(profile).not.toContain('draft_social_posts');
-      expect(groups).toContain('join_working_group');
-      expect(groups).toContain('bookmark_resource');
-      expect(groups).not.toContain('get_my_profile');
-      expect(groups).not.toContain('attach_content_asset');
+      expect(discovery).toEqual(expect.arrayContaining(['list_working_groups', 'get_working_group', 'get_my_working_groups', 'list_committee_documents']));
+      expect(discovery).not.toContain('join_working_group');
+      expect(membership).toEqual(expect.arrayContaining(['list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation']));
+      expect(membership).not.toContain('express_council_interest');
+      expect(councilInterest).toEqual(expect.arrayContaining(['list_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests']));
+      expect(councilInterest).not.toContain('join_working_group');
+      expect(contribution).toContain('create_working_group_post');
+      expect(contribution).toContain('get_my_working_groups');
+      expect(contribution).toContain('bookmark_resource');
+      expect(contribution).not.toContain('get_my_profile');
+      expect(contribution).not.toContain('attach_content_asset');
       expect(author).toContain('propose_content');
       expect(author).toContain('attach_content_asset');
       expect(author).not.toContain('approve_content');

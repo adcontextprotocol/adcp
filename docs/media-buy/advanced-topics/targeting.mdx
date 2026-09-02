@@ -43,6 +43,46 @@ When the buyer wants package-level control over specific selectable signals that
 
 Products can also expose `included_signals` for signals already bundled into or planned into the product. Those signals are descriptive product metadata, not package-level targeting controls, and buyers do not echo them in `signal_targeting_groups`.
 
+## Daypart timezone semantics
+
+Every `daypart_targets` entry uses either `inventory_local` or a concrete IANA timezone identifier:
+
+```json
+{
+  "targeting_overlay": {
+    "daypart_targets": [
+      {
+        "days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        "start_hour": 9,
+        "end_hour": 11,
+        "timezone": "America/New_York"
+      }
+    ]
+  }
+}
+```
+
+`inventory_local` evaluates the window in the seller-assigned local civil time of each inventory unit that can deliver the impression—for example, 9–11am at each screen, venue, broadcast station, or publisher property. It never means the buyer, account, or server timezone. A concrete IANA zone evaluates one civil-time clock across all targeted inventory—for example, 9–11am New York time everywhere. Omitting `timezone` defaults to `inventory_local`. Numeric UTC offsets are invalid because they do not define daylight-saving transitions, and sellers MUST validate concrete identifiers against their supported IANA timezone database. A syntactically valid but unknown identifier is `INVALID_REQUEST`.
+
+There is no `user_timezone` or `account_timezone` daypart value. A buyer starting from either preference resolves it to a concrete IANA identifier before sending the request, so later preference changes cannot reinterpret an existing schedule. The daypart delivery clock is independent of `reporting_capabilities.timezone`, which controls report bucketing only.
+
+Evaluate a window by converting each candidate delivery instant into the selected civil clock, then comparing the resulting local day and hour with the half-open `[start_hour, end_hour)` interval. A skipped hour during a spring DST transition has no matching instants; both occurrences of a repeated hour during a fall transition match. Entries are independent and may use different clocks. Sellers MUST NOT silently reinterpret a requested clock. At create or update time, a valid timezone or mode outside the selected product's declared support returns [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
+
+Support is product-scoped because one seller may route products through different scheduling systems. For backward compatibility, `daypart_targets: true` means `inventory_local` support only. Concrete IANA execution is explicitly opt-in, and the product declares whether it accepts every valid zone or only an exact subset:
+
+```json
+{
+  "overlay_support": {
+    "daypart_targets": {
+      "timezone_modes": ["inventory_local", "iana"],
+      "iana_timezones": ["America/New_York", "America/Chicago"]
+    }
+  }
+}
+```
+
+`iana_timezones: true` advertises every valid identifier in the seller's supported IANA database instead of an exact list. Buyers that will choose dayparts after discovery can require one or both modes through `required_overlay_support.daypart_targets`; they can also include `iana_timezones` to require specific zones. The product declaration—not a seller-wide capability—is the binding execution contract.
+
 ## Browser-family targeting
 
 Use `targeting_overlay.browser` and `targeting_overlay.browser_exclude` for portable browser-family constraints. The fields intentionally stop at families: browser versions, user-agent strings, backend segment IDs, and arbitrary ad-server key/value expressions are not part of the contract.
