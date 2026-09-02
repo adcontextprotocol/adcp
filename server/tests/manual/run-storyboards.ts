@@ -279,10 +279,6 @@ const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
     'media_buy_seller/canonical_formats/reject_unprojectable_legacy_dual_emission',
     'The SDK drops an unprojectable deprecated format_ids route before the platform can return UNSUPPORTED_FEATURE. Raw receiver behavior is covered by training-agent unit tests. Remove when the SDK exposes unresolved legacy routes to the receiver.',
   ],
-  [
-    'media_buy_seller/owner_sold_channel_carriage/reject_bulk_grant_form_selection',
-    'The SDK rejects this intentionally schema-invalid request before dispatch but does not normalize the local validation failure to the authored INVALID_REQUEST error code (adcontextprotocol/adcp-client#2813). The schema-valid unknown-ID and mismatched-domain rejection legs remain graded. Remove when the storyboard runner recognizes local request-schema rejection for negative_path: schema_invalid.',
-  ],
 ]);
 
 const THREE_ZERO_COMPAT_KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
@@ -439,19 +435,6 @@ function patchStoryboardForLocalRunner(sb: Storyboard): Storyboard {
         // local semantic assertion is suppressed until the SDK is directional.
         step.validations = (step.validations ?? [])
           .filter(validation => validation.check !== 'canonical_format_satisfaction');
-      }
-    }
-  }
-
-  if (sb.id === 'media_buy_seller/owner_sold_channel_carriage') {
-    patched = structuredClone(patched) as Storyboard;
-    for (const phase of patched.phases ?? []) {
-      for (const step of phase.steps ?? []) {
-        if (step.id !== 'reject_bulk_grant_form_selection') continue;
-        // The SDK-local schema rejection is recorded as a compatibility skip
-        // after the run. Keep the independent, schema-valid rejection probes
-        // executable instead of letting this pre-dispatch failure cascade.
-        step.stateful = false;
       }
     }
   }

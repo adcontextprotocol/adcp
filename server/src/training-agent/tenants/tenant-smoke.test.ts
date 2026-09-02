@@ -14,6 +14,7 @@ import { clearIdempotencyCache } from '../idempotency.js';
 import {
   clearSessions,
   flushDirtySessions,
+  findSessionsMatching,
   getSession,
   registerSharedPublicBrandPartition,
   runWithSessionContext,
@@ -3227,6 +3228,57 @@ describe('tenant routing smoke', () => {
       expect(packages?.every(pkg => JSON.stringify(pkg.format_ids) === JSON.stringify([legacyFormat]))).toBe(true);
       expect(packages?.every(pkg => !Object.hasOwn(pkg, 'format_option_refs'))).toBe(true);
       expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+    } finally {
+      await close();
+    }
+  }, 30000);
+
+  it('rejects selected collection selectors without collection_ids before creating a media buy', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/sales/mcp`;
+      await initializeTenant(url);
+      const account = {
+        brand: { domain: 'invalid-collection-selector.example' },
+        operator: 'pinnacle-agency.example',
+        sandbox: true,
+      };
+      const response = await callTenantTool(url, 75, 'create_media_buy', {
+        adcp_version: '3.2-beta.10',
+        idempotency_key: 'invalid-collection-selector-create-0001',
+        account,
+        brand: account.brand,
+        start_time: '2027-06-01T00:00:00Z',
+        end_time: '2027-07-01T00:00:00Z',
+        packages: [{
+          product_id: 'retro_news_owner_sold',
+          pricing_option_id: 'retro_news_cpm',
+          budget: 5_000,
+          bid_price: 20,
+          targeting_overlay: {
+            collection_selection: {
+              mode: 'selected',
+              collections: [{ publisher_domain: 'channel-owner.example' }],
+            },
+          },
+        }],
+      }) as {
+        result?: {
+          structuredContent?: {
+            adcp_error?: { code?: string; field?: string };
+            media_buy_id?: string;
+          };
+        };
+      };
+
+      expect(response.result?.structuredContent).toMatchObject({
+        adcp_error: {
+          code: 'INVALID_REQUEST',
+          field: 'packages[0].targeting_overlay.collection_selection.collections[0].collection_ids',
+        },
+      });
+      expect(response.result?.structuredContent?.media_buy_id).toBeUndefined();
+      expect(await findSessionsMatching(session => session.mediaBuys.size > 0)).toEqual([]);
     } finally {
       await close();
     }
