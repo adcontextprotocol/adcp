@@ -923,7 +923,9 @@ export function buildShowsForProducts(products: Product[]): ShowResponse[] {
     const collections = (p as Product & { collections?: CollectionSelector[] }).collections;
     if (collections) {
       for (const selector of collections) {
-        selector.collection_ids.forEach((id: string) => referencedIds.add(id));
+        // Product composition requires explicit IDs; the shared selector type
+        // is optional only for authorization-scoping bulk grants.
+        selector.collection_ids!.forEach((id: string) => referencedIds.add(id));
       }
     }
   }

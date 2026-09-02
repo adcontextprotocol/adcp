@@ -80,10 +80,15 @@ function normalizedConfig(config: InputNotificationConfig): AgentNotificationCon
   if (url.protocol !== 'https:' || !hostname || isPrivateHostname(hostname)) {
     throw new Error('notification URL must be a public HTTPS endpoint');
   }
+  const eventTypes = [...new Set(config.event_types)].sort();
+  const firstEventType = eventTypes[0];
+  if (!firstEventType) {
+    throw new Error('notification config must include at least one event type');
+  }
   return {
     ...structuredClone(config),
     url: normalizedUrl,
-    event_types: [...new Set(config.event_types)].sort() as ['capabilities.changed'],
+    event_types: [firstEventType, ...eventTypes.slice(1)],
     active: config.active ?? true,
   };
 }
