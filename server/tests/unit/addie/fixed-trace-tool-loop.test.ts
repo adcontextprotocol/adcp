@@ -225,7 +225,7 @@ describe('executeFixedTraceToolLoop', () => {
       }], 'tool_use', 'msg_1'))
       .mockResolvedValueOnce(anthropicResponse([{
         type: 'tool_use', id: 'tool_2', name: 'add_meeting_attendee', input: {
-          meeting_id: 'synthetic-meeting-1', email: 'new-attendee@synthetic.invalid', add_to_series: true,
+          meeting_id: 'synthetic-meeting-1', email: 'new-attendee-at-synthetic-invalid', add_to_series: true,
         },
       }], 'tool_use', 'msg_2'))
       .mockResolvedValueOnce(anthropicResponse([{

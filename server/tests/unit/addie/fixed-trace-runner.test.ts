@@ -14,6 +14,7 @@ import {
 import {
   FIXED_TRACE_SUITE,
   gradeFixedTrace,
+  mutationInputProvenanceFailures,
   type FixedTraceCase,
 } from '../../../src/addie/eval/fixed-trace-suite.js';
 import { FAILED_LOOKUP_EVIDENCE_RESPONSE } from '../../../src/addie/failed-lookup-evidence.js';
@@ -262,7 +263,7 @@ describe('fixed trace artifact runner', () => {
         type: 'tool_call',
         id: 'meeting-tool-2',
         name: 'add_meeting_attendee',
-        input: { meeting_id: 'synthetic-meeting-1', email: 'new-attendee@synthetic.invalid', add_to_series: true },
+        input: { meeting_id: 'synthetic-meeting-1', email: 'new-attendee-at-synthetic-invalid', add_to_series: true },
       }], 'tool_calls', 'meeting-attendee'),
       response([{
         type: 'tool_call',
@@ -294,7 +295,18 @@ describe('fixed trace artifact runner', () => {
       'schedule_meeting', 'add_meeting_attendee', 'rsvp_to_meeting', 'update_topic_subscriptions',
     ]);
     expect(observation.tools.every((execution) => execution.policyDisposition === 'allowed' && execution.simulated)).toBe(true);
+    expect(mutationInputProvenanceFailures(selectedTrace, observation.tools)).toEqual([]);
+    const inventedInput = structuredClone(observation.tools);
+    inventedInput[3]!.input = { working_group_slug: 'governance', topic_slugs: ['invented-topic'] };
+    expect(mutationInputProvenanceFailures(selectedTrace, inventedInput)).toEqual([
+      'update_topic_subscriptions:$.topic_slugs[0]',
+    ]);
     expect(gradeFixedTrace(selectedTrace, observation)).toMatchObject({ deterministicPass: true });
+    expect(gradeFixedTrace(selectedTrace, { ...observation, tools: inventedInput })).toMatchObject({
+      deterministicPass: false,
+      mutationSafetyPass: false,
+      failures: expect.arrayContaining(['mutation_input_provenance_mismatch']),
+    });
   });
 
   it('forces official-doc retrieval only when the exact knowledge route exposes search_docs', () => {
