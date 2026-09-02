@@ -334,8 +334,12 @@ describe('Addie tool reference', () => {
       selectedToolSetNames: ['member_profile'],
     });
     const groups = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['community_groups'], false, false),
-      selectedToolSetNames: ['community_groups'],
+      availableToolNames: getToolsForSets(['community_group_discovery'], false, false),
+      selectedToolSetNames: ['community_group_discovery'],
+    });
+    const contribution = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['community_group_contribution'], false, false),
+      selectedToolSetNames: ['community_group_contribution'],
     });
     const promotion = buildAddieToolReference({
       availableToolNames: getToolsForSets(['publishing_promotion'], false, false),
@@ -357,9 +361,12 @@ describe('Addie tool reference', () => {
     expect(profile).toContain('### Member profile and company-listing operations');
     expect(profile).not.toContain('### Working-group operations');
     expect(profile).not.toContain('### Member content operations');
-    expect(groups).toContain('### Working-group operations');
+    expect(groups).toContain('### Working-group discovery');
     expect(groups).not.toContain('### Member profile and company-listing operations');
     expect(groups).not.toContain('### Member content operations');
+    expect(contribution).toContain('### Working-group contribution');
+    expect(contribution).toContain('bookmark_resource: Save only a community resource whose URL, title, and reason are explicitly supplied or grounded by an earlier tool result. Never invent a required scalar.');
+    expect(contribution).toContain('- **community_group_contribution** — get_my_working_groups, create_working_group_post, bookmark_resource');
     expect(promotion).toContain('### Member content operations');
     expect(promotion).not.toContain('### Working-group operations');
     expect(profile).not.toContain('### Meeting operations');
@@ -394,6 +401,24 @@ describe('Addie tool reference', () => {
     expect(reference).toContain('### Recurring meeting series and topics');
     expect(reference).not.toContain('### Full meeting administration');
     expect(reference).not.toContain('- **meeting_full_administration**');
+  });
+
+  it('omits duplicate full-community-group guidance only from the synthetic all-domain profile', () => {
+    const selectedToolSetNames = [
+      'community_group_discovery', 'community_group_membership', 'council_interest',
+      'community_group_contribution', 'community_group_full_participation',
+    ];
+    const reference = buildAddieToolReference({
+      availableToolNames: getToolsForSets(selectedToolSetNames, false, false),
+      selectedToolSetNames,
+    });
+
+    expect(reference).toContain('### Working-group discovery');
+    expect(reference).toContain('### Working-group membership');
+    expect(reference).toContain('### Council interest');
+    expect(reference).toContain('### Working-group contribution');
+    expect(reference).not.toContain('### Full community-group participation');
+    expect(reference).not.toContain('- **community_group_full_participation**');
   });
 
   it('scopes publishing, GitHub, and illustration safety to their routed domains', () => {
@@ -855,7 +880,7 @@ describe('Addie tool reference', () => {
     expect(missing).toEqual([]);
   });
 
-  it('keeps the visible full-meeting composite exact in generated docs and catalog', async () => {
+  it('keeps visible full-workflow composites exact in generated docs and catalog', async () => {
     const fullMeetingTools = [
       'schedule_meeting', 'list_upcoming_meetings', 'get_my_meetings',
       'get_meeting_details', 'rsvp_to_meeting', 'cancel_meeting',
@@ -876,6 +901,22 @@ describe('Addie tool reference', () => {
       .toEqual(fullMeetingTools);
     expect(catalog).toContain(
       `- **meeting_full_administration** — ${fullMeetingTools.join(', ')}`,
+    );
+
+    const fullCommunityGroupTools = [
+      'list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation',
+      'get_my_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests',
+      'create_working_group_post', 'bookmark_resource', 'list_committee_documents',
+    ];
+    const groupSectionStart = mdx.indexOf('## community_group_full_participation');
+    const groupSectionEnd = mdx.indexOf('\n## ', groupSectionStart + 1);
+    const groupSection = mdx.slice(groupSectionStart, groupSectionEnd === -1 ? undefined : groupSectionEnd);
+
+    expect(groupSectionStart).toBeGreaterThanOrEqual(0);
+    expect(Array.from(groupSection.matchAll(/^### `([a-z_][a-z_0-9]*)`/gm)).map((match) => match[1]))
+      .toEqual(fullCommunityGroupTools);
+    expect(catalog).toContain(
+      `- **community_group_full_participation** — ${fullCommunityGroupTools.join(', ')}`,
     );
   });
 });

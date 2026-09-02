@@ -142,8 +142,14 @@ describe('Addie router prompt policy', () => {
       source: 'dm',
     });
 
-    expect(prompt).toContain('Working group membership or participation');
-    expect(prompt).toContain('select the applicable meeting domain and do NOT add ["community_groups"]');
+    expect(prompt).toContain('Browsing working groups or councils');
+    expect(prompt).toContain('→ ["community_group_discovery"]');
+    expect(prompt).toContain('→ ["community_group_membership"]');
+    expect(prompt).toContain('→ ["council_interest"]');
+    expect(prompt).toContain('→ ["community_group_contribution"]');
+    expect(prompt).toContain('saving/bookmarking a community resource');
+    expect(prompt).toContain('→ exactly ["community_group_full_participation"]');
+    expect(prompt).toContain('do NOT add a community-group domain');
     expect(prompt).toContain('→ ["meeting_attendance"]');
     expect(prompt).toContain('→ ["meeting_scheduling"]');
     expect(prompt).toContain('→ ["meeting_series_topics"]');
@@ -524,10 +530,13 @@ describe('getToolSetDescriptionsForRouter', () => {
   describe('non-admin user', () => {
     const descriptions = getToolSetDescriptionsForRouter(false);
 
-    it('should include bounded knowledge, member-profile, community-group, and directory sets', () => {
+    it('should include bounded knowledge, member-profile, community-group discovery, and directory sets', () => {
       expect(descriptions).toContain('knowledge');
       expect(descriptions).toContain('member_profile');
-      expect(descriptions).toContain('community_groups');
+      expect(descriptions).toContain('community_group_discovery');
+      expect(descriptions).toContain('community_group_membership');
+      expect(descriptions).toContain('council_interest');
+      expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('directory');
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
@@ -575,7 +584,10 @@ describe('getToolSetDescriptionsForRouter', () => {
     it('should still include non-admin sets', () => {
       expect(descriptions).toContain('knowledge');
       expect(descriptions).toContain('member_profile');
-      expect(descriptions).toContain('community_groups');
+      expect(descriptions).toContain('community_group_discovery');
+      expect(descriptions).toContain('community_group_membership');
+      expect(descriptions).toContain('council_interest');
+      expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('directory');
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
@@ -1314,7 +1326,7 @@ describeWithApi('AddieRouter.route (LLM)', () => {
       expect(plan.action).toBe('respond');
       if (plan.action === 'respond') {
         expect(plan.confidence).toBe('high');
-        expect(plan.tool_sets).toContain('community_groups');
+        expect(plan.tool_sets).toContain('community_group_membership');
       }
     }, 15000);
 

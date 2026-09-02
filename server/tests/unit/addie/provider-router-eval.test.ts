@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(79);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(79);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(86);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(86);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_groups', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'directory', 'brand_registry', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
@@ -157,12 +157,13 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(78);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(85);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
     expect(expectedSets).not.toContain('meetings');
+    expect(expectedSets).not.toContain('community_groups');
   });
 
   it('selects the exact full meeting union for a long three-workflow request', async () => {
@@ -177,6 +178,45 @@ describe('strict router eval', () => {
       requires_depth: true,
     });
     expect(result.scores).toMatchObject({ actionExact: true, toolsExact: true });
+  });
+
+  it('selects the exact full community-group union only for long three- or four-workflow requests', async () => {
+    const threeWorkflow = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'community-group-three-workflow-participation')!;
+    const allWorkflows = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'community-group-full-participation')!;
+    const result = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["community_group_full_participation"],"confidence":"high","requires_depth":true,"reason":"one long cross-workflow group request"}',
+    ), 'router-model', 'prompt_parity', threeWorkflow);
+    const allResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["community_group_full_participation"],"confidence":"high","requires_depth":true,"reason":"one long all-workflow group request"}',
+    ), 'router-model', 'prompt_parity', allWorkflows);
+
+    expect(result.plan).toMatchObject({
+      action: 'respond',
+      tool_sets: ['community_group_full_participation'],
+      requires_depth: true,
+    });
+    expect(result.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(allResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+  });
+
+  it('keeps one- and two-workflow community requests on their narrow domains', async () => {
+    const membership = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'community-group-membership')!;
+    const bookmark = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'community-group-bookmark-resource')!;
+    const paired = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'community-group-discovery-membership')!;
+    const membershipResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["community_group_membership"],"confidence":"high","requires_depth":false,"reason":"membership only"}',
+    ), 'router-model', 'prompt_parity', membership);
+    const bookmarkResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["community_group_contribution"],"confidence":"high","requires_depth":false,"reason":"bookmark a supplied community resource"}',
+    ), 'router-model', 'prompt_parity', bookmark);
+    const pairedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["community_group_discovery","community_group_membership"],"confidence":"high","requires_depth":false,"reason":"discovery and membership"}',
+    ), 'router-model', 'prompt_parity', paired);
+
+    expect(membershipResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(bookmarkResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(pairedResult.scores).toMatchObject({ actionExact: true, toolsExact: true });
+    expect(pairedResult.plan?.tool_sets).toHaveLength(2);
   });
 
   it('preserves every stage of the long agent diagnosis in one bounded domain', async () => {

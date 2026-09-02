@@ -13,6 +13,8 @@ import {
 } from '../../../src/addie/slack-tool-selection.js';
 import {
   AGENT_END_TO_END_TOOLS,
+  COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
+  COMMUNITY_GROUP_TOOLS,
   getToolsForSets,
   MEETING_FULL_ADMINISTRATION_TOOLS,
   MAX_DIRECT_ROUTED_TOOL_SET_COUNT,
@@ -454,11 +456,81 @@ describe('Slack tool-set selection policy', () => {
     )).toEqual(MEETING_FULL_ADMINISTRATION_TOOLS);
   });
 
+  it('allows only the explicit full community-group composite and preserves its exact legacy union', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['community_group_full_participation'], confidence: 'high', reason: 'long group participation', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.selectedToolSets).toEqual(['community_group_full_participation']);
+    expect(selection.selectedToolSets.length).toBeLessThanOrEqual(MAX_DIRECT_ROUTED_TOOL_SET_COUNT);
+    expect(selection.allowedToolNames.filter((name) =>
+      (COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS as readonly string[]).includes(name),
+    )).toEqual(COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS);
+  });
+
+  it('retains bookmark_resource for a trusted private community contribution route', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['community_group_contribution'], confidence: 'high', reason: 'bookmark request', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'dm',
+      isAdmin: false,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.allowedToolNames).toContain('bookmark_resource');
+  });
+
+  it.each([
+    'community_group_discovery',
+    'community_group_membership',
+    'council_interest',
+    'community_group_contribution',
+    'community_group_full_participation',
+  ])('filters the exact community-group union from a public app mention routed to %s', (toolSet) => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: [toolSet], confidence: 'high', reason: 'group request', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: true,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.allowedToolNames.filter((name) =>
+      (COMMUNITY_GROUP_TOOLS as readonly string[]).includes(name),
+    )).toEqual([]);
+  });
+
+  it('does not attach admin-only tools to a public channel community-group route', () => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['community_group_discovery'], confidence: 'high', reason: 'group lookup', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'channel',
+      isAdmin: true,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'resolve_escalation', 'list_escalations', 'get_account_link',
+      'create_payment_link', 'add_prospect',
+    ]));
+  });
+
   it.each([
     ['non-response action', { action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }],
     ['stale alias', { action: 'respond', tool_sets: ['admin'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy agent-validation union', { action: 'respond', tool_sets: ['agent_validation'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy meetings union', { action: 'respond', tool_sets: ['meetings'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
   ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {
