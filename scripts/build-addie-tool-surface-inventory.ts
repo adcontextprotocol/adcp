@@ -75,7 +75,6 @@ const REGISTRATION_SOURCES = [
   'server/src/addie/prompt-assembly.ts',
   'server/src/addie/register-baseline-tools.ts',
   'server/src/addie/bolt-app.ts',
-  'server/src/addie/handler.ts',
   'server/src/routes/addie-chat.ts',
   'server/src/routes/tavus.ts',
   'server/src/addie/email-conversation-handler.ts',
@@ -100,7 +99,6 @@ const METRIC_NAMES = [
   'maximum_slack_member_schema_bytes',
   'maximum_slack_admin_schema_bytes',
   'maximum_slack_public_schema_bytes',
-  'legacy_slack_member_tools',
   'web_anonymous_tools',
   'web_authenticated_admin_tools',
 ] as const;
@@ -553,65 +551,6 @@ function buildSlackBoltProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
   return profiles;
 }
 
-function buildLegacyProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Profile[] {
-  const {
-    knowledge, admin, directory, schema, brand, brandCanonical, property,
-    googleDocs, member, billing, escalation, collaboration, social, portrait,
-    images, adcp, brandProperty, illustration, events, meetings, committee,
-  } = defs;
-  const globalTools = [
-    ...knowledge.KNOWLEDGE_TOOLS.filter((tool) => !knowledge.isSlackKnowledgeTool(tool)),
-    ...directory.DIRECTORY_TOOLS,
-    ...schema.SCHEMA_TOOLS,
-    ...brand.BRAND_TOOLS,
-    ...brandCanonical.BRAND_CANONICAL_TOOLS,
-    ...property.PROPERTY_TOOLS,
-    ...googleDocs.GOOGLE_DOCS_TOOLS,
-  ];
-  const commonRequest = [
-    ...member.MEMBER_TOOLS,
-    ...directory.DIRECTORY_TOOLS,
-    ...knowledge.KNOWLEDGE_TOOLS.filter(knowledge.isSlackKnowledgeTool),
-    ...billing.BILLING_TOOLS,
-    ...escalation.ESCALATION_TOOLS,
-    ...collaboration.COLLABORATION_TOOLS,
-    ...social.SOCIAL_DRAFT_TOOLS,
-    ...portrait.PORTRAIT_TOOLS,
-    ...images.IMAGE_TOOLS,
-    ...adcp.ADCP_TOOLS,
-    ...brandProperty.BRAND_PROPERTY_TOOLS,
-    ...illustration.ILLUSTRATION_TOOLS,
-    ...events.EVENT_READONLY_TOOLS,
-    ...events.EVENT_ADMIN_TOOLS,
-    ...meetings.MEETING_TOOLS,
-    ...committee.COMMITTEE_LEADER_TOOLS,
-  ];
-  const billingNames = new Set(billing.BILLING_TOOLS.map((tool) => tool.name));
-  const mentionRequest = commonRequest.filter((tool) => !billingNames.has(tool.name));
-  return [
-    profile({
-      id: 'legacy_slack:member_dm:maximum', runtime: 'legacy_slack', audience: 'member_dm',
-      globalTools, requestTools: commonRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'member_and_event_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:admin_dm:maximum', runtime: 'legacy_slack', audience: 'admin_dm',
-      globalTools, requestTools: [...commonRequest, ...admin.ADMIN_TOOLS], providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:member_mention:maximum', runtime: 'legacy_slack', audience: 'member_mention',
-      globalTools, requestTools: mentionRequest, providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'member_and_event_permissions', 'nonstreaming_web_search'],
-    }),
-    profile({
-      id: 'legacy_slack:admin_mention:maximum', runtime: 'legacy_slack', audience: 'admin_mention',
-      globalTools, requestTools: [...mentionRequest, ...admin.ADMIN_TOOLS], providerToolCount: 1,
-      conditionalMaximums: ['google_docs_configured', 'admin_event_and_meeting_permissions', 'nonstreaming_web_search'],
-    }),
-  ];
-}
-
 function buildWebProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>>): Profile[] {
   const {
     knowledge, directory, member, billing, schema, brand, property, siHost,
@@ -1002,7 +941,6 @@ function metrics(snapshot: {
       maximum('slack_bolt', 'public_channel_member', 'wire_schema_bytes'),
       maximum('slack_bolt', 'public_channel_admin', 'wire_schema_bytes'),
     ),
-    legacy_slack_member_tools: maximum('legacy_slack', 'member_dm', 'custom_tool_count'),
     web_anonymous_tools: maximum('web_chat', 'anonymous', 'custom_tool_count'),
     web_authenticated_admin_tools: maximum('web_chat', 'authenticated_admin', 'custom_tool_count'),
   };
@@ -1159,7 +1097,6 @@ async function buildSnapshot() {
   const defs = await loadDefinitions();
   const profiles = [
     ...buildSlackBoltProfiles(defs),
-    ...buildLegacyProfiles(defs),
     ...buildWebProfiles(defs),
     ...buildAuxiliaryProfiles(defs),
     buildBoundedReplayProfile(defs),

@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
-  "profile_ids_sha256": "ceb9b298ee221c2b6b3786598412f9278626b3d4e1e6ce1581c0c19454687a42",
-  "profile_contract_sha256": "fe6d6cb36e50f8e7270fc2752b073a2fa1e7f9fb3f390afb3a7f90043fa301a3",
+  "profile_ids_sha256": "81fa8dc64326307037a8f7bb846d8122d4c95e71ce7ed224c98213261411c5d4",
+  "profile_contract_sha256": "c91c66fef302e5552b6d04188501e8431d5ffab7be9976ff9551bf5d746b3650",
   "baseline": {
     "id": "2026-08-26-pre-domain-consolidation",
     "metrics": {
@@ -21,7 +21,6 @@
       "maximum_slack_member_schema_bytes": 124162,
       "maximum_slack_admin_schema_bytes": 166120,
       "maximum_slack_public_schema_bytes": 160117,
-      "legacy_slack_member_tools": 221,
       "web_anonymous_tools": 13,
       "web_authenticated_admin_tools": 235
     }
@@ -43,16 +42,11 @@
     "maximum_slack_member_schema_bytes": 131695,
     "maximum_slack_admin_schema_bytes": 173278,
     "maximum_slack_public_schema_bytes": 164359,
-    "legacy_slack_member_tools": 138,
     "web_anonymous_tools": 13,
     "web_authenticated_admin_tools": 39
   },
   "surface_maximums": {
     "email_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "legacy_slack:admin_dm": { "custom_tool_count": 218, "wire_schema_bytes": 172453, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "legacy_slack:admin_mention": { "custom_tool_count": 213, "wire_schema_bytes": 168972, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "legacy_slack:member_dm": { "custom_tool_count": 138, "wire_schema_bytes": 120816, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
-    "legacy_slack:member_mention": { "custom_tool_count": 133, "wire_schema_bytes": 117335, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "mcp_chat:anonymous": { "custom_tool_count": 13, "wire_schema_bytes": 9322, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
     "official_docs_replay:evaluation_only": { "custom_tool_count": 2, "wire_schema_bytes": 1873, "maximum_provider_tool_count": 0, "maximum_provider_tool_wire_bytes": 2 },
     "slack_bolt_reaction:admin": { "custom_tool_count": 36, "wire_schema_bytes": 36468, "maximum_provider_tool_count": 1, "maximum_provider_tool_wire_bytes": 52 },
