@@ -3,6 +3,7 @@ import {
   ADMIN_CHANNEL_WG_SLUG,
   classifyActiveCertificationProgress,
   hasActiveCertificationProgress,
+  PUBLIC_MENTION_READ_ONLY_TOOL_NAMES,
   resolveRequiredSlackChannelContext,
   resolveSlackChannelPrivacy,
   selectBoundedRoutedToolSets,
@@ -132,6 +133,28 @@ describe('Slack tool-set selection policy', () => {
       'illustrations',
     ]);
     expect(selection.allowedToolNames).toContain('search_docs');
+  });
+
+  it('uses the explicit audited read-only surface for public app mentions', () => {
+    const publicMention = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: ['brand_registry'], confidence: 'high', reason: 'public brand lookup', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: true,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(publicMention.useSafeFallback).toBe(false);
+    expect(publicMention.allowedToolNames).toEqual(['web_search', 'resolve_brand', 'list_brands']);
+    expect(publicMention.allowedToolNames.every((name) =>
+      (PUBLIC_MENTION_READ_ONLY_TOOL_NAMES as readonly string[]).includes(name),
+    )).toBe(true);
+    expect(publicMention.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'research_brand', 'save_brand', 'capture_learning', 'set_outreach_preference',
+      'escalate_to_admin', 'resolve_escalation', 'get_account_link',
+      'create_payment_link', 'start_certification_module', 'set_my_name',
+    ]));
   });
 
   it.each(['mention', 'channel'] as const)(
