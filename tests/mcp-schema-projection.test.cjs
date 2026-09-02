@@ -54,10 +54,10 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // graph (~0.7 KiB per targeting-bearing request schema) to media-buy tasks;
 // concurrent schema slimming absorbed it, so the 400 KiB media-buy ceiling
 // held at ~394 KiB. Reporting Core adds two compact operational inputs to the
-// same profile; keep their combined increase bounded by a 410 KiB ceiling
-// (~407 KiB measured with the principal configuration surface).
+// same profile. Product-scoped daypart timezone modes and exact IANA support
+// add two shared definitions; keep the resulting prompt view within 411 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 410,
+  'media-buy': 411,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
@@ -264,10 +264,14 @@ test('model-context pruning removes only unreachable root definitions', () => {
   const source = {
     type: 'object',
     properties: {
-      kept: { $ref: '#/$defs/Kept' },
+      kept: { $ref: '#/$defs/Kept/$defs/Local' },
     },
     $defs: {
-      Kept: { $ref: '#/$defs/Nested' },
+      Kept: {
+        $defs: {
+          Local: { $ref: '#/$defs/Nested' },
+        },
+      },
       Nested: { type: 'string' },
       Removed: { type: 'integer' },
     },
@@ -275,10 +279,14 @@ test('model-context pruning removes only unreachable root definitions', () => {
   assert.deepEqual(pruneUnusedRootDefinitions(source), {
     type: 'object',
     properties: {
-      kept: { $ref: '#/$defs/Kept' },
+      kept: { $ref: '#/$defs/Kept/$defs/Local' },
     },
     $defs: {
-      Kept: { $ref: '#/$defs/Nested' },
+      Kept: {
+        $defs: {
+          Local: { $ref: '#/$defs/Nested' },
+        },
+      },
       Nested: { type: 'string' },
     },
   });

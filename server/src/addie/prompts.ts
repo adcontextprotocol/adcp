@@ -394,14 +394,44 @@ For protocol behavior and structure, verify with these authoritative sources bef
 Use these tools instead of recalling schema details from memory. Never invent a schema path or silently rewrite the user's JSON before validation.`,
   },
   {
-    selectedToolSets: ['community_groups'],
-    text: `### Working-group operations
-- list_working_groups: Show available groups
-- get_working_group: Get details about a specific group
-- join_working_group: Join a public group
-- get_my_working_groups: Show the current user's memberships
-- create_working_group_post: Post in a group
-- list_committee_documents: List tracked documents`,
+    selectedToolSets: ['community_group_discovery'],
+    requiredToolNames: ['list_working_groups', 'get_working_group', 'get_my_working_groups', 'list_committee_documents'],
+    text: `### Working-group discovery
+- list_working_groups: Browse available working groups, councils, and chapters.
+- get_working_group: Inspect the explicitly named group; do not request member lists unless the user asks.
+- get_my_working_groups: Show only the current user's memberships.
+- list_committee_documents: List tracked documents for the explicitly named group.`,
+  },
+  {
+    selectedToolSets: ['community_group_membership'],
+    requiredToolNames: ['list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation'],
+    text: `### Working-group membership
+- Inspect or list a group before joining when its slug or access policy is not already grounded in the request.
+- join_working_group: Join only the current user to the explicitly requested public group.
+- request_working_group_invitation: Use only for the current user's explicit request to join a private group; include a reason only when the user supplied one.`,
+  },
+  {
+    selectedToolSets: ['council_interest'],
+    requiredToolNames: ['list_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests'],
+    text: `### Council interest
+- list_working_groups: Browse available councils before acting when the council slug is not supplied.
+- express_council_interest / withdraw_council_interest: Change only the current user's explicit interest in the named council. Never infer a leader preference.
+- get_my_council_interests: Show only the current user's interest signups.`,
+  },
+  {
+    selectedToolSets: ['community_group_contribution'],
+    requiredToolNames: ['get_my_working_groups', 'create_working_group_post', 'bookmark_resource'],
+    text: `### Working-group contribution
+- get_my_working_groups: Use to ground a target group when the user has not named one.
+- create_working_group_post: Post only the title, content, type, and link the user supplied. Do not invent post text, a group slug, or a link URL.
+- bookmark_resource: Save only a community resource whose URL, title, and reason are explicitly supplied or grounded by an earlier tool result. Never invent a required scalar.`,
+  },
+  {
+    selectedToolSets: ['community_group_full_participation'],
+    omitWhenToolSetsSelected: ['community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution'],
+    requiredToolNames: ['list_working_groups', 'get_working_group', 'join_working_group', 'request_working_group_invitation', 'get_my_working_groups', 'express_council_interest', 'withdraw_council_interest', 'get_my_council_interests', 'create_working_group_post', 'bookmark_resource', 'list_committee_documents'],
+    text: `### Full community-group participation
+Use this complete atomic-tool surface only for one long request that explicitly spans at least three group workflows: discovery, membership, council-interest, and/or contribution. Keep genuine one- and two-workflow requests on their narrow domains.`,
   },
   {
     selectedToolSets: ['committee_leadership'],
@@ -646,6 +676,14 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'meeting_full_administration'
       && ['meeting_attendance', 'meeting_scheduling', 'meeting_series_topics']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Like the meeting composite, the group-participation composite is an
+    // exact union. The synthetic all-domains inventory already lists every
+    // tool through its narrow group domains, so omit only this redundant label.
+    if (
+      name === 'community_group_full_participation'
+      && ['community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];
