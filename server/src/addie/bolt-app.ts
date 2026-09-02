@@ -1522,6 +1522,7 @@ export interface RoutedDirectSlackTools {
   unavailableHint: string;
   selectedToolSets: string[];
   allowedToolNames: string[];
+  useSafeFallback: boolean;
   requiresPrecision: boolean;
   requiresDepth: boolean;
   confidence: ConfidenceTier;
@@ -1614,6 +1615,7 @@ export async function selectRoutedDirectSlackTools(input: {
     unavailableHint: selection.unavailableHint,
     selectedToolSets: selection.selectedToolSets,
     allowedToolNames: selection.allowedToolNames,
+    useSafeFallback: selection.useSafeFallback,
     requiresPrecision: respondPlan ? !!respondPlan.requires_precision : false,
     requiresDepth: respondPlan ? !!respondPlan.requires_depth : false,
     confidence: respondPlan ? respondPlan.confidence : 'high',

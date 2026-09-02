@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AddieTool } from '../../../src/addie/types.js';
 import { selectRoutedDirectSlackTools } from '../../../src/addie/bolt-app.js';
+import { PUBLIC_MENTION_READ_ONLY_TOOL_NAMES } from '../../../src/addie/slack-tool-selection.js';
 
 const tools: AddieTool[] = [
   { name: 'search_docs', description: 'Search docs', input_schema: { type: 'object', properties: {} } },
@@ -125,6 +126,36 @@ describe('direct Slack Addie response tool routing', () => {
     expect(selected.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);
     expect(selected.tools.tools.map((tool) => tool.name)).toEqual(['search_docs']);
     expect([...selected.tools.handlers.keys()]).toEqual(['search_docs']);
+  });
+
+  it('keeps public fallback recovery inside the audited read-only surface', async () => {
+    const selected = await select({
+      source: 'mention',
+      isPublicChannel: true,
+      toolSets: ['knowledge'],
+      // The routed knowledge domain is valid, but get_doc and search_repos
+      // have no exact definition/handler pair. Private fallback retrievals
+      // are globally registered and must still not reach a public reply.
+      hasRegisteredTools: ([name]) => [
+        'search_slack',
+        'read_slack_file',
+        'get_channel_activity',
+        'fetch_url',
+        'search_resources',
+        'get_recent_news',
+      ].includes(name),
+    });
+
+    expect(selected.useSafeFallback).toBe(true);
+    expect(selected.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);
+    expect(selected.allowedToolNames).toContain('search_docs');
+    expect(selected.allowedToolNames.every((name) =>
+      (PUBLIC_MENTION_READ_ONLY_TOOL_NAMES as readonly string[]).includes(name),
+    )).toBe(true);
+    expect(selected.allowedToolNames).not.toEqual(expect.arrayContaining([
+      'search_slack', 'read_slack_file', 'get_channel_activity',
+      'fetch_url', 'search_resources', 'get_recent_news',
+    ]));
   });
 
   it('exposes a confirmation tool only when its domain is explicitly routed and paired', async () => {
