@@ -2556,12 +2556,22 @@ async function handleUserMessage({
 /**
  * Handle @mention in a channel
  */
-async function handleAppMention({
+type AppMentionHandlerDependencies = {
+  claudeClient?: AddieClaudeClient;
+  resolveChannelContext?: (channelId: string) => Promise<ThreadContext | null>;
+  getThreadService?: typeof getThreadService;
+  selectRoutedTools?: typeof selectRoutedToolsForSlackResponse;
+  buildCurrentChannelCostOptions?: typeof buildCurrentChannelCostOptions;
+  logInteraction?: typeof logInteraction;
+};
+
+export async function handleAppMention({
   event,
   say,
   context,
-}: SlackEventMiddlewareArgs<'app_mention'> & { context: { botUserId?: string } }): Promise<void> {
-  if (!claudeClient) {
+}: SlackEventMiddlewareArgs<'app_mention'> & { context: { botUserId?: string } }, dependencies?: AppMentionHandlerDependencies): Promise<void> {
+  const activeClaudeClient = dependencies?.claudeClient ?? claudeClient;
+  if (!activeClaudeClient) {
     logger.warn('Addie Bolt: Claude client not initialized');
     return;
   }
@@ -2573,8 +2583,6 @@ async function handleAppMention({
   }
 
   const startTime = Date.now();
-  const threadService = getThreadService();
-
   // Strip bot mention
   let rawText = event.text || '';
   if (context.botUserId) {
@@ -2619,10 +2627,8 @@ async function handleAppMention({
   // App mentions are user-visible in a channel. Do not select tools or
   // generate a response until Slack has verified whether that channel is
   // private; an unresolved classification must not fall through as private.
-  const mentionChannelContext = await resolveRequiredSlackChannelContext(
-    channelId,
-    buildChannelContext,
-  );
+  const mentionChannelContext = await (dependencies?.resolveChannelContext
+    ?? ((id: string) => resolveRequiredSlackChannelContext(id, buildChannelContext)))(channelId);
   if (!mentionChannelContext) {
     logger.warn(
       { event: 'addie_app_mention_channel_context_unavailable' },
@@ -2630,6 +2636,7 @@ async function handleAppMention({
     );
     return;
   }
+  const threadService = (dependencies?.getThreadService ?? getThreadService)();
 
   // Fetch surrounding conversation context for the mention.
   // For threaded mentions: fetch thread replies.
@@ -2821,7 +2828,7 @@ async function handleAppMention({
     ? buildThreadSummaryForRouter(mentionRawMessages, context.botUserId || '', event.ts, userId)
     : undefined;
 
-  const routedTools = await selectRoutedToolsForSlackResponse(
+  const routedTools = await (dependencies?.selectRoutedTools ?? selectRoutedToolsForSlackResponse)(
     inputValidation.sanitized,
     'mention',
     memberContext,
@@ -2856,14 +2863,14 @@ async function handleAppMention({
     allowedToolNames: routedTools.allowedToolNames,
     slackUserId: userId,
     threadId: thread.thread_id,
-    ...(await buildCurrentChannelCostOptions(memberContext, userId, channelId)),
+    ...(await (dependencies?.buildCurrentChannelCostOptions ?? buildCurrentChannelCostOptions)(memberContext, userId, channelId)),
     currentSpeakerName: resolveSpeakerDisplayName(mentionMemberContext ?? memberContext),
   };
 
   // Process with Claude
   let response: AddieResponse;
   try {
-    response = await claudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
+    response = await activeClaudeClient.processMessage(inputValidation.sanitized, conversationHistory, routedTools.tools, undefined, processOptions);
   } catch (error) {
     logger.error({ error }, 'Addie Bolt: Error processing mention');
     response = {
@@ -2946,7 +2953,7 @@ async function handleAppMention({
   }
 
   // Also log to security audit (keeps existing behavior)
-  logInteraction({
+  (dependencies?.logInteraction ?? logInteraction)({
     id: thread.thread_id,
     timestamp: new Date(),
     event_type: 'mention',
