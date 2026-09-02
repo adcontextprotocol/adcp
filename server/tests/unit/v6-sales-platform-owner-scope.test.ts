@@ -1,8 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountRefFromCtx,
   taskOwnerScopeForPlatformContext,
   webhookTenantScopeForPlatformContext,
 } from '../../src/training-agent/v6-sales-platform.js';
+import { sessionKeyFromArgs } from '../../src/training-agent/state.js';
+
+describe('framework account scope', () => {
+  const naturalAccount = {
+    brand: { domain: 'acmeoutdoor.example' },
+    operator: 'pinnacle-agency.example',
+  };
+
+  it('preserves framework sandbox mode on an original natural account ref', () => {
+    const account = accountRefFromCtx({
+      mode: 'sandbox',
+      ctx_metadata: { account_ref: naturalAccount },
+    });
+
+    expect(account).toEqual({ ...naturalAccount, sandbox: true });
+    expect(sessionKeyFromArgs({ account }, 'open')).toBe(
+      sessionKeyFromArgs({ account: { ...naturalAccount, sandbox: true } }, 'open'),
+    );
+  });
+
+  it('does not add sandbox mode outside a trusted sandbox context', () => {
+    const account = accountRefFromCtx({
+      mode: 'production',
+      ctx_metadata: { account_ref: naturalAccount },
+    });
+
+    expect(account).toEqual(naturalAccount);
+    expect(sessionKeyFromArgs({ account }, 'open')).toBe(
+      sessionKeyFromArgs({ account: naturalAccount }, 'open'),
+    );
+  });
+});
 
 describe('seller-managed task owner scope', () => {
   it('preserves captured session scope when an agent is also resolved', () => {

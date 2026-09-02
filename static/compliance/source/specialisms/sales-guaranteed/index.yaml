@@ -393,7 +393,7 @@ phases:
               budget: 30000
               pricing_option_id: "$context.pricing_option_1_id"
             - product_id: "$context.product_2_id"
-              budget: 20000
+              budget: 25000
               pricing_option_id: "$context.pricing_option_2_id"
           push_notification_config:
             url: "https://buyer.example/webhooks/adcp"

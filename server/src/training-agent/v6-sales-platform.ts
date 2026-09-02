@@ -601,7 +601,7 @@ function brandDomainFromCtx(account: unknown): string | undefined {
   return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
 }
 
-function accountRefFromCtx(
+export function accountRefFromCtx(
   account: unknown,
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): ToolArgs['account'] | undefined {
@@ -616,7 +616,15 @@ function accountRefFromCtx(
     ctx_metadata?: TrainingSalesMeta;
   } | undefined;
   const originalRef = acct?.ctx_metadata?.account_ref;
-  if (storyboardCompat?.version !== '3.0' && originalRef) return originalRef;
+  if (storyboardCompat?.version !== '3.0' && originalRef) {
+    // The framework's original natural ref predates its resolved sandbox
+    // disposition. Preserve its identity fields, but retain the trusted
+    // framework mode so all current handlers derive the same account scope.
+    return {
+      ...originalRef,
+      ...(acct?.mode === 'sandbox' && !('account_id' in originalRef) && { sandbox: true }),
+    };
+  }
   const brandDomain = acct?.ctx_metadata?.brand_domain;
   const accountId = typeof acct?.id === 'string' && !acct.id.startsWith('synthetic_') && acct.id !== 'public_sandbox'
     ? acct.id

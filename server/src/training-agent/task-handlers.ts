@@ -55,6 +55,7 @@ import {
   AccountRefValidationError,
   accountScopeFromRef,
   canonicalizeAccountRef,
+  syntheticAccountIdFromRef,
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
@@ -2894,7 +2895,7 @@ import { buildFormats, FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAllSignals, SIGNAL_PROVIDERS } from './signal-providers.js';
 import {
   controllerFixturePrincipal, getSession, getProductsSessionKeyFromArgs, sessionKeyFromArgs,
-  findSessionMatching,
+  findSessionMatching, findMediaBuyAcrossSessions,
   runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
@@ -6399,10 +6400,6 @@ const BRIEF_CHANNEL_ALIASES: Record<string, string> = {
   'radio': 'radio',
 };
 
-const BRIEF_STOP_WORDS = new Set([
-  'across', 'and', 'app', 'for', 'from', 'into', 'on', 'the', 'with',
-]);
-
 // Vendor-metric briefs often ask for a measurement outcome (emissions,
 // brand lift, attention) rather than the literal field name. Score against
 // each product's declared vendor metrics so the named vendor/metric pair wins
@@ -9720,10 +9717,21 @@ async function handleGetProductsUnlocked(
   // Brief mode: channel-aware keyword matching
   if (buyingMode === 'brief' && brief) {
     const briefLower = brief.toLowerCase();
-    const terms = briefLower
+    // Keep ordinary natural-language relevance ordering byte-for-byte aligned
+    // with the established corpus. Selector metadata receives a narrow,
+    // full-phrase boost below, so `retro_news` and `vintage-static` remain
+    // discoverable without treating generic words as selector hints.
+    const terms = briefLower.split(/\s+/);
+    const normalizedBrief = ` ${briefLower
       .replace(/[_-]+/g, ' ')
       .split(/[^a-z0-9]+/)
-      .filter(term => term.length >= 3 && !BRIEF_STOP_WORDS.has(term));
+      .filter(Boolean)
+      .join(' ')} `;
+    const namesSelector = (value: string | undefined) => {
+      if (!value) return false;
+      const phrase = value.replace(/[_-]+/g, ' ').split(/[^a-z0-9]+/).filter(Boolean).join(' ');
+      return phrase.length > 0 && normalizedBrief.includes(` ${phrase} `);
+    };
 
     // Extract channel names mentioned in the brief — these get heavy weight
     const briefChannels = new Set<string>();
@@ -9745,19 +9753,14 @@ async function handleGetProductsUnlocked(
           ...('publisher_domains' in property ? property.publisher_domains ?? [] : []),
           ...('property_ids' in property ? property.property_ids ?? [] : []),
         ]);
-        const collectionText = collectionTerms.join(' ').replace(/[_-]+/g, ' ').toLowerCase();
-        const publisherPropertyText = publisherPropertyTerms.join(' ').replace(/[_-]+/g, ' ').toLowerCase();
-        const text = [
-          p.name,
-          p.description,
-          p.product_id,
-          ...(p.channels ?? []),
-          ...collectionTerms,
-          ...publisherPropertyTerms,
-        ].join(' ').replace(/[_-]+/g, ' ').toLowerCase();
+        const text = `${p.name} ${p.description} ${p.channels?.join(' ')}`.toLowerCase();
         const keywordScore = terms.filter(t => text.includes(t)).length;
-        const collectionScore = terms.filter(t => collectionText.includes(t)).length * 3;
-        const publisherPropertyScore = terms.filter(t => publisherPropertyText.includes(t)).length * 2;
+        const selectorKeywordScore = namesSelector(p.product_id) ? 1 : 0;
+        // An exact advertised collection selector is materially more specific
+        // than generic brief words. This keeps a buyer-selectable bundle ahead
+        // of a broadly matching static offer without changing normal briefs.
+        const collectionScore = collectionTerms.filter(namesSelector).length * 12;
+        const publisherPropertyScore = publisherPropertyTerms.filter(namesSelector).length * 2;
         const collectionSelectionScore = collectionScore > 0
           && (p as unknown as Record<string, unknown>).collection_targeting_allowed === true
           ? 1
@@ -9767,9 +9770,9 @@ async function handleGetProductsUnlocked(
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
         const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
-        const totalScore = channelScore + keywordScore + collectionScore + publisherPropertyScore + collectionSelectionScore + vendorMetricScore;
+        const totalScore = channelScore + keywordScore + selectorKeywordScore + collectionScore + publisherPropertyScore + collectionSelectionScore + vendorMetricScore;
         return totalScore > 0
-          ? { product: p, totalScore, channelScore, keywordScore, collectionScore, publisherPropertyScore, collectionSelectionScore, vendorMetricScore }
+          ? { product: p, totalScore, channelScore, keywordScore, selectorKeywordScore, collectionScore, publisherPropertyScore, collectionSelectionScore, vendorMetricScore }
           : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
@@ -9780,7 +9783,7 @@ async function handleGetProductsUnlocked(
     products = scored.slice(0, MAX_BRIEF_RESULTS).map(s => {
       const matchParts = [
         ...(s.channelScore > 0 ? [`${s.channelScore / 10} channel(s)`] : []),
-        ...(s.keywordScore > 0 ? ['keywords'] : []),
+        ...(s.keywordScore > 0 || s.selectorKeywordScore > 0 ? ['keywords'] : []),
         ...(s.collectionScore > 0 ? ['collection selectors'] : []),
         ...(s.collectionSelectionScore > 0 ? ['selectable collection bundle'] : []),
         ...(s.publisherPropertyScore > 0 ? ['publisher-property selectors'] : []),
@@ -19673,6 +19676,52 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       sessionKeyFromArgs(mediaBuyArgs, ctx.mode, ctx.userId, ctx.moduleId),
       controllerFixtureSessionKey(mediaBuyArgs, ctx),
     );
+    // Public typed-refinement requests deliberately omit account selectors.
+    // When that omission derives a different legacy session shape, follow only
+    // the trusted accepted-proposal link—not a caller-supplied media-buy ID—
+    // and require that its stored media buy resolves to the same owner account.
+    const currentMediaBuys = new Map(mediaBuySession.mediaBuys);
+    const typedArgs = args as unknown as Record<string, unknown>;
+    const refinements = typedArgs.refinements;
+    const referencedProposalIds = Array.isArray(refinements)
+      ? refinements
+        .filter(isRecord)
+        .map(refinement => refinement.proposal_id)
+        .filter((proposalId): proposalId is string => typeof proposalId === 'string')
+      : [];
+    for (const proposalId of referencedProposalIds) {
+      const sourceRecord = session.proposalRefinementRecords.get(proposalId);
+      const linkedMediaBuyId = sourceRecord?.accepted?.media_buy_id;
+      const ownerAccountId = sourceRecord?.ownerAccountId;
+      if (
+        !linkedMediaBuyId
+        || !ownerAccountId
+        || currentMediaBuys.has(linkedMediaBuyId)
+      ) continue;
+      const linkedSession = await findMediaBuyAcrossSessions(linkedMediaBuyId);
+      const linkedMediaBuy = linkedSession?.mediaBuys.get(linkedMediaBuyId);
+      if (!linkedMediaBuy) continue;
+      const linkedOwnerAccountId = resolveAccountIdForRef(
+        sessionKeyFromArgs(
+          { account: linkedMediaBuy.accountRef },
+          ctx.mode,
+          ctx.userId,
+          ctx.moduleId,
+        ),
+        ctx.principal,
+        linkedMediaBuy.accountRef,
+      );
+      // Framework-resolved natural accounts are synthetic and are not
+      // necessarily persisted through sync_accounts. Reconstruct that stable
+      // framework identity only for this already-linked natural account; an
+      // opaque account must have a same-principal registry resolution.
+      const resolvedLinkedOwnerAccountId = linkedOwnerAccountId
+        ?? (canonicalizeAccountRef(linkedMediaBuy.accountRef).kind === 'natural'
+          ? syntheticAccountIdFromRef(linkedMediaBuy.accountRef)
+          : undefined);
+      if (resolvedLinkedOwnerAccountId !== ownerAccountId) continue;
+      currentMediaBuys.set(linkedMediaBuyId, linkedMediaBuy);
+    }
     const now = new Date();
     const activeHoldCount = Array.from(session.proposalRefinementRecords.values())
       .filter(record => record.activeHold && Date.parse(record.activeHold.expires_at) > now.getTime())
@@ -19689,7 +19738,7 @@ async function handleTypedProposalRefinement(args: ToolArgs, ctx: TrainingContex
       TrainingProposalPolicyContext
     >({
       capabilities: proposalCapabilitiesForProfile(profile),
-      store: proposalStoreForSession(session, now, mediaBuySession.mediaBuys),
+      store: proposalStoreForSession(session, now, currentMediaBuys),
       scope: (): ProposalRefinementScope => ctx.proposalRefinementScope ?? ({
         tenant_id: ctx.tenantId ?? 'sales',
         principal_id: ctx.principal ?? 'anonymous',
@@ -19774,6 +19823,14 @@ export async function executeProductDiscoveryPlatformTool(
     };
   }
   const typedRefinement = toolName === 'refine_proposals' && usesTypedProposalNegotiation(ctx);
+  // `refine_proposals` deliberately has no account field in its public wire
+  // schema. The platform restored this source-validated account before this
+  // adapter, but normalizing it out here used to make amendment reconstruction
+  // read a brand-only session instead of the live sandbox media-buy session.
+  // Keep it internal to the handler context; it is never exposed on the wire.
+  const restoredRefinementAccount = typedRefinement && isRecord(args.account)
+    ? args.account as ToolArgs['account']
+    : undefined;
   const handler = typedRefinement
     ? handleTypedProposalRefinement
     : handleGetProducts;
@@ -19790,6 +19847,9 @@ export async function executeProductDiscoveryPlatformTool(
     : normalizeProductDiscoveryArgs(toolName, args);
   const result = await Promise.resolve(handler(normalized as ToolArgs, {
     ...ctx,
+    ...(ctx.resolvedAccount === undefined && restoredRefinementAccount !== undefined && {
+      resolvedAccount: restoredRefinementAccount,
+    }),
     servedAdcpVersion: ctx.servedAdcpVersion ?? CURRENT_ADCP_VERSION,
   }));
   await flushDirtySessions();

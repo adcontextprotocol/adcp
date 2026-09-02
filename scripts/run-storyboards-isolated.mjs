@@ -158,13 +158,17 @@ function killProcessGroup(pid) {
 
 function linuxProcessGroupRssBytes(processGroupId) {
   let totalKb = 0;
-  for (const entry of readdirSync('/proc', { withFileTypes: true })) {
-    if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue;
+  // Reading Dirent metadata can race a process exiting: Node's procfs
+  // implementation may lstat the entry before our ENOENT-safe reads below.
+  // Numeric proc entries are process directories by definition, so enumerate
+  // names only and keep every per-process read within the existing race guard.
+  for (const pid of readdirSync('/proc')) {
+    if (!/^\d+$/.test(pid)) continue;
     try {
-      const stat = readFileSync(join('/proc', entry.name, 'stat'), 'utf8');
+      const stat = readFileSync(join('/proc', pid, 'stat'), 'utf8');
       const afterCommand = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
       if (Number(afterCommand[2]) !== processGroupId) continue;
-      const status = readFileSync(join('/proc', entry.name, 'status'), 'utf8');
+      const status = readFileSync(join('/proc', pid, 'status'), 'utf8');
       const match = status.match(/^VmRSS:\s+(\d+)\s+kB$/m);
       if (match) totalKb += Number(match[1]);
     } catch (error) {

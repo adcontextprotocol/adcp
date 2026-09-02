@@ -1,12 +1,12 @@
 id: sales_dooh
-version: "1.0.0"
+version: "1.0.1"
 title: "Digital out-of-home — non-guaranteed"
 protocol: media-buy
 category: sales_dooh
 summary: "DOOH seller for non-guaranteed venue and screen inventory with canonical screen formats and substantive play reporting."
 track: media_buy
 required_tools:
-  - sync_governance
+  - sync_accounts
   - sync_creatives
   - list_products
   - create_media_buy
@@ -19,9 +19,6 @@ requires_scenarios:
 
 invariants:
   - status.monotonic
-
-context:
-  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 narrative: |
   You run a digital out-of-home seller that offers venue and screen inventory
@@ -40,6 +37,13 @@ narrative: |
 
   This storyboard intentionally does not require click, conversion, browser-pixel,
   or persistent-person identifiers. Those are not inherent to DOOH delivery.
+
+  This is deliberately the ungoverned DOOH baseline. Registering a governance
+  agent changes the account contract: every later commitment needs an approved
+  `governance_context`, so registration followed by this context-free create
+  would correctly be rejected. The linked single-agent scenario covers
+  registration validation; governance-aware-seller owns the complete
+  multi-agent signed-context flow.
 
 agent:
   interaction_model: media_buy_seller
@@ -166,6 +170,42 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: account_setup
+    title: "Establish the sandbox account"
+    steps:
+      - id: sync_accounts
+        title: "Establish the sandbox account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: "Provision the sandbox account before discovery and creative sync."
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+          idempotency_key: "$generate:uuid_v4#sales_dooh_account_setup_sync_accounts"
+          context:
+            correlation_id: "sales_dooh--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Sandbox account has a platform-assigned ID"
+          - check: field_value
+            path: "accounts[0].action"
+            allowed_values: ["created", "updated"]
+            description: "Sandbox account establishment succeeds"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sales_dooh--sync_accounts"
             description: "Context correlation_id returned unchanged"
 
   - id: product_discovery
@@ -390,44 +430,9 @@ phases:
   - id: create_buy
     title: "Create the non-guaranteed DOOH buy"
     narrative: |
-      The buyer registers governance and creates a non-guaranteed buy against
-      the exact product and pricing option returned by discovery.
+      The buyer creates a non-guaranteed buy against the exact product and
+      pricing option returned by discovery.
     steps:
-      - id: sync_governance
-        title: "Register governance agent"
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        stateful: true
-        expected: "Acknowledge governance registration for the sandbox account."
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          idempotency_key: "$generate:uuid_v4#sales_dooh_create_buy_sync_governance"
-          context:
-            correlation_id: "sales_dooh--sync_governance"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_value
-            path: "accounts[0].status"
-            value: "synced"
-            description: "Governance agent is registered"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_dooh--sync_governance"
-            description: "Context correlation_id returned unchanged"
-
       - id: create_media_buy
         title: "Buy the DOOH product"
         task: create_media_buy

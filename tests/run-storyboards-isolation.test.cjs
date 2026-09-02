@@ -83,6 +83,15 @@ test('orchestrator does not load the training agent or SDK', () => {
   assert.match(source, /process\.platform === 'win32' \? pid : -pid/);
 });
 
+test('Linux RSS monitoring enumerates proc process names without Dirent lstat races', () => {
+  const source = fs.readFileSync(ORCHESTRATOR, 'utf8');
+  assert.match(source, /for \(const pid of readdirSync\('\/proc'\)\)/);
+  assert.match(source, /if \(!\/\^\\d\+\$\/\.test\(pid\)\) continue/);
+  assert.doesNotMatch(source, /readdirSync\('\/proc', \{ withFileTypes: true \}\)/);
+  assert.match(source, /readFileSync\(join\('\/proc', pid, 'stat'\)/);
+  assert.match(source, /error\?\.code !== 'ENOENT' && error\?\.code !== 'ESRCH'/);
+});
+
 test('child V8 heap is bounded without discarding caller Node options', (t) => {
   const { result } = runFixture(t, ['node_options'], [], { NODE_OPTIONS: '--trace-warnings' });
 

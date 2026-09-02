@@ -536,7 +536,7 @@ describe('tenant routing smoke', () => {
       });
 
       const brand = { domain: 'tenant-seller-delegation.example' };
-      const account = { brand, operator: 'pinnacle-agency.example' };
+      const account = { brand, operator: 'pinnacle-agency.example', sandbox: true };
       const structured = (response: Record<string, unknown>) => (
         response as { result?: { structuredContent?: Record<string, unknown> } }
       ).result?.structuredContent;
@@ -567,22 +567,28 @@ describe('tenant routing smoke', () => {
       })) as {
         products?: Array<{
           product_id?: string;
-          pricing_options?: Array<{ pricing_option_id?: string; floor_price?: number; fixed_price?: number }>;
+          pricing_options?: Array<{
+            pricing_option_id?: string;
+            floor_price?: number;
+            fixed_price?: number;
+            min_spend_per_package?: number;
+          }>;
         }>;
       };
       const product = productResponse.products?.find(candidate => candidate.pricing_options?.[0]?.pricing_option_id);
       expect(product?.product_id).toEqual(expect.any(String));
       const pricing = product!.pricing_options![0]!;
+      const budget = pricing.min_spend_per_package ?? 500;
       const createPayload = {
         account,
         brand,
-        total_budget: { amount: 500, currency: 'USD' },
+        total_budget: { amount: budget, currency: 'USD' },
         start_time: '2027-06-01T00:00:00Z',
         end_time: '2027-06-30T23:59:59Z',
         packages: [{
           product_id: product!.product_id,
           pricing_option_id: pricing.pricing_option_id,
-          budget: 500,
+          budget,
           bid_price: Math.max(pricing.floor_price ?? pricing.fixed_price ?? 1, 1),
         }],
         idempotency_key: 'tenant-seller-delegation-create',
@@ -599,7 +605,7 @@ describe('tenant routing smoke', () => {
         caller,
         task: 'create_media_buy',
         payload: createPayload,
-        commitment: { amount: 500, currency: 'USD' },
+        commitment: { amount: budget, currency: 'USD' },
         phase: 'intent',
       });
 
@@ -616,7 +622,7 @@ describe('tenant routing smoke', () => {
         phase: 'purchase',
         planned_delivery: expect.objectContaining({
           media_buy_id: expect.any(String),
-          total_budget: 500,
+          total_budget: budget,
           currency: 'USD',
           channels: expect.any(Array),
         }),
@@ -1367,7 +1373,7 @@ describe('tenant routing smoke', () => {
       await initializeTenant(salesUrl);
       await initializeTenant(governanceUrl);
       const brand = { domain: 'tenant-governed-native.example' };
-      const account = { brand, operator: brand.domain };
+      const account = { brand, operator: brand.domain, sandbox: true };
       const planId = 'plan-tenant-governed-native';
       const caller = `https://training-agent.adcontextprotocol.org/authenticated/${createHash('sha256')
         .update('test-token')
