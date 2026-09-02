@@ -1108,8 +1108,19 @@ export function legacySyncCreativesHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): NonNullable<LegacyMediaBuyHandlers['syncCreatives']> {
   return async (req, ctx) => {
+    const args = storyboardCompat?.version === '3.0'
+      ? withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        storyboardCompat,
+      )
+      : withCurrentAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        req,
+      );
     return await handleSyncCreatives(
-      req as unknown as ToolArgs,
+      args,
       buildTrainingCtx(ctx, storyboardCompat),
     ) as unknown as Awaited<ReturnType<NonNullable<LegacyMediaBuyHandlers['syncCreatives']>>>;
   };
@@ -1119,8 +1130,19 @@ export function legacyListCreativesHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): NonNullable<LegacyMediaBuyHandlers['listCreatives']> {
   return async (req, ctx) => {
+    const args = storyboardCompat?.version === '3.0'
+      ? withResolvedAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        storyboardCompat,
+      )
+      : withCurrentAccountScope(
+        req as unknown as Record<string, unknown>,
+        ctx.account,
+        req,
+      );
     const response = await handleListCreatives(
-      req as ToolArgs,
+      args,
       buildTrainingCtx(ctx, storyboardCompat),
     );
     return projectListCreativesCompatibilityWire(

@@ -46,7 +46,10 @@ import {
   type ProjectionCatalogSnapshot,
   type V2ProductFormatDeclaration,
 } from '@adcp/sdk/v2/projection';
-import { mergeSeedProductLegacy as mergeSeedProduct } from '@adcp/sdk/testing';
+import {
+  mergeSeedPricingOption,
+  mergeSeedProductLegacy as mergeSeedProduct,
+} from '@adcp/sdk/testing';
 import { createLogger } from '../logger.js';
 import { BrandManager } from '../brand-manager.js';
 import { isPrivateHostname, normalizeExternalHostname, safeFetch, safeFetchAxiosLike } from '../utils/url-security.js';
@@ -6050,9 +6053,32 @@ function overlaySeededProducts(
     let merged = mergeSeedProduct(existing as Partial<Product>, fixture ?? null);
     merged = { ...merged, product_id: productId } as Partial<Product>;
     if (seededPricing && seededPricing.length > 0) {
-      merged = mergeSeedProduct(merged, {
-        pricing_options: seededPricing as unknown as Product['pricing_options'],
+      // Controller fixtures are the catalog under test. When a current
+      // storyboard reuses an ID that also has a static 3.0 compatibility
+      // alias, expose the fixture prices first while retaining unmatched
+      // alias options as fallbacks. Otherwise buyers that select the first
+      // advertised option can accidentally execute stale alias terms.
+      const existingPricing = Array.isArray(merged.pricing_options)
+        ? merged.pricing_options
+        : [];
+      const seededIds = new Set(
+        seededPricing
+          .map(option => option.pricing_option_id)
+          .filter((id): id is string => typeof id === 'string'),
+      );
+      const prioritized = seededPricing.map(option => {
+        const base = existingPricing.find(
+          candidate => candidate.pricing_option_id === option.pricing_option_id,
+        );
+        return mergeSeedPricingOption(base ?? {}, option);
       });
+      merged = {
+        ...merged,
+        pricing_options: [
+          ...prioritized,
+          ...existingPricing.filter(option => !seededIds.has(option.pricing_option_id)),
+        ] as Product['pricing_options'],
+      };
     }
     backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
@@ -7051,7 +7077,8 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
   'sponsored_placement_types', 'is_custom', 'overlay_support',
-  'targeting_resolution', 'ext',
+  'targeting_resolution', 'collections', 'collection_targeting_allowed',
+  'installments', 'ext',
 ]);
 
 const COMPACT_FORMAT_OPTION_FIELDS = new Set([
@@ -7522,6 +7549,87 @@ function matchesInherentPlacementSelection(product: Product, targeting: Record<s
   return requested !== undefined
     && requested.length === selection.placement_refs.length
     && isDeepStrictEqual(requested, inherent);
+}
+
+/** A default collection purchase is shorthand at request time only. Persist
+ * and return the concrete product selectors so later readback remains an
+ * immutable receipt even if the catalog changes. */
+function materializeDefaultCollectionSelection(
+  product: Product,
+  targeting: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!targeting) return undefined;
+  const selection = isRecord(targeting.collection_selection)
+    ? targeting.collection_selection
+    : undefined;
+  if (selection?.mode !== 'default') return targeting;
+  const collections = (product as unknown as Record<string, unknown>).collections;
+  if (!Array.isArray(collections) || collections.length === 0) return targeting;
+  return {
+    ...structuredClone(targeting),
+    collection_selection: {
+      mode: 'selected',
+      collections: structuredClone(collections),
+      ...(isRecord(selection.ext) && { ext: structuredClone(selection.ext) }),
+    },
+  };
+}
+
+function collectionSelectionError(
+  product: Product,
+  targeting: Record<string, unknown> | undefined,
+  path: string,
+): TaskError | undefined {
+  const selection = targeting && isRecord(targeting.collection_selection)
+    ? targeting.collection_selection
+    : undefined;
+  if (selection?.mode !== 'selected' || !Array.isArray(selection.collections)) return undefined;
+
+  const declaredSelectors = (product as unknown as Record<string, unknown>).collections;
+  const declared = new Set<string>();
+  if (Array.isArray(declaredSelectors)) {
+    for (const selector of declaredSelectors) {
+      if (!isRecord(selector)
+        || typeof selector.publisher_domain !== 'string'
+        || !Array.isArray(selector.collection_ids)) continue;
+      for (const collectionId of selector.collection_ids) {
+        if (typeof collectionId === 'string') {
+          declared.add(`${selector.publisher_domain.toLowerCase()}\0${collectionId}`);
+        }
+      }
+    }
+  }
+
+  const requested = new Set<string>();
+  for (const [selectorIndex, selector] of selection.collections.entries()) {
+    if (!isRecord(selector)
+      || typeof selector.publisher_domain !== 'string'
+      || !Array.isArray(selector.collection_ids)) continue;
+    for (const [collectionIndex, collectionId] of selector.collection_ids.entries()) {
+      if (typeof collectionId !== 'string') continue;
+      const key = `${selector.publisher_domain.toLowerCase()}\0${collectionId}`;
+      if (!declared.has(key)) {
+        return {
+          code: 'REFERENCE_NOT_FOUND',
+          message: 'The selected collection is not part of the product bundle.',
+          field: `${path}.collection_selection.collections[${selectorIndex}].collection_ids[${collectionIndex}]`,
+          recovery: 'correctable',
+        };
+      }
+      requested.add(key);
+    }
+  }
+
+  const selectable = (product as unknown as Record<string, unknown>).collection_targeting_allowed === true;
+  if (!selectable && requested.size < declared.size) {
+    return {
+      code: 'UNSUPPORTED_FEATURE',
+      message: 'The product has a fixed collection bundle; partial collection selection is not supported.',
+      field: `${path}.collection_selection`,
+      recovery: 'correctable',
+    };
+  }
+  return undefined;
 }
 
 function concreteTargetingError(
@@ -9576,6 +9684,11 @@ async function handleGetProductsUnlocked(
   if (buyingMode === 'brief' && brief) {
     const briefLower = brief.toLowerCase();
     const terms = briefLower.split(/\s+/);
+    // Compliance fixtures describe the catalog under test. Keep them ahead
+    // of the static demonstration catalog while preserving normal relevance
+    // ordering within the seeded set. This affects only controller-seeded
+    // sessions; ordinary discovery has an empty seeded-product set.
+    const complianceProductIds = seededProductIds(session);
 
     // Extract channel names mentioned in the brief — these get heavy weight
     const briefChannels = new Set<string>();
@@ -9592,7 +9705,8 @@ async function handleGetProductsUnlocked(
           ? (p.channels?.filter(c => briefChannels.has(c)).length ?? 0) * 10
           : 0;
         const vendorMetricScore = vendorMetricBriefScore(p, briefLower);
-        const totalScore = channelScore + keywordScore + vendorMetricScore;
+        const fixtureScore = complianceProductIds.has(p.product_id) ? 1_000 : 0;
+        const totalScore = fixtureScore + channelScore + keywordScore + vendorMetricScore;
         return totalScore > 0 ? { product: p, totalScore, channelScore, keywordScore, vendorMetricScore } : null;
       })
       .filter((s): s is NonNullable<typeof s> => s !== null)
@@ -13840,8 +13954,13 @@ async function handleCreateMediaBuyUnlocked(
         recovery: 'correctable',
       });
     }
-    const incomingTargeting = resolvedTargeting.targeting;
+    const incomingTargeting = materializeDefaultCollectionSelection(
+      product,
+      resolvedTargeting.targeting,
+    );
     const targetingResult = validateTargeting(incomingTargeting, targetingPath);
+    const collectionError = collectionSelectionError(product, targetingResult.targeting, targetingPath);
+    if (collectionError) errors.push(collectionError);
     if (targetingResult.errors.length) {
       errors.push(...targetingResult.errors);
     }

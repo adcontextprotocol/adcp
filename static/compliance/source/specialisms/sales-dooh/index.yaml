@@ -6,7 +6,6 @@ category: sales_dooh
 summary: "DOOH seller for non-guaranteed venue and screen inventory with canonical screen formats and substantive play reporting."
 track: media_buy
 required_tools:
-  - sync_governance
   - sync_creatives
   - list_products
   - create_media_buy
@@ -390,44 +389,12 @@ phases:
   - id: create_buy
     title: "Create the non-guaranteed DOOH buy"
     narrative: |
-      The buyer registers governance and creates a non-guaranteed buy against
-      the exact product and pricing option returned by discovery.
+      The buyer creates an ungoverned non-guaranteed buy against the exact
+      product and pricing option returned by discovery. Governance registration
+      is exercised independently by the required governance-registration
+      scenario; registering here would require an approved governance_context
+      before this baseline create.
     steps:
-      - id: sync_governance
-        title: "Register governance agent"
-        task: sync_governance
-        schema_ref: "account/sync-governance-request.json"
-        response_schema_ref: "account/sync-governance-response.json"
-        doc_ref: "/accounts/tasks/sync_governance"
-        stateful: true
-        expected: "Acknowledge governance registration for the sandbox account."
-        sample_request:
-          accounts:
-            - account:
-                brand:
-                  domain: "acmeoutdoor.example"
-                operator: "pinnacle-agency.example"
-                sandbox: true
-              governance_agents:
-                - url: "$context.governance_agent_url"
-                  authentication:
-                    schemes: ["Bearer"]
-                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-          idempotency_key: "$generate:uuid_v4#sales_dooh_create_buy_sync_governance"
-          context:
-            correlation_id: "sales_dooh--sync_governance"
-        validations:
-          - check: response_schema
-            description: "Response matches sync-governance-response.json schema"
-          - check: field_value
-            path: "accounts[0].status"
-            value: "synced"
-            description: "Governance agent is registered"
-          - check: field_value
-            path: "context.correlation_id"
-            value: "sales_dooh--sync_governance"
-            description: "Context correlation_id returned unchanged"
-
       - id: create_media_buy
         title: "Buy the DOOH product"
         task: create_media_buy

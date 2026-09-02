@@ -18868,6 +18868,121 @@ describe('proposal lifecycle', () => {
     });
   });
 
+  it('preserves collection composition in the default compact product projection', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = `collection-projection-${randomUUID()}`;
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['ctv'],
+          delivery_type: 'non_guaranteed',
+          collections: [{
+            publisher_domain: 'channel-owner.example',
+            collection_ids: ['retro_news'],
+          }],
+          collection_targeting_allowed: true,
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const listed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [productId] },
+    });
+
+    expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
+    expect(listed.result).toMatchObject({
+      outcome: 'listed',
+      products: [{
+        product_id: productId,
+        collections: [{
+          publisher_domain: 'channel-owner.example',
+          collection_ids: ['retro_news'],
+        }],
+        collection_targeting_allowed: true,
+      }],
+    });
+  });
+
+  it('prioritizes controller-seeded pricing over static alias fallbacks', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = 'sports_preroll_q2_guaranteed';
+    const pricingOptionId = `fixture-pricing-${randomUUID()}`;
+    const seededProduct = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: { channels: ['olv'], delivery_type: 'guaranteed' },
+      },
+    });
+    expect(seededProduct.result.success).toBe(true);
+    const seededPricing = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 35 },
+      },
+    });
+    expect(seededPricing.result.success).toBe(true);
+
+    const listed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [productId] },
+    });
+
+    expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
+    const product = (listed.result.products as Array<Record<string, any>>)[0];
+    expect(product.pricing_options[0]).toMatchObject({
+      pricing_option_id: pricingOptionId,
+      pricing_model: 'cpm',
+      fixed_price: 35,
+    });
+    expect(product.pricing_options).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pricing_option_id: 'viewpoint_sports_video_premium_pricing_0' }),
+    ]));
+  });
+
+  it('prioritizes compliance-seeded products over the demonstration catalog in brief discovery', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = `seeded-brief-priority-${randomUUID()}`;
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          channels: ['ctv'],
+          delivery_type: 'non_guaranteed',
+          name: 'Fixture inventory',
+          description: 'Controller-seeded compliance inventory.',
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const discovered = await simulateCallTool(server, 'get_products', {
+      account,
+      buying_mode: 'brief',
+      brief: 'Pinnacle News CTV campaign',
+      filters: { channels: ['ctv'] },
+    });
+
+    expect(discovered.isError, JSON.stringify(discovered.result)).toBeFalsy();
+    expect((discovered.result.products as Array<Record<string, unknown>>)[0]?.product_id)
+      .toBe(productId);
+  });
+
   it('constructs a compact proposal for an exact published product selection', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const productId = 'pinnacle_news_display_premium';
