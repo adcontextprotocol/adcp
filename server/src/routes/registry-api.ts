@@ -7835,7 +7835,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       try {
         lease.assertValid();
         probeResult = safeProbeResult(await crawler.refreshSingleAgent(agentUrl, {
-          auth: resolvedAuth,
+          auth: complianceAuth,
           ...(request.owner_org_id ? { ownerOrgId: request.owner_org_id } : {}),
         }));
         lease.assertValid();

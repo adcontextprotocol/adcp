@@ -1011,11 +1011,11 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     ]));
   });
 
-  // Regression for #7070: admin-refresh must not run comply() anonymously
+  // Regression for #7070: admin-refresh must not probe or run comply() anonymously
   // when the agent owner has stored credentials. The route now falls back
   // to complianceDb.resolveOwnerAuth (the heartbeat pattern) so the
-  // compliance run uses the owner's saved token.
-  it('admin refresh falls back to stored owner auth for compliance (#7070)', async () => {
+  // capability probe and compliance run use the owner's saved token.
+  it('admin refresh falls back to stored owner auth for probe and compliance (#7070)', async () => {
     currentUserId = STATIC_ADMIN_USER_ID;
     const agentUrl = ownedAgentUrl('admin-auth-fallback');
 
@@ -1039,6 +1039,12 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
         ran: true,
         auth_available: true,
       });
+      expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+        agentUrl,
+        expect.objectContaining({
+          auth: expect.objectContaining({ type: 'bearer', token: STORED_BEARER }),
+        }),
+      );
       expect(complyMock).toHaveBeenCalledWith(
         agentUrl,
         expect.objectContaining({
