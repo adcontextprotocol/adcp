@@ -38,6 +38,8 @@ const DOMAINS_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_DOMAINS_READ;
 const PENDING_COUNT_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_PENDING_JOIN_REQUEST_COUNT_READ;
+const PENDING_REQUESTS_BOUNDARY =
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_PENDING_JOIN_REQUESTS_READ;
 
 describe("organization authorization canary", () => {
   beforeEach(() => {
@@ -171,12 +173,18 @@ describe("organization authorization canary", () => {
     [BOUNDARY, PENDING_COUNT_BOUNDARY],
     [PENDING_COUNT_BOUNDARY, DOMAINS_BOUNDARY],
     [DOMAINS_BOUNDARY, PENDING_COUNT_BOUNDARY],
+    [PENDING_REQUESTS_BOUNDARY, BOUNDARY],
+    [BOUNDARY, PENDING_REQUESTS_BOUNDARY],
+    [PENDING_REQUESTS_BOUNDARY, DOMAINS_BOUNDARY],
+    [DOMAINS_BOUNDARY, PENDING_REQUESTS_BOUNDARY],
+    [PENDING_REQUESTS_BOUNDARY, PENDING_COUNT_BOUNDARY],
+    [PENDING_COUNT_BOUNDARY, PENDING_REQUESTS_BOUNDARY],
   ])(
     "does not enforce %s when runtime enables only %s",
     async (requestedBoundary, enabledBoundary) => {
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
-        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY}`;
+        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY},${PENDING_REQUESTS_BOUNDARY}`;
       const getWorkos = vi.fn();
 
       const decision = await evaluateOrganizationAuthorizationCanary({
@@ -243,6 +251,63 @@ describe("organization authorization canary", () => {
         authWorkosUserId: "user_authenticated",
       },
       "org_test",
+    );
+  });
+
+  it("enforces the pending-requests boundary when both rollout gates select it", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
+      PENDING_REQUESTS_BOUNDARY;
+    const getRuntimeSetting = vi.fn().mockResolvedValue({
+      enabled: true,
+      boundaries: [PENDING_REQUESTS_BOUNDARY],
+    });
+    const workos = { userManagement: {} };
+    const resolution = {
+      status: "authorized",
+      membership: {
+        organizationId: "org_test",
+        role: "member",
+        source: "workos",
+      },
+      complete: false,
+      unavailableSources: ["credential_grant"],
+    };
+    resolveUserOrgAuthorizationMock.mockResolvedValue(resolution);
+    evaluateUserOrgRoleAuthorizationMock.mockReturnValue({
+      status: "unavailable",
+      unavailableSources: ["credential_grant"],
+    });
+
+    const decision = await evaluateOrganizationAuthorizationCanary({
+      boundary: PENDING_REQUESTS_BOUNDARY,
+      principal: {
+        id: "user_canonical",
+        authWorkosUserId: "user_authenticated",
+      },
+      organizationId: "org_test",
+      getWorkos: () => workos as never,
+      getRuntimeSetting,
+      minimumRole: "admin",
+    });
+
+    expect(decision).toEqual({
+      enforced: true,
+      status: "unavailable",
+      unavailableSources: ["credential_grant"],
+    });
+    expect(getRuntimeSetting).toHaveBeenCalledOnce();
+    expect(resolveUserOrgAuthorizationMock).toHaveBeenCalledWith(
+      workos,
+      {
+        id: "user_canonical",
+        authWorkosUserId: "user_authenticated",
+      },
+      "org_test",
+    );
+    expect(evaluateUserOrgRoleAuthorizationMock).toHaveBeenCalledWith(
+      resolution,
+      "admin",
     );
   });
 

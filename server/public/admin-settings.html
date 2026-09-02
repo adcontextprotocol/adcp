@@ -409,6 +409,10 @@
                 <input type="checkbox" id="organizationAuthorizationPendingJoinRequestCountRead">
                 Pending join request count read (<code>organization_pending_join_request_count_read</code>)
               </label>
+              <label>
+                <input type="checkbox" id="organizationAuthorizationPendingJoinRequestsRead">
+                Pending join requests read (<code>organization_pending_join_requests_read</code>)
+              </label>
               <small>Only deployment-staged boundaries can be selected. Disable here for rollback within five seconds.</small>
             </div>
             <button class="btn btn-primary" id="saveOrganizationAuthorizationBtn" onclick="saveOrganizationAuthorizationEnforcement()" disabled>
@@ -1150,6 +1154,11 @@ loadAuditHistory();
           label: 'pending join request count read',
           checkboxId: 'organizationAuthorizationPendingJoinRequestCountRead',
         },
+        {
+          value: 'organization_pending_join_requests_read',
+          label: 'pending join requests read',
+          checkboxId: 'organizationAuthorizationPendingJoinRequestsRead',
+        },
       ];
       const configuredBoundaries = new Set(Array.isArray(setting.boundaries) ? setting.boundaries : []);
       const stagedBoundaries = new Set(
@@ -1197,6 +1206,10 @@ loadAuditHistory();
         [
           'organization_pending_join_request_count_read',
           'organizationAuthorizationPendingJoinRequestCountRead',
+        ],
+        [
+          'organization_pending_join_requests_read',
+          'organizationAuthorizationPendingJoinRequestsRead',
         ],
       ]
         .filter(([, checkboxId]) => document.getElementById(checkboxId).checked)
