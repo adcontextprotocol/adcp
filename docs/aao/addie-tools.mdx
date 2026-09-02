@@ -344,9 +344,9 @@ Send the SHOULD-level notification email to the house's contact.email when a lea
 
 *Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
 
-## agent_validation
+## agent_registry
 
-Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.
+Validate publisher and agent registry configuration, brand resolution, authorization, and cached agent status.
 
 ### `validate_adagents`
 
@@ -372,33 +372,19 @@ Check if a publisher domain has authorized a specific agent. Results are cached 
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
-### `test_adcp_agent`
+### `validate_agent`
 
-Deprecated — use evaluate_agent_quality instead. Runs evaluate_agent_quality and returns the same results.
+Validate if an agent is authorized for a publisher domain by checking their /.well-known/adagents.json file.
 
-*Source: `server/src/addie/mcp/member-tools.ts`*
+*Source: `server/src/addie/mcp/directory-tools.ts`*
+
+## agent_quality
+
+Evaluate an agent's live quality and buyer behavior, including protocol quality, RFP responses, and IO execution.
 
 ### `evaluate_agent_quality`
 
 Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
-
-*Source: `server/src/addie/mcp/member-tools.ts`*
-
-### `grade_agent_signing`
-
-Run the safe-default RFC 9421 request-signing conformance grader against a public HTTPS agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Hosted Addie never probes private networks and always skips replay and rate-abuse live-side-effect vectors. Run the SDK CLI locally when testing trusted development endpoints or explicitly enabling live-side-effect vectors.
-
-*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
-
-### `diagnose_agent_auth`
-
-Diagnose a public HTTPS agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works. Hosted Addie never probes private networks; use the SDK CLI locally for trusted development endpoints.
-
-*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
-
-### `compare_media_kit`
-
-[DEPRECATED — use test_rfp_response or test_io_execution instead] Compare a publisher's stated inventory against what their agent returns. Prefer test_rfp_response (tests against real RFPs) or test_io_execution (tests whether IOs can execute through the agent).
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -414,11 +400,85 @@ Test whether a buyer agent can execute a real IO or proposal through the publish
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
+## agent_authentication
+
+Diagnose an agent's public OAuth setup or grade RFC 9421 request-signing behavior.
+
+### `grade_agent_signing`
+
+Run the safe-default RFC 9421 request-signing conformance grader against a public HTTPS agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Hosted Addie never probes private networks and always skips replay and rate-abuse live-side-effect vectors. Run the SDK CLI locally when testing trusted development endpoints or explicitly enabling live-side-effect vectors.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
+
+### `diagnose_agent_auth`
+
+Diagnose a public HTTPS agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works. Hosted Addie never probes private networks; use the SDK CLI locally for trusted development endpoints.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
+
+## agent_end_to_end
+
+Run an end-to-end agent diagnosis across registry configuration, public authentication, and live RFP or IO behavior.
+
+### `validate_adagents`
+
+Validate a domain's /.well-known/adagents.json file with a live fetch. Returns validation results including any errors or warnings.
+
+*Source: `server/src/addie/mcp/property-tools.ts`*
+
+### `resolve_brand`
+
+Resolve a domain to its canonical brand identity by checking for brand.json at /.well-known/brand.json. Returns the authoritative brand info if found.
+
+*Source: `server/src/addie/mcp/brand-tools.ts`*
+
+### `get_agent_status`
+
+Return the AAO registry's current status for an agent: health (online / last checked), declared capabilities, and the most recent compliance verdict per track from the comply storyboard suite. Reads cached state — does NOT perform a live probe. For agents not in the registry, returns guidance to register the agent (so the heartbeat picks it up) or to run evaluate_agent_quality for an on-demand check.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `check_publisher_authorization`
+
+Check if a publisher domain has authorized a specific agent. Results are cached briefly; pass force_refresh: true after the publisher changes adagents.json to bypass the cache.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
 ### `validate_agent`
 
 Validate if an agent is authorized for a publisher domain by checking their /.well-known/adagents.json file.
 
 *Source: `server/src/addie/mcp/directory-tools.ts`*
+
+### `evaluate_agent_quality`
+
+Run protocol compliance evaluation on an AdCP agent and return structured results for coaching. Tests all capability tracks the agent supports (core, products, media buy, creative, governance, signals, etc.) and collects advisory observations about performance, completeness, and best practices. Results include specific actionable observations, not just pass/fail. The public test agent works for any logged-in user with no setup required. For custom agents requiring authentication, use save_agent first.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `test_rfp_response`
+
+Test how a publisher's agent responds to a real RFP or campaign brief. Addie parses the RFP document first, then calls this tool with structured data. Calls get_products on the agent and returns gap analysis comparing what the agent surfaces vs what the RFP requests. The publisher's stated response (what they'd normally propose) is the highest-value input — it lets you compare agent output to how the sales team actually responds.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `test_io_execution`
+
+Test whether a buyer agent can execute a real IO or proposal through the publisher's agent. Addie parses the IO document first, then calls this tool with structured line items. Maps each line item to agent products using deterministic scoring, constructs the exact create_media_buy JSON a buyer agent would send, and optionally dry-runs it.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `grade_agent_signing`
+
+Run the safe-default RFC 9421 request-signing conformance grader against a public HTTPS agent. Tests whether the agent's verifier accepts valid signed requests and rejects unsigned, expired, replayed, wrong-key, etc. requests with the right error codes. Returns a per-vector pass/fail report with diagnostics. Preconditions: the agent declares `request_signing.supported: true` in get_adcp_capabilities and has its verifier preconfigured per `test-kits/signed-requests-runner.yaml` (accepts the runner's signing keyids `test-ed25519-2026` and `test-es256-2026`, has `test-revoked-2026` in its revocation list). Hosted Addie never probes private networks and always skips replay and rate-abuse live-side-effect vectors. Run the SDK CLI locally when testing trusted development endpoints or explicitly enabling live-side-effect vectors.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
+
+### `diagnose_agent_auth`
+
+Diagnose a public HTTPS agent's OAuth handshake by probing RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata, decoding any access token in scope, and reporting ranked hypotheses about what's wrong (likely / possible / ruled out). Use when an agent returns 401/403 unexpectedly, when OAuth metadata might be misconfigured, or when validating an agent's OAuth setup before integrating. This is anonymous-mode diagnosis — token refresh and authenticated tool-call probes are skipped, so the report describes what the public surface advertises rather than whether a specific token works. Hosted Addie never probes private networks; use the SDK CLI locally for trusted development endpoints.
+
+*Source: `server/src/addie/mcp/auth-grader-tools.ts`*
 
 ## property_catalog
 
@@ -1953,6 +2013,18 @@ Preview a smart-paste import for a brand the operator owns. Takes pasted text (a
 Commit a previewed property import. Takes a property list (typically the output of parse_brand_properties, possibly trimmed by the user) and merges it into the brand manifest by identifier — existing entries are updated in place, new entries are added. ONLY call after the user has explicitly confirmed the list from parse_brand_properties. Caller's organization must own the brand domain.
 
 *Source: `server/src/addie/mcp/brand-property-tools.ts`*
+
+### `test_adcp_agent`
+
+Deprecated — use evaluate_agent_quality instead. Runs evaluate_agent_quality and returns the same results.
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
+
+### `compare_media_kit`
+
+[DEPRECATED — use test_rfp_response or test_io_execution instead] Compare a publisher's stated inventory against what their agent returns. Prefer test_rfp_response (tests against real RFPs) or test_io_execution (tests whether IOs can execute through the agent).
+
+*Source: `server/src/addie/mcp/member-tools.ts`*
 
 ### `recommend_storyboards`
 

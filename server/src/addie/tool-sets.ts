@@ -246,7 +246,43 @@ export const CERTIFICATION_ASSESSMENT_TOOLS = [
   "call_adcp_task",
 ] as const;
 
-/** Bounded publisher and agent implementation validation surface. */
+/** Publisher registry, configuration, authorization, and cached-status checks. */
+export const AGENT_REGISTRY_TOOLS = [
+  "validate_adagents",
+  "resolve_brand",
+  "get_agent_status",
+  "check_publisher_authorization",
+  "validate_agent",
+] as const;
+
+/** Live agent quality and buyer-behavior testing. */
+export const AGENT_QUALITY_TOOLS = [
+  "evaluate_agent_quality",
+  "test_rfp_response",
+  "test_io_execution",
+] as const;
+
+/** Public OAuth and RFC 9421 request-signing diagnosis. */
+export const AGENT_AUTHENTICATION_TOOLS = [
+  "grade_agent_signing",
+  "diagnose_agent_auth",
+] as const;
+
+/**
+ * One-turn end-to-end diagnostic for a request that explicitly spans agent
+ * registration, public authentication, and live buyer behavior. Keeping this
+ * composite at ten tools lets the direct router retain the two-domain cap.
+ */
+export const AGENT_END_TO_END_TOOLS = [
+  ...AGENT_REGISTRY_TOOLS,
+  ...AGENT_QUALITY_TOOLS,
+  ...AGENT_AUTHENTICATION_TOOLS,
+] as const;
+
+/**
+ * Exact compatibility union for explicit non-router callers that still carry
+ * the pre-split name. Router plans reject this hidden deprecated alias.
+ */
 export const AGENT_VALIDATION_TOOLS = [
   "validate_adagents",
   "resolve_brand",
@@ -369,11 +405,43 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  agent_registry: {
+    name: "agent_registry",
+    description:
+      "Validate publisher and agent registry configuration, brand resolution, authorization, and cached agent status.",
+    tools: [...AGENT_REGISTRY_TOOLS],
+  },
+
+  agent_quality: {
+    name: "agent_quality",
+    description:
+      "Evaluate an agent's live quality and buyer behavior, including protocol quality, RFP responses, and IO execution.",
+    tools: [...AGENT_QUALITY_TOOLS],
+  },
+
+  agent_authentication: {
+    name: "agent_authentication",
+    description:
+      "Diagnose an agent's public OAuth setup or grade RFC 9421 request-signing behavior.",
+    tools: [...AGENT_AUTHENTICATION_TOOLS],
+  },
+
+  // A deliberately bounded composite for one long diagnostic request. It is
+  // not a replacement for the three narrow domains above.
+  agent_end_to_end: {
+    name: "agent_end_to_end",
+    description:
+      "Run an end-to-end agent diagnosis across registry configuration, public authentication, and live RFP or IO behavior.",
+    tools: [...AGENT_END_TO_END_TOOLS],
+  },
+
+  // Compatibility only for explicit callers. New and stored router plans use
+  // the narrow domains or the bounded end-to-end composite.
   agent_validation: {
     name: "agent_validation",
-    description:
-      'Validate publisher and AdCP agent implementations — inspect brand.json and adagents.json, verify publisher authorization, probe endpoints, evaluate quality, grade RFC 9421 request signing, diagnose OAuth, and test RFP or IO behavior.',
+    description: "Legacy combined agent-validation compatibility surface",
     tools: [...AGENT_VALIDATION_TOOLS],
+    routerVisible: false,
   },
 
   property_catalog: {
