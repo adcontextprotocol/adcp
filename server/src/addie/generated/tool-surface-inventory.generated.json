@@ -17,7 +17,7 @@
     "server/src/addie/tool-wire-shape.ts": "4c5bcb95c32164b153c0f9d36648ea9f885e1df05e9796fdd71684c56162a81e",
     "server/src/addie/prompt-assembly.ts": "6c002ae5a52cdd26e13f424f6e00757dff163b3b273a1b4ab069fdb86f4f375f",
     "server/src/addie/register-baseline-tools.ts": "52893917fa19fa8904e1667857a7c4bfc2dc90bd3341e60d1ff45a40400d17aa",
-    "server/src/addie/bolt-app.ts": "0e6c89200ef81ba698d27d391df3ac409f2f9dc91d7ea8a6b6b6673f4002c2ec",
+    "server/src/addie/bolt-app.ts": "9fea82f2af773e0dbf6dc749a7332b3c8839cca588c08968260ea964f33a2698",
     "server/src/routes/addie-chat.ts": "3504742899f027a4485058fe0f16f92fad4d14fa80462f80ab0f5219fce2eeb8",
     "server/src/routes/tavus.ts": "f4371a6ac596fca464b6cc337bd5d85f812d636f541f003e385437ad6ef352c2",
     "server/src/addie/email-conversation-handler.ts": "091feb8569d9d254351c2c37b11747e34d3e5f6777bc362e5de750c05568a4a5",
