@@ -11,7 +11,7 @@
         "id": "task_001",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:30:00Z"
+          "timestamp": "2026-01-22T10:30:00.000Z"
         },
         "artifacts": [{
           "artifactId": "result",
@@ -49,7 +49,7 @@
         "id": "task_002",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:35:00Z"
+          "timestamp": "2026-01-22T10:35:00.000Z"
         },
         "artifacts": [{
           "artifactId": "result",
@@ -82,7 +82,7 @@
         "id": "task_003",
         "status": {
           "state": "failed",
-          "timestamp": "2025-01-22T10:40:00Z"
+          "timestamp": "2026-01-22T10:40:00.000Z"
         },
         "artifacts": [{
           "artifactId": "error-result",
@@ -120,7 +120,7 @@
         "id": "task_004",
         "status": {
           "state": "working",
-          "timestamp": "2025-01-22T10:31:00Z",
+          "timestamp": "2026-01-22T10:31:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -141,7 +141,7 @@
         "id": "task_005",
         "status": {
           "state": "input-required",
-          "timestamp": "2025-01-22T10:32:00Z",
+          "timestamp": "2026-01-22T10:32:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -173,7 +173,7 @@
         "id": "task_006",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:33:00Z",
+          "timestamp": "2026-01-22T10:33:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -194,17 +194,17 @@
         "id": "task_007",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:34:00Z",
+          "timestamp": "2026-01-22T10:34:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
-              {"kind": "data", "data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2025-01-22T10:34:00Z", "revision": 1}}
+              {"kind": "data", "data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2026-01-22T10:34:00.000Z", "revision": 1}}
             ]
           }
         },
         "artifacts": []
       },
-      "expected_data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2025-01-22T10:34:00Z", "revision": 1}
+      "expected_data": {"status": "completed", "media_buy_id": "mb_789", "media_buy_status": "active", "confirmed_at": "2026-01-22T10:34:00.000Z", "revision": 1}
     },
     {
       "id": "wrapper-rejected",
@@ -215,7 +215,7 @@
         "id": "task_008",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:35:00Z"
+          "timestamp": "2026-01-22T10:35:00.000Z"
         },
         "artifacts": [{
           "artifactId": "result",
@@ -238,12 +238,12 @@
       "id": "text-only-no-datapart",
       "description": "Task with TextPart only, no DataPart — returns null",
       "status": "completed",
-      "path": "artifact",
+      "path": "none",
       "response": {
         "id": "task_009",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:36:00Z"
+          "timestamp": "2026-01-22T10:36:00.000Z"
         },
         "artifacts": [{
           "artifactId": "result",
@@ -263,7 +263,7 @@
         "id": "task_010",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:37:00Z"
+          "timestamp": "2026-01-22T10:37:00.000Z"
         },
         "artifacts": [
           {
@@ -291,7 +291,7 @@
         "id": "task_011",
         "status": {
           "state": "completed",
-          "timestamp": "2025-01-22T10:38:00Z"
+          "timestamp": "2026-01-22T10:38:00.000Z"
         },
         "artifacts": [{
           "artifactId": "result",
@@ -312,7 +312,7 @@
         "id": "task_012",
         "status": {
           "state": "submitted",
-          "timestamp": "2025-01-22T10:39:00Z",
+          "timestamp": "2026-01-22T10:39:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -333,7 +333,7 @@
         "id": "task_013",
         "status": {
           "state": "failed",
-          "timestamp": "2025-01-22T10:40:00Z",
+          "timestamp": "2026-01-22T10:40:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -348,12 +348,12 @@
       "id": "working-no-datapart",
       "description": "Working status — text only, no DataPart — returns null",
       "status": "working",
-      "path": "status_message",
+      "path": "none",
       "response": {
         "id": "task_014",
         "status": {
           "state": "working",
-          "timestamp": "2025-01-22T10:41:00Z",
+          "timestamp": "2026-01-22T10:41:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -373,7 +373,7 @@
         "id": "task_015",
         "status": {
           "state": "canceled",
-          "timestamp": "2025-01-22T10:42:00Z",
+          "timestamp": "2026-01-22T10:42:00.000Z",
           "message": {
             "role": "agent",
             "parts": [
@@ -391,7 +391,7 @@
       "path": "artifact",
       "response": {
         "id": "task_016",
-        "status": {"state": "completed", "timestamp": "2025-01-22T10:43:00Z"},
+        "status": {"state": "completed", "timestamp": "2026-01-22T10:43:00.000Z"},
         "artifacts": [{
           "artifactId": "result",
           "parts": [{
@@ -403,13 +403,31 @@
       "expected_data": {"products": [], "__proto__": {"isAdmin": true}}
     },
     {
+      "id": "constructor-pollution-payload",
+      "description": "Payload containing a constructor.prototype gadget — extraction succeeds but clients MUST NOT merge via Object.assign without filtering keys (shadows constructor on the merged object; unlike __proto__, this does not retarget the destination's own prototype)",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_016b",
+        "status": {"state": "completed", "timestamp": "2026-01-22T10:43:30.000Z"},
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [{
+            "kind": "data",
+            "data": {"products": [], "constructor": {"prototype": {"isAdmin": true}}}
+          }]
+        }]
+      },
+      "expected_data": {"products": [], "constructor": {"prototype": {"isAdmin": true}}}
+    },
+    {
       "id": "datapart-non-object-data",
       "description": "DataPart with non-object data (number) — skip, must be object",
       "status": "completed",
       "path": "artifact",
       "response": {
         "id": "task_017",
-        "status": {"state": "completed", "timestamp": "2025-01-22T10:44:00Z"},
+        "status": {"state": "completed", "timestamp": "2026-01-22T10:44:00.000Z"},
         "artifacts": [{
           "artifactId": "result",
           "parts": [
@@ -424,10 +442,10 @@
       "id": "datapart-string-data",
       "description": "DataPart with string data — skip, must be object",
       "status": "completed",
-      "path": "artifact",
+      "path": "none",
       "response": {
         "id": "task_018",
-        "status": {"state": "completed", "timestamp": "2025-01-22T10:45:00Z"},
+        "status": {"state": "completed", "timestamp": "2026-01-22T10:45:00.000Z"},
         "artifacts": [{
           "artifactId": "result",
           "parts": [
@@ -796,6 +814,225 @@
         }
       },
       "expected_data": null
+    },
+    {
+      "id": "large-artifact-100-plus-dataparts",
+      "description": "Completed task — 121 DataParts in one artifact (streaming progress at scale); last DataPart wins and locks in last-wins-at-scale behavior",
+      "status": "completed",
+      "path": "artifact",
+      "response": {
+        "id": "task_032",
+        "status": {"state": "TASK_STATE_COMPLETED", "timestamp": "2026-04-23T11:20:00.000Z"},
+        "artifacts": [{
+          "artifactId": "result",
+          "parts": [
+            {"kind": "text", "text": "Streaming progress"},
+            {"kind": "data", "data": {"progress": 0}},
+            {"kind": "data", "data": {"progress": 1}},
+            {"kind": "data", "data": {"progress": 2}},
+            {"kind": "data", "data": {"progress": 3}},
+            {"kind": "data", "data": {"progress": 4}},
+            {"kind": "data", "data": {"progress": 5}},
+            {"kind": "data", "data": {"progress": 6}},
+            {"kind": "data", "data": {"progress": 7}},
+            {"kind": "data", "data": {"progress": 8}},
+            {"kind": "data", "data": {"progress": 9}},
+            {"kind": "data", "data": {"progress": 10}},
+            {"kind": "data", "data": {"progress": 11}},
+            {"kind": "data", "data": {"progress": 12}},
+            {"kind": "data", "data": {"progress": 13}},
+            {"kind": "data", "data": {"progress": 14}},
+            {"kind": "data", "data": {"progress": 15}},
+            {"kind": "data", "data": {"progress": 16}},
+            {"kind": "data", "data": {"progress": 17}},
+            {"kind": "data", "data": {"progress": 18}},
+            {"kind": "data", "data": {"progress": 19}},
+            {"kind": "data", "data": {"progress": 20}},
+            {"kind": "data", "data": {"progress": 21}},
+            {"kind": "data", "data": {"progress": 22}},
+            {"kind": "data", "data": {"progress": 23}},
+            {"kind": "data", "data": {"progress": 24}},
+            {"kind": "data", "data": {"progress": 25}},
+            {"kind": "data", "data": {"progress": 26}},
+            {"kind": "data", "data": {"progress": 27}},
+            {"kind": "data", "data": {"progress": 28}},
+            {"kind": "data", "data": {"progress": 29}},
+            {"kind": "data", "data": {"progress": 30}},
+            {"kind": "data", "data": {"progress": 31}},
+            {"kind": "data", "data": {"progress": 32}},
+            {"kind": "data", "data": {"progress": 33}},
+            {"kind": "data", "data": {"progress": 34}},
+            {"kind": "data", "data": {"progress": 35}},
+            {"kind": "data", "data": {"progress": 36}},
+            {"kind": "data", "data": {"progress": 37}},
+            {"kind": "data", "data": {"progress": 38}},
+            {"kind": "data", "data": {"progress": 39}},
+            {"kind": "data", "data": {"progress": 40}},
+            {"kind": "data", "data": {"progress": 41}},
+            {"kind": "data", "data": {"progress": 42}},
+            {"kind": "data", "data": {"progress": 43}},
+            {"kind": "data", "data": {"progress": 44}},
+            {"kind": "data", "data": {"progress": 45}},
+            {"kind": "data", "data": {"progress": 46}},
+            {"kind": "data", "data": {"progress": 47}},
+            {"kind": "data", "data": {"progress": 48}},
+            {"kind": "data", "data": {"progress": 49}},
+            {"kind": "data", "data": {"progress": 50}},
+            {"kind": "data", "data": {"progress": 51}},
+            {"kind": "data", "data": {"progress": 52}},
+            {"kind": "data", "data": {"progress": 53}},
+            {"kind": "data", "data": {"progress": 54}},
+            {"kind": "data", "data": {"progress": 55}},
+            {"kind": "data", "data": {"progress": 56}},
+            {"kind": "data", "data": {"progress": 57}},
+            {"kind": "data", "data": {"progress": 58}},
+            {"kind": "data", "data": {"progress": 59}},
+            {"kind": "data", "data": {"progress": 60}},
+            {"kind": "data", "data": {"progress": 61}},
+            {"kind": "data", "data": {"progress": 62}},
+            {"kind": "data", "data": {"progress": 63}},
+            {"kind": "data", "data": {"progress": 64}},
+            {"kind": "data", "data": {"progress": 65}},
+            {"kind": "data", "data": {"progress": 66}},
+            {"kind": "data", "data": {"progress": 67}},
+            {"kind": "data", "data": {"progress": 68}},
+            {"kind": "data", "data": {"progress": 69}},
+            {"kind": "data", "data": {"progress": 70}},
+            {"kind": "data", "data": {"progress": 71}},
+            {"kind": "data", "data": {"progress": 72}},
+            {"kind": "data", "data": {"progress": 73}},
+            {"kind": "data", "data": {"progress": 74}},
+            {"kind": "data", "data": {"progress": 75}},
+            {"kind": "data", "data": {"progress": 76}},
+            {"kind": "data", "data": {"progress": 77}},
+            {"kind": "data", "data": {"progress": 78}},
+            {"kind": "data", "data": {"progress": 79}},
+            {"kind": "data", "data": {"progress": 80}},
+            {"kind": "data", "data": {"progress": 81}},
+            {"kind": "data", "data": {"progress": 82}},
+            {"kind": "data", "data": {"progress": 83}},
+            {"kind": "data", "data": {"progress": 84}},
+            {"kind": "data", "data": {"progress": 85}},
+            {"kind": "data", "data": {"progress": 86}},
+            {"kind": "data", "data": {"progress": 87}},
+            {"kind": "data", "data": {"progress": 88}},
+            {"kind": "data", "data": {"progress": 89}},
+            {"kind": "data", "data": {"progress": 90}},
+            {"kind": "data", "data": {"progress": 91}},
+            {"kind": "data", "data": {"progress": 92}},
+            {"kind": "data", "data": {"progress": 93}},
+            {"kind": "data", "data": {"progress": 94}},
+            {"kind": "data", "data": {"progress": 95}},
+            {"kind": "data", "data": {"progress": 96}},
+            {"kind": "data", "data": {"progress": 97}},
+            {"kind": "data", "data": {"progress": 98}},
+            {"kind": "data", "data": {"progress": 99}},
+            {"kind": "data", "data": {"progress": 100}},
+            {"kind": "data", "data": {"progress": 101}},
+            {"kind": "data", "data": {"progress": 102}},
+            {"kind": "data", "data": {"progress": 103}},
+            {"kind": "data", "data": {"progress": 104}},
+            {"kind": "data", "data": {"progress": 105}},
+            {"kind": "data", "data": {"progress": 106}},
+            {"kind": "data", "data": {"progress": 107}},
+            {"kind": "data", "data": {"progress": 108}},
+            {"kind": "data", "data": {"progress": 109}},
+            {"kind": "data", "data": {"progress": 110}},
+            {"kind": "data", "data": {"progress": 111}},
+            {"kind": "data", "data": {"progress": 112}},
+            {"kind": "data", "data": {"progress": 113}},
+            {"kind": "data", "data": {"progress": 114}},
+            {"kind": "data", "data": {"progress": 115}},
+            {"kind": "data", "data": {"progress": 116}},
+            {"kind": "data", "data": {"progress": 117}},
+            {"kind": "data", "data": {"progress": 118}},
+            {"kind": "data", "data": {"progress": 119}},
+            {"kind": "data", "data": {"status": "completed", "products": [{"product_id": "final_at_scale"}], "total": 1}}
+          ]
+        }]
+      },
+      "expected_data": {"status": "completed", "products": [{"product_id": "final_at_scale"}], "total": 1}
+    },
+    {
+      "id": "envelope-two-keys-not-unwrapped",
+      "description": "Object with two top-level keys (task + contextId) is not a single-key StreamResponse envelope — not unwrapped, so status.state is absent at the top level and extraction returns null",
+      "status": "completed",
+      "path": "none",
+      "response": {
+        "task": {
+          "id": "task_033",
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{"parts": [{"data": {"should_not_extract": true}}]}]
+        },
+        "contextId": "ctx_033"
+      },
+      "expected_data": null
+    },
+    {
+      "id": "envelope-empty-object",
+      "description": "Empty object has zero top-level keys — not a single-key envelope, not unwrapped, no status.state present, returns null",
+      "status": "completed",
+      "path": "none",
+      "response": {},
+      "expected_data": null
+    },
+    {
+      "id": "envelope-empty-string-key",
+      "description": "Single top-level key that is the empty string is not an allow-listed envelope key (task/message/statusUpdate/artifactUpdate) — not unwrapped, returns null",
+      "status": "completed",
+      "path": "none",
+      "response": {
+        "": {
+          "status": {"state": "TASK_STATE_COMPLETED"},
+          "artifacts": [{"parts": [{"data": {"should_not_extract": true}}]}]
+        }
+      },
+      "expected_data": null
+    },
+    {
+      "id": "a2a-1.0-stream-wrapped-task-rejected",
+      "description": "A2A 1.0 — { task: ... } StreamResponse envelope combined with TASK_STATE_REJECTED (terminal transport rejection); envelope-unwrapping and the 1.0 rejected state exercised together rather than separately",
+      "status": "rejected",
+      "path": "artifact",
+      "response": {
+        "task": {
+          "id": "task_034",
+          "contextId": "ctx_034",
+          "status": {"state": "TASK_STATE_REJECTED", "timestamp": "2026-04-23T11:25:00.000Z"},
+          "artifacts": [{
+            "artifactId": "rejection-detail",
+            "parts": [
+              {"text": "Request rejected by policy"},
+              {"data": {"adcp_error": {"code": "POLICY_VIOLATION", "message": "Budget exceeds tier limit"}}}
+            ]
+          }]
+        }
+      },
+      "expected_data": {"adcp_error": {"code": "POLICY_VIOLATION", "message": "Budget exceeds tier limit"}}
+    },
+    {
+      "id": "a2a-1.0-stream-wrapped-status-update-auth-required",
+      "description": "A2A 1.0 — { statusUpdate: ... } StreamResponse envelope combined with TASK_STATE_AUTH_REQUIRED (interim); envelope-unwrapping and the 1.0 auth-required state exercised together rather than separately",
+      "status": "auth-required",
+      "path": "status_message",
+      "response": {
+        "statusUpdate": {
+          "taskId": "task_035",
+          "contextId": "ctx_035",
+          "status": {
+            "state": "TASK_STATE_AUTH_REQUIRED",
+            "timestamp": "2026-04-23T11:30:00.000Z",
+            "message": {
+              "role": "ROLE_AGENT",
+              "parts": [
+                {"text": "Re-authentication required"},
+                {"data": {"auth_scheme": "oauth2", "challenge_url": "https://auth.example/challenge?session=xyz789", "scopes": ["read"], "expires_in": 300}}
+              ]
+            }
+          }
+        }
+      },
+      "expected_data": {"auth_scheme": "oauth2", "challenge_url": "https://auth.example/challenge?session=xyz789", "scopes": ["read"], "expires_in": 300}
     }
   ]
 }

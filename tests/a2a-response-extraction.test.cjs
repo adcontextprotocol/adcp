@@ -75,6 +75,37 @@ function firstDataPart(parts) {
 }
 
 /**
+ * Classify which location extraction actually reads from, mirroring the
+ * branching in extractAdcpResponseFromA2A. Used to verify each vector's
+ * `path` field against real behavior instead of trusting it as documentation.
+ *
+ * Returns 'artifact' or 'status_message' when a DataPart was found there
+ * (even if it is later rejected as a wrapper — the location was still the
+ * source), or 'none' when no DataPart was found anywhere.
+ */
+function classifyExtractionPath(input) {
+  const task = unwrapStreamEnvelope(input);
+  if (task == null) return 'none';
+  const state = normalizeState(task?.status?.state);
+  if (!state) return 'none';
+
+  if (FINAL_STATES.includes(state)) {
+    const artifact = task.artifacts?.[0];
+    const part = artifact?.parts ? lastDataPart(artifact.parts) : null;
+    if (part) return 'artifact';
+    const msgPart = firstDataPart(task.status?.message?.parts);
+    return msgPart ? 'status_message' : 'none';
+  }
+
+  if (INTERIM_STATES.includes(state)) {
+    const msgPart = firstDataPart(task.status?.message?.parts);
+    return msgPart ? 'status_message' : 'none';
+  }
+
+  return 'none';
+}
+
+/**
  * Detect framework wrapper objects.
  * Returns true if the payload is wrapped in { response: {...} } — a single key
  * `response` whose value is a non-null, non-array object. `{ response: null }`
@@ -190,6 +221,14 @@ describe('A2A response extraction test vectors', () => {
     assert.ok(paths.has('artifact'), 'must have artifact path vector');
     assert.ok(paths.has('status_message'), 'must have status_message path vector');
   });
+
+  for (const vector of data.vectors) {
+    it(`should have an accurate path field: ${vector.description} [${vector.id}]`, () => {
+      const actualPath = classifyExtractionPath(vector.response);
+      assert.equal(actualPath, vector.path,
+        `Vector ${vector.id} declares path "${vector.path}" but extraction actually reads from "${actualPath}"`);
+    });
+  }
 
   it('should have null-extraction vectors', () => {
     const nullVectors = data.vectors.filter(
@@ -336,6 +375,70 @@ describe('Validation and safety', () => {
     });
     assert.ok(result !== null);
     assert.equal(({}).isAdmin, undefined, '__proto__ must not pollute Object prototype');
+  });
+
+  // The two tests above construct `__proto__` as a JS object-literal key, which
+  // the language treats as prototype-literal syntax (Annex B.3.1) and never
+  // touches Object.prototype either, so those assertions hold trivially and
+  // don't exercise the realistic threat. The realistic threat is a seller
+  // payload arriving over the wire (JSON.parse, which *does* create ordinary
+  // own properties named "__proto__"/"constructor") and later being merged
+  // into application state downstream via an unfiltered `Object.assign`, per
+  // the spec's "Prototype Pollution" security section.
+  //
+  // Object.assign and object spread (`{...x}`) are NOT the same mechanism
+  // here. Object.assign copies properties with [[Set]], so an own
+  // "__proto__" property on the source really does invoke the legacy
+  // `__proto__` setter and retarget the *destination's own* [[Prototype]]
+  // (demonstrated below). Object spread copies properties with
+  // [[DefineOwnProperty]] (the CopyDataProperties abstract operation), which
+  // creates an ordinary own data property named "__proto__" on the
+  // destination and does NOT invoke the setter or change the destination's
+  // [[Prototype]] at all. Spread is not exercised here because it is not a
+  // vector for this specific footgun.
+  //
+  // These two tests are extraction vectors, not mitigation tests. This
+  // repository has no runtime extraction/filtering library to assert
+  // against (it is spec-only), so nothing here proves unsafe merging is
+  // "prevented". They exist to demonstrate, concretely, why the spec's
+  // "Clients MUST NOT merge ... via Object.assign ... without filtering
+  // keys" rule exists — not to certify that any client actually complies.
+  it('demonstrates the Object.assign __proto__ footgun on the merged object (extraction vector, not a mitigation test)', () => {
+    const vector = data.vectors.find(v => v.id === 'proto-pollution-payload');
+    assert.ok(vector, 'fixture vector must exist');
+    const extracted = extractAdcpResponseFromA2A(vector.response);
+    assert.ok(extracted !== null);
+
+    const merged = Object.assign({}, extracted);
+
+    // Object.assign uses [[Set]], so assigning the own "__proto__" property
+    // invokes the legacy setter and retargets `merged`'s own [[Prototype]]
+    // to { isAdmin: true } — a real, local footgun (every property lookup
+    // and `instanceof` check on `merged` is now affected).
+    assert.equal(merged.isAdmin, true,
+      'Object.assign really did retarget merged\'s own prototype — this is the footgun the spec warns about');
+    assert.notEqual(Object.getPrototypeOf(merged), Object.prototype,
+      'merged\'s own [[Prototype]] was reassigned away from Object.prototype by the unfiltered assign');
+  });
+
+  it('demonstrates the Object.assign constructor-shadowing footgun on the merged object (extraction vector, not a mitigation test)', () => {
+    const vector = data.vectors.find(v => v.id === 'constructor-pollution-payload');
+    assert.ok(vector, 'fixture vector must exist');
+    const extracted = extractAdcpResponseFromA2A(vector.response);
+    assert.ok(extracted !== null);
+
+    const merged = Object.assign({}, extracted);
+
+    // "constructor" is an ordinary property name — unlike "__proto__" it has
+    // no special [[Set]] behavior, so Object.assign just overwrites
+    // `merged.constructor` with the plain payload object. This does NOT
+    // retarget merged's [[Prototype]] the way the __proto__ case above does;
+    // it only shadows the `constructor` lookup (e.g. `merged.constructor ===
+    // Object` now fails). Still a real footgun, but a distinct, weaker one.
+    assert.notEqual(merged.constructor, Object,
+      'Object.assign shadowed merged.constructor with the payload — a real footgun, distinct from __proto__ retargeting');
+    assert.equal(Object.getPrototypeOf(merged), Object.prototype,
+      'sanity check: unlike the __proto__ case, constructor-shadowing does not touch [[Prototype]] at all');
   });
 
   it('should handle artifacts with no parts array', () => {

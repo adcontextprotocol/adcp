@@ -266,6 +266,10 @@ function extractDataPartFromArtifacts(response) {
   return payload;
 }
 
+// Intentional asymmetry vs. extractDataPartFromArtifacts above: TextPart is
+// presentational (first-match is fine — later TextParts are typically restatements,
+// not corrections), while DataPart is authoritative and MUST use last-match to
+// reflect the final streamed state. Do not "fix" this to be symmetric.
 function extractTextPartFromArtifacts(response) {
   const textPart = response.artifacts?.[0]?.parts?.find(isTextPart);
   return textPart?.text || null;
