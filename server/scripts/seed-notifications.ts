@@ -21,7 +21,7 @@
  *   --clear        delete that user's existing notifications first
  */
 
-import { initializeDatabase, closeDatabase, query } from '../src/db/client.js';
+import { initializeDatabase, closeDatabase, getClient } from '../src/db/client.js';
 
 // Mirrors DEV_USERS in server/src/middleware/auth.ts. Duplicated rather than
 // imported so this script doesn't pull in the WorkOS SDK or the prod-boot guard.
@@ -321,32 +321,56 @@ async function main(): Promise<void> {
 
   initializeDatabase({ connectionString, ssl: false, maxPoolSize: 2 });
 
-  if (clear) {
-    const deleted = await query('DELETE FROM notifications WHERE recipient_user_id = $1', [recipientId]);
-    console.log(`Cleared ${deleted.rowCount ?? 0} existing notification(s) for ${recipientId}`);
+  const client = await getClient();
+  let clearedCount = 0;
+  try {
+    await client.query('BEGIN');
+
+    if (clear) {
+      const deleted = await client.query(
+        'DELETE FROM notifications WHERE recipient_user_id = $1',
+        [recipientId]
+      );
+      clearedCount = deleted.rowCount ?? 0;
+    }
+
+    for (const n of NOTIFICATIONS) {
+      await client.query(
+        `INSERT INTO notifications
+           (recipient_user_id, actor_user_id, type, reference_id, reference_type, title, url, is_read, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() - ($9 || ' minutes')::interval)`,
+        [
+          recipientId,
+          n.actor ?? null,
+          n.type,
+          n.referenceId ?? null,
+          n.referenceType ?? null,
+          n.title,
+          n.url ?? null,
+          n.read ?? false,
+          String(n.minutesAgo),
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Failed to roll back notification seed transaction:', rollbackError);
+    }
+    throw error;
+  } finally {
+    client.release();
+    await closeDatabase();
   }
 
-  for (const n of NOTIFICATIONS) {
-    await query(
-      `INSERT INTO notifications
-         (recipient_user_id, actor_user_id, type, reference_id, reference_type, title, url, is_read, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() - ($9 || ' minutes')::interval)`,
-      [
-        recipientId,
-        n.actor ?? null,
-        n.type,
-        n.referenceId ?? null,
-        n.referenceType ?? null,
-        n.title,
-        n.url ?? null,
-        n.read ?? false,
-        String(n.minutesAgo),
-      ]
-    );
+  if (clear) {
+    console.log(`Cleared ${clearedCount} existing notification(s) for ${recipientId}`);
   }
 
   const unread = NOTIFICATIONS.filter((n) => !n.read).length;
-  await closeDatabase();
 
   console.log(`Seeded ${NOTIFICATIONS.length} notifications`);
   console.log(`  recipient: ${recipientId} (dev user "${userKey}")`);

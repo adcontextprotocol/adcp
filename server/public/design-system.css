@@ -2364,7 +2364,7 @@ body {
     --color-brand-fg: #8aa3f4;
     --color-brand-solid: #4169e1;
     --color-brand-solid-hover: #2d4fd6;
-    --color-focus-ring: rgba(107, 140, 239, 0.4);
+    --color-focus-ring: #6b8cef;
     --color-success-bg: rgba(16, 185, 129, 0.18);
     --color-success-fg: #6ee7b7;
     --color-warning-bg: rgba(245, 158, 11, 0.18);
@@ -2413,7 +2413,7 @@ html[data-theme="dark"] {
   --color-brand-fg: #8aa3f4;
   --color-brand-solid: #4169e1;
   --color-brand-solid-hover: #2d4fd6;
-  --color-focus-ring: rgba(107, 140, 239, 0.4);
+  --color-focus-ring: #6b8cef;
   --color-success-bg: rgba(16, 185, 129, 0.18);
   --color-success-fg: #6ee7b7;
   --color-warning-bg: rgba(245, 158, 11, 0.18);
