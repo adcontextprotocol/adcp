@@ -119,3 +119,47 @@ test('format_ids is deprecated in 3.2 and removed in 4.0 everywhere', () => {
     `Every format_ids field must be deprecated in 3.2 and scheduled for 4.0 removal:\n${offenders.join('\n')}`,
   );
 });
+
+test('delivery reporting deprecates cross-buy totals and report-wide currency', () => {
+  const response = JSON.parse(fs.readFileSync(
+    path.join(SOURCE_DIR, 'media-buy/get-media-buy-delivery-response.json'),
+    'utf8',
+  ));
+  const webhook = JSON.parse(fs.readFileSync(
+    path.join(SOURCE_DIR, 'media-buy/media-buy-delivery-webhook-result.json'),
+    'utf8',
+  ));
+
+  assert.equal(response.properties.aggregated_totals.deprecated, true);
+  assert.equal(response.properties.currency.deprecated, true);
+  assert.equal(webhook.properties.currency.deprecated, true);
+
+  for (const schema of [response, webhook]) {
+    assert.equal(schema.required.includes('currency'), false);
+    const rowCurrency = schema.properties.media_buy_deliveries.items.properties.currency;
+    assert.equal(rowCurrency.type, 'string');
+    assert.match(rowCurrency.description, /does not perform currency conversion/i);
+    assert.match(rowCurrency.description, /mixed-currency buy/i);
+
+    const row = schema.properties.media_buy_deliveries.items;
+    assert.equal(row.properties.totals.allOf[1].required?.includes('spend') ?? false, false);
+    const packageProperties = row.properties.by_package.items.allOf[1].properties;
+    assert.equal(
+      packageProperties.metric_values.items.allOf[0].$ref,
+      '/schemas/core/delivery-metric-aggregate.json#/oneOf/0',
+    );
+    assert.match(packageProperties.currency.description, /MUST equal it/);
+    assert.match(
+      schema['x-adcp-validation'].verifier_constraints.row_currency_consistency,
+      /MUST equal/,
+    );
+    assert.match(
+      schema['x-adcp-validation'].verifier_constraints.mixed_currency_row,
+      /MUST be omitted/,
+    );
+    assert.match(
+      schema['x-adcp-validation'].verifier_constraints.legacy_currency_consistency,
+      /MUST equal/,
+    );
+  }
+});

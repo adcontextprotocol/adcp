@@ -14,8 +14,10 @@ Retrieve comprehensive delivery metrics and performance data for media buy repor
 
 `get_media_buy_delivery` works on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), regardless of how the underlying campaign was created. Sales agents MUST NOT refuse delivery reporting — or narrow its coverage — on the basis that the buy originated outside AdCP. If delivery data for a buy is genuinely unavailable (e.g., the ad server has not yet reported a flight), the seller returns the buy in `media_buy_deliveries` with zero or partial metrics; the seller does not omit it and does not return [`MEDIA_BUY_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-media-buy-not-found) for an account-owned buy.
 
-**Request Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-request.json)
-**Response Schema**: [`/schemas/v3/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json)
+{/* Using latest because these 3.2 delivery-reporting changes are not yet released.
+    Update to the v3 alias after the next release. */}
+**Request Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-request.json)
+**Response Schema**: [`/schemas/latest/media-buy/get-media-buy-delivery-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json)
 
 ## Request Parameters
 
@@ -64,14 +66,14 @@ by requiring two response payloads to differ.
 
 ## Response
 
-Returns delivery report with aggregated totals and per-media-buy breakdowns:
+Returns delivery data as per-media-buy rows:
 
 | Field | Description |
 |-------|-------------|
 | `reporting_period` | Date range for report (start/end timestamps) |
-| `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
+| `currency` | **Deprecated in 3.2; removed in 4.0.** Optional legacy response-wide currency for reports whose monetary values all share one denomination. Do not treat it as an aggregation currency. Prefer row or package currency. |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count, metric_aggregates) |
+| `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. Sellers should omit it and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -83,12 +85,13 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | Field | Description |
 |-------|-------------|
 | `media_buy_id` | Media buy identifier |
+| `currency` | ISO 4217 denomination for monetary values in this row. Sellers SHOULD populate it when the row has one currency. Every package currency in an AdCP-authored buy MUST match it. Legacy or external mixed-currency buys omit it and report monetary values only at package level. |
 | `status` | Current status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`). In webhook context, may also be `reporting_delayed` or `failed`. Maps to `media_buy_status` on `create_media_buy` / `update_media_buy` success responses (3.1 vocabulary note above). |
-| `totals` | Aggregate metrics (impressions, spend, clicks, ctr, conversions, conversion_value, roas, new_to_brand_rate) |
+| `totals` | Metrics aggregated within this media buy. Legacy or external mixed-currency buys omit monetary totals such as `spend`. |
 | `by_package` | Package-level breakdowns with delivery_status, paused state, and pacing_index |
-| `daily_breakdown` | Day-by-day delivery (date, impressions, spend, conversions, conversion_value, roas, new_to_brand_rate) |
+| `daily_breakdown` | Day-by-day delivery for single-currency rows. Omitted for legacy/external mixed-currency buys because daily rows have no package currency grain. |
 
-See [schema](https://adcontextprotocol.org/schemas/v3/media-buy/get-media-buy-delivery-response.json) for complete field list.
+See [schema](https://adcontextprotocol.org/schemas/latest/media-buy/get-media-buy-delivery-response.json) for the complete field list.
 
 ### Final vs provisional numbers
 
@@ -114,63 +117,23 @@ When the authoritative party doesn't publish final numbers within `measurement_t
 
 See [Billing authority](/docs/media-buy/advanced-topics/billing-authority) for the end-to-end flow. A structured dispute task — opening, transitioning, and resolving a delivery dispute on the wire — is targeted for AdCP 3.2.
 
-### Aggregated metric partitions (`metric_aggregates`)
+### Currency and cross-buy aggregation
 
-Cross-buy delivery values that vary by **qualifier** (measurement standard, transparency disclosure) are reported as a partitioned array on `aggregated_totals.metric_aggregates` rather than as flat scalars. This solves the apples-to-oranges sum problem at the aggregate layer: MRC and GroupM viewability define materially different thresholds and must never be combined into a single rate.
+The response-wide `currency` and `aggregated_totals` fields are deprecated in AdCP 3.2 and removed in 4.0. One response can contain media buys in different currencies, and AdCP does not define exchange rates, conversion timestamps, or an FX authority. The response-wide currency therefore MUST NOT be interpreted as an aggregation currency or as evidence that the seller converted package spend.
 
-Each row carries the same atomic unit as `package.committed_metrics` and `by_package[].missing_metrics`:
+Sellers SHOULD populate `media_buy_deliveries[].currency` whenever a row has one denomination. It denominates that row's monetary `totals` and every package monetary value. For an AdCP-authored buy, every `by_package[].currency` MUST equal the row currency and the media-buy currency. For a legacy or externally created mixed-currency buy, sellers omit row currency, `daily_breakdown`, and all monetary or money-derived values from row and window totals. They report those values only on package rows (including window package rows) with each package's own currency.
 
-```
-committed_metrics row : { scope, metric_id, qualifier, committed_at }
-missing_metrics row   : { scope, metric_id, qualifier }
-metric_aggregates row : { scope, metric_id, qualifier, value, ...components }
-```
+Consumers that encounter a row without currency must process each package amount with that package's currency; they must not silently drop those amounts or synthesize a row total:
 
-**Reconciliation is a row-level join on `(scope, metric_id, qualifier)`.** For each `committed_metrics` row, find the matching `metric_aggregates` row; absent matches surface as `missing_metrics`. No per-metric reconciliation logic, no traversal asymmetry between contract and delivery.
-
-**Granularity rule.** One row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity. Buyers re-aggregate up if they want a coarser view. This eliminates rollup ambiguity and prevents accidental double-counting.
-
-**Unqualified metrics stay top-level.** `impressions`, `spend`, `media_buy_count`, and other metrics with no qualifier remain at the top of `aggregated_totals`. `metric_aggregates` is only used for metrics with non-empty qualifier sets.
-
-**Mutual exclusion (MUST).** For any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted — not zeroed. Sellers MUST NOT emit both. Avoids duplicate sources of truth.
-
-**Qualifier vocabulary** is closed today on both `committed_metrics` and `metric_aggregates` (`additionalProperties: false`). Five keys exist: `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (deterministic_purchase / probabilistic / panel_based / modeled — for outcome metrics), `attribution_window` (structured duration — for outcome metrics), and `lift_dimension` (awareness / consideration / favorability / purchase_intent / ad_recall — for `brand_lift`). The delivery vocabulary is **expected to diverge from contract** in future minors as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832). New qualifier keys ship explicitly in subsequent minors on either surface. **Heterogeneous value types**: qualifier values are mostly string enums but `attribution_window` is an object-valued duration; consumers MUST dispatch on key name to know value shape, and structured-value qualifiers join on canonical (key-sorted) deep equality.
-
-**Qualifier-set drift across reports.** When a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2 after only client-side firing in week 1), prior periods' rows remain valid at their original granularity. Buyers SHOULD NOT retroactively repartition; report supersession via `supersedes_window` is the documented path for window-level revisions.
-
-**Per-buy `totals` shape stays flat.** Each individual buy is single-qualifier by definition; only the cross-buy aggregate spans qualifiers and needs the partitioned shape. Per-buy `totals.viewability` continues to be a flat object with its own `standard` field.
-
-Example:
-
-```json
-{
-  "aggregated_totals": {
-    "impressions": 1000000,
-    "spend": 5000.00,
-    "media_buy_count": 3,
-    "metric_aggregates": [
-      {
-        "scope": "standard",
-        "metric_id": "viewable_rate",
-        "qualifier": { "viewability_standard": "mrc" },
-        "value": 0.7286,
-        "measurable_impressions": 700000,
-        "viewable_impressions": 510000
-      },
-      {
-        "scope": "standard",
-        "metric_id": "viewable_rate",
-        "qualifier": { "viewability_standard": "groupm" },
-        "value": 0.55,
-        "measurable_impressions": 180000,
-        "viewable_impressions": 99000
-      }
-    ]
+```javascript test=false
+if (!delivery.currency) {
+  for (const pkg of delivery.by_package) {
+    console.log(`${pkg.package_id}: ${pkg.spend.toFixed(2)} ${pkg.currency}`);
   }
 }
 ```
 
-**Value typing dispatch.** Buyer agents MUST inspect `metric_id` before doing arithmetic. Rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics are currency; count metrics are non-negative numbers; ROAS is a ratio. Same dispatch convention as `committed_metrics` — `metric_id` is the type tag.
+Buyers that need cross-buy totals calculate them from `media_buy_deliveries[]`. They MUST first verify that currencies, metric qualifiers, measurement windows, finality, and deduplication semantics are compatible. Counts such as impressions are not automatically safe to add merely because they are non-monetary; reach may be deduplicated differently, and rates require their component-weighted calculation rather than summing or averaging row values.
 
 ## Common Scenarios
 
@@ -200,10 +163,13 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
 }
 
-console.log(`Delivered ${validated.aggregated_totals.impressions.toLocaleString()} impressions`);
-console.log(`Spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
 if (validated.media_buy_deliveries.length > 0) {
-  console.log(`CTR: ${(validated.media_buy_deliveries[0].totals.ctr * 100).toFixed(2)}%`);
+  const delivery = validated.media_buy_deliveries[0];
+  console.log(`Delivered ${delivery.totals.impressions.toLocaleString()} impressions`);
+  if (delivery.currency && delivery.totals.spend !== undefined) {
+    console.log(`Spend: ${delivery.totals.spend.toFixed(2)} ${delivery.currency}`);
+  }
+  console.log(`CTR: ${(delivery.totals.ctr * 100).toFixed(2)}%`);
 }
 ```
 
@@ -226,10 +192,12 @@ async def main():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Query failed: {result.errors}")
 
-    print(f"Delivered {result.aggregated_totals.impressions:,} impressions")
-    print(f"Spend: ${result.aggregated_totals.spend:.2f}")
     if result.media_buy_deliveries:
-        print(f"CTR: {result.media_buy_deliveries[0].totals.ctr * 100:.2f}%")
+        delivery = result.media_buy_deliveries[0]
+        print(f"Delivered {delivery.totals.impressions:,} impressions")
+        if getattr(delivery, 'currency', None) and getattr(delivery.totals, 'spend', None) is not None:
+            print(f"Spend: {delivery.totals.spend:.2f} {delivery.currency}")
+        print(f"CTR: {delivery.totals.ctr * 100:.2f}%")
 
 asyncio.run(main())
 ```
@@ -261,13 +229,14 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
 }
 
-console.log(`${validated.aggregated_totals.media_buy_count} active campaigns`);
-console.log(`Total impressions: ${validated.aggregated_totals.impressions.toLocaleString()}`);
-console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+console.log(`${validated.media_buy_deliveries.length} active campaigns`);
 
 // Review each campaign
 validated.media_buy_deliveries.forEach(delivery => {
-  console.log(`${delivery.media_buy_id}: ${delivery.totals.impressions.toLocaleString()} impressions, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
+  const spend = delivery.currency && delivery.totals.spend !== undefined
+    ? `, ${delivery.totals.spend.toFixed(2)} ${delivery.currency}`
+    : '';
+  console.log(`${delivery.media_buy_id}: ${delivery.totals.impressions.toLocaleString()} impressions${spend}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
 });
 ```
 
@@ -289,13 +258,13 @@ async def main():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Query failed: {result.errors}")
 
-    print(f"{result.aggregated_totals.media_buy_count} active campaigns")
-    print(f"Total impressions: {result.aggregated_totals.impressions:,}")
-    print(f"Total spend: ${result.aggregated_totals.spend:.2f}")
+    print(f"{len(result.media_buy_deliveries)} active campaigns")
 
     # Review each campaign
     for delivery in result.media_buy_deliveries:
-        print(f"{delivery.media_buy_id}: {delivery.totals.impressions:,} impressions, CTR {delivery.totals.ctr * 100:.2f}%")
+        spend = (f", {delivery.totals.spend:.2f} {delivery.currency}"
+                 if getattr(delivery, 'currency', None) and getattr(delivery.totals, 'spend', None) is not None else "")
+        print(f"{delivery.media_buy_id}: {delivery.totals.impressions:,} impressions{spend}, CTR {delivery.totals.ctr * 100:.2f}%")
 
 asyncio.run(main())
 ```
@@ -335,7 +304,7 @@ if (validated.media_buy_deliveries.length > 0) {
   // Analyze daily breakdown
   const dailyBreakdown = validated.media_buy_deliveries[0].daily_breakdown;
   if (dailyBreakdown && dailyBreakdown.length > 0) {
-    console.log(`Daily average: ${Math.round(validated.aggregated_totals.impressions / dailyBreakdown.length).toLocaleString()} impressions`);
+    console.log(`Daily average: ${Math.round(validated.media_buy_deliveries[0].totals.impressions / dailyBreakdown.length).toLocaleString()} impressions`);
 
     // Find peak day
     const peakDay = dailyBreakdown.reduce((max, day) =>
@@ -372,7 +341,7 @@ async def main():
         # Analyze daily breakdown
         daily_breakdown = result.media_buy_deliveries[0].daily_breakdown
         if daily_breakdown:
-            daily_avg = result.aggregated_totals.impressions // len(daily_breakdown)
+            daily_avg = result.media_buy_deliveries[0].totals.impressions // len(daily_breakdown)
             print(f"Daily average: {daily_avg:,} impressions")
 
             # Find peak day
@@ -493,15 +462,11 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
 }
 
-// Lifetime delivery data (no date range specified)
-console.log(`Total lifetime impressions: ${validated.aggregated_totals.impressions.toLocaleString()}`);
-console.log(`Total lifetime spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
-
 // Compare campaigns
 validated.media_buy_deliveries.forEach(delivery => {
-  if (delivery.totals.impressions > 0) {
+  if (delivery.totals.impressions > 0 && delivery.currency && delivery.totals.spend !== undefined) {
     const cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000;
-    console.log(`${delivery.media_buy_id}: CPM $${cpm.toFixed(2)}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
+    console.log(`${delivery.media_buy_id}: CPM ${cpm.toFixed(2)} ${delivery.currency}, CTR ${(delivery.totals.ctr * 100).toFixed(2)}%`);
   }
 });
 ```
@@ -522,15 +487,12 @@ async def main():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Query failed: {result.errors}")
 
-    # Lifetime delivery data (no date range specified)
-    print(f"Total lifetime impressions: {result.aggregated_totals.impressions:,}")
-    print(f"Total lifetime spend: ${result.aggregated_totals.spend:.2f}")
-
     # Compare campaigns
     for delivery in result.media_buy_deliveries:
-        if delivery.totals.impressions > 0:
+        if (delivery.totals.impressions > 0 and getattr(delivery, 'currency', None)
+                and getattr(delivery.totals, 'spend', None) is not None):
             cpm = (delivery.totals.spend / delivery.totals.impressions) * 1000
-            print(f"{delivery.media_buy_id}: CPM ${cpm:.2f}, CTR {delivery.totals.ctr * 100:.2f}%")
+            print(f"{delivery.media_buy_id}: CPM {cpm:.2f} {delivery.currency}, CTR {delivery.totals.ctr * 100:.2f}%")
 
 asyncio.run(main())
 ```
@@ -563,8 +525,11 @@ if ('errors' in validated && validated.errors) {
   throw new Error(`Query failed: ${JSON.stringify(validated.errors)}`);
 }
 
-console.log(`${validated.aggregated_totals.media_buy_count} campaigns for account`);
-console.log(`Total spend: $${validated.aggregated_totals.spend.toFixed(2)}`);
+for (const delivery of validated.media_buy_deliveries) {
+  if (delivery.currency && delivery.totals.spend !== undefined) {
+    console.log(`${delivery.media_buy_id}: ${delivery.totals.spend.toFixed(2)} ${delivery.currency}`);
+  }
+}
 ```
 
 ```python Python test=false
@@ -586,8 +551,9 @@ async def main():
     if hasattr(result, 'errors') and result.errors:
         raise Exception(f"Query failed: {result.errors}")
 
-    print(f"{result.aggregated_totals.media_buy_count} campaigns for account")
-    print(f"Total spend: ${result.aggregated_totals.spend:.2f}")
+    for delivery in result.media_buy_deliveries:
+        if getattr(delivery, 'currency', None) and getattr(delivery.totals, 'spend', None) is not None:
+            print(f"{delivery.media_buy_id}: {delivery.totals.spend:.2f} {delivery.currency}")
 
 asyncio.run(main())
 ```
@@ -653,7 +619,7 @@ asyncio.run(main())
 
 ### Requesting a metric subset
 
-`requested_metrics` narrows the response to a specific list of metrics — the same field and semantics as `reporting_webhook.requested_metrics`, now also available on the GET path. It applies to every metrics-bearing object in the response: `totals`, `by_package`, daily and window slices, and breakdown rows. `impressions` and `spend` are always included regardless of what the list contains. Requesting a leaf metric identity (e.g. `viewable_rate`, `quartile_75`) returns its canonical nested carrier (`viewability`, `quartile_data`) rather than a flat duplicate field. A metric requested but not available for the buy is simply omitted — no error — and `missing_metrics` is unaffected by that omission: it still reconciles solely against `committed_metrics`, and sellers MUST NOT list a metric there just because the buyer excluded it via `requested_metrics`. Values outside the product's `reporting_capabilities.available_metrics` are ignored. Omitting the field preserves current behavior — all available metrics are returned.
+`requested_metrics` narrows the response to a specific list of metrics — the same field and semantics as `reporting_webhook.requested_metrics`, now also available on the GET path. It applies to every metrics-bearing object in the response: `totals`, `by_package`, daily and window slices, and breakdown rows. `impressions` and `spend` are always included regardless of what the list contains, except that a legacy or externally created mixed-currency buy omits monetary values from media-buy and window totals, omits `daily_breakdown`, and reports monetary values only on currency-qualified package rows. Requesting a leaf metric identity (e.g. `viewable_rate`, `quartile_75`) returns its canonical nested carrier (`viewability`, `quartile_data`) rather than a flat duplicate field. A metric requested but not available for the buy is simply omitted — no error — and `missing_metrics` is unaffected by that omission: it still reconciles solely against `committed_metrics`, and sellers MUST NOT list a metric there just because the buyer excluded it via `requested_metrics`. Values outside the product's `reporting_capabilities.available_metrics` are ignored. Omitting the field preserves current behavior — all available metrics are returned.
 
 ## Data Freshness
 
@@ -700,6 +666,7 @@ The `by_package` array provides per-package delivery details with these key fiel
 - **`commissionable_value`**: For `revenue_share`, the settled attributed value to which the selected `commission_rate` applies. Verify `spend = round_currency(commissionable_value × commission_rate)`.
 
 **Accountability**:
+- **`metric_values`**: Qualified standard values actually delivered for this package. Each row uses `{ scope: "standard", metric_id, qualifier, value, ...components }`, matching standard-scope `package.committed_metrics` and `missing_metrics` on `(scope, metric_id, qualifier)`. Sellers report the finest available qualifier set at package grain. When a metric appears here, its flat package scalar MUST be omitted to prevent two sources of truth. Vendor-scope values remain in `vendor_metric_values`, and buyers perform only semantically compatible cross-package aggregation.
 - **`missing_metrics`**: Metrics the binding reporting contract advertised but that are not populated in this report. Each entry uses an explicit `scope` discriminator: `{ "scope": "standard", "metric_id": "completed_views" }` for entries from the closed `available-metric.json` enum, `{ "scope": "vendor", "vendor": { "domain": "..." }, "metric_id": "attention_units" }` for vendor-defined metrics. Standard entries MAY carry a `qualifier` mirroring the `committed_metrics` qualifier (e.g., `{ "scope": "standard", "metric_id": "viewable_rate", "qualifier": { "viewability_standard": "mrc" } }` flags a missing MRC commitment even when GroupM viewability was reported, or `{ "scope": "standard", "metric_id": "completion_rate", "qualifier": { "completion_source": "vendor_attested" } }` flags a missing vendor-attested commitment even when seller-attested completion was reported — the paths are not interchangeable). Reconciled against `package.committed_metrics` (filtered to entries where `committed_at < reporting_period.end`) when present; falls back to the product's current `reporting_capabilities.available_metrics` and `vendor_metrics` when absent. Empty array (or absent) indicates clean delivery against the contract; non-empty signals an accountability breach. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.
 - **`vendor_metric_values`**: Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry carries `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`. The `measurable_impressions` field is the coverage denominator — vendor measurement is rarely 100% of delivery, since vendors only score impressions where their SDK fires or their panel matches. Buyers compute coverage as `measurable_impressions / impressions`. When `measurable_impressions` is absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When a declared vendor metric is omitted entirely from this array, infer no measurement happened (no integration). JIC or panel-based co-viewing adjustments, claim reconciliation, confidence intervals, and panel sizes belong here, usually in `breakdown`, rather than in buy-time signal targeting definitions.
 
@@ -851,6 +818,7 @@ Each media buy gains a `windows[]` array on the response:
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_12345",
+      "currency": "USD",
       "status": "active",
       "totals": { "impressions": 12345678, "spend": 5432.10 },
       "by_package": [ /* cumulative per-package — unchanged */ ],

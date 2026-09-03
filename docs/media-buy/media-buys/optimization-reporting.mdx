@@ -149,18 +149,32 @@ A buyer wants to optimize against Adelaide's `attention_score` with a threshold 
 
 A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
 
-**3. Delivery** (`get_media_buy_delivery` response):
+**3. Delivery** (`by_package` excerpt from a `get_media_buy_delivery` response):
 
 ```json
 {
-  "vendor_metric_values": [
-    {
+  "by_package": [{
+    "package_id": "pkg_ctv_001",
+    "impressions": 1000000,
+    "spend": 25000,
+    "pricing_model": "cpm",
+    "rate": 25,
+    "currency": "USD",
+    "metric_values": [{
+      "scope": "standard",
+      "metric_id": "viewable_rate",
+      "qualifier": { "viewability_standard": "mrc" },
+      "value": 0.72,
+      "measurable_impressions": 700000,
+      "viewable_impressions": 504000
+    }],
+    "vendor_metric_values": [{
       "vendor": { "domain": "adelaidemetrics.com" },
       "metric_id": "attention_score",
       "value": 73.2,
       "measurable_impressions": 420000
-    }
-  ]
+    }]
+  }]
 }
 ```
 
@@ -324,7 +338,7 @@ Buyers receive the intersection of both. `impressions` and `spend` are always re
 - **`new_to_brand_units`**: Unit-volume parallel to `new_to_brand_rate` — count of units sold to first-time brand buyers
 - **`plays`**: Raw play count for DOOH/broadcast inventory (mirrors `forecastable-metric.plays`); distinct from `dooh_metrics.loop_plays` (per-screen rotation) and `impressions` (multiplied audience figure)
 
-The numeric values inside `viewability` and `quartile_data` are individually addressable through leaf metric identities — `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds`, and `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` (which resolve to `quartile_data.q1_views`–`q4_views`). The structured `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities similarly name their nested distribution carriers, but are not numeric aggregate rows or sort keys. Nested identities appear in `available_metrics` declarations, `committed_metrics` contracts, and metric selection; numeric leaf identities additionally support `metric_aggregates` rows and breakdown `sort_by`. The nested object remains the only carrier in delivery reports.
+The numeric values inside `viewability` and `quartile_data` are individually addressable through leaf metric identities — `viewable_rate`, `viewable_impressions`, `measurable_impressions`, `viewed_seconds`, and `quartile_25`/`quartile_50`/`quartile_75`/`quartile_100` (which resolve to `quartile_data.q1_views`–`q4_views`). The structured `viewed_seconds_percentiles` and `viewed_seconds_histogram` identities similarly name their nested distribution carriers, but are not numeric aggregate rows or sort keys. Nested identities appear in `available_metrics` declarations, `committed_metrics` contracts, and metric selection; numeric leaf identities additionally support package-level `metric_values` rows and breakdown `sort_by`. The nested object remains the only flat carrier in delivery reports.
 
 Container subsumption applies only to numeric leaves: `viewability` covers its four numeric leaf identities, and `quartile_data` covers its four quartile identities. Optional structured distributions are additive capabilities and MUST be declared explicitly. A product or format that declares only `viewability` does not satisfy `viewed_seconds_percentiles` or `viewed_seconds_histogram`; a format intersection includes a structured distribution only when both sides declare it (unless `reported_metrics` is omitted and the format defers to the product). When a distribution has no `standard`, its standard is unspecified and buyers MUST NOT combine it with any other row, including another row whose standard is unspecified. Note that `quartile_100` counts 100%-of-duration completions (VAST `complete`), which is distinct from `completed_views` when the buy defines a shorter billable view threshold.
 
@@ -383,6 +397,7 @@ Reporting webhooks send a full MCP webhook envelope. The delivery report itself 
     "media_buy_deliveries": [
       {
         "media_buy_id": "mb_001",
+        "currency": "USD",
         "status": "active",
         "totals": {
           "impressions": 125000,
@@ -411,6 +426,7 @@ The inner `result` object can be shown or stored separately, but this shape is n
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_001",
+      "currency": "USD",
       "status": "active",
       "totals": {
         "impressions": 125000,
@@ -428,6 +444,8 @@ The inner `result` object can be shown or stored separately, but this shape is n
 - **`notification_type`**: `"scheduled"` (regular update), `"final"` (campaign complete), `"delayed"` (data not yet available), `"adjusted"` (corrected data for the same window), or `"window_update"` (a wider measurement window supersedes an earlier one)
 - **`sequence_number`**: Sequential notification number (starts at 1)
 - **`next_expected_at`**: ISO 8601 timestamp for next notification (omitted for final notifications)
+- **`currency`**: Deprecated response-wide compatibility field. It is not an aggregation currency and does not imply conversion.
+- **`media_buy_deliveries[].currency`**: ISO 4217 denomination for that media-buy row's monetary values. Sellers SHOULD populate it whenever the row has one currency. Legacy or external mixed-currency buys omit row currency and monetary row totals, then report monetary values at package grain.
 - **`media_buy_deliveries[].status`**: Media buy lifecycle or reporting status, distinct from the top-level async webhook status.
 - **`media_buy_deliveries`**: Array of media buy delivery data (may contain multiple media buys aggregated by publisher)
 
@@ -510,6 +528,7 @@ When the seller sends updated data for the same period with a wider window, they
   "notification_type": "scheduled",
   "media_buy_deliveries": [{
     "media_buy_id": "mb_nova_q4",
+    "currency": "USD",
     "by_package": [{
       "package_id": "primetime_30s",
       "impressions": 980000,
@@ -527,6 +546,7 @@ When the seller sends updated data for the same period with a wider window, they
   "notification_type": "window_update",
   "media_buy_deliveries": [{
     "media_buy_id": "mb_nova_q4",
+    "currency": "USD",
     "by_package": [{
       "package_id": "primetime_30s",
       "impressions": 1050000,
@@ -545,6 +565,7 @@ When the seller sends updated data for the same period with a wider window, they
   "notification_type": "window_update",
   "media_buy_deliveries": [{
     "media_buy_id": "mb_nova_q4",
+    "currency": "USD",
     "by_package": [{
       "package_id": "primetime_30s",
       "impressions": 1120000,
@@ -582,16 +603,33 @@ The `media_buy_deliveries` array may contain 1 to N media buys per webhook. Buye
     "start": "2024-02-05T00:00:00Z",
     "end": "2024-02-05T23:59:59Z"
   },
-  "currency": "USD",
-  "media_buy_deliveries": [
-    { "media_buy_id": "mb_001", "totals": { "impressions": 50000, "spend": 1750 }, ... },
-    { "media_buy_id": "mb_002", "totals": { "impressions": 48500, "spend": 1695 }, ... },
-    // ... 98 more media buys
-  ]
+  "media_buy_deliveries": [{
+    "media_buy_id": "mb_external_001",
+    "status": "active",
+    "totals": { "impressions": 98500 },
+    "by_package": [
+      {
+        "package_id": "pkg_us",
+        "impressions": 50000,
+        "spend": 1750,
+        "pricing_model": "cpm",
+        "rate": 35,
+        "currency": "USD"
+      },
+      {
+        "package_id": "pkg_eu",
+        "impressions": 48500,
+        "spend": 1695,
+        "pricing_model": "cpm",
+        "rate": 34.95,
+        "currency": "EUR"
+      }
+    ]
+  }]
 }
 ```
 
-Buyers should iterate through the array and process each media buy independently. If aggregated totals are needed, calculate them from the individual media buy totals.
+This legacy/external mixed-currency example intentionally omits response-wide and row-level `currency`, row-level monetary totals, and `daily_breakdown`; no single code could denominate both packages. Window totals follow the same rule. Buyers process package monetary values independently. The response-wide `currency` and cross-buy `aggregated_totals` are deprecated in 3.2 and removed in 4.0. Buyers calculate an aggregate only after verifying compatible currencies, qualifiers, measurement windows, finality, and deduplication semantics; AdCP does not perform currency conversion.
 
 #### Partial Failure Handling
 
@@ -613,6 +651,7 @@ Publishers SHOULD send aggregated webhooks containing all available data, using 
   "media_buy_deliveries": [
     {
       "media_buy_id": "mb_001",
+      "currency": "USD",
       "status": "active",
       "totals": {
         "impressions": 50000,
@@ -621,6 +660,7 @@ Publishers SHOULD send aggregated webhooks containing all available data, using 
     },
     {
       "media_buy_id": "mb_002",
+      "currency": "USD",
       "status": "active",
       "totals": {
         "impressions": 48500,
@@ -629,6 +669,7 @@ Publishers SHOULD send aggregated webhooks containing all available data, using 
     },
     {
       "media_buy_id": "mb_003",
+      "currency": "USD",
       "status": "reporting_delayed",
       "message": "Reporting data temporarily unavailable for this campaign",
       "expected_availability": "2024-02-06T02:00:00Z"
@@ -1152,6 +1193,7 @@ When late data arrives for a previously reported period, **resend that period** 
   },
   "media_buy_deliveries": [{
     "media_buy_id": "mb_001",
+    "currency": "USD",
     "is_adjusted": true,
     "totals": {
       "impressions": 51000,  // Updated total (was 50000)

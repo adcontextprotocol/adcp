@@ -20,10 +20,10 @@
             "start": "2026-05-25T00:00:00Z",
             "end": "2026-05-25T23:59:00Z"
           },
-          "currency": "USD",
           "media_buy_deliveries": [
             {
               "media_buy_id": "mb_001",
+              "currency": "USD",
               "status": "active",
               "totals": {
                 "impressions": 125000,
@@ -55,10 +55,10 @@
             "start": "2026-05-25T00:00:00Z",
             "end": "2026-05-25T23:59:00Z"
           },
-          "currency": "USD",
           "media_buy_deliveries": [
             {
               "media_buy_id": "mb_001",
+              "currency": "USD",
               "status": "active",
               "totals": {
                 "impressions": 125000,

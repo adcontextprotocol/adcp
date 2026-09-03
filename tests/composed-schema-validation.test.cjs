@@ -122,6 +122,70 @@ function duplicateValues(items, property) {
   return [...duplicates];
 }
 
+const MONEY_FIELDS = new Set([
+  'spend',
+  'effective_rate',
+  'conversion_value',
+  'commissionable_value',
+  'roas',
+  'cost_per_acquisition',
+  'cost_per_click',
+  'cost_per_completed_view',
+  'cpm'
+]);
+
+function hasMonetaryValue(metrics) {
+  return Boolean(metrics) && (
+    Object.keys(metrics).some((key) => MONEY_FIELDS.has(key)) ||
+    (metrics.rate !== undefined && metrics.pricing_model !== 'revenue_share')
+  );
+}
+
+function deliveryCurrencyErrors(report) {
+  const errors = [];
+  const legacyCurrency = report.currency;
+  for (const row of report.media_buy_deliveries || []) {
+    const packageRows = [
+      ...(row.by_package || []),
+      ...(row.windows || []).flatMap((window) => window.by_package || [])
+    ];
+    const knownCurrencies = packageRows.map((pkg) => pkg.currency).filter(Boolean);
+
+    if (row.currency) {
+      if (knownCurrencies.some((currency) => currency !== row.currency)) {
+        errors.push(`${row.media_buy_id}: package currency differs from row currency`);
+      }
+    } else if (!legacyCurrency) {
+      if (hasMonetaryValue(row.totals)) {
+        errors.push(`${row.media_buy_id}: monetary row total has no row currency`);
+      }
+      if (row.daily_breakdown !== undefined) {
+        errors.push(`${row.media_buy_id}: daily_breakdown has no currency grain`);
+      }
+      for (const window of row.windows || []) {
+        if (hasMonetaryValue(window.totals)) {
+          errors.push(`${row.media_buy_id}: monetary window total has no row currency`);
+        }
+      }
+    }
+
+    if (!row.currency && !legacyCurrency) {
+      for (const pkg of packageRows) {
+        if (hasMonetaryValue(pkg) && !pkg.currency) {
+          errors.push(`${row.media_buy_id}: monetary package value has no currency`);
+        }
+      }
+    }
+    if (legacyCurrency) {
+      const declaredCurrencies = [row.currency, ...knownCurrencies].filter(Boolean);
+      if (declaredCurrencies.some((currency) => currency !== legacyCurrency)) {
+        errors.push(`${row.media_buy_id}: declared currency differs from legacy response currency`);
+      }
+    }
+  }
+  return errors;
+}
+
 function validateLocalizationRequestSemantics(localization, sourceAssets) {
   const errors = [];
   const targets = localization.target_variants || [];
@@ -1554,10 +1618,10 @@ async function runTests() {
       start: '2024-06-01T00:00:00Z',
       end: '2024-06-15T23:59:59Z'
     },
-    currency: 'USD',
     media_buy_deliveries: [
       {
         media_buy_id: 'mb_123',
+        currency: 'USD',
         status: 'active',
         totals: {
           spend: 25000,
@@ -1584,6 +1648,16 @@ async function runTests() {
                   domain: 'attentionvendor.example'
                 },
                 metric_id: 'attention_units'
+              }
+            ],
+            metric_values: [
+              {
+                scope: 'standard',
+                metric_id: 'viewable_rate',
+                qualifier: { viewability_standard: 'mrc' },
+                value: 0.72,
+                measurable_impressions: 700000,
+                viewable_impressions: 504000
               }
             ],
             by_catalog_item: [
@@ -1631,6 +1705,117 @@ async function runTests() {
     '/schemas/media-buy/get-media-buy-delivery-response.json',
     deliveryResponseWithBreakdowns,
     'Delivery response with aggregate metrics (allOf composition)'
+  );
+
+  const legacyRootCurrencyResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  legacyRootCurrencyResponse.currency = 'USD';
+  delete legacyRootCurrencyResponse.media_buy_deliveries[0].currency;
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    legacyRootCurrencyResponse,
+    'Delivery response preserves legacy root-only currency compatibility'
+  );
+  totalTests++;
+  if (deliveryCurrencyErrors(legacyRootCurrencyResponse).length === 0) {
+    log('  ✓ Runtime currency verifier accepts a uniform legacy root-only currency response', 'success');
+    passedTests++;
+  } else {
+    log(`  ✗ Runtime currency verifier rejected a valid legacy response: ${deliveryCurrencyErrors(legacyRootCurrencyResponse).join('; ')}`, 'error');
+    failedTests++;
+  }
+
+  const mixedCurrencyExternalResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  const mixedCurrencyRow = mixedCurrencyExternalResponse.media_buy_deliveries[0];
+  delete mixedCurrencyRow.currency;
+  delete mixedCurrencyRow.totals.spend;
+  delete mixedCurrencyRow.totals.effective_rate;
+  mixedCurrencyRow.by_package.push({
+    package_id: 'pkg_2',
+    spend: 1200,
+    impressions: 48000,
+    pricing_model: 'cpm',
+    rate: 25,
+    currency: 'EUR'
+  });
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    mixedCurrencyExternalResponse,
+    'Delivery response represents an external mixed-currency buy at package grain'
+  );
+  totalTests++;
+  if (deliveryCurrencyErrors(mixedCurrencyExternalResponse).length === 0) {
+    log('  ✓ Runtime currency verifier accepts package-qualified mixed-currency delivery', 'success');
+    passedTests++;
+  } else {
+    log(`  ✗ Runtime currency verifier rejected valid mixed-currency delivery: ${deliveryCurrencyErrors(mixedCurrencyExternalResponse).join('; ')}`, 'error');
+    failedTests++;
+  }
+
+  const inconsistentCurrencyResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  inconsistentCurrencyResponse.media_buy_deliveries[0].by_package[0].currency = 'EUR';
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    inconsistentCurrencyResponse,
+    'Schema accepts unequal row/package currencies for runtime verification'
+  );
+
+  const mixedWithRowSpend = JSON.parse(JSON.stringify(mixedCurrencyExternalResponse));
+  mixedWithRowSpend.media_buy_deliveries[0].totals.spend = 2950;
+  const mixedWithoutPackageCurrency = JSON.parse(JSON.stringify(mixedCurrencyExternalResponse));
+  delete mixedWithoutPackageCurrency.media_buy_deliveries[0].by_package[0].currency;
+  const conflictingLegacyCurrency = JSON.parse(JSON.stringify(mixedCurrencyExternalResponse));
+  conflictingLegacyCurrency.currency = 'USD';
+
+  for (const [description, invalidReport] of [
+    ['unequal row/package currencies', inconsistentCurrencyResponse],
+    ['mixed-currency row with an undenominated row total', mixedWithRowSpend],
+    ['monetary package without row, response, or package currency', mixedWithoutPackageCurrency],
+    ['legacy response currency that conflicts with a package currency', conflictingLegacyCurrency]
+  ]) {
+    totalTests++;
+    if (deliveryCurrencyErrors(invalidReport).length > 0) {
+      log(`  ✓ Runtime currency verifier rejects ${description}`, 'success');
+      passedTests++;
+    } else {
+      log(`  ✗ Runtime currency verifier accepted ${description}`, 'error');
+      failedTests++;
+    }
+  }
+
+  const emptySingleCurrencyTotals = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  emptySingleCurrencyTotals.media_buy_deliveries[0].totals = {};
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    emptySingleCurrencyTotals,
+    'Delivery response requires spend when row currency is present'
+  );
+  delete emptySingleCurrencyTotals.media_buy_deliveries[0].currency;
+  emptySingleCurrencyTotals.currency = 'USD';
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    emptySingleCurrencyTotals,
+    'Delivery response requires spend when legacy response currency is present'
+  );
+
+  const unqualifiedMetricValueResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  delete unqualifiedMetricValueResponse.media_buy_deliveries[0].by_package[0].metric_values[0].qualifier;
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    unqualifiedMetricValueResponse,
+    'Package metric_values rejects an unqualified standard metric'
+  );
+
+  const duplicateSpendMetricResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  duplicateSpendMetricResponse.media_buy_deliveries[0].by_package[0].metric_values = [{
+    scope: 'standard',
+    metric_id: 'spend',
+    qualifier: { attribution_methodology: 'modeled' },
+    value: 25000
+  }];
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    duplicateSpendMetricResponse,
+    'Package metric_values rejects required flat spend'
   );
 
   const missingVendorMetricResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));

@@ -3,7 +3,39 @@
   "$id": "/schemas/media-buy/media-buy-delivery-webhook-result.json",
   "title": "Media Buy Delivery Webhook Result",
   "description": "Payload-only delivery report result carried under core/mcp-webhook-payload.json result for task_type media_buy_delivery. This is not a top-level webhook POST body and does not include protocol envelope fields such as task_id or status.",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency MUST equal it",
+      "legacy_currency_consistency": "When deprecated response-wide currency is present, every present media-buy and package currency MUST equal it",
+      "package_currency_presence": "When a package has spend or another currency-denominated monetary value and both the media-buy row currency and deprecated response-wide currency are absent, that package MUST include currency",
+      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values in row totals MUST be omitted"
+    }
+  },
   "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "currency"
+        ]
+      },
+      "then": {
+        "properties": {
+          "media_buy_deliveries": {
+            "items": {
+              "properties": {
+                "totals": {
+                  "required": [
+                    "spend"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "properties": {
     "notification_type": {
       "type": "string",
@@ -56,7 +88,8 @@
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency code.",
+      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy report-wide ISO 4217 currency code. It may be used only when every monetary value in the report has that denomination. A report can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
+      "deprecated": true,
       "pattern": "^[A-Z]{3}$"
     },
     "attribution_window": {
@@ -73,6 +106,11 @@
             "type": "string",
             "description": "Seller's media buy identifier.",
             "x-entity": "media_buy"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field and all monetary or money-derived values from row totals; report those values only at package level with each package's own currency. AdCP does not perform currency conversion.",
+            "pattern": "^[A-Z]{3}$"
           },
           "status": {
             "type": "string",
@@ -130,9 +168,6 @@
                     "minimum": 0
                   }
                 },
-                "required": [
-                  "spend"
-                ],
                 "additionalProperties": true
               }
             ]
@@ -166,6 +201,7 @@
                     },
                     "currency": {
                       "type": "string",
+                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency and row-level monetary totals are omitted. When both row and deprecated response-wide currency are absent, a package with monetary values MUST include this field. AdCP does not perform currency conversion.",
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {
@@ -189,6 +225,38 @@
                     "supersedes_window": {
                       "type": "string",
                       "maxLength": 50
+                    },
+                    "metric_values": {
+                      "type": "array",
+                      "description": "Qualified standard delivery values for this package. Each entry is the delivered counterpart to a standard-scope package.committed_metrics or by_package[].missing_metrics row, using the same atomic key (scope, metric_id, qualifier). Sellers report one row per full qualifier set at package grain; when a metric appears here, its flat scalar counterpart on the package MUST be omitted to avoid two sources of truth. Vendor-scope values continue to use vendor_metric_values. Buyers reconcile rows directly and perform any compatible cross-package aggregation themselves.",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metric-aggregate.json#/oneOf/0"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "qualifier": {
+                                "minProperties": 1
+                              }
+                            },
+                            "required": [
+                              "qualifier"
+                            ],
+                            "not": {
+                              "properties": {
+                                "metric_id": {
+                                  "const": "spend"
+                                }
+                              },
+                              "required": [
+                                "metric_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
                     }
                   },
                   "required": [
@@ -200,6 +268,24 @@
             }
           }
         },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "currency"
+              ]
+            },
+            "then": {
+              "properties": {
+                "totals": {
+                  "required": [
+                    "spend"
+                  ]
+                }
+              }
+            }
+          }
+        ],
         "required": [
           "media_buy_id",
           "status",
@@ -229,7 +315,6 @@
   "required": [
     "notification_type",
     "reporting_period",
-    "currency",
     "media_buy_deliveries"
   ],
   "additionalProperties": true

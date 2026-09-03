@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/performance-feedback-metric.json",
   "title": "Performance Feedback Metric",
-  "description": "Metric identity for a performance-feedback assertion. Uses the same standard/vendor discriminator and qualifier vocabulary as committed_metrics, missing_metrics, and metric_aggregates.",
+  "description": "Metric identity for a performance-feedback assertion. Uses the same standard/vendor discriminator and qualifier vocabulary as committed_metrics, missing_metrics, and package-level delivery values (metric_values or vendor_metric_values).",
   "type": "object",
   "discriminator": {
     "propertyName": "scope"

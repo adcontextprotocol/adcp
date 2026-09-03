@@ -54,6 +54,7 @@ surfaces by hand.
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
 | 8 | Compliance operators | Test beta.11 from its signed assets or pair `@adcp/sdk@14.0.0-beta.29` or Python `adcp==8.0.0b12` with exact beta.11. Retain the exact package and wire versions. |
+| 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior
 
@@ -107,6 +108,32 @@ webhook receivers. See [Signed requests](/docs/building/by-layer/L1/security#sig
 3.2 producers emit `error.retry_after` as an integer number of seconds. Clients
 that still receive a legacy fractional value should round up before applying
 their bounded retry policy. Do not read `retry_after` from `error.data`.
+
+### Move delivery reporting to row-level semantics
+
+The response-wide `currency` and `aggregated_totals` fields on
+`get_media_buy_delivery` are deprecated in 3.2 and removed in 4.0. Sellers
+SHOULD omit new `aggregated_totals` output. Buyers MUST tolerate both fields
+being absent and MUST NOT treat the legacy currency as an aggregation currency.
+
+For a single-currency media buy, sellers SHOULD emit
+`media_buy_deliveries[].currency`; package currencies MUST match it. For a
+legacy or externally created mixed-currency buy, omit the row currency and
+`daily_breakdown`, and omit monetary or money-derived values from row and
+window totals. Report those values only on package rows (including window
+package rows) with each package's own currency. AdCP does not define currency
+conversion.
+
+Qualified standard delivery metrics move from the deprecated cross-buy
+`aggregated_totals.metric_aggregates` array to
+`by_package[].metric_values`. Reconcile `committed_metrics`, `metric_values`,
+and `missing_metrics` on `(scope, metric_id, qualifier)`. Vendor-defined
+delivery continues to use `by_package[].vendor_metric_values`. During migration,
+buyers MAY read legacy aggregate rows but SHOULD prefer package values and
+calculate a higher-level result only after checking currency, qualifiers,
+measurement windows, finality, and deduplication semantics.
+When a qualified standard metric is present in `metric_values`, sellers MUST
+omit its flat package scalar so consumers never see two sources of truth.
 
 ## Adopt by capability
 
