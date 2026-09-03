@@ -14,9 +14,9 @@ Every beta is an immutable checkpoint, but later betas may change 3.2 surfaces
 before GA.
 </Warning>
 
-The 3.2 beta cycle started with a protocol-first checkpoint. Beta.10 is the
-current protocol checkpoint. TypeScript SDK `14.0.0-beta.28` and Python SDK
-`8.0.0b11` consume the signed beta.10 bundle:
+The 3.2 beta cycle started with a protocol-first checkpoint. Beta.11 is the
+current protocol checkpoint. TypeScript SDK `14.0.0-beta.29` consumes the
+signed beta.11 bundle; Python SDK `8.0.0b11` carries beta.10:
 
 | Checkpoint | Purpose | Who should test |
 |---|---|---|
@@ -30,13 +30,15 @@ current protocol checkpoint. TypeScript SDK `14.0.0-beta.28` and Python SDK
 | `3.2.0-beta.7` | Previous protocol checkpoint for audience activation and external sources, creative delivery and tracker execution, measured-channel reporting, and expanded conformance coverage | Pinned adopters comparing beta.7 and beta.8 behavior |
 | `3.2.0-beta.8` | Previous protocol checkpoint for metric-container subsumption conformance and corrected versioned documentation snapshots | Pinned adopters comparing beta.8 and beta.9 behavior |
 | `3.2.0-beta.9` | Previous protocol checkpoint for the draft account change feed, inventory-list receipts, inventory delivery identity, seller policy and change rights, and broader conformance coverage | Pinned adopters comparing beta.9 and beta.10 behavior |
-| `3.2.0-beta.10` | Current protocol checkpoint for managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | SDK-backed, raw-wire, code-generation, and integration testing |
-| SDK wave | `@adcp/sdk@14.0.0-beta.28` and Python `adcp==8.0.0b11` embed `3.2.0-beta.10`; Go remains pending | TypeScript and Python adopters, Go maintainers, and early integration teams |
+| `3.2.0-beta.10` | Previous protocol checkpoint for managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, committed collection selection, and expanded conformance coverage | Pinned adopters comparing beta.10 and beta.11 behavior |
+| `3.2.0-beta.11` | Current protocol checkpoint | SDK-backed, raw-wire, code-generation, and integration testing |
+| SDK wave | `@adcp/sdk@14.0.0-beta.29` embeds `3.2.0-beta.11`; Python `adcp==8.0.0b11` carries beta.10; Go remains pending | TypeScript adopters, Python adopters pinned to beta.10, Go maintainers, and early integration teams |
 
 Earlier betas remain useful as pinned implementation checkpoints. For
 SDK-backed TypeScript testing, pair SDK beta.28 with protocol beta.10. Pair
 Python beta.11 with protocol beta.10. You can also test beta.10 from its signed
-artifact with raw-wire or code-generation workflows. Do not combine a newer wire pin with an
+artifact as a historical checkpoint; use beta.11 for current raw-wire or
+code-generation workflows. Do not combine a newer wire pin with an
 SDK generated from an older bundle unless the SDK maintainer documents forward
 compatibility.
 
@@ -45,12 +47,12 @@ compatibility.
 The artifact version, wire pin, and documentation selector are related but not
 interchangeable:
 
-| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | beta.6 | beta.7 | beta.8 | beta.9 | beta.10 |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| Protocol artifact | `3.2.0-beta.0` | `3.2.0-beta.1` | `3.2.0-beta.2` | `3.2.0-beta.3` | `3.2.0-beta.4` | `3.2.0-beta.5` | `3.2.0-beta.6` | `3.2.0-beta.7` | `3.2.0-beta.8` | `3.2.0-beta.9` | `3.2.0-beta.10` |
-| Git tag | `v3.2.0-beta.0` | `v3.2.0-beta.1` | `v3.2.0-beta.2` | `v3.2.0-beta.3` | `v3.2.0-beta.4` | `v3.2.0-beta.5` | `v3.2.0-beta.6` | `v3.2.0-beta.7` | `v3.2.0-beta.8` | `v3.2.0-beta.9` | `v3.2.0-beta.10` |
-| `adcp_version` wire pin | `"3.2-beta.0"` | `"3.2-beta.1"` | `"3.2-beta.2"` | `"3.2-beta.3"` | `"3.2-beta.4"` | `"3.2-beta.5"` | `"3.2-beta.6"` | `"3.2-beta.7"` | `"3.2-beta.8"` | `"3.2-beta.9"` | `"3.2-beta.10"` |
-| Documentation selector | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` |
+| Surface | beta.0 | beta.1 | beta.2 | beta.3 | beta.4 | beta.5 | beta.6 | beta.7 | beta.8 | beta.9 | beta.10 | beta.11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Protocol artifact | `3.2.0-beta.0` | `3.2.0-beta.1` | `3.2.0-beta.2` | `3.2.0-beta.3` | `3.2.0-beta.4` | `3.2.0-beta.5` | `3.2.0-beta.6` | `3.2.0-beta.7` | `3.2.0-beta.8` | `3.2.0-beta.9` | `3.2.0-beta.10` | `3.2.0-beta.11` |
+| Git tag | `v3.2.0-beta.0` | `v3.2.0-beta.1` | `v3.2.0-beta.2` | `v3.2.0-beta.3` | `v3.2.0-beta.4` | `v3.2.0-beta.5` | `v3.2.0-beta.6` | `v3.2.0-beta.7` | `v3.2.0-beta.8` | `v3.2.0-beta.9` | `v3.2.0-beta.10` | `v3.2.0-beta.11` |
+| `adcp_version` wire pin | `"3.2-beta.0"` | `"3.2-beta.1"` | `"3.2-beta.2"` | `"3.2-beta.3"` | `"3.2-beta.4"` | `"3.2-beta.5"` | `"3.2-beta.6"` | `"3.2-beta.7"` | `"3.2-beta.8"` | `"3.2-beta.9"` | `"3.2-beta.10"` | `"3.2-beta.11"` |
+| Documentation selector | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` | `3.2-beta` |
 
 Only send a prerelease wire pin to a peer that advertises that exact value in
 `get_adcp_capabilities.adcp.supported_versions`. Prerelease pins are exact: a
@@ -59,15 +61,15 @@ a stable `"3.2"` pin must not silently negotiate to a beta.
 
 ## Use matched SDK betas
 
-The TypeScript SDK has exact beta.10 support. The npm
+The TypeScript SDK has exact beta.11 support. The npm
 `latest` tag remains on SDK 13, so opt into the preview explicitly:
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.28
+npm install @adcp/sdk@14.0.0-beta.29
 ```
 
 SDK 14 includes typed caller and server support for the compact media-buy
-lifecycle, the beta.10 schemas and compliance assets, version-aware request
+lifecycle, the beta.11 schemas and compliance assets, version-aware request
 signing, governance plan-adjustment reporting, and agent notification
 configuration. It retains 3.0 and 3.1 adaptation for mixed-version testing.
 See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for the support
@@ -77,19 +79,19 @@ Python `adcp==8.0.0b11` carries beta.10 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
-## Use the beta.10 artifact directly
+## Use the beta.11 artifact directly
 
-Download the signed beta.10 protocol bundle rather
+Download the signed beta.11 protocol bundle rather
 than copying schemas from `main` or from the moving `/schemas/latest/` path:
 
 ```bash
-curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.10.tgz
-curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.10.tgz.sha256
-shasum -a 256 -c 3.2.0-beta.10.tgz.sha256
-tar -xzf 3.2.0-beta.10.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.11.tgz
+curl -fLO https://adcontextprotocol.org/protocol/3.2.0-beta.11.tgz.sha256
+shasum -a 256 -c 3.2.0-beta.11.tgz.sha256
+tar -xzf 3.2.0-beta.11.tgz
 ```
 
-The extracted `adcp-3.2.0-beta.10/` directory contains:
+The extracted `adcp-3.2.0-beta.11/` directory contains:
 
 - `manifest.json` — release version, bundle contents, skills, and file count;
 - `schemas/` — source-shaped and bundled request/response schemas, including
@@ -107,13 +109,13 @@ Useful direct-artifact tests are:
 1. Generate or refresh types from the pinned bundled schemas.
 2. Validate representative requests and responses for the roles you implement.
 3. Compare your advertised tools with `schemas/manifest.json`.
-4. Exercise raw MCP or A2A calls with `adcp_version: "3.2-beta.10"` against a
+4. Exercise raw MCP or A2A calls with `adcp_version: "3.2-beta.11"` against a
    staging peer that advertises the same pin.
 5. Run the compliance assets with a source-compatible runner if you maintain
    one. Do not weaken production authentication to accommodate a beta runner.
 
 <Note>
-**No 3.2 verification badge is currently issued for beta.10.** Treat it as an
+**No 3.2 verification badge is currently issued for beta.11.** Treat it as an
 implementation input, not a certification target.
 </Note>
 
@@ -128,8 +130,8 @@ An SDK support claim must name all of the following:
 - install command and one tested validation command.
 
 The SDK compatibility matrix lives in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
-The TypeScript and Python rows name exact beta.10 support with different
-higher-layer coverage. Neither implies support
+The TypeScript row names exact beta.11 support; the Python row names beta.10
+support with different higher-layer coverage. Neither implies support
 for another checkpoint. Treat generated 3.2 types and validators in every other
 SDK as unavailable until its row names an exact package and protocol checkpoint.
 Raw JSON calls may still be possible, but they are not equivalent to SDK support.
@@ -140,15 +142,15 @@ SDK implementation bugs in the SDK's own repository. Accepted protocol fixes
 receive a changeset and ship in a later beta; published betas are never rebuilt
 in place.
 
-## Current beta.10 checkpoint
+## Current beta.11 checkpoint
 
-Protocol beta.1 through beta.10 are published. TypeScript SDK beta.28 and Python
-SDK beta.11 embed the exact beta.10 bundle. Before treating a test result as
-beta.10 protocol evidence, confirm that:
+Protocol beta.1 through beta.11 are published. TypeScript SDK beta.29 embeds
+the exact beta.11 bundle; Python SDK beta.11 carries beta.10. Before treating
+a test result as beta.11 protocol evidence, confirm that:
 
-- the test uses the signed beta.10 artifact directly;
-- both peers advertise `"3.2-beta.10"` before calls use that pin;
-- the integration scenarios below run against beta.10 and retain the exact
+- the test uses the signed beta.11 artifact directly;
+- both peers advertise `"3.2-beta.11"` before calls use that pin;
+- the integration scenarios below run against beta.11 and retain the exact
   bundle version;
 - copy/paste installation and validation commands have been executed as
   published;
