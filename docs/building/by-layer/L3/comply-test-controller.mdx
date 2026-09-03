@@ -413,7 +413,7 @@ and status call below.
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "idempotency_key": "reporting-core-lab-0001",
   "accounts": [{
     "brand": { "domain": "reporting-lab.example" },
@@ -444,7 +444,7 @@ and status call below.
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "prepare" }
@@ -455,7 +455,7 @@ Read the waiting obligation through [`get_reporting_status`](/docs/media-buy/tas
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts" },
   "view": "periods"
 }
@@ -465,7 +465,7 @@ Then advance past its SLA to make the missing revision operationally visible:
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": {
@@ -479,7 +479,7 @@ The corresponding escalation, publication, and deliberate omission calls are:
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "advance_time", "target_health": "action_required" }
@@ -488,7 +488,7 @@ The corresponding escalation, publication, and deliberate omission calls are:
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "publish_zero_row" }
@@ -499,7 +499,7 @@ Reset with `prepare` before the negative fixture, then call:
 
 ```json
 {
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
   "scenario": "reporting_core_lifecycle_probe",
   "params": { "operation": "omit_obligation" }

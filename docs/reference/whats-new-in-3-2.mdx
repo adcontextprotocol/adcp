@@ -8,10 +8,10 @@ description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle
 # What's new in AdCP 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.11 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.29` and Python `adcp==8.0.0b12` embed beta.11. Python
+**3.2 is in release candidate.** RC.0 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed RC.0. Python
 higher-level helpers remain partial, and Go exact support is
-still pending. See the [3.2 beta program](/docs/reference/3-2-beta) before testing.
+still pending. See the [3.2 prerelease program](/docs/reference/3-2-beta) before testing.
 </Warning>
 
 AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
@@ -308,17 +308,17 @@ for the remaining runner and coverage gaps.
 
 | If you are… | Review before advertising 3.2 |
 |---|---|
-| Any seller or service | Advertise `"3.2-beta.N"` only for the exact beta served, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
+| Any seller or service | Advertise `"3.2-rc.0"` only when serving that exact prerelease, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
 | A buyer | Gate compact tools and optional targeting on capabilities; do not infer 3.2 support from a major-only declaration. |
 | A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
 | A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
 | A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
-| An SDK maintainer | Generate from the signed beta.11 tarball, name the exact supported bundle, and feed accepted protocol corrections into the RC. |
-| A compliance operator | Test beta.11 from its signed assets or an SDK that explicitly lists beta.11, such as TypeScript SDK 14 beta.29 or Python SDK 8 beta.12; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
+| An SDK maintainer | Generate from the signed RC.0 tarball, name the exact supported bundle, and feed accepted protocol corrections into the next prerelease. |
+| A compliance operator | Test RC.0 from its signed assets or an SDK that explicitly lists RC.0, such as TypeScript SDK 14 beta.31 or Python SDK 8 beta.13; retain end-to-end integration evidence and do not issue a 3.2 badge from a prerelease. |
 
 ## Start here
 
-1. Read the [3.2 beta program](/docs/reference/3-2-beta).
+1. Read the [3.2 prerelease program](/docs/reference/3-2-beta).
 2. Follow [Migrating from 3.1 to 3.2](/docs/reference/migration/3-1-to-3-2).
 3. Choose the exact package and support level in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 4. Use the [Release Notes](/docs/reference/release-notes#version-3-2-0) for the cumulative record.

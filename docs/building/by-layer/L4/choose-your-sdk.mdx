@@ -25,19 +25,19 @@ What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cro
 
 *Last updated: 2026-09-03.*
 
-| SDK | Current package | 3.2 beta support | L0 | L1 | L2 | L3 |
+| SDK | Current package | 3.2 RC support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.29` | Exact `3.2.0-beta.11` support | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `8.0.0b12` | Exact `3.2.0-beta.11` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.31` | Exact `3.2.0-rc.0` support | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `8.0.0b13` | Exact `3.2.0-rc.0` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.0.0` | Pending exact 3.2 support | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
 <Warning>
-**3.2 packages are prereleases.** TypeScript beta.29 and Python beta.12 support
-the exact beta.11 protocol checkpoint.
+**3.2 packages are prereleases.** TypeScript beta.31 and Python beta.13 support
+the exact RC.0 protocol checkpoint.
 Neither implies compatibility with a later checkpoint. Go has not published an exact
-3.2 support statement yet. See the [3.2 beta program](/docs/reference/3-2-beta).
+3.2 support statement yet. See the [3.2 prerelease program](/docs/reference/3-2-beta).
 </Warning>
 
 The TypeScript SDK currently provides the broadest L0–L3 surface. Python is a
@@ -59,7 +59,7 @@ and the [Slack community](/docs/community/joining-slack).
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.29
+npm install @adcp/sdk@14.0.0-beta.31
 ```
 
 ```javascript
@@ -73,7 +73,7 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.listProducts({
-  adcp_version: '3.2-beta.11',
+  adcp_version: '3.2-rc.0',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: { channels: ['ctv'] },
@@ -110,7 +110,7 @@ integrations should use the main server and per-tool type exports.
 [![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
 
 ```bash
-pip install adcp==8.0.0b12
+pip install adcp==8.0.0b13
 ```
 
 ```python
@@ -168,11 +168,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-beta.28 --help
-npx @adcp/sdk@14.0.0-beta.28 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-beta.28 my-agent list_products '{"adcp_version":"3.2-beta.10","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-beta.31 --help
+npx @adcp/sdk@14.0.0-beta.31 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-beta.31 my-agent list_products '{"adcp_version":"3.2-rc.0","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-beta.28 test-mcp list_products '{"adcp_version":"3.2-beta.10"}'
+npx @adcp/sdk@14.0.0-beta.31 test-mcp list_products '{"adcp_version":"3.2-rc.0"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
@@ -180,9 +180,9 @@ The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`a
 ### Python CLI
 
 ```bash
-uvx adcp --help
-uvx adcp --save-auth my-agent https://sales.example.com/mcp
-uvx adcp my-agent get_products '{"idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
+uvx --from adcp==8.0.0b13 adcp --help
+uvx --from adcp==8.0.0b13 adcp --save-auth my-agent https://sales.example.com/mcp
+uvx --from adcp==8.0.0b13 adcp my-agent get_products '{"adcp_version":"3.2-rc.0","idempotency_key":"550e8400-e29b-41d4-a716-446655442064","buying_mode":"brief","brief":"CTV campaign"}'
 ```
 
 ## What's next
