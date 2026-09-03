@@ -14942,20 +14942,24 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) completionRate = 0.82;
 
     const reachUnit = channels?.some(c => ['streaming_audio', 'podcast'].includes(c)) ? 'accounts' as const : 'devices' as const;
-    const audioMetrics = isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0
+    const audioCompletionMetrics = isAudioVideo && impressions > 0
       ? {
         views: Math.round(impressions * 0.9),
         completed_views: Math.round(impressions * completionRate),
         completion_rate: completionRate,
-        reach: Math.round(impressions * 0.72),
-        reach_unit: reachUnit,
-        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
         ...(channels?.some(c => ['streaming_audio', 'podcast'].includes(c))
           ? {
             follows: Math.round(impressions * 0.002),
             conversions: Math.round(impressions * 0.006),
           }
           : {}),
+      }
+      : {};
+    const audioReachMetrics = isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0
+      ? {
+        reach: Math.round(impressions * 0.72),
+        reach_unit: reachUnit,
+        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
       }
       : {};
     const packageConversions = simulatedConversionsByPackage.get(pkg.packageId) ?? 0;
@@ -15058,7 +15062,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
       ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
       ...simulatedPackageReachMetrics,
-      ...audioMetrics,
+      ...audioCompletionMetrics,
+      ...audioReachMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
       ...revenueShareMetrics,
@@ -15090,9 +15095,11 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       return missing;
     }, []);
 
-    if (isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0) {
+    if (isAudioVideo && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
       totalViews += Math.round(impressions * 0.9);
+    }
+    if (isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0) {
       totalReach += Math.round(impressions * 0.72);
       if (!totalReachUnit) totalReachUnit = reachUnit;
       else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';

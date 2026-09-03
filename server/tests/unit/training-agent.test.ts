@@ -15368,8 +15368,21 @@ describe('get_media_buy_delivery handler', () => {
     });
     const audioDelivery = (audioDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0];
     const audioPackage = (audioDelivery.by_package as Array<Record<string, unknown>>)[0];
-    expect(audioPackage).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
-    expect(audioDelivery.totals as Record<string, unknown>).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+    expect(audioPackage).toMatchObject({
+      views: 900,
+      completed_views: 870,
+      completion_rate: 0.87,
+      follows: 2,
+      conversions: 6,
+      frequency: 2.5,
+      reach_unit: 'households',
+    });
+    expect(audioDelivery.totals as Record<string, unknown>).toMatchObject({
+      views: 900,
+      completed_views: 870,
+      frequency: 2.5,
+      reach_unit: 'households',
+    });
   });
 
   it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {
