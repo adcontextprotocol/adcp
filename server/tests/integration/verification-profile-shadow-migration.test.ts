@@ -9,8 +9,12 @@ const MIGRATION = readFileSync(
   resolve(__dirname, '../../src/db/migrations/572_verification_profile_shadow_rollout.sql'),
   'utf8',
 );
+const DIAGNOSTICS_MIGRATION = readFileSync(
+  resolve(__dirname, '../../src/db/migrations/576_verification_profile_shadow_diagnostics.sql'),
+  'utf8',
+);
 
-describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile shadow rollout', () => {
+describe.skipIf(!process.env.DATABASE_URL)('verification profile shadow migrations', () => {
   let pool: Pool;
   let client: PoolClient;
   let sourceRunId: string;
@@ -30,7 +34,12 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
         updated_by VARCHAR(255)
       );
       CREATE TABLE agent_compliance_runs (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_url TEXT,
+        tested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        overall_status TEXT NOT NULL DEFAULT 'unknown',
+        tracks_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+        dry_run BOOLEAN NOT NULL DEFAULT FALSE
       );
       CREATE TABLE discovered_agents (agent_url TEXT PRIMARY KEY);
       CREATE TABLE agent_registry_metadata (
@@ -53,6 +62,7 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
     );
     sourceRunId = run.rows[0].id;
     await client.query(MIGRATION);
+    await client.query(DIAGNOSTICS_MIGRATION);
   });
 
   afterAll(async () => {
@@ -199,10 +209,14 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
        VALUES ('https://audit.example.test/mcp', 'production')`,
     );
     const firstRun = await client.query<{ id: string }>(
-      'INSERT INTO agent_compliance_runs DEFAULT VALUES RETURNING id',
+      `INSERT INTO agent_compliance_runs (agent_url, overall_status, tracks_json)
+       VALUES ('https://audit.example.test/mcp', 'partial', '[{"track":"core"}]'::jsonb)
+       RETURNING id`,
     );
     const secondRun = await client.query<{ id: string }>(
-      'INSERT INTO agent_compliance_runs DEFAULT VALUES RETURNING id',
+      `INSERT INTO agent_compliance_runs (agent_url, overall_status, tracks_json)
+       VALUES ('https://audit.example.test/mcp', 'partial', '[{"track":"core"}]'::jsonb)
+       RETURNING id`,
     );
     await client.query(
       `INSERT INTO verification_profile_shadow_assessments (
@@ -219,11 +233,11 @@ describe.skipIf(!process.env.DATABASE_URL)('migration 572: verification profile 
          controller_missing_storyboard_count, other_missing_storyboard_count,
          mixed_controller_failure_phase_count
        ) VALUES
-       ($1, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v2',
+       ($1, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v3',
         'partial', 'partial', 'partial', TRUE, NULL, FALSE,
         TRUE, 0, 1, 0, 0,
         10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-       ($2, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v2',
+       ($2, 'https://audit.example.test/mcp', 'production', '3.1', 'verification-profiles-v3',
         'partial', 'partial', 'partial', TRUE, NULL, TRUE,
         TRUE, 0, 1, 0, 0,
         10, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0)`,
