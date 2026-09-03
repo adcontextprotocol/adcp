@@ -142,4 +142,36 @@ describe('JobScheduler', () => {
     expect(started).toContain('after-queue');
     scheduler.stopAll();
   });
+
+  it('does not overlap interval runs of the same slow job', async () => {
+    vi.useFakeTimers();
+
+    const scheduler = new JobScheduler();
+    const blocker = deferred();
+    const runner = vi.fn(async () => blocker.promise);
+    scheduler.register({
+      name: 'slow-heartbeat',
+      description: 'Slow heartbeat',
+      interval: { value: 1, unit: 'seconds' },
+      runner,
+    });
+
+    scheduler.start('slow-heartbeat');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runner).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(runner).toHaveBeenCalledOnce();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      { jobName: 'slow-heartbeat' },
+      'Skipping - previous run still executing',
+    );
+
+    blocker.resolve();
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runner).toHaveBeenCalledTimes(2);
+
+    scheduler.stopAll();
+  });
 });

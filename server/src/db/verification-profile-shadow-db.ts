@@ -15,7 +15,7 @@ export async function recordVerificationProfileShadowAssessment(input: {
     `WITH rollout AS MATERIALIZED (
        SELECT 1
        FROM system_settings
-       WHERE key = $28
+       WHERE key = $33
          AND value->>'enabled' = 'true'
          AND COALESCE(value->>'expires_at', '') ~
            '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]{3})?Z$'
@@ -34,7 +34,12 @@ export async function recordVerificationProfileShadowAssessment(input: {
        controller_cascade_step_count, observed_failure_count,
        sandbox_observable_failure_count, non_controller_gap_step_count,
        controller_missing_storyboard_count, other_missing_storyboard_count,
-       mixed_controller_failure_phase_count, evaluated_at
+       mixed_controller_failure_phase_count,
+       unattributed_flat_failure_count, unexplained_phase_failure_count,
+       sandbox_unresolved_executed_bundle_count,
+       sandbox_unresolved_missing_tools_bundle_count,
+       sandbox_unresolved_unknown_bundle_count,
+       evaluated_at
      ) SELECT
        $1, $2, $3, $4, $5,
        $6, $7, $8,
@@ -46,7 +51,10 @@ export async function recordVerificationProfileShadowAssessment(input: {
        $20, $21,
        $22, $23,
        $24, $25,
-       $26, $27, NOW()
+       $26, $27,
+       $28, $29,
+       $30, $31, $32,
+       NOW()
      FROM rollout
      ON CONFLICT (source_run_id) DO UPDATE SET
        lifecycle_stage = EXCLUDED.lifecycle_stage,
@@ -74,6 +82,11 @@ export async function recordVerificationProfileShadowAssessment(input: {
        controller_missing_storyboard_count = EXCLUDED.controller_missing_storyboard_count,
        other_missing_storyboard_count = EXCLUDED.other_missing_storyboard_count,
        mixed_controller_failure_phase_count = EXCLUDED.mixed_controller_failure_phase_count,
+       unattributed_flat_failure_count = EXCLUDED.unattributed_flat_failure_count,
+       unexplained_phase_failure_count = EXCLUDED.unexplained_phase_failure_count,
+       sandbox_unresolved_executed_bundle_count = EXCLUDED.sandbox_unresolved_executed_bundle_count,
+       sandbox_unresolved_missing_tools_bundle_count = EXCLUDED.sandbox_unresolved_missing_tools_bundle_count,
+       sandbox_unresolved_unknown_bundle_count = EXCLUDED.sandbox_unresolved_unknown_bundle_count,
        evaluated_at = NOW()
      RETURNING source_run_id`,
     [
@@ -104,6 +117,11 @@ export async function recordVerificationProfileShadowAssessment(input: {
       assessment.controller_missing_storyboard_count,
       assessment.other_missing_storyboard_count,
       assessment.mixed_controller_failure_phase_count,
+      assessment.unattributed_flat_failure_count,
+      assessment.unexplained_phase_failure_count,
+      assessment.sandbox_unresolved_executed_bundle_count,
+      assessment.sandbox_unresolved_missing_tools_bundle_count,
+      assessment.sandbox_unresolved_unknown_bundle_count,
       SETTING_KEYS.VERIFICATION_PROFILE_SHADOW_ROLLOUT,
     ],
   ), { readOnly: false });

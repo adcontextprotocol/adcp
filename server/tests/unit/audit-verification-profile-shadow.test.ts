@@ -88,6 +88,13 @@ describe('verification profile shadow audit', () => {
     });
 
     expect(decision.blocking_reasons).toEqual(['sandbox_bundle_projection_resolved']);
+    expect(decision.gates.sandbox_bundle_projection_resolved).toEqual({
+      pass: false,
+      unresolved_bundles: 1,
+      executed_storyboard_bundles: 0,
+      missing_tools_bundles: 0,
+      unknown_cause_bundles: 0,
+    });
     expect(decision.manual_review_reasons).toContain('candidate_nonpassing_bundles');
   });
 
@@ -109,6 +116,7 @@ describe('verification profile shadow audit', () => {
     expect(poolQueryMock.mock.calls[0][0]).toContain('JOIN eligible e ON e.agent_url = s.agent_url');
     expect(poolQueryMock.mock.calls[0][0]).toContain('e.lifecycle_stage = s.lifecycle_stage');
     expect(poolQueryMock.mock.calls[0][0]).toContain('COUNT(e.agent_url)::int AS eligible_agents');
+    expect(poolQueryMock.mock.calls[0][0]).toContain('AS unassessed_with_stale_public_run');
   });
 
   it('adds badge identity and per-agent blocking reasons to restricted output', async () => {
@@ -223,7 +231,7 @@ describe('verification profile shadow audit', () => {
     const report = await runAudit(['--include-agents']);
     const agents = report.agents as Array<Record<string, unknown>>;
 
-    expect(agents[0].blocking_reasons).toEqual(['not_assessed']);
+    expect(agents[0].blocking_reasons).toEqual(['not_assessed', 'no_public_run']);
     expect(agents[0].review_reasons).toEqual([]);
   });
 

@@ -8,10 +8,29 @@ notifications.
 
 ## 1. Deploy disabled
 
-Migration `571_verification_profile_shadow_rollout.sql` creates the bounded
+Migration `572_verification_profile_shadow_rollout.sql` creates the bounded
 shadow ledger and inserts the audited setting as
 `{ "enabled": false, "expires_at": null }`.
 After deploy, confirm the admin settings response reports it disabled.
+
+Before enabling, collect a full 48-hour disabled baseline from the deployed
+worker's structured `Compliance heartbeat shadow flush completed after public
+processing` records. Every scheduled heartbeat, including an empty queue, must
+emit this record with:
+
+- `publicProcessingDurationMs`;
+- `queue.eligibleBacklog`, `queue.selectedCount`, and `queue.batchLimit`;
+- policy, SDK, selected target, and compliance-cache versions in `inputs`;
+- aggregate `outcomes` and `skipReasons` (never endpoint URLs); and
+- shadow candidates, attempts, writes, disables, setting/write errors, and
+  write latency.
+
+Do not infer a zero backlog from missing logs. Missing baseline samples make
+the health comparison unproven. Record the deployed image SHA, policy version,
+SDK version, and compliance-cache/catalog version at baseline start. Freeze
+those worker/compliance inputs through the baseline and observation window. A
+change to any of them, or a machine-convergence gap, invalidates the comparison
+and requires a fresh disabled baseline.
 
 Do not deploy the enforcement patch during this phase.
 
@@ -67,6 +86,10 @@ bundles. Evidence-count changes are reported separately for manual review;
 they do not by themselves mean that the candidate outcome flapped.
 Endpoints with no assessment are labeled `not_assessed` instead of being
 misreported as incomplete runs with missing bundle evidence.
+The aggregate report also separates unassessed endpoints by absent, recent, or
+stale latest public runs. Restricted output identifies whether the latest
+public run had no track evidence. These diagnostics explain coverage failure;
+they never remove an endpoint from the denominator or turn it into a pass.
 
 Before proceeding, require:
 
@@ -96,6 +119,11 @@ Any change to evaluator semantics must advance
 deploying that change and start a new 48-hour window; never combine observations
 from two policy versions to satisfy coverage or stability gates.
 
+When a prior window failed and a replacement evidence stream is intentionally
+started, advance the policy version even if candidate grading is unchanged.
+This makes the first write the unambiguous start of the replacement window and
+prevents old policy history from satisfying the minimum-age gate.
+
 The shadow evaluator intentionally leaves mixed executed partial bundles
 unresolved, even when their visible steps include a controller omission. The
 SDK result currently does not preserve every cause that can make such a bundle
@@ -104,12 +132,14 @@ must not proceed until those endpoints either produce explicit controller-only
 `storyboards_missing_tools` evidence or the SDK exposes complete causal bundle
 data and the evaluator is reviewed again.
 
-Also inspect the structured `Compliance heartbeat shadow flush completed after
-public processing` logs over the window. Require zero setting/write errors, a
-shadow write success rate of 100% for attempted rows, and no more than a 10%
-increase in p95 public heartbeat processing duration or eligible queue backlog
-versus the preceding 48 hours. Disable the lease and investigate if any health
-threshold is missed, even when the assessment coverage gate passes.
+Also inspect the structured heartbeat health logs over the window. Account for
+every scheduled tick with either a health record or an explicit same-job
+overlap skip, require zero setting/write errors, a shadow write success rate of
+100% for attempted rows, and no more than a 10% increase in p95 public heartbeat
+processing duration or p95 eligible queue backlog versus the frozen disabled
+baseline. Treat missing ticks, missing fields, or a changed worker/compliance
+input as unproven. Disable the lease and investigate if any health threshold is
+missed, even when the assessment coverage gate passes.
 
 ## 4. Roll back collection at any time
 
@@ -119,16 +149,14 @@ is rechecked before each shadow write in an in-flight heartbeat batch. Rows are
 scheduled for deletion after the fixed 90-day retention window.
 Public behavior is unchanged whether collection is on or off.
 
-Run `SELECT prune_verification_profile_shadow_assessments();` through the
-operator database console or invoke
-`pruneVerificationProfileShadowAssessments()` from a scheduled maintenance
-caller. The procedure is safe while collection is disabled and reports the
-number of rows deleted.
+Retention cleanup continues through the scheduled heartbeat maintenance seam
+while collection is disabled. Do not mutate rollout state or prune rows through
+a direct database session during an audited rollout.
 
 ## 5. Phase 2 only after review
 
 The enforcement change must remain a separate deployment. Rebase it onto the
-then-current main branch, renumber its migration after this phase's `571`,
+then-current main branch, renumber its migration after this phase's current migration,
 rerun its migration and concurrency tests, and stage it behind its own
 canary/rollback control. Do not infer an endpoint's selected profile solely
 from the shadow recommendation; owner choice and communication are required

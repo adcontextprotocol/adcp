@@ -225,8 +225,16 @@ export class JobScheduler {
         return;
       }
 
-      await this.acquireSlot();
+      // setInterval does not wait for the previous promise. Prevent a slow
+      // heartbeat (or any other scheduled job) from queueing another copy of
+      // itself and increasing traffic merely because one interval elapsed.
+      if (job.executing) {
+        logger.warn({ jobName: name }, 'Skipping - previous run still executing');
+        return;
+      }
+
       job.executing = true;
+      await this.acquireSlot();
       const startTime = Date.now();
       try {
         const result = await config.runner(config.options ?? ({} as never));
