@@ -17040,6 +17040,12 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const identityAbsenceCapError = identityAbsenceFrequencyCapError(
+        product,
+        targetingResult.targeting ?? {},
+        `new_packages[${i}].targeting_overlay`,
+      );
+      if (identityAbsenceCapError) return { errors: [identityAbsenceCapError] };
       const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
       if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
       for (const inline of inlineCreatives.validatedCreatives) {

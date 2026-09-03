@@ -5823,6 +5823,21 @@ describe('create_media_buy handler', () => {
       field: 'packages[0].targeting_overlay.frequency_cap',
     });
 
+    const cappedNewPackage = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: uncapped.result.media_buy_id,
+      new_packages: [{
+        product_id: identityAbsentProductId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        targeting_overlay: { frequency_cap: cap },
+      }],
+    });
+    expect(cappedNewPackage.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'new_packages[0].targeting_overlay.frequency_cap',
+    });
+
     const legacyCapped = await simulateCallTool(server, 'create_media_buy', request(
       legacyProductId,
       { frequency_cap: cap },
