@@ -77,6 +77,8 @@ fixtures:
       identity:
         persistent_identifier: false
         reach_methodology: "Venue and dwell-modelled aggregate audience measurement; not identity-resolved."
+      overlay_support:
+        geo_countries: true
       format_options:
         - format_option_id: "dooh_portrait_image_1080x1920"
           format_kind: "image"
@@ -248,6 +250,10 @@ phases:
           - check: field_present
             path: "products[0].identity.reach_methodology"
             description: "Custom reach reporting has a discoverable methodology path"
+          - check: field_value
+            path: "products[0].overlay_support.geo_countries"
+            value: true
+            description: "An unrelated supported overlay dimension survives compact product projection"
           - check: field_absent
             path: "products[0].overlay_support.frequency_cap"
             description: "Product that cannot enforce caps does not advertise frequency-cap support"
@@ -691,10 +697,14 @@ phases:
             path: "media_buy_deliveries[0].totals.reach_unit"
             value: "custom"
             description: "Frequency-only DOOH delivery carries its disclosed custom reach unit"
-          - check: field_value_or_absent
+          - check: field_value
+            path: "media_buy_deliveries[0].by_package[0].frequency"
+            value: 2.5
+            description: "Package frequency is bound to the identity-absent DOOH product"
+          - check: field_value
             path: "media_buy_deliveries[0].by_package[0].reach_unit"
-            allowed_values: ["individuals", "households", "custom"]
-            description: "Package delivery preserves the identity-absence reach-unit restriction"
+            value: "custom"
+            description: "Frequency-bearing package delivery carries its disclosed custom reach unit"
           - check: field_value
             path: "context.correlation_id"
             value: "sales_dooh--get_delivery"

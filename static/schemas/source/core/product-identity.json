@@ -9,8 +9,8 @@
   "x-adcp-validation": {
     "verifier_constraints": {
       "identity_absence_delivery": {
-        "when": "The product selected for a delivered package declares identity.persistent_identifier: false.",
-        "frequency_requires_reach_unit": "Every delivery row for that product which contains frequency MUST also contain reach_unit, including a frequency-only row.",
+        "when": "A delivery row is bound to a package whose selected product declares identity.persistent_identifier: false. A totals row is bound only when every contributing package selects such a product.",
+        "frequency_requires_reach_unit": "Every package row or product-bound breakdown row which contains frequency MUST also contain reach_unit, including a frequency-only row. A bound totals row follows the same rule.",
         "permitted_reach_units": ["individuals", "households", "custom"],
         "custom_reach_methodology": "When a row reports reach or frequency with reach_unit custom, identity.reach_methodology MUST be non-empty."
       }

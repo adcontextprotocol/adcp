@@ -81,6 +81,7 @@ test("identity-absent products cannot advertise identifier-backed frequency-cap 
       product_id: "place_based_modeled",
       name: "Place-based modeled inventory",
       identity: completeProduct.identity,
+      overlay_support: { geo_countries: true },
     }),
     true,
     JSON.stringify(validateCanonical.errors)
@@ -133,6 +134,8 @@ test("identity-absence delivery invariant keeps frequency-only rows unit-bearing
     "stable delivery metrics retain the existing frequency-only wire shape"
   );
   assert.match(constraint.frequency_requires_reach_unit, /frequency-only row/);
+  assert.match(constraint.frequency_requires_reach_unit, /package row/i);
+  assert.match(constraint.when, /every contributing package/i);
   assert.deepEqual(constraint.permitted_reach_units, [
     "individuals",
     "households",
@@ -166,6 +169,17 @@ test("identity-absence delivery invariant keeps frequency-only rows unit-bearing
     false,
     "custom frequency reporting needs a disclosed methodology"
   );
+
+  for (const row of [
+    { frequency: 2.5, reach_unit: "custom" },
+    { frequency: 2.5, reach_unit: "households" },
+  ]) {
+    assert.equal(
+      identityAbsenceDeliveryCoherent(product, row),
+      true,
+      "package and product-bound breakdown rows follow the same frequency rule"
+    );
+  }
 });
 
 test("sales-dooh exercises discovery, cap rejection, valid buy, and identity-safe delivery", () => {
@@ -185,7 +199,24 @@ test("sales-dooh exercises discovery, cap rejection, valid buy, and identity-saf
     reach_methodology:
       "Venue and dwell-modelled aggregate audience measurement; not identity-resolved.",
   });
+  assert.deepEqual(product.overlay_support, { geo_countries: true });
   assert.equal(product.overlay_support?.frequency_cap, undefined);
+  const discovery = phase("product_discovery").steps.find(
+    (step) => step.id === "get_dooh_products"
+  );
+  assert.equal(
+    discovery.validations.find(
+      (validation) => validation.path === "products[0].overlay_support.geo_countries"
+    ).value,
+    true,
+    "a supported overlay field remains visible alongside the absent cap"
+  );
+  assert.equal(
+    discovery.validations.find(
+      (validation) => validation.path === "products[0].overlay_support.frequency_cap"
+    ).check,
+    "field_absent"
+  );
   assert.equal(
     storyboard.phases.findIndex(
       (candidate) => candidate.id === "identity_absence"
@@ -222,15 +253,26 @@ test("sales-dooh exercises discovery, cap rejection, valid buy, and identity-saf
   assert.equal(totalsReachUnit.check, "field_value");
   assert.equal(totalsReachUnit.value, "custom");
 
-  for (const path of ["media_buy_deliveries[0].by_package[0].reach_unit"]) {
+  for (const [path, value] of [
+    ["media_buy_deliveries[0].by_package[0].frequency", 2.5],
+    ["media_buy_deliveries[0].by_package[0].reach_unit", "custom"],
+  ]) {
     const validation = delivery.validations.find(
       (candidate) => candidate.path === path
     );
-    assert.equal(validation.check, "field_value_or_absent");
-    assert.deepEqual(validation.allowed_values, [
-      "individuals",
-      "households",
-      "custom",
-    ]);
+    assert.equal(validation.check, "field_value");
+    assert.equal(validation.value, value);
   }
+
+  const fields = readJson("media-buy/product-fields.json");
+  assert.ok(fields.items.enum.includes("identity"));
+  assert.match(
+    readJson("enums/reach-unit.json").enumDescriptions.custom,
+    /Describe in ext\./
+  );
+  assert.match(
+    readJson("compliance/comply-test-controller-request.json")
+      .properties.params.properties.frequency.description,
+    /including frequency-only delivery/i
+  );
 });

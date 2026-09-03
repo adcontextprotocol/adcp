@@ -145,6 +145,13 @@ This product-to-delivery conformance invariant applies only when the product
 has made the experimental identity-absence declaration; it does not tighten
 the stable shared delivery-metrics payload for legacy products.
 
+A package row, and a breakdown row attributed to that package, is bound to its
+selected product for this invariant. A media-buy totals row is bound only when
+every contributing package selected a product with
+`persistent_identifier: false`; mixed-product totals do not make a
+product-specific identity claim. Sellers use package or product-bound
+breakdowns to report and verify reach or frequency for mixed buys.
+
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.

@@ -5732,6 +5732,104 @@ describe('create_media_buy handler', () => {
     expect(result.errors).toBeUndefined();
   });
 
+  it('enforces identity-absence frequency caps on create and update without changing legacy targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'identity-absence-frequency.example' },
+      operator: 'identity-absence-frequency.example',
+    };
+    const identityAbsentProductId = `identity-absent-${randomUUID()}`;
+    const legacyProductId = `legacy-frequency-${randomUUID()}`;
+    const pricingOptionId = 'identity-frequency-cpm';
+    const placement = {
+      publisher_domain: 'identity-absence-frequency.example',
+      placement_id: 'inherent-placement',
+    };
+    const cap = {
+      max_impressions: 3,
+      per: 'individuals',
+      window: { interval: 1, unit: 'days' },
+    };
+    const seedProduct = async (productId: string, identity?: Record<string, unknown>) => {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: productId,
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            ...(identity ? { identity } : {}),
+            overlay_support: { geo_countries: true },
+            placements: [{ ...placement, mode: 'included' }],
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+      const priced = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+        },
+      });
+      expect(priced.result.success).toBe(true);
+    };
+    await seedProduct(identityAbsentProductId, {
+      persistent_identifier: false,
+      reach_methodology: 'Modeled venue audience.',
+    });
+    await seedProduct(legacyProductId);
+
+    const request = (productId: string, targetingOverlay?: Record<string, unknown>) => ({
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        ...(targetingOverlay ? { targeting_overlay: targetingOverlay } : {}),
+      }],
+    });
+    const cappedInherentPlacement = await simulateCallTool(server, 'create_media_buy', request(
+      identityAbsentProductId,
+      { placement_selection: { mode: 'selected', placement_refs: [placement] }, frequency_cap: cap },
+    ));
+    expect(cappedInherentPlacement.isError).toBe(true);
+    expect(cappedInherentPlacement.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'packages[0].targeting_overlay.frequency_cap',
+    });
+
+    const uncapped = await simulateCallTool(server, 'create_media_buy', request(identityAbsentProductId));
+    expect(uncapped.isError, JSON.stringify(uncapped.result)).toBeFalsy();
+    const identityAbsentPackage = (uncapped.result.packages as Array<Record<string, unknown>>)[0];
+    const cappedUpdate = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: uncapped.result.media_buy_id,
+      packages: [{
+        package_id: identityAbsentPackage.package_id,
+        targeting_overlay: { frequency_cap: cap },
+      }],
+    });
+    expect(cappedUpdate.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'packages[0].targeting_overlay.frequency_cap',
+    });
+
+    const legacyCapped = await simulateCallTool(server, 'create_media_buy', request(
+      legacyProductId,
+      { frequency_cap: cap },
+    ));
+    expect(legacyCapped.isError, JSON.stringify(legacyCapped.result)).toBeFalsy();
+  });
+
   it('enforces an advertiser account\'s immutable currency', async () => {
     const { productId, pricingOptionId } = getFirstProductAndPricing();
     const server = createTrainingAgentServer(DEFAULT_CTX);
@@ -19101,6 +19199,45 @@ describe('proposal lifecycle', () => {
       name: expect.any(String),
       description: expect.any(String),
     });
+  });
+
+  it('projects requested experimental product identity in sparse list_products responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = `identity-projection-${randomUUID()}`;
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Sparse identity projection',
+          channels: ['dooh'],
+          delivery_type: 'non_guaranteed',
+          identity: {
+            persistent_identifier: false,
+            reach_methodology: 'Venue and dwell modeled measurement.',
+          },
+          overlay_support: { geo_countries: true },
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const listed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [productId] },
+      fields: ['identity'],
+    });
+    expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
+    expect(listed.result.products).toEqual([{
+      product_id: productId,
+      name: 'Sparse identity projection',
+      identity: {
+        persistent_identifier: false,
+        reach_methodology: 'Venue and dwell modeled measurement.',
+      },
+    }]);
   });
 
   it('preserves collection composition in the default compact product projection', async () => {

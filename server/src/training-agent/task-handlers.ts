@@ -7784,6 +7784,28 @@ function concreteTargetingError(
   return undefined;
 }
 
+/** Identity-absent inventory cannot truthfully promise identifier-backed cap
+ * enforcement. This is deliberately independent of configured targeting and
+ * inherent placement matching: neither changes the product's identity claim. */
+function identityAbsenceFrequencyCapError(
+  product: Product,
+  targeting: Record<string, unknown>,
+  path: string,
+): TaskError | undefined {
+  const productRecord = product as unknown as Record<string, unknown>;
+  const identity = isRecord(productRecord.identity) ? productRecord.identity : undefined;
+  if (
+    identity?.persistent_identifier !== false
+    || targeting.frequency_cap === undefined
+  ) return undefined;
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: 'The selected product has no persistent identifier and cannot execute frequency_cap targeting.',
+    field: `${path}.frequency_cap`,
+    recovery: 'correctable',
+  };
+}
+
 function resolveDiscoveryTargetingForProduct(
   product: Product,
   requested: Record<string, unknown>,
@@ -14102,20 +14124,10 @@ async function handleCreateMediaBuyUnlocked(
         targetingPath,
       )
       : undefined;
-    // Frequency-cap execution requires the product's existing overlay_support
-    // declaration just like other concrete package targeting. This is kept
-    // explicit while older direct-purchase targeting fields retain their
-    // compatibility behavior above.
-    const ordinaryFrequencyCapError = requestedTargeting?.frequency_cap !== undefined
-      && configuredTargeting === undefined
-      && inherentPlacementMatch === undefined
-      ? concreteTargetingError(
-        product,
-        { frequency_cap: requestedTargeting.frequency_cap },
-        targetingPath,
-      )
-      : undefined;
-    const ordinaryTargetingError = ordinaryDaypartError ?? ordinaryFrequencyCapError;
+    const ordinaryTargetingError = requestedTargeting
+      ? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
+        ?? ordinaryDaypartError
+      : ordinaryDaypartError;
     if (ordinaryTargetingError) {
       errors.push(ordinaryTargetingError);
     } else if (resolvedTargeting.errorPath) {
@@ -14794,6 +14806,22 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
   const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
+  // Controller-injected reach metrics apply to the one package supported by
+  // the media-buy-scoped simulation form. Keep the package row coherent with
+  // totals so product-scoped identity conformance can be verified directly.
+  const simulatedPackageReachMetrics = mb.packages.length === 1 && simDelivery && (
+    simDelivery.reach !== undefined
+    || simDelivery.frequency !== undefined
+    || simDelivery.reachWindow
+  )
+    ? {
+      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
+      ...(simDelivery.reachUnit ? { reach_unit: simDelivery.reachUnit } : {}),
+      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
+    }
+    : {};
+
   const byPackage = mb.packages.map(pkg => {
     const packagePaused = pkg.paused === true;
     const deliverySuppressed = mediaBuyPaused || packagePaused || pkg.canceled;
@@ -14972,6 +15000,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       clicks,
       ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
       ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
+      ...simulatedPackageReachMetrics,
       ...audioMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
@@ -16205,15 +16234,18 @@ async function handleUpdateMediaBuyUnlocked(
       packageState.productId.startsWith('configured_')
       || inherentPlacementMatch !== undefined
     );
-    const targetingError = enforceFullTargeting
-      ? concreteTargetingError(product, requested, targetingPath)
-      : product && requested.daypart_targets !== undefined
-        ? concreteTargetingError(
-          product,
-          { daypart_targets: requested.daypart_targets },
-          targetingPath,
-        )
-        : undefined;
+    const targetingError = product
+      ? identityAbsenceFrequencyCapError(product, requested, targetingPath)
+        ?? (enforceFullTargeting
+          ? concreteTargetingError(product, requested, targetingPath)
+          : requested.daypart_targets !== undefined
+            ? concreteTargetingError(
+              product,
+              { daypart_targets: requested.daypart_targets },
+              targetingPath,
+            )
+            : undefined)
+      : undefined;
     if (targetingError) return { errors: [targetingError] };
     const support = product && isRecord((product as unknown as Record<string, unknown>).overlay_support)
       ? (product as unknown as Record<string, unknown>).overlay_support as Record<string, unknown>
@@ -21073,7 +21105,21 @@ function validateIdempotencyProtectedInput(
   // before normalization. All public get_products shapes continue through the
   // SDK parser, whose schema intentionally does not expose the internal action.
   if (!compactDecline) {
-    const parsed = GetProductsRequestSchema.safeParse(args);
+    // Product.identity is a 3.2 experimental response field. The generated
+    // SDK parser is pinned to the preceding field enum, so validate the rest
+    // of a sparse request against that parser while retaining identity for the
+    // source-schema-driven compact projection below.
+    const requestedFields = Array.isArray(args.fields) ? args.fields : undefined;
+    const legacySchemaFields = requestedFields?.filter(field => field !== 'identity');
+    const schemaArgs = requestedFields?.includes('identity')
+      ? {
+        ...args,
+        fields: legacySchemaFields && legacySchemaFields.length > 0
+          ? legacySchemaFields
+          : ['product_id'],
+      }
+      : args;
+    const parsed = GetProductsRequestSchema.safeParse(schemaArgs);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const field = issue?.path.map(segment => String(segment)).join('.');
