@@ -37,7 +37,8 @@ signed beta.11 bundle; Python SDK `8.0.0b11` carries beta.10:
 Earlier betas remain useful as pinned implementation checkpoints. For
 SDK-backed TypeScript testing, pair SDK beta.28 with protocol beta.10. Pair
 Python beta.11 with protocol beta.10. You can also test beta.10 from its signed
-artifact with raw-wire or code-generation workflows. Do not combine a newer wire pin with an
+artifact as a historical checkpoint; use beta.11 for current raw-wire or
+code-generation workflows. Do not combine a newer wire pin with an
 SDK generated from an older bundle unless the SDK maintainer documents forward
 compatibility.
 
@@ -78,7 +79,7 @@ Python `adcp==8.0.0b11` carries beta.10 schemas and generated types. Its
 higher-level caller/server helpers remain role-dependent, so consult the SDK
 matrix before treating schema parity as complete L1–L3 coverage.
 
-## Use the beta.10 artifact directly
+## Use the beta.11 artifact directly
 
 Download the signed beta.11 protocol bundle rather
 than copying schemas from `main` or from the moving `/schemas/latest/` path:
