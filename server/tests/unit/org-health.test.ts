@@ -144,7 +144,9 @@ describe('suggestActions', () => {
       seat_utilization_pct: 90,
     };
     const actions = suggestActions(breakdown, null, 5);
-    expect(actions.some(a => a.action === 'register_agent')).toBe(true);
+    expect(actions.find(a => a.action === 'register_agent')).toMatchObject({
+      url: '/chat?action=register-agent',
+    });
   });
 
   it('uses persona-specific language for agencies', () => {

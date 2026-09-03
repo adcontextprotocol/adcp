@@ -2994,6 +2994,30 @@
     (function() {
       'use strict';
 
+      // Capture task deep links before authentication or tab restoration makes
+      // any API request. Remove consumed task state from the address bar at
+      // once so it cannot leak through request logs or replay on refresh.
+      function consumeChatDeepLinkParams(location, history) {
+        const params = new URLSearchParams(location.search);
+        const deepLinkKeys = ['prompt', 'topic', 'module', 'action', 'conversation'];
+        if (deepLinkKeys.some(key => params.has(key))) {
+          const cleanUrl = new URL(location.href);
+          deepLinkKeys.forEach(key => cleanUrl.searchParams.delete(key));
+          history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+        }
+        return params;
+      }
+
+      const initialQueryParams = consumeChatDeepLinkParams(window.location, window.history);
+      const CHAT_ACTION_PROMPTS = Object.freeze({
+        'register-agent': 'Help me register my agent.',
+      });
+
+      function shouldRestoreSavedChatTab(params) {
+        const hasKnownAction = Object.hasOwn(CHAT_ACTION_PROMPTS, params.get('action'));
+        return !params.has('prompt') && params.get('topic') !== 'certification' && !hasKnownAction;
+      }
+
       // Elements
       const messagesContainer = document.getElementById('messagesContainer');
       const welcomeMessage = document.getElementById('welcomeMessage');
@@ -3230,7 +3254,11 @@
           chatSidebar.classList.add('visible');
           sidebarToggleBtn.classList.add('visible');
           loadActiveTabs(); // Restore from localStorage
-          await restoreCurrentTab();
+          // A deep link owns startup navigation. Restoring an unrelated tab
+          // first can both contaminate and indefinitely delay that task.
+          if (shouldRestoreSavedChatTab(initialQueryParams)) {
+            await restoreCurrentTab();
+          }
           loadThreads();
         } catch (error) {
           // Network error — don't assume anonymous, just skip the banner
@@ -5426,26 +5454,36 @@
       // Check for prompt in query string (e.g., ?prompt=Try%20AdCP)
       // Also handles certification deep links and exact conversation resume.
       function checkQueryPrompt() {
-        const params = new URLSearchParams(window.location.search);
-        let prompt = params.get('prompt');
+        const params = initialQueryParams;
+        const action = params.get('action');
+        const actionPrompt = Object.hasOwn(CHAT_ACTION_PROMPTS, action)
+          ? CHAT_ACTION_PROMPTS[action]
+          : null;
+        let prompt = actionPrompt || params.get('prompt');
+        let shouldAutoSend = Boolean(actionPrompt);
         let resumeConversationId = null;
         let resumeModuleId = null;
 
         // Synthesize prompt from certification deep link params
         if (!prompt && params.get('topic') === 'certification') {
-          const moduleId = params.get('module');
-          const action = params.get('action');
+          const rawModuleId = params.get('module');
+          const moduleId = rawModuleId && /^[a-z0-9-]{1,16}$/i.test(rawModuleId)
+            ? rawModuleId
+            : null;
           const requestedConversationId = params.get('conversation');
           if (action === 'assess') {
             prompt = 'I\'d like to assess my AdCP knowledge level. Run a placement assessment to figure out which certification modules I can skip and where I should focus.';
-          } else if (action === 'resume' && moduleId && /^[a-z0-9-]{1,16}$/i.test(moduleId)
+            shouldAutoSend = true;
+          } else if (action === 'resume' && moduleId
               && requestedConversationId && /^[0-9a-f-]{36}$/i.test(requestedConversationId)) {
             resumeConversationId = requestedConversationId;
             resumeModuleId = moduleId;
           } else if (action === 'resume' && moduleId) {
             prompt = `Continue module ${moduleId} from my saved checkpoint`;
+            shouldAutoSend = true;
           } else if (moduleId) {
             prompt = `Start module ${moduleId}`;
+            shouldAutoSend = true;
           }
         }
 
@@ -5471,13 +5509,23 @@
           const waitForReady = setInterval(() => {
             if (isReady) {
               clearInterval(waitForReady);
+              // A prompt deep link starts a task, rather than continuing
+              // whichever tab happened to be active in localStorage. In
+              // particular, dashboard actions must not land inside an active
+              // certification thread, whose tool surface is intentionally
+              // scoped to that course.
+              startNewConversation();
               chatInput.value = prompt.trim();
               autoResize();
               updateSendButton();
               pendingMessageSource = 'cta_chip';
-              sendMessage();
-              // Clean URL without reloading
-              window.history.replaceState({}, '', window.location.pathname);
+              // Only fixed, allowlisted actions auto-send. Free-form prompt
+              // links merely prefill the composer for explicit user review.
+              if (shouldAutoSend) {
+                sendMessage();
+              } else {
+                chatInput.focus();
+              }
             }
           }, 100);
           // Timeout after 10 seconds
@@ -6532,9 +6580,10 @@
       extractNativeToken(); // Check for native app auth token in URL hash
       applySidebarCollapsedState(); // Restore sidebar collapsed state from localStorage
       checkStatus();
-      checkImpersonation();
-      // Check for prompt in URL after status check
-      setTimeout(checkQueryPrompt, 500);
+      // Resolve authentication before consuming a deep link. Deep-link
+      // startups skip generic saved-tab restoration above, so no late restore
+      // can overwrite the requested task's conversation ID.
+      checkImpersonation().finally(checkQueryPrompt);
       // Auto-focus the input so users can start typing immediately
       chatInput.focus();
       // Check status periodically
