@@ -138,9 +138,11 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
     .properties.by_package.items.allOf[1].properties.metric_values.items;
   const webhookMetricValue = webhook.properties.media_buy_deliveries.items
     .properties.by_package.items.allOf[1].properties.metric_values.items;
-  assert.equal(responseMetricValue.title, 'GetMediaBuyDeliveryPackageMetricValue');
-  assert.equal(webhookMetricValue.title, 'MediaBuyDeliveryWebhookPackageMetricValue');
-  assert.notEqual(responseMetricValue.title, webhookMetricValue.title);
+  assert.equal(
+    responseMetricValue.$ref,
+    '/schemas/core/package-delivery-metric-value.json',
+  );
+  assert.equal(webhookMetricValue.$ref, responseMetricValue.$ref);
 
   for (const schema of [response, webhook]) {
     assert.equal(schema.required.includes('currency'), false);
@@ -152,10 +154,7 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
     const row = schema.properties.media_buy_deliveries.items;
     assert.equal(row.properties.totals.allOf[1].required?.includes('spend') ?? false, false);
     const packageProperties = row.properties.by_package.items.allOf[1].properties;
-    assert.equal(
-      packageProperties.metric_values.items.allOf[0].$ref,
-      '/schemas/core/delivery-metric-aggregate.json#/oneOf/0',
-    );
+    assert.equal(packageProperties.metric_values.items.$ref, responseMetricValue.$ref);
     assert.match(packageProperties.currency.description, /MUST equal it/);
     assert.match(
       schema['x-adcp-validation'].verifier_constraints.row_currency_consistency,

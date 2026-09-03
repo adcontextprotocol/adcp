@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/package-delivery-metric-value.json",
+  "title": "Package Delivery Metric Value",
+  "description": "A qualified standard delivery value reported at package grain. The qualifier is required and must be non-empty; unqualified spend remains on the package's flat spend field.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/delivery-metric-aggregate.json#/oneOf/0"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "qualifier": {
+          "minProperties": 1
+        }
+      },
+      "required": [
+        "qualifier"
+      ],
+      "not": {
+        "properties": {
+          "metric_id": {
+            "const": "spend"
+          }
+        },
+        "required": [
+          "metric_id"
+        ]
+      }
+    }
+  ]
+}
