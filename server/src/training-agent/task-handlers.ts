@@ -61,6 +61,11 @@ import {
 } from './account-scope.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import {
+  captureReportingMediaBuyCandidateDurably,
+  resolveReportingAccountDurably,
+  TRAINING_REPORTING_CORE_OFFERING,
+} from './reporting-reliability.js';
+import {
   getSharedAccountCreative,
   listSharedAccountCreatives,
   upsertSharedAccountCreative,
@@ -7120,7 +7125,7 @@ const COMPACT_PRODUCT_FIELDS = new Set([
   'acceptance_policy_profile_ids',
   'demographic_targeting', 'audience_activation', 'exclusivity', 'audio_distribution_types',
   'video_placement_types', 'social_placement_surfaces',
-  'sponsored_placement_types', 'is_custom', 'overlay_support',
+  'sponsored_placement_types', 'is_custom', 'overlay_support', 'identity',
   'targeting_resolution', 'collections', 'collection_targeting_allowed',
   'installments', 'ext',
 ]);
@@ -7782,6 +7787,28 @@ function concreteTargetingError(
     }
   }
   return undefined;
+}
+
+/** Identity-absent inventory cannot truthfully promise identifier-backed cap
+ * enforcement. This is deliberately independent of configured targeting and
+ * inherent placement matching: neither changes the product's identity claim. */
+function identityAbsenceFrequencyCapError(
+  product: Product,
+  targeting: Record<string, unknown>,
+  path: string,
+): TaskError | undefined {
+  const productRecord = product as unknown as Record<string, unknown>;
+  const identity = isRecord(productRecord.identity) ? productRecord.identity : undefined;
+  if (
+    identity?.persistent_identifier !== false
+    || targeting.frequency_cap === undefined
+  ) return undefined;
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: 'The selected product has no persistent identifier and cannot execute frequency_cap targeting.',
+    field: `${path}.frequency_cap`,
+    recovery: 'correctable',
+  };
 }
 
 function resolveDiscoveryTargetingForProduct(
@@ -13025,6 +13052,130 @@ function invalidSelectedCollectionSelector(
   return undefined;
 }
 
+function preferredReportingAccountRef(
+  ...refs: Array<AccountRef | undefined>
+): AccountRef | undefined {
+  return refs.find(ref => ref?.brand?.domain && ref.operator)
+    ?? refs.find((ref): ref is AccountRef => ref !== undefined);
+}
+
+function reportingAccountRefFromContext(ctx: TrainingContext): AccountRef | undefined {
+  const account = ctx.requestInput?.account;
+  return isRecord(account) ? account as unknown as AccountRef : undefined;
+}
+
+async function captureMediaBuyReportingState(
+  ctx: TrainingContext,
+  mediaBuy: MediaBuyState,
+  accountId: string | undefined,
+  products: Map<string, Product>,
+  accountRef?: AccountRef,
+): Promise<void> {
+  // Internal media-buy state may retain both the resolved opaque ID and the
+  // natural identity used to create it. The public AccountRef contract permits
+  // exactly one identity form, so preserve the natural identity when present
+  // and otherwise fall back to the resolved opaque ID.
+  const mediaBuyAccountRef = preferredReportingAccountRef(
+    accountRef,
+    mediaBuy.accountRef as AccountRef | undefined,
+  );
+  const normalizedAccountRef: AccountRef | undefined = mediaBuyAccountRef?.brand?.domain
+    && mediaBuyAccountRef.operator
+    ? {
+        brand: {
+          domain: mediaBuyAccountRef.brand.domain,
+          ...(mediaBuyAccountRef.brand.brand_id && {
+            brand_id: mediaBuyAccountRef.brand.brand_id,
+          }),
+          ...(mediaBuyAccountRef.brand.countries && {
+            countries: [...mediaBuyAccountRef.brand.countries],
+          }),
+        },
+        operator: mediaBuyAccountRef.operator,
+        ...(mediaBuyAccountRef.operator_unit && {
+          operator_unit: structuredClone(mediaBuyAccountRef.operator_unit),
+        }),
+        ...(mediaBuyAccountRef.currency && { currency: mediaBuyAccountRef.currency }),
+        ...(mediaBuyAccountRef.timezone && { timezone: mediaBuyAccountRef.timezone }),
+        sandbox: mediaBuyAccountRef.sandbox === true,
+      }
+    : mediaBuyAccountRef?.account_id
+      ? { account_id: mediaBuyAccountRef.account_id }
+      : undefined;
+  const durableBinding = normalizedAccountRef
+    ? await resolveReportingAccountDurably(ctx.principal, normalizedAccountRef)
+    : undefined;
+  const locallyResolvedAccountId = normalizedAccountRef
+    ? resolveAccountIdForRef(
+        sessionKeyFromArgs({ account: normalizedAccountRef }, ctx.mode, ctx.userId, ctx.moduleId),
+        ctx.principal,
+        normalizedAccountRef,
+      )
+    : undefined;
+  const nonSyntheticFrameworkId = ctx.resolvedAccountId
+    && !ctx.resolvedAccountId.startsWith('synthetic_')
+    ? ctx.resolvedAccountId
+    : undefined;
+  const resolvedAccountId = durableBinding?.accountId
+    ?? locallyResolvedAccountId
+    ?? (accountId && !accountId.startsWith('synthetic_') ? accountId : undefined)
+    ?? nonSyntheticFrameworkId
+    ?? accountId
+    ?? ctx.resolvedAccountId;
+  if (!resolvedAccountId) return;
+  const reportingAccountRef: AccountRef = mediaBuyAccountRef?.brand?.domain
+    && mediaBuyAccountRef.operator
+    ? {
+        brand: {
+          domain: mediaBuyAccountRef.brand.domain,
+          ...(mediaBuyAccountRef.brand.brand_id && {
+            brand_id: mediaBuyAccountRef.brand.brand_id,
+          }),
+          ...(mediaBuyAccountRef.brand.countries && {
+            countries: [...mediaBuyAccountRef.brand.countries],
+          }),
+        },
+        operator: mediaBuyAccountRef.operator,
+        ...(mediaBuyAccountRef.operator_unit && {
+          operator_unit: structuredClone(mediaBuyAccountRef.operator_unit),
+        }),
+        ...(mediaBuyAccountRef.currency && { currency: mediaBuyAccountRef.currency }),
+        ...(mediaBuyAccountRef.timezone && { timezone: mediaBuyAccountRef.timezone }),
+        sandbox: mediaBuyAccountRef.sandbox === true,
+      }
+    : { account_id: resolvedAccountId };
+  const offeringIdsByPackage = mediaBuy.reportingOfferingIdsByPackage ?? {};
+  for (const pkg of mediaBuy.packages) {
+    if (offeringIdsByPackage[pkg.packageId]) continue;
+    const capabilities = products.get(pkg.productId)?.reporting_capabilities as {
+      reporting_delivery_offering_ids?: string[];
+    } | undefined;
+    offeringIdsByPackage[pkg.packageId] = [...(capabilities?.reporting_delivery_offering_ids ?? [])];
+  }
+  mediaBuy.reportingOfferingIdsByPackage = offeringIdsByPackage;
+  await captureReportingMediaBuyCandidateDurably(
+    ctx.principal,
+    resolvedAccountId,
+    reportingAccountRef,
+    {
+      mediaBuyId: mediaBuy.mediaBuyId,
+      startTime: mediaBuy.startTime,
+      endTime: mediaBuy.canceledAt && mediaBuy.canceledAt < mediaBuy.endTime
+        ? mediaBuy.canceledAt
+        : mediaBuy.endTime,
+      knownAt: mediaBuy.confirmedAt || mediaBuy.createdAt,
+      effectiveAt: mediaBuy.updatedAt,
+      packages: mediaBuy.packages
+        .filter(pkg => !pkg.canceled)
+        .map(pkg => ({
+          packageId: pkg.packageId,
+          supported: offeringIdsByPackage[pkg.packageId]
+            ?.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id) === true,
+        })),
+    },
+  );
+}
+
 export async function handleCreateMediaBuy(
   args: ToolArgs,
   ctx: TrainingContext,
@@ -14102,8 +14253,12 @@ async function handleCreateMediaBuyUnlocked(
         targetingPath,
       )
       : undefined;
-    if (ordinaryDaypartError) {
-      errors.push(ordinaryDaypartError);
+    const ordinaryTargetingError = requestedTargeting
+      ? identityAbsenceFrequencyCapError(product, requestedTargeting, targetingPath)
+        ?? ordinaryDaypartError
+      : ordinaryDaypartError;
+    if (ordinaryTargetingError) {
+      errors.push(ordinaryTargetingError);
     } else if (resolvedTargeting.errorPath) {
       errors.push({
         code: 'UNSUPPORTED_FEATURE',
@@ -14343,6 +14498,12 @@ async function handleCreateMediaBuyUnlocked(
       : {}),
     ...(isRecord((req as unknown as Record<string, unknown>).invoice_recipient)
       && { invoiceRecipient: structuredClone((req as unknown as Record<string, unknown>).invoice_recipient as Record<string, unknown>) }),
+    reportingOfferingIdsByPackage: Object.fromEntries(createdPackages.map(pkg => {
+      const reportingCapabilities = productMap.get(pkg.productId)?.reporting_capabilities as {
+        reporting_delivery_offering_ids?: string[];
+      } | undefined;
+      return [pkg.packageId, [...(reportingCapabilities?.reporting_delivery_offering_ids ?? [])]];
+    })),
     ...(isRecord((req as unknown as Record<string, unknown>).reporting_webhook)
       && { reportingWebhook: structuredClone((req as unknown as Record<string, unknown>).reporting_webhook as Record<string, unknown>) }),
     packages: createdPackages,
@@ -14411,6 +14572,18 @@ async function handleCreateMediaBuyUnlocked(
     }
   }
   session.mediaBuys.set(mediaBuyId, mediaBuy);
+  await captureMediaBuyReportingState(
+    ctx,
+    mediaBuy,
+    persistedAccountId,
+    productMap,
+    preferredReportingAccountRef(
+      ctx.resolvedAccount,
+      reportingAccountRefFromContext(ctx),
+      req.account,
+      mediaBuy.accountRef,
+    ),
+  );
 
   const status = deriveStatus(mediaBuy, session);
   const productAvailableActions = deriveAvailableActionsFromProductAllowedActions(productAllowedActions, status);
@@ -14780,6 +14953,74 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
   const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
+  const singlePackageProduct = mb.packages.length === 1
+    ? productMap.get(mb.packages[0]!.productId)
+    : undefined;
+  const singlePackageIdentity: Record<string, unknown> | undefined = singlePackageProduct
+    && isRecord((singlePackageProduct as unknown as Record<string, unknown>).identity)
+    ? (singlePackageProduct as unknown as Record<string, unknown>).identity as Record<string, unknown>
+    : undefined;
+  const singlePackageHasNoPersistentIdentifier = singlePackageIdentity?.persistent_identifier === false;
+  const identityAbsenceProducts = simulatedPackages.flatMap(pkg => {
+    const product = productMap.get(pkg.productId);
+    const identity: Record<string, unknown> | undefined = product && isRecord((product as unknown as Record<string, unknown>).identity)
+      ? (product as unknown as Record<string, unknown>).identity as Record<string, unknown>
+      : undefined;
+    return identity?.persistent_identifier === false ? [identity] : [];
+  });
+  const totalsBoundToIdentityAbsence = simulatedPackages.length > 0
+    && identityAbsenceProducts.length === simulatedPackages.length;
+  const identityAbsencePermitsReachUnit = (unit: string | undefined): boolean => (
+    !totalsBoundToIdentityAbsence
+    || unit === 'individuals'
+    || unit === 'households'
+    || (unit === 'custom' && identityAbsenceProducts.every(identity => (
+      typeof identity.reach_methodology === 'string' && identity.reach_methodology.trim().length > 0
+    )))
+  );
+
+  // A reach-goal unit is the only product-bound fallback for injected reach
+  // and frequency metrics before package rows are assembled. Reuse it below
+  // for totals, so a single-package identity-absent buy never gives its
+  // package row less unit context than its totals row.
+  let reachGoalUnit: string | undefined;
+  for (const pkg of simulatedPackages) {
+    for (const goal of pkg.optimizationGoals ?? []) {
+      if (goal?.kind !== 'metric' || goal?.metric !== 'reach' || typeof goal?.reach_unit !== 'string') continue;
+      if (identityAbsencePermitsReachUnit(goal.reach_unit)) {
+        reachGoalUnit = goal.reach_unit;
+        break;
+      }
+    }
+    if (reachGoalUnit) break;
+  }
+  const simulatedReachUnit = identityAbsencePermitsReachUnit(simDelivery?.reachUnit)
+    ? simDelivery?.reachUnit
+    : undefined;
+  const simulatedOrGoalReachUnit = simulatedReachUnit ?? reachGoalUnit;
+
+  // Controller-injected reach metrics apply to the one package supported by
+  // the media-buy-scoped simulation form. Keep the package row coherent with
+  // totals so product-scoped identity conformance can be verified directly.
+  const simulatedPackageReachMetrics = mb.packages.length === 1 && simDelivery && (
+    simDelivery.reach !== undefined
+    || simDelivery.frequency !== undefined
+    || simDelivery.reachWindow
+  )
+    ? {
+      ...(simDelivery.reach !== undefined && (!singlePackageHasNoPersistentIdentifier || simulatedOrGoalReachUnit)
+        ? { reach: simDelivery.reach }
+        : {}),
+      ...(simulatedOrGoalReachUnit
+        ? { reach_unit: simulatedOrGoalReachUnit }
+        : {}),
+      ...(simDelivery.frequency !== undefined && (!singlePackageHasNoPersistentIdentifier || simulatedOrGoalReachUnit)
+        ? { frequency: simDelivery.frequency }
+        : {}),
+      ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
+    }
+    : {};
+
   const byPackage = mb.packages.map(pkg => {
     const packagePaused = pkg.paused === true;
     const deliverySuppressed = mediaBuyPaused || packagePaused || pkg.canceled;
@@ -14809,6 +15050,11 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     // Channel-appropriate CTR
     const product = productMap.get(pkg.productId);
+    const productIdentity: Record<string, unknown> | undefined = product
+      && isRecord((product as unknown as Record<string, unknown>).identity)
+      ? (product as unknown as Record<string, unknown>).identity as Record<string, unknown>
+      : undefined;
+    const productHasNoPersistentIdentifier = productIdentity?.persistent_identifier === false;
     const channels = product?.channels;
     let ctr: number;
     if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
@@ -14843,20 +15089,24 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) completionRate = 0.82;
 
     const reachUnit = channels?.some(c => ['streaming_audio', 'podcast'].includes(c)) ? 'accounts' as const : 'devices' as const;
-    const audioMetrics = isAudioVideo && impressions > 0
+    const audioCompletionMetrics = isAudioVideo && impressions > 0
       ? {
         views: Math.round(impressions * 0.9),
         completed_views: Math.round(impressions * completionRate),
         completion_rate: completionRate,
-        reach: Math.round(impressions * 0.72),
-        reach_unit: reachUnit,
-        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
         ...(channels?.some(c => ['streaming_audio', 'podcast'].includes(c))
           ? {
             follows: Math.round(impressions * 0.002),
             conversions: Math.round(impressions * 0.006),
           }
           : {}),
+      }
+      : {};
+    const audioReachMetrics = isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0
+      ? {
+        reach: Math.round(impressions * 0.72),
+        reach_unit: reachUnit,
+        frequency: +(impressions / Math.round(impressions * 0.72)).toFixed(1),
       }
       : {};
     const packageConversions = simulatedConversionsByPackage.get(pkg.packageId) ?? 0;
@@ -14958,7 +15208,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       clicks,
       ...(mb.packages.length === 1 && simDelivery?.plays !== undefined ? { plays: simDelivery.plays } : {}),
       ...(mb.packages.length === 1 && simDelivery?.doohMetrics ? { dooh_metrics: simDelivery.doohMetrics } : {}),
-      ...audioMetrics,
+      ...simulatedPackageReachMetrics,
+      ...audioCompletionMetrics,
+      ...audioReachMetrics,
       ...(timeBasedViews.length > 0 ? { time_based_views: timeBasedViews } : {}),
       ...byCreative,
       ...revenueShareMetrics,
@@ -14993,6 +15245,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     if (isAudioVideo && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
       totalViews += Math.round(impressions * 0.9);
+    }
+    if (isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0) {
       totalReach += Math.round(impressions * 0.72);
       if (!totalReachUnit) totalReachUnit = reachUnit;
       else if (totalReachUnit !== reachUnit) totalReachUnit = 'mixed';
@@ -15069,28 +15323,25 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // platform default). Documented as placeholders because the
   // get_media_buy_delivery contract requires field_present, not specific
   // numeric values, on the gating scenarios.
-  const hasReachGoal = mb.packages.some(pkg =>
+  const hasReachGoal = simulatedPackages.some(pkg =>
     pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'reach'),
   );
-  const hasCompletedViewsGoal = mb.packages.some(pkg =>
+  const hasCompletedViewsGoal = simulatedPackages.some(pkg =>
     pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'completed_views'),
   );
   // Resolve reach_unit from the first reach goal that declared one — buyers
   // bind reach measurement to the unit (households vs cookies are not
   // comparable). When goals omitted the unit, fall back to the existing
   // channel-derived unit (totalReachUnit) computed above.
-  let derivedReachUnit: string | undefined = totalReachUnit !== 'mixed' ? totalReachUnit : undefined;
-  if (!derivedReachUnit && hasReachGoal) {
-    for (const pkg of mb.packages) {
-      const goal = pkg.optimizationGoals?.find(g => g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string');
-      if (goal && typeof goal.reach_unit === 'string') {
-        derivedReachUnit = goal.reach_unit;
-        break;
-      }
-    }
+  let derivedReachUnit: string | undefined = simDelivery?.reachUnit
+    ?? (totalReachUnit !== 'mixed' ? totalReachUnit : undefined)
+    ?? reachGoalUnit;
+  if (!identityAbsencePermitsReachUnit(derivedReachUnit)) {
+    derivedReachUnit = reachGoalUnit;
   }
 
   const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
+    && (!totalsBoundToIdentityAbsence || derivedReachUnit)
     ? {
       reach: Math.max(1, Math.floor(totalImpressions / 3)),
       ...(derivedReachUnit && { reach_unit: derivedReachUnit }),
@@ -15115,9 +15366,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     || simDelivery.reachWindow
   )
     ? {
-      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
-      ...(simDelivery.reach !== undefined && derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
-      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simDelivery.reach !== undefined && (!totalsBoundToIdentityAbsence || derivedReachUnit)
+        ? { reach: simDelivery.reach }
+        : {}),
+      ...(derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
+      ...(simDelivery.frequency !== undefined && (!totalsBoundToIdentityAbsence || derivedReachUnit)
+        ? { frequency: simDelivery.frequency }
+        : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
       ...(defaultReachWindow ? { reach_window: defaultReachWindow } : {}),
     }
@@ -16190,15 +16445,18 @@ async function handleUpdateMediaBuyUnlocked(
       packageState.productId.startsWith('configured_')
       || inherentPlacementMatch !== undefined
     );
-    const targetingError = enforceFullTargeting
-      ? concreteTargetingError(product, requested, targetingPath)
-      : product && requested.daypart_targets !== undefined
-        ? concreteTargetingError(
-          product,
-          { daypart_targets: requested.daypart_targets },
-          targetingPath,
-        )
-        : undefined;
+    const targetingError = product
+      ? identityAbsenceFrequencyCapError(product, requested, targetingPath)
+        ?? (enforceFullTargeting
+          ? concreteTargetingError(product, requested, targetingPath)
+          : requested.daypart_targets !== undefined
+            ? concreteTargetingError(
+              product,
+              { daypart_targets: requested.daypart_targets },
+              targetingPath,
+            )
+            : undefined)
+      : undefined;
     if (targetingError) return { errors: [targetingError] };
     const support = product && isRecord((product as unknown as Record<string, unknown>).overlay_support)
       ? (product as unknown as Record<string, unknown>).overlay_support as Record<string, unknown>
@@ -16294,6 +16552,23 @@ async function handleUpdateMediaBuyUnlocked(
     });
     mb.updatedAt = now;
     session.mediaBuys.set(mediaBuyId, mb);
+    const captureAccountRef = preferredReportingAccountRef(
+      ctx.resolvedAccount,
+      reportingAccountRefFromContext(ctx),
+      req.account,
+      mb.accountRef as AccountRef | undefined,
+    );
+    await captureMediaBuyReportingState(
+      ctx,
+      mb,
+      ctx.resolvedAccountId ?? resolveAccountIdForRef(
+        sessionKeyFromArgs({ account: captureAccountRef }, ctx.mode, ctx.userId, ctx.moduleId),
+        ctx.principal,
+        captureAccountRef,
+      ),
+      productMap,
+      captureAccountRef,
+    );
 
     const status = deriveStatus(mb, session);
     return {
@@ -16929,6 +17204,12 @@ async function handleUpdateMediaBuyUnlocked(
       if (targetingResult.errors.length) {
         return { errors: targetingResult.errors };
       }
+      const identityAbsenceCapError = identityAbsenceFrequencyCapError(
+        product,
+        targetingResult.targeting ?? {},
+        `new_packages[${i}].targeting_overlay`,
+      );
+      if (identityAbsenceCapError) return { errors: [identityAbsenceCapError] };
       const inlineCreatives = collectInlineCreativeIds(npkg.creatives, `new_packages[${i}].creatives`);
       if (inlineCreatives.errors.length) return { errors: inlineCreatives.errors };
       for (const inline of inlineCreatives.validatedCreatives) {
@@ -17254,6 +17535,23 @@ async function handleUpdateMediaBuyUnlocked(
     ...(req.context !== undefined && { context: req.context }),
   };
   session.mediaBuys.set(mediaBuyId, mb);
+  const captureAccountRef = preferredReportingAccountRef(
+    ctx.resolvedAccount,
+    reportingAccountRefFromContext(ctx),
+    req.account,
+    mb.accountRef as AccountRef | undefined,
+  );
+  await captureMediaBuyReportingState(
+    ctx,
+    mb,
+    ctx.resolvedAccountId ?? resolveAccountIdForRef(
+      sessionKeyFromArgs({ account: captureAccountRef }, ctx.mode, ctx.userId, ctx.moduleId),
+      ctx.principal,
+      captureAccountRef,
+    ),
+    productMap,
+    captureAccountRef,
+  );
   return result;
 }
 
@@ -17349,7 +17647,7 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       : []),
     ...((ctx.tenantId === 'sales' || ctx.tenantId == null) ? ['measurement.core'] : []),
     ...(!isThreeZeroResponse && (ctx.tenantId === 'sales' || ctx.tenantId == null)
-      ? ['media_buy.audience_activation']
+      ? ['media_buy.audience_activation', 'media_buy.product_identity']
       : []),
   ];
   const supportedCreativeFormats = includeThreeOneFields(ctx)
@@ -21058,7 +21356,21 @@ function validateIdempotencyProtectedInput(
   // before normalization. All public get_products shapes continue through the
   // SDK parser, whose schema intentionally does not expose the internal action.
   if (!compactDecline) {
-    const parsed = GetProductsRequestSchema.safeParse(args);
+    // Product.identity is a 3.2 experimental response field. The generated
+    // SDK parser is pinned to the preceding field enum, so validate the rest
+    // of a sparse request against that parser while retaining identity for the
+    // source-schema-driven compact projection below.
+    const requestedFields = Array.isArray(args.fields) ? args.fields : undefined;
+    const legacySchemaFields = requestedFields?.filter(field => field !== 'identity');
+    const schemaArgs = requestedFields?.includes('identity')
+      ? {
+        ...args,
+        fields: legacySchemaFields && legacySchemaFields.length > 0
+          ? legacySchemaFields
+          : ['product_id'],
+      }
+      : args;
+    const parsed = GetProductsRequestSchema.safeParse(schemaArgs);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const field = issue?.path.map(segment => String(segment)).join('.');

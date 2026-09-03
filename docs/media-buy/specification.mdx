@@ -118,6 +118,40 @@ create, and update. A selected set exactly equal to the product's complete
 `mode: "included"` set is an inherent restatement and does not require
 `overlay_support.placement_selection`; partial selection does.
 
+### Product identity absence and reach reporting (experimental)
+
+`Product.identity` is an optional, product-scoped declaration for inventory
+whose delivery does not have a persistent per-entity identifier. It is not a
+seller-wide capability: mixed inventory may legitimately return one product
+with `persistent_identifier: false` and another without that constraint. A
+seller using this experimental surface lists `media_buy.product_identity` in
+`experimental_features` on `get_adcp_capabilities`; its absence is
+undeclared, not proof of identifier availability.
+
+When `persistent_identifier` is `false`, the product MUST NOT declare
+`overlay_support.frequency_cap`. A seller that cannot enforce a requested cap
+rejects it under the existing exact-apply-or-reject package rule; it never
+accepts and ignores the field. This uses the product's existing
+`overlay_support` contract, not a second seller-wide targeting declaration.
+
+Delivery for such a product MUST NOT report `reach_unit` as `devices`,
+`accounts`, or `cookies`. `individuals` and `households` remain valid for
+panel-based or place-based modeled measurement. For an identity-absence
+product, a delivery row that reports `frequency` MUST also report
+`reach_unit`, even when that row omits `reach`. If either `reach` or
+`frequency` is reported with `reach_unit: "custom"`, the discovered product
+MUST include a non-empty `identity.reach_methodology` describing that unit.
+This product-to-delivery conformance invariant applies only when the product
+has made the experimental identity-absence declaration; it does not tighten
+the stable shared delivery-metrics payload for legacy products.
+
+A package row, and a breakdown row attributed to that package, is bound to its
+selected product for this invariant. A media-buy totals row is bound only when
+every contributing package selected a product with
+`persistent_identifier: false`; mixed-product totals do not make a
+product-specific identity claim. Sellers use package or product-bound
+breakdowns to report and verify reach or frequency for mixed buys.
+
 - **`media_buy_id`**: Unique identifier for a media buy. Sales agents MUST return this on successful creation. Orchestrators MUST use this for all subsequent operations on the media buy. A `media_buy_id` is a stable handle to any order in the seller's ad server that the authenticated account owns — not only orders originally booked via AdCP.
 
 - **`package_id`**: Unique identifier for a package within a media buy. Sales agents MUST return this for each package created.

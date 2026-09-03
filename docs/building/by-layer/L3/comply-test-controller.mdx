@@ -73,6 +73,7 @@ Sellers that implement compliance test controller MUST:
           "force_media_buy_status",
           "compact_product_lifecycle_probe",
           "compact_direct_buy_lifecycle_probe",
+          "reporting_core_lifecycle_probe",
           "force_create_media_buy_arm",
           "force_get_products_arm",
           "force_get_signals_arm",
@@ -97,7 +98,7 @@ Sellers that implement compliance test controller MUST:
       },
       "params": {
         "type": "object",
-        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
+        "description": "Scenario-specific parameters. Omit for list_scenarios. force_creative_status: {creative_id, status, rejection_reason?}. force_creative_purge: {creative_id, purge_kind?, reason_code?, reason_detail?}. force_account_status: {account_id, status}. force_media_buy_status: {media_buy_id, status, rejection_reason?}. compact_product_lifecycle_probe: {operation: prepare, product_id} or {operation: expire_proposal, proposal_id}. compact_direct_buy_lifecycle_probe: {operation: prepare, product_id}. reporting_core_lifecycle_probe: {operation: prepare | publish_zero_row | omit_obligation} or {operation: advance_time, target_health: delayed | action_required}. force_create_media_buy_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_get_products_arm: {arm, task_id?, message?, reason?, suggestions?} - task_id required when arm = submitted; reason required when arm = rejected. force_get_signals_arm: {arm, task_id?, message?} - task_id required when arm = submitted. force_task_completion: {task_id, result}. force_session_status: {session_id, status, termination_reason?}. simulate_delivery: {media_buy_id, delivery_date?, impressions?, clicks?, reported_spend?, conversions?, reach?, frequency?, reach_window?, viewability?}. simulate_budget_spend: {account_id|media_buy_id, spend_percentage}. seed_account: {account_id, fixture?}. seed_rights_grant: {rights_id, fixture?}. seed_product: {product_id, fixture?}. seed_pricing_option: {product_id, pricing_option_id, fixture?}. seed_creative: {creative_id, fixture?}. seed_plan: {plan_id, fixture?}. seed_media_buy: {media_buy_id, fixture?}. seed_creative_format: {format_id, fixture?} (deprecated named-format compatibility tests only). seed_measurement_catalog: {vendor, metrics[]}. query_upstream_traffic: {since_timestamp?, endpoint_pattern?, limit?, attestation_mode?, identifier_value_digests?}. query_provenance_audit_observations: {creative_id}. force_upstream_unavailable: {tool, upstream_name?}."
       }
     },
     "required": ["scenario"]
@@ -375,6 +376,133 @@ out-of-envelope increase valid.
     "prepared": true,
     "product_id": "compact_direct_buy_video"
   }
+}
+```
+
+### `reporting_core_lifecycle_probe`
+
+Prepares and advances a deterministic, caller/account-scoped
+[`reporting.core`](/docs/media-buy/reporting-core-implementation-guide)
+fixture without waiting for real reporting boundaries. This lets a learner or
+storyboard observe that an obligation exists before its first report, then
+exercise deadline-based health or publish an explicit empty revision.
+
+The fixture is Core-only: no destination, materialization, readiness doorbell,
+canonical digest, or receipt is implied.
+
+| Operation | Additional params | Required observable result |
+|---|---|---|
+| **prepare** | none | Install a fixed hourly configuration and set `simulated_now` to `2026-08-01T01:30:00.000Z`, past the first `period.end` but before `expected_at`. A `periods` read returns one `waiting` obligation with no revision. |
+| **advance_time** | `target_health: delayed` | Set `simulated_now` to `2026-08-01T02:05:00.000Z`, strictly after `expected_at`. The same obligation becomes `delayed` with a stable issue while automated recovery remains open. |
+| **advance_time** | `target_health: action_required` | Set `simulated_now` to `2026-08-01T04:05:00.000Z`, strictly after the returned `recovery_deadline`. The same obligation becomes `action_required`. |
+| **publish_zero_row** | none | Commit an immutable current revision with `row_count: 0`. The obligation becomes satisfied; this is empty reporting, not missing reporting. |
+| **omit_obligation** | none | Advance through a second elapsed period while deliberately suppressing its obligation. The response supplies the expected period and ID so a buyer can demonstrate denominator-based detection. Sandbox education only: this intentionally produces a non-conformant ledger. |
+
+Every successful response includes `account_id` and the applied
+`simulated_now`. `prepare` returns the resolved configuration, generation
+tuple, obligation ID, half-open period, `expected_at`, and `recovery_deadline`;
+`advance_time` repeats the generation, obligation, and deadline identities;
+`publish_zero_row` adds `reporting_revision_id` and `row_count`; and
+`omit_obligation` instead returns `expected_reporting_obligation_id`,
+`omitted_period`, and its `expected_at`. Implementations choose fixture
+identifiers, so callers capture the returned values rather than guessing them.
+
+First provision the sandbox account and install the Core configuration. Copy
+the returned `accounts[0].account_id`; use that durable ID for every controller
+and status call below.
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "idempotency_key": "reporting-core-lab-0001",
+  "accounts": [{
+    "brand": { "domain": "reporting-lab.example" },
+    "operator": "pinnacle-agency.example",
+    "billing": "operator",
+    "sandbox": true,
+    "reporting_delivery_configs": [{
+      "delivery_config_id": "training-pacing-core",
+      "delivery_config_version": 1,
+      "offering_id": "pacing-hourly-core",
+      "active": true,
+      "feed_purpose": "pacing",
+      "report_definition_id": "training_delivery_summary_v1",
+      "reporting_profile": "training_delivery_summary_v1",
+      "scope": { "all_media_buys": true },
+      "coverage_requirement": "full",
+      "required_finality": "snapshot",
+      "reconciliation_mode": "delivery_only",
+      "schedule": {
+        "period_duration": "PT1H",
+        "alignment": "utc",
+        "delivery_sla": "PT1H"
+      }
+    }]
+  }]
+}
+```
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "prepare" }
+}
+```
+
+Read the waiting obligation through [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status):
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts" },
+  "view": "periods"
+}
+```
+
+Then advance past its SLA to make the missing revision operationally visible:
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": {
+    "operation": "advance_time",
+    "target_health": "delayed"
+  }
+}
+```
+
+The corresponding escalation, publication, and deliberate omission calls are:
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "advance_time", "target_health": "action_required" }
+}
+```
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "publish_zero_row" }
+}
+```
+
+Reset with `prepare` before the negative fixture, then call:
+
+```json
+{
+  "adcp_version": "3.2-beta.11",
+  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "scenario": "reporting_core_lifecycle_probe",
+  "params": { "operation": "omit_obligation" }
 }
 ```
 

@@ -62,8 +62,15 @@ import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import { PUBLISHERS } from './publishers.js';
 import { waitForForcedTaskCompletion } from './comply-test-controller.js';
 import { proposalCapabilitiesForProfile } from './proposal-negotiation-profiles.js';
-import { registerSharedPublicBrandPartition, runWithSessionContext } from './state.js';
-import type { ToolArgs, TrainingContext } from './types.js';
+import { buildCatalog } from './product-factory.js';
+import {
+  getReportingStatusForAccountDurably,
+  reportingStatusUnavailable,
+  resolveReportingAccountDurably,
+  TRAINING_REPORTING_CORE_OFFERING,
+} from './reporting-reliability.js';
+import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
+import { atLeastAdcpVersion, REPORTING_STATUS_ADCP_VERSION, type ToolArgs, type TrainingContext } from './types.js';
 import { canonicalizeAccountRef, syntheticAccountIdFromRef } from './account-scope.js';
 import { emitDurableSellerManagedTaskWebhook, maybeEmitCompletionWebhook } from './webhooks.js';
 import { validateWebhookUrl } from './webhook-fetch.js';
@@ -429,7 +436,18 @@ export const TRAINING_SALES_CAPABILITIES = {
         publisher_domains: PUBLISHERS.map(publisher => publisher.domain),
         primary_channels: [...TRAINING_SALES_CHANNELS],
       },
+      // Core tier only. The sandbox deliberately does not imply durable
+      // destination delivery, readiness webhooks, or consumer receipts.
+      reporting_delivery: {
+        supported: true as const,
+        configuration_task: 'sync_accounts' as const,
+        status_task: 'get_reporting_status' as const,
+        offerings: [TRAINING_REPORTING_CORE_OFFERING] as [typeof TRAINING_REPORTING_CORE_OFFERING],
+        automated_recovery_window_seconds: 7200,
+        status_retention_days: 31,
+      },
     },
+    experimental_features: ['media_buy.reporting_delivery'],
   },
   pricingModels: ['cpm', 'cpa'] as const,
   targeting: {
@@ -1104,6 +1122,78 @@ export function legacyGetProductsHandler(
   };
 }
 
+/**
+ * `get_reporting_status` is a first-class SDK MediaBuyHandlers operation.
+ * It sits on the explicit handler seam until the compact SalesPlatform gains
+ * the same method, rather than becoming a hand-registered custom MCP tool.
+ */
+export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHandlers['getReportingStatus']> {
+  return async (req, ctx) => {
+    const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+    if (!version.ok || !atLeastAdcpVersion(version.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+      throw new AdcpError('VERSION_UNSUPPORTED', {
+        recovery: 'correctable',
+        message: version.ok
+          ? 'get_reporting_status is available only in AdCP 3.2 and later.'
+          : version.message,
+        field: 'adcp_version',
+      });
+    }
+    const resolved = ctx.account as {
+      id?: unknown;
+      ctx_metadata?: { account_ref?: ToolArgs['account'] };
+    } | undefined;
+    const requestedAccount = resolved?.ctx_metadata?.account_ref
+      ?? (req as unknown as ToolArgs).account;
+    if (!requestedAccount) {
+      throw new AdcpError('ACCOUNT_NOT_FOUND', {
+        recovery: 'correctable',
+        message: 'Reporting status requires a resolved account.',
+        field: 'account',
+      });
+    }
+    const principal = ctx.authInfo?.clientId;
+    const reportingAccount = await resolveReportingAccountDurably(principal, requestedAccount);
+    if (!reportingAccount) {
+      return reportingStatusUnavailable(req.view);
+    }
+    const accountId = reportingAccount.accountId;
+    const sessionArgs = {
+      ...(req as unknown as ToolArgs),
+      account: reportingAccount.account,
+    };
+    const session = await getSession(sessionKeyFromArgs(sessionArgs, 'open', undefined, undefined, principal));
+    const reportingProducts = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
+    for (const [productId, product] of session.configuredProducts) reportingProducts.set(productId, product);
+    return await getReportingStatusForAccountDurably(
+      req as Parameters<typeof getReportingStatusForAccountDurably>[0],
+      principal,
+      accountId,
+      [...session.mediaBuys.values()].map(mediaBuy => ({
+        mediaBuyId: mediaBuy.mediaBuyId,
+        startTime: mediaBuy.startTime,
+        endTime: mediaBuy.canceledAt && mediaBuy.canceledAt < mediaBuy.endTime
+          ? mediaBuy.canceledAt
+          : mediaBuy.endTime,
+        knownAt: mediaBuy.confirmedAt || mediaBuy.createdAt,
+        effectiveAt: mediaBuy.updatedAt,
+        packages: mediaBuy.packages.filter(pkg => !pkg.canceled).map(pkg => {
+          const reportingCapabilities = reportingProducts.get(pkg.productId)?.reporting_capabilities as {
+            reporting_delivery_offering_ids?: string[];
+          } | undefined;
+          const acceptedOfferingIds = mediaBuy.reportingOfferingIdsByPackage?.[pkg.packageId]
+            ?? reportingCapabilities?.reporting_delivery_offering_ids
+            ?? [];
+          return {
+            packageId: pkg.packageId,
+            supported: acceptedOfferingIds.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id),
+          };
+        }),
+      })),
+    );
+  };
+}
+
 export function legacySyncCreativesHandler(
   storyboardCompat?: TrainingContext['storyboardCompat'],
 ): NonNullable<LegacyMediaBuyHandlers['syncCreatives']> {
@@ -1204,9 +1294,12 @@ export class TrainingSalesPlatform
 
   get capabilities() {
     if (this.storyboardCompat?.version === '3.0') {
+      const { reporting_delivery: _reportingDelivery, ...mediaBuy } = TRAINING_SALES_CAPABILITIES.overrides.media_buy;
+      const { experimental_features: _experimentalFeatures, ...overrides } = TRAINING_SALES_CAPABILITIES.overrides;
       return {
         ...TRAINING_SALES_CAPABILITIES,
         specialisms: ['sales-non-guaranteed', 'sales-guaranteed'] as const,
+        overrides: { ...overrides, media_buy: mediaBuy },
       };
     }
     return TRAINING_SALES_CAPABILITIES;
@@ -1318,7 +1411,6 @@ export class TrainingSalesPlatform
       const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx, this.storyboardCompat));
       return translateV5Result(result);
     },
-
     // Optional read-side methods.
     getMediaBuys: async (req, ctx) => {
       const brandDomain = brandDomainFromCtx(ctx.account);

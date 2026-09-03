@@ -18,6 +18,6 @@
     "devices": "Unique device identifiers (IDFA, GAID, CTV device ID).",
     "accounts": "Unique logged-in accounts (platform-specific identity).",
     "cookies": "Unique browser cookies.",
-    "custom": "Publisher-defined reach unit. Describe in ext."
+    "custom": "Seller-defined reach unit. Describe in ext. For a Product.identity declaration with persistent_identifier false, describe the unit in Product.identity.reach_methodology."
   }
 }

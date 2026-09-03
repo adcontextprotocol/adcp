@@ -1787,6 +1787,7 @@ describe('createTrainingAgentServer', () => {
     );
     const currentCaps = currentResult as Record<string, any>;
     expect(currentCaps.experimental_features).toContain('media_buy.audience_activation');
+    expect(currentCaps.experimental_features).toContain('media_buy.product_identity');
     expect(currentCaps.media_buy.audience_targeting.supported_activation_methods).toEqual([
       { pattern: 'sync_audiences' },
       { pattern: 'dataset_query', vendor: { domain: 'data-cloud.example' } },
@@ -1804,6 +1805,7 @@ describe('createTrainingAgentServer', () => {
     );
     const legacyCaps = legacyResult as Record<string, any>;
     expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.audience_activation');
+    expect(legacyCaps.experimental_features ?? []).not.toContain('media_buy.product_identity');
     expect(legacyCaps.media_buy.audience_targeting).not.toHaveProperty('supported_activation_methods');
   });
 
@@ -5728,6 +5730,119 @@ describe('create_media_buy handler', () => {
     expect(result.media_buy_status).toBe('pending_creatives');
     // Error field should not be present on success
     expect(result.errors).toBeUndefined();
+  });
+
+  it('enforces identity-absence frequency caps on create and update without changing legacy targeting', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'identity-absence-frequency.example' },
+      operator: 'identity-absence-frequency.example',
+    };
+    const identityAbsentProductId = `identity-absent-${randomUUID()}`;
+    const legacyProductId = `legacy-frequency-${randomUUID()}`;
+    const pricingOptionId = 'identity-frequency-cpm';
+    const placement = {
+      publisher_domain: 'identity-absence-frequency.example',
+      placement_id: 'inherent-placement',
+    };
+    const cap = {
+      max_impressions: 3,
+      per: 'individuals',
+      window: { interval: 1, unit: 'days' },
+    };
+    const seedProduct = async (productId: string, identity?: Record<string, unknown>) => {
+      const seeded = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_product',
+        params: {
+          product_id: productId,
+          fixture: {
+            name: productId,
+            channels: ['display'],
+            delivery_type: 'non_guaranteed',
+            ...(identity ? { identity } : {}),
+            overlay_support: { geo_countries: true },
+            placements: [{ ...placement, mode: 'included' }],
+          },
+        },
+      });
+      expect(seeded.result.success).toBe(true);
+      const priced = await simulateCallTool(server, 'comply_test_controller', {
+        account,
+        brand: account.brand,
+        scenario: 'seed_pricing_option',
+        params: {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+        },
+      });
+      expect(priced.result.success).toBe(true);
+    };
+    await seedProduct(identityAbsentProductId, {
+      persistent_identifier: false,
+      reach_methodology: 'Modeled venue audience.',
+    });
+    await seedProduct(legacyProductId);
+
+    const request = (productId: string, targetingOverlay?: Record<string, unknown>) => ({
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        ...(targetingOverlay ? { targeting_overlay: targetingOverlay } : {}),
+      }],
+    });
+    const cappedInherentPlacement = await simulateCallTool(server, 'create_media_buy', request(
+      identityAbsentProductId,
+      { placement_selection: { mode: 'selected', placement_refs: [placement] }, frequency_cap: cap },
+    ));
+    expect(cappedInherentPlacement.isError).toBe(true);
+    expect(cappedInherentPlacement.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'packages[0].targeting_overlay.frequency_cap',
+    });
+
+    const uncapped = await simulateCallTool(server, 'create_media_buy', request(identityAbsentProductId));
+    expect(uncapped.isError, JSON.stringify(uncapped.result)).toBeFalsy();
+    const identityAbsentPackage = (uncapped.result.packages as Array<Record<string, unknown>>)[0];
+    const cappedUpdate = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: uncapped.result.media_buy_id,
+      packages: [{
+        package_id: identityAbsentPackage.package_id,
+        targeting_overlay: { frequency_cap: cap },
+      }],
+    });
+    expect(cappedUpdate.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'packages[0].targeting_overlay.frequency_cap',
+    });
+
+    const cappedNewPackage = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: uncapped.result.media_buy_id,
+      new_packages: [{
+        product_id: identityAbsentProductId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        targeting_overlay: { frequency_cap: cap },
+      }],
+    });
+    expect(cappedNewPackage.result).toMatchObject({
+      code: 'UNSUPPORTED_FEATURE',
+      field: 'new_packages[0].targeting_overlay.frequency_cap',
+    });
+
+    const legacyCapped = await simulateCallTool(server, 'create_media_buy', request(
+      legacyProductId,
+      { frequency_cap: cap },
+    ));
+    expect(legacyCapped.isError, JSON.stringify(legacyCapped.result)).toBeFalsy();
   });
 
   it('enforces an advertiser account\'s immutable currency', async () => {
@@ -14960,6 +15075,331 @@ describe('get_media_buy_delivery handler', () => {
     expect((totals.reach as number) > 0).toBe(true);
   });
 
+  it('keeps an identity-absent package unit-bearing when frequency is injected without a unit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'identity-absent-delivery-unit.example' },
+      operator: 'identity-absent-delivery-unit.example',
+    };
+    const productId = `identity-absent-reach-${randomUUID()}`;
+    const pricingOptionId = 'identity-absent-reach-cpm';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Identity-absent reach product',
+          channels: ['dooh'],
+          delivery_type: 'non_guaranteed',
+          identity: {
+            persistent_identifier: false,
+            reach_methodology: 'Venue and dwell-modelled aggregate measurement.',
+          },
+          metric_optimization: {
+            supported_metrics: ['reach'],
+            supported_reach_units: ['households'],
+          },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+      }],
+    });
+    expect(isError, JSON.stringify(created)).toBeFalsy();
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: created.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: created.media_buy_id,
+    });
+    const delivery = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const packageRow = (delivery.by_package as Array<Record<string, unknown>>)[0];
+    const totals = delivery.totals as Record<string, unknown>;
+    expect(packageRow).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+    expect(totals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
+    // Totals must bind to packages that can actually contribute delivery. A paused
+    // identity-capable package cannot make device-level reporting legal for the
+    // active identity-absent package.
+    const identityCapableProductId = `identity-capable-reach-${randomUUID()}`;
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: identityCapableProductId,
+        fixture: {
+          name: 'Identity-capable reach product',
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          identity: { persistent_identifier: true },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: identityCapableProductId,
+        pricing_option_id: 'identity-capable-reach-cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: mixedCreated, isError: mixedCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+        },
+      ],
+    });
+    expect(mixedCreateError, JSON.stringify(mixedCreated)).toBeFalsy();
+    const mixedPackages = mixedCreated.packages as Array<Record<string, unknown>>;
+    const { result: mixedPaused, isError: mixedPauseError } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mixedCreated.media_buy_id,
+      packages: [{ package_id: mixedPackages[0].package_id, paused: true }],
+    });
+    expect(mixedPauseError, JSON.stringify(mixedPaused)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mixedCreated.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'devices',
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: mixedDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mixedCreated.media_buy_id,
+    });
+    const mixedTotals = ((mixedDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(mixedTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
+    const { result: canceledCreated, isError: canceledCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+        },
+      ],
+    });
+    expect(canceledCreateError, JSON.stringify(canceledCreated)).toBeFalsy();
+    const canceledPackages = canceledCreated.packages as Array<Record<string, unknown>>;
+    const { result: canceledResult, isError: canceledUpdateError } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: canceledCreated.media_buy_id,
+      packages: [{
+        package_id: canceledPackages[0].package_id,
+        canceled: true,
+        cancellation_reason: 'No longer participating in this buy.',
+      }],
+    });
+    expect(canceledUpdateError, JSON.stringify(canceledResult)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: canceledCreated.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'devices',
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: canceledDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: canceledCreated.media_buy_id,
+    });
+    const canceledTotals = ((canceledDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(canceledTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
+    // An inactive package's goal must not cause reach/frequency to appear for
+    // an active identity-absent package that has no reach goal of its own.
+    const { result: inactiveOnlyCreated, isError: inactiveOnlyCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+        },
+      ],
+    });
+    expect(inactiveOnlyCreateError, JSON.stringify(inactiveOnlyCreated)).toBeFalsy();
+    const inactiveOnlyPackages = inactiveOnlyCreated.packages as Array<Record<string, unknown>>;
+    await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: inactiveOnlyCreated.media_buy_id,
+      packages: [{ package_id: inactiveOnlyPackages[0].package_id, paused: true }],
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: inactiveOnlyCreated.media_buy_id,
+        impressions: 1_000,
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: inactiveOnlyDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: inactiveOnlyCreated.media_buy_id,
+    });
+    const inactiveOnlyTotals = ((inactiveOnlyDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(inactiveOnlyTotals.reach).toBeUndefined();
+    expect(inactiveOnlyTotals.frequency).toBeUndefined();
+    expect(inactiveOnlyTotals.reach_unit).toBeUndefined();
+
+    const audioProductId = `identity-absent-audio-${randomUUID()}`;
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: audioProductId,
+        fixture: {
+          name: 'Identity-absent audio product',
+          channels: ['podcast'],
+          delivery_type: 'non_guaranteed',
+          identity: { persistent_identifier: false },
+          metric_optimization: {
+            supported_metrics: ['reach'],
+            supported_reach_units: ['custom', 'households'],
+          },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: audioProductId,
+        pricing_option_id: 'identity-absent-audio-cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: audioCreated, isError: audioCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: audioProductId,
+        pricing_option_id: 'identity-absent-audio-cpm',
+        budget: 1_000,
+        optimization_goals: [
+          { kind: 'metric', metric: 'reach', reach_unit: 'custom' },
+          { kind: 'metric', metric: 'reach', reach_unit: 'households' },
+        ],
+      }],
+    });
+    expect(audioCreateError, JSON.stringify(audioCreated)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: audioCreated.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'custom',
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: audioDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: audioCreated.media_buy_id,
+    });
+    const audioDelivery = (audioDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const audioPackage = (audioDelivery.by_package as Array<Record<string, unknown>>)[0];
+    expect(audioPackage).toMatchObject({
+      views: 900,
+      completed_views: 870,
+      completion_rate: 0.87,
+      follows: 2,
+      conversions: 6,
+      frequency: 2.5,
+      reach_unit: 'households',
+    });
+    expect(audioDelivery.totals as Record<string, unknown>).toMatchObject({
+      views: 900,
+      completed_views: 870,
+      frequency: 2.5,
+      reach_unit: 'households',
+    });
+  });
+
   it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {
     const catalog = buildCatalog();
     const cvProduct = catalog.find(cp =>
@@ -19099,6 +19539,45 @@ describe('proposal lifecycle', () => {
       name: expect.any(String),
       description: expect.any(String),
     });
+  });
+
+  it('projects requested experimental product identity in sparse list_products responses', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const productId = `identity-projection-${randomUUID()}`;
+    const seeded = await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Sparse identity projection',
+          channels: ['dooh'],
+          delivery_type: 'non_guaranteed',
+          identity: {
+            persistent_identifier: false,
+            reach_methodology: 'Venue and dwell modeled measurement.',
+          },
+          overlay_support: { geo_countries: true },
+        },
+      },
+    });
+    expect(seeded.result.success).toBe(true);
+
+    const listed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: { product_ids: [productId] },
+      fields: ['identity'],
+    });
+    expect(listed.isError, JSON.stringify(listed.result)).toBeFalsy();
+    expect(listed.result.products).toEqual([{
+      product_id: productId,
+      name: 'Sparse identity projection',
+      identity: {
+        persistent_identifier: false,
+        reach_methodology: 'Venue and dwell modeled measurement.',
+      },
+    }]);
   });
 
   it('preserves collection composition in the default compact product projection', async () => {

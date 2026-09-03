@@ -327,6 +327,13 @@ describe('reporting.core fixture: a polling-only seller implements Core', () => 
     assert.equal(validateObligation(coreObligation), true, JSON.stringify(validateObligation.errors));
 
     const obligationRules = readSchema('/schemas/core/reporting-obligation.json')['x-adcp-validation'];
+    assert.match(obligationRules.obligation_availability, /independently of source availability/);
+    assert.match(obligationRules.obligation_availability, /before committing any revision/);
+    assert.match(obligationRules.obligation_availability, /taking any get_reporting_status ledger snapshot/);
+    assert.match(obligationRules.obligation_availability, /periods view whose selected denominator includes that configuration generation and period/);
+    assert.match(obligationRules.obligation_availability, /MUST NOT expose an obligation.*at or before period\.end/);
+    assert.match(obligationRules.obligation_availability, /Media-buy acceptance alone does not create an obligation/);
+    assert.match(obligationRules.obligation_availability, /MUST NOT be prerequisites for obligation creation/);
     assert.match(obligationRules.complete_finality, /For Core/);
     assert.match(obligationRules.complete_finality, /Managed-delivery additionally requires/);
     assert.match(obligationRules.record_counts, /revision records for this obligation/);

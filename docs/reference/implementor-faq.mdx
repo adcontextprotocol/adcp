@@ -7,6 +7,93 @@ description: "AdCP implementor FAQ: answers to common questions about get_produc
 
 Common questions from teams building AdCP sales agents and integrations, with direct answers based on the specification.
 
+## Reliable reporting (3.2 experimental)
+
+### Q: Does accepting a media buy create its reporting obligations?
+
+**A:** No. The applicable account reporting configuration generation supplies
+the reporting contract: offering, report definition, schedule, scope, and
+finality. Managed-delivery configurations additionally select a method and
+destination; Core configurations do not. A buy accepted under an already-active `all_media_buys`
+configuration can enter that configuration's period denominator when its
+effective flight overlaps the period and it is known at the period-end cutoff.
+Activating the reporting configuration mid-period starts it at the next full
+boundary; deactivation still owes a period that already started.
+
+### Q: When must an obligation become queryable?
+
+**A:** In the first ledger snapshot strictly after an eligible reporting period
+has closed. The seller freezes
+`media_buy_ids` and `scope_resolved_at` at `period.end` and commits the
+obligation independently of source availability and before committing any
+revision for it. Before taking a later `get_reporting_status` ledger snapshot,
+the seller must have recorded that obligation; a `periods` view selecting the
+configuration and period must return it in the paginated record set—even if
+production has not started or the source will permanently fail. A snapshot
+whose `ledger_as_of` equals `period.end` does not expose the obligation; it may
+expose the derived future `next_expected_at` instead.
+
+Before close, buyers and sellers derive future periods and `next_expected_at`
+from the installed schedule; they do not use a premature obligation with an
+unresolved denominator.
+
+### Q: Is the reporting SLA measured from media-buy acceptance?
+
+**A:** No. `expected_at` is always the resolved `period.end` plus the selected
+offering's `delivery_sla`. Buy acceptance can change which buy belongs in the
+period denominator, but it does not create another reporting clock. A separate
+configuration setup state handles a managed destination that is not ready yet.
+
+### Q: Does a doorbell announce that an obligation exists?
+
+**A:** No doorbell is required. `reporting.delivery_ready` has a narrower
+meaning: a named managed-delivery materialization has been verified through the
+consumer path. `reporting.status_changed` is an optional invalidation when an
+obligation or configuration changes health, such as `waiting → delayed`.
+Neither event is the source of truth; consumers repair missed, duplicate, and
+out-of-order events through `get_reporting_status`.
+
+### Q: How can a buyer detect an obligation the seller never recorded?
+
+**A:** Persist each accepted reporting configuration generation and derive its
+expected half-open periods locally. In the `periods` view, require exactly one
+matching obligation for every expected period. Do not treat the seller's
+returned obligation list as its own denominator: that would make a missing
+first report invisible again.
+
+### Q: Is a zero-row period the same as a missing report?
+
+**A:** No. A valid empty period has an obligation and an immutable revision
+whose `row_count` is zero. Managed file delivery also publishes an empty data
+object and a non-empty manifest. No obligation or no revision means missing
+reporting, not zero activity.
+
+### Q: Which reporting tier should each side implement first?
+
+**A:** Start with Core. Sellers add obligations, immutable revisions, health,
+and `get_reporting_status` over the reporting transports they already support.
+Buyers persist configurations, derive expected periods, and reconcile the
+status ledger. Add `managed_delivery` only for durable file, dataset-share, or
+warehouse resources; add `reconciled_billing` only when authenticated consumer
+receipts and canonical-digest agreement are required.
+
+See [Implementing reporting.core](/docs/media-buy/reporting-core-implementation-guide)
+for the seller/buyer sequence and
+[`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status)
+for the complete ledger contract.
+
+### Q: Can I test the lifecycle without waiting for a real period to close?
+
+**A:** Yes, in a sandbox or staging deployment that exposes the optional test
+controller. `reporting_core_lifecycle_probe` prepares an elapsed obligation
+before its first revision, advances the same obligation to `delayed` or
+`action_required`, and publishes a zero-row revision. The public training sales
+agent implements this flow. Negotiate an AdCP 3.2 release that supports
+`get_reporting_status` (currently `3.2-beta.11`) on every lab request; the
+agent's default 3.0 surface does not expose the experimental reporting contract. The
+[controller reference](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
+has the exact requests. Never expose the controller on a production endpoint.
+
 ## Product Discovery
 
 ### Q: Is hard targeting in a brief actually hard, and why use an overlay?
