@@ -129,6 +129,20 @@ describe('durable training reporting ledger', () => {
     await expect(reporting.resolveReportingAccountDurably('buyer:failed', account)).resolves.toBeUndefined();
   });
 
+  it('projects durable reporting state only for accounts on the requested page', async () => {
+    const listed = await accountHandlers.handleListAccounts({
+      sandbox: true,
+      pagination: { max_results: 1 },
+    }, { mode: 'open', principal: 'buyer:page' });
+
+    expect(listed).toMatchObject({
+      accounts: [expect.objectContaining({ reporting_delivery_configs: [] })],
+      pagination: { has_more: true },
+    });
+    expect(statements.filter(statement => statement.includes('SELECT ledger'))).toHaveLength(1);
+    expect(statements.filter(statement => statement.includes('pg_advisory_xact_lock'))).toHaveLength(1);
+  });
+
   it('reuses durable account identity for opaque updates and natural resync after cache loss', async () => {
     const account = {
       brand: { domain: 'durable-resync.example' },

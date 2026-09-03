@@ -2135,15 +2135,6 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
       : accounts.filter(a => !a.sandbox);
   }
 
-  // The durable configuration set is caller-owned even when the account ID
-  // happens to be known by another buyer. Project only this principal's
-  // secret-free states; credentials and destination grants never enter the
-  // account response.
-  accounts = await Promise.all(accounts.map(async account => ({
-    ...account,
-    reporting_delivery_configs: await reportingConfigurationStatesForAccountDurably(ctx.principal, account.account_id),
-  })));
-
   const totalMatching = accounts.length;
   const requestedMax = req.pagination?.max_results;
   const maxResults = Math.min(typeof requestedMax === 'number' ? requestedMax : 50, 100);
@@ -2152,7 +2143,15 @@ export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): 
     return { errors: [{ code: 'INVALID_REQUEST', message: 'pagination.cursor is malformed' }] };
   }
   const pageEnd = Math.min(offset + maxResults, totalMatching);
-  const pageAccounts = accounts.slice(offset, pageEnd);
+  // The durable configuration set is caller-owned even when the account ID
+  // happens to be known by another buyer. Project only this principal's
+  // secret-free states for the requested page; credentials and destination
+  // grants never enter the response, and accounts outside the page do not
+  // consume a locked database transaction.
+  const pageAccounts = await Promise.all(accounts.slice(offset, pageEnd).map(async account => ({
+    ...account,
+    reporting_delivery_configs: await reportingConfigurationStatesForAccountDurably(ctx.principal, account.account_id),
+  })));
   const hasMore = pageEnd < totalMatching;
 
   return {
