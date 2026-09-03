@@ -1735,9 +1735,9 @@ Log a conversation or interaction with a prospect/member. Analyzes and extracts 
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_brands (admin only)
+## admin_brand_registry_integrity (admin only)
 
-Review brand and property registry gaps, logo submissions, community mirrors, and orphaned brand ownership (admin only)
+Diagnose brand/property registry gaps and reconcile mirrors, orphaned brands, and ownership (admin only)
 
 ### `list_missing_brands`
 
@@ -1750,24 +1750,6 @@ List the most-requested brand domains that are not yet in the registry. Shows de
 List the most-requested publisher domains that are not yet in the registry. Shows demand signals — which properties people are looking for but we don't have.
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
-
-### `list_pending_brand_logos`
-
-List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_brand_logos`
-
-List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand's logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `review_brand_logo`
-
-Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand's company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
 
 ### `list_pending_community_mirrors`
 
@@ -1786,6 +1768,28 @@ Do not use to resolve unverified disputes — use the escalation queue for those
 ### `list_orphaned_brands`
 
 List brand domains in the orphaned state — a prior owner relinquished and the manifest is preserved for adoption. Use this to audit relinquished brands, see which ones have stale data, and trigger admin cleanup or reach out to potential adopters. Returns prior owner org name + id, when relinquished, and a manifest preview so admins can decide at a glance.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_brand_logo_review (admin only)
+
+List and moderate pending or existing brand-logo submissions (admin only)
+
+### `list_pending_brand_logos`
+
+List brand logos awaiting moderator review across the registry. Returns logo IDs, domains, uploader email, tags, and how long they have been pending. Use this to triage the registry approval queue or answer "what logos need approval?"
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `list_brand_logos`
+
+List every logo for ONE specific brand domain — pending, approved, rejected, deleted — to investigate why a brand's logo is or is not displaying. Use this when you have a domain in hand. For the global moderation queue across all domains, use list_pending_brand_logos instead.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `review_brand_logo`
+
+Approve, reject, or delete a pending brand logo. Approving makes it visible on the brand's company listing; rejecting hides it; deleting tombstones it. Triggers manifest rebuild on approve for unverified brands.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
