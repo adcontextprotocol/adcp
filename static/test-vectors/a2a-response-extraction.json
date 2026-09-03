@@ -817,7 +817,7 @@
     },
     {
       "id": "large-artifact-100-plus-dataparts",
-      "description": "Completed task — 121 DataParts in one artifact (streaming progress at scale); last DataPart wins, guards against accidental O(n^2) regression and locks in last-wins-at-scale behavior",
+      "description": "Completed task — 121 DataParts in one artifact (streaming progress at scale); last DataPart wins and locks in last-wins-at-scale behavior",
       "status": "completed",
       "path": "artifact",
       "response": {
