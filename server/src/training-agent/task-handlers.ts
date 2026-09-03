@@ -15172,7 +15172,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const hasReachGoal = simulatedPackages.some(pkg =>
     pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'reach'),
   );
-  const hasCompletedViewsGoal = mb.packages.some(pkg =>
+  const hasCompletedViewsGoal = simulatedPackages.some(pkg =>
     pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'completed_views'),
   );
   // Resolve reach_unit from the first reach goal that declared one — buyers
