@@ -7,8 +7,16 @@
       "sha256": "a97d7754b01ef1bb29d5e010711ab14add3fc691868bcef9fb167c29b21287da"
     },
     {
+      "file": "add-product-identity-absence.md",
+      "sha256": "95ffdececb65d5d863aca4809cf3115df28f332dc67efa3fddc32aca4fa66943"
+    },
+    {
       "file": "adopt-beta11-training-wire.md",
       "sha256": "6d684e5145f1b1c821d3a11e5944a60762df7f4c3d124e3a2c543e03d0967f1b"
+    },
+    {
+      "file": "clarify-reporting-obligation-availability.md",
+      "sha256": "ca9703fa65dc1d2cbee26530e247bdc6b41d145f21e44f58db48553887c110ff"
     },
     {
       "file": "define-dooh-time-share.md",
@@ -17,6 +25,10 @@
     {
       "file": "mainline-candidate-storyboards.md",
       "sha256": "081620f8c36bdad2bae8632bf8af6a561d31bec970e0f8848dadc621a6c8606b"
+    },
+    {
+      "file": "pair-python-beta12-with-beta11.md",
+      "sha256": "101432c5bd2033240ccedb351239d332f19cb7cbd4e53c5ec1300892a6e32bc1"
     },
     {
       "file": "refresh-beta10-release-ledger.md",
