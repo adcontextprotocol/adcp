@@ -134,6 +134,14 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
   assert.equal(response.properties.currency.deprecated, true);
   assert.equal(webhook.properties.currency.deprecated, true);
 
+  const responseMetricValue = response.properties.media_buy_deliveries.items
+    .properties.by_package.items.allOf[1].properties.metric_values.items;
+  const webhookMetricValue = webhook.properties.media_buy_deliveries.items
+    .properties.by_package.items.allOf[1].properties.metric_values.items;
+  assert.equal(responseMetricValue.title, 'GetMediaBuyDeliveryPackageMetricValue');
+  assert.equal(webhookMetricValue.title, 'MediaBuyDeliveryWebhookPackageMetricValue');
+  assert.notEqual(responseMetricValue.title, webhookMetricValue.title);
+
   for (const schema of [response, webhook]) {
     assert.equal(schema.required.includes('currency'), false);
     const rowCurrency = schema.properties.media_buy_deliveries.items.properties.currency;

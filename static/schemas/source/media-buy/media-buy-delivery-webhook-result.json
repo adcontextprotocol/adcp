@@ -206,6 +206,7 @@
                       "type": "array",
                       "description": "Qualified standard delivery values for this package. Each entry is the delivered counterpart to a standard-scope package.committed_metrics or by_package[].missing_metrics row, using the same atomic key (scope, metric_id, qualifier). Sellers report one row per full qualifier set at package grain; when a metric appears here, its flat scalar counterpart on the package MUST be omitted to avoid two sources of truth. Vendor-scope values continue to use vendor_metric_values. Buyers reconcile rows directly and perform any compatible cross-package aggregation themselves.",
                       "items": {
+                        "title": "MediaBuyDeliveryWebhookPackageMetricValue",
                         "allOf": [
                           {
                             "$ref": "/schemas/core/delivery-metric-aggregate.json#/oneOf/0"
