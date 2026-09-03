@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import {
   createSchemaToolHandlers,
+  buildPreviewSchemaRouting,
   DOCS_SCHEMA_RELEASES,
   extractRegistryPaths,
   findClosestSchema,
@@ -12,6 +13,22 @@ import {
 } from '../../../src/addie/mcp/schema-tools.js';
 
 describe('schema version selection', () => {
+  it('promotes the newest prerelease channel while preserving explicit beta routing', () => {
+    const routing = buildPreviewSchemaRouting({
+      '3.2-rc': '3.2.0-rc.0',
+      '3.2-beta': '3.2.0-beta.12',
+    }, '3.2');
+
+    expect(routing.current).toBe('3.2-rc');
+    expect(routing.aliases).toMatchObject({
+      '3.2': '3.2-rc',
+      '3.2 rc': '3.2-rc',
+      '3.2.0-rc.0': '3.2-rc',
+      '3.2 beta': '3.2-beta',
+      '3.2.0-beta.12': '3.2-beta',
+    });
+  });
+
   it('accepts every public docs release and defaults its guidance to stable', () => {
     expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(['3.1', '3.2-beta', '3.0', '2.5']);
     expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
@@ -37,11 +54,11 @@ describe('schema version selection', () => {
 
     for (const toolName of ['validate_json', 'get_schema', 'list_schemas']) {
       const tool = SCHEMA_TOOLS.find((candidate) => candidate.name === toolName);
-      expect(tool?.input_schema.properties.version.enum).toEqual(SCHEMA_VERSION_OPTIONS);
+      expect(tool?.input_schema.properties.version).not.toHaveProperty('enum');
     }
 
     const getSchema = SCHEMA_TOOLS.find((tool) => tool.name === 'get_schema');
-    expect(getSchema?.input_schema.properties.version.description).toContain('3.1 (stable default)');
+    expect(getSchema?.input_schema.properties.version.description).toContain('stable 3.1');
   });
 });
 
