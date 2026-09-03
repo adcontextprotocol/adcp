@@ -310,6 +310,28 @@ describe('Addie tool reference', () => {
     expect(memberRecords).not.toContain('merge_organizations');
   });
 
+  it('keeps brand-registry integrity and logo-review guidance request-scoped', () => {
+    const integrity = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_brand_registry_integrity'], true, false),
+      selectedToolSetNames: ['admin_brand_registry_integrity'],
+    });
+    const logoReview = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_brand_logo_review'], true, false),
+      selectedToolSetNames: ['admin_brand_logo_review'],
+    });
+
+    expect(integrity).toContain('### Admin brand-registry integrity');
+    expect(integrity).toContain('- **admin_brand_registry_integrity** *(admin only)*');
+    expect(integrity).toContain('transfer_brand_ownership');
+    expect(integrity).not.toContain('### Admin brand-logo review');
+    expect(integrity).not.toContain('review_brand_logo');
+    expect(logoReview).toContain('### Admin brand-logo review');
+    expect(logoReview).toContain('- **admin_brand_logo_review** *(admin only)*');
+    expect(logoReview).toContain('review_brand_logo');
+    expect(logoReview).not.toContain('### Admin brand-registry integrity');
+    expect(logoReview).not.toContain('transfer_brand_ownership');
+  });
+
   it('scopes group-admin guidance to the selected domain', () => {
     const leadership = buildAddieToolReference({
       availableToolNames: getToolsForSets(['admin_group_leadership'], true, false),

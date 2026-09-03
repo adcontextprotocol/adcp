@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v16';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v17';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -431,6 +431,26 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports the synthetic read-only comparison without claiming any record changed.'],
+  },
+  {
+    id: 'admin-brand-logo-review',
+    category: 'admin_read',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Show pending brand logo submissions for review.', nowUtc: NOW, isAdmin: true },
+    routing: { action: 'respond', toolSets: ['admin_brand_logo_review'] },
+    toolFixtures: [
+      { name: 'list_pending_brand_logos', effect: 'read', resultStatus: 'ok', result: 'Synthetic pending logo: synthetic-logo-alpha.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['list_pending_brand_logos'],
+      allowedTools: ['list_pending_brand_logos'],
+      forbiddenTools: ['review_brand_logo', 'transfer_brand_ownership', 'list_orphaned_brands'],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic-logo-alpha', 'pending logo']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic moderation queue without changing logo or ownership state.'],
   },
   {
     id: 'meeting-full-administration-confirmed',

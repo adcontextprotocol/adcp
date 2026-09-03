@@ -59,7 +59,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_organization_integrity** *(admin only)* — merge_organizations, find_duplicate_orgs, check_domain_health, manage_organization_domains
 - **admin_organization_member_records** *(admin only)* — update_org_member_role, list_slack_users_by_org, list_paying_members, update_member_logo, update_member_profile
 - **admin_workflows** *(admin only)* — query_admin_analytics, list_flagged_conversations, review_flagged_conversation, set_reminder, my_upcoming_tasks, complete_task, log_conversation
-- **admin_brands** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_brand_logos, list_brand_logos, review_brand_logo, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
+- **admin_brand_registry_integrity** *(admin only)* — list_missing_brands, list_missing_properties, list_pending_community_mirrors, transfer_brand_ownership, list_orphaned_brands
+- **admin_brand_logo_review** *(admin only)* — list_pending_brand_logos, list_brand_logos, review_brand_logo
 - **outreach** *(admin only)* — get_outreach_stats, get_outreach_history, send_outreach, lookup_person, get_action_items, get_account, create_contact
 - **collaboration** — send_member_dm
 - **certification_overview** — list_certification_tracks, get_certification_module, get_learner_progress, check_credentials, set_my_name

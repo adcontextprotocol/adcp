@@ -150,15 +150,17 @@ export const ADMIN_DOMAIN_TOOL_SETS = {
     "complete_task",
     "log_conversation",
   ],
-  admin_brands: [
+  admin_brand_registry_integrity: [
     "list_missing_brands",
     "list_missing_properties",
-    "list_pending_brand_logos",
-    "list_brand_logos",
-    "review_brand_logo",
     "list_pending_community_mirrors",
     "transfer_brand_ownership",
     "list_orphaned_brands",
+  ],
+  admin_brand_logo_review: [
+    "list_pending_brand_logos",
+    "list_brand_logos",
+    "review_brand_logo",
   ],
 } as const;
 
@@ -172,6 +174,24 @@ export const ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS = ADMIN_DOMAIN_TOOL_SETS.ad
 export const ADMIN_ORGANIZATIONS_TOOLS = [
   ...ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ...ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
+] as const;
+
+/** Admin-only brand/property gaps, mirrors, orphaned records, and ownership reconciliation. */
+export const ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS = ADMIN_DOMAIN_TOOL_SETS.admin_brand_registry_integrity;
+
+/** Admin-only brand-logo moderation queue and review operations. */
+export const ADMIN_BRAND_LOGO_REVIEW_TOOLS = ADMIN_DOMAIN_TOOL_SETS.admin_brand_logo_review;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_BRANDS_TOOLS = [
+  "list_missing_brands",
+  "list_missing_properties",
+  "list_pending_brand_logos",
+  "list_brand_logos",
+  "review_brand_logo",
+  "list_pending_community_mirrors",
+  "transfer_brand_ownership",
+  "list_orphaned_brands",
 ] as const;
 
 /** Bounded member account/profile surface for new router plans. */
@@ -863,12 +883,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     adminOnly: true,
   },
 
+  admin_brand_registry_integrity: {
+    name: "admin_brand_registry_integrity",
+    description:
+      "Diagnose brand/property registry gaps and reconcile mirrors, orphaned brands, and ownership (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brand_registry_integrity],
+    adminOnly: true,
+  },
+
+  admin_brand_logo_review: {
+    name: "admin_brand_logo_review",
+    description:
+      "List and moderate pending or existing brand-logo submissions (admin only)",
+    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brand_logo_review],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded brand-administration domains.
   admin_brands: {
     name: "admin_brands",
-    description:
-      "Review brand and property registry gaps, logo submissions, community mirrors, and orphaned brand ownership (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_brands],
+    description: "Legacy combined brand-administration compatibility surface",
+    tools: [...ADMIN_BRANDS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   outreach: {

@@ -550,8 +550,12 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
 - update_member_logo and update_member_profile change directory records; check subscription and publication state first.`,
   admin_workflows: `### Admin workflow operations
 - Query analytics, review flagged conversations, maintain reminders and tasks, and log member or prospect interactions.`,
-  admin_brands: `### Admin brand-registry operations
-- Review registry gaps and logo submissions; maintain community mirrors and brand ownership.`,
+  admin_brand_registry_integrity: `### Admin brand-registry integrity
+- Review registry gaps, community mirrors, and orphaned brands before changing ownership.
+- transfer_brand_ownership changes registry authority; act only on the explicitly named brand and confirmed destination organization.`,
+  admin_brand_logo_review: `### Admin brand-logo review
+- Inspect the pending or existing logo queue before moderating a submission.
+- review_brand_logo changes public registry state; act only on the explicitly identified logo and requested disposition.`,
   billing: `### Admin billing operations
 - get_account: Look up lifecycle, membership, engagement, billing, and directory status before diagnosing an account
 - Use preview_org_stripe_customer_update before confirm_org_stripe_customer_update; never skip the confirmation boundary.`,
