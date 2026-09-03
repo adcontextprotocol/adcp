@@ -23,19 +23,19 @@ For the layered model behind this — what each layer contains and what an SDK a
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-09-02.*
+*Last updated: 2026-09-03.*
 
 | SDK | Current package | 3.2 beta support | L0 | L1 | L2 | L3 |
 |---|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.28` | Exact `3.2.0-beta.10` support | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `8.0.0b11` | Exact `3.2.0-beta.10` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`@adcp/sdk`** (TypeScript) | `14.0.0-beta.29` | Exact `3.2.0-beta.11` support | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `8.0.0b12` | Exact `3.2.0-beta.11` schemas and types; higher-level helpers remain partial | ✅ | ⚠️ | ⚠️ | ⚠️ |
 | **`adcp/v3`** (Go) | `v3.0.0` | Pending exact 3.2 support | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 
 Legend: ✅ shipped · ⚠️ partial / role-dependent · ❌ not yet covered. The L0–L3 columns describe the current package, not a 3.2 support claim.
 
 <Warning>
-**3.2 packages are prereleases.** TypeScript beta.28 and Python beta.11 support
-the exact beta.10 protocol checkpoint.
+**3.2 packages are prereleases.** TypeScript beta.29 and Python beta.12 support
+the exact beta.11 protocol checkpoint.
 Neither implies compatibility with a later checkpoint. Go has not published an exact
 3.2 support statement yet. See the [3.2 beta program](/docs/reference/3-2-beta).
 </Warning>
@@ -59,7 +59,7 @@ and the [Slack community](/docs/community/joining-slack).
 [![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/sdk@14.0.0-beta.28
+npm install @adcp/sdk@14.0.0-beta.29
 ```
 
 ```javascript
@@ -73,7 +73,7 @@ const client = createSingleAgentClient({
 });
 
 const products = await client.listProducts({
-  adcp_version: '3.2-beta.10',
+  adcp_version: '3.2-beta.11',
   account: { account_id: 'account_123' },
   criteria: {
     offer_filters: { channels: ['ctv'] },
@@ -110,7 +110,7 @@ integrations should use the main server and per-tool type exports.
 [![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
 
 ```bash
-pip install adcp==8.0.0b11
+pip install adcp==8.0.0b12
 ```
 
 ```python
