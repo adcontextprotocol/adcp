@@ -645,11 +645,17 @@ function loadDocsVersions(configPath: string): DocsVersion[] {
   return versions;
 }
 
-function versionAliases(version: DocsVersion): string[] {
+export function versionAliases(version: DocsVersion, versions = docsVersions): string[] {
   const aliases = [version.version, version.displayName, version.artifactVersion];
   if (version.isDefault) aliases.push('latest', 'stable', 'current', 'v3');
-  if (version.version.endsWith('-beta')) {
-    aliases.push(version.version.replace(/-beta$/, ''), `${version.version.replace(/-beta$/, '')} beta`);
+  const prereleaseMatch = version.version.match(/^(\d+\.\d+)-(beta|rc)$/);
+  if (prereleaseMatch) {
+    const [, releaseLine, channel] = prereleaseMatch;
+    aliases.push(`${releaseLine} ${channel}`);
+    const currentPreview = versions.find(
+      (candidate) => candidate.version.match(/^(\d+\.\d+)-(?:beta|rc)$/)?.[1] === releaseLine,
+    );
+    if (currentPreview === version) aliases.push(releaseLine);
   }
   return aliases.map((alias) => alias.toLowerCase());
 }

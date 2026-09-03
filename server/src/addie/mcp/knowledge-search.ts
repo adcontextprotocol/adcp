@@ -208,17 +208,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Protocol docs version: 3.1 (stable default), 3.2-beta, 3.0, or 2.5. Also accepts the exact snapshot version returned in results.',
-          enum: [
-            '3.1',
-            '3.1.19',
-            '3.2-beta',
-            '3.2.0-beta.5',
-            '3.0',
-            '3.0.26',
-            '2.5',
-            '2.5.3',
-          ],
+          description: 'Protocol docs version. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel and exact frozen snapshot selectors are also accepted.',
         },
         limit: {
           type: 'integer',
@@ -245,7 +235,7 @@ export const KNOWLEDGE_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Optional protocol version for legacy unversioned IDs: 3.1, 3.2-beta, 3.0, or 2.5.',
+          description: 'Optional protocol version for legacy unversioned IDs. Omission means stable 3.1; use 3.2 for the current preview.',
         },
       },
       required: ['doc_id'],

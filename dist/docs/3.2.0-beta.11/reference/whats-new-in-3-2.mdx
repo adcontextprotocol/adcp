@@ -1,0 +1,302 @@
+---
+title: What's new in AdCP 3.2
+sidebarTitle: What's new in 3.2
+description: "AdCP 3.2 turns a media-buy conversation into an explicit lifecycle: discover, propose, negotiate, reserve, accept, and operate—with compact tools and accountable state."
+"og:title": "AdCP — What's New in 3.2"
+---
+
+# What's new in AdCP 3.2
+
+<Warning>
+**3.2 is in beta.** Beta.9 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.22` and Python `adcp==8.0.0b10` embed beta.9. Python
+higher-level helpers remain partial, and Go exact support is still pending. See
+the [3.2 beta program](/dist/docs/3.2.0-beta.11/reference/3-2-beta) before testing.
+</Warning>
+
+AdCP 3.2 turns a media-buy conversation into a commercial lifecycle that
+software can safely operate. A buyer can move from a brief to seller-authored
+plans, negotiate typed terms, reserve inventory, accept one exact snapshot,
+and operate the resulting campaign without asking either agent to infer which
+kind of change is happening.
+
+That is the release's central upgrade: conversational on the outside,
+explicit and accountable on the inside. Targeting and creative capabilities
+are discoverable, commercial terms are immutable and digestible, retries are
+safe, and operational changes no longer rewrite the agreement they came from.
+
+Existing 3.1 integrations can remain pinned to `"3.1"`. The broad 3.x
+`get_products`, `create_media_buy`, and `update_media_buy` facades remain
+available for compatibility. New integrations should prefer the compact 3.2
+tools after capability discovery.
+
+<CardGroup cols={3}>
+  <Card
+    title="Try the lifecycle"
+    icon="messages"
+    href="https://agenticadvertising.org/chat?prompt=Run%20a%20live%20AdCP%203.2%20proposal%20demo%20against%20the%20constrained-seller%20training%20profile.%20Show%20me%20the%20alternatives%20and%20stop%20before%20refining."
+  >
+    Ask Addie to run a real proposal conversation. No membership or setup is
+    required.
+  </Card>
+  <Card title="Build it" icon="code" href="/dist/docs/3.2.0-beta.11/building/by-layer/L4/choose-your-sdk">
+    Choose an SDK that explicitly embeds the current 3.2 protocol checkpoint.
+  </Card>
+  <Card title="Adopt it" icon="route" href="/dist/docs/3.2.0-beta.11/reference/migration/3-1-to-3-2">
+    Add compact lifecycle tools incrementally while keeping 3.1 integrations
+    pinned and working.
+  </Card>
+</CardGroup>
+
+## The 3.2 feature set
+
+### A smaller, explicit media-buy lifecycle
+
+Seven task-specific tools replace overloaded modes in the compatibility
+facades:
+
+- `list_products` lists published offers;
+- `request_proposals`, `refine_proposals`, and `decline_proposals` manage
+  immutable proposal snapshots;
+- `buy_products` purchases published offers directly;
+- `accept_proposal` executes committed new-buy, amendment, or negotiated
+  cancellation terms;
+- `control_media_buy` applies revision-checked operational controls inside the
+  accepted commercial envelope.
+
+Sellers advertise the subset they support through
+`media_buy.lifecycle_tools`. Its absence tells callers to use the compatibility
+facades. See [Proposal negotiation](/dist/docs/3.2.0-beta.11/media-buy/product-discovery/proposal-negotiation)
+for the end-to-end draft → refine → finalize → accept flow.
+
+This is more than a naming cleanup. Each boundary has a distinct business
+meaning:
+
+| Boundary | What becomes true |
+| --- | --- |
+| `request_proposals` | The seller has authored non-binding plan snapshots from the brief. |
+| `refine_proposals` with `revise` | A new immutable snapshot records changed terms without rewriting history. |
+| `refine_proposals` with `finalize` | The exact terms are committed and inventory is held until `expires_at`. |
+| `accept_proposal` | The held snapshot becomes an accepted MediaBuy. |
+| `control_media_buy` | Delivery changes inside the accepted envelope, guarded by the current revision. |
+
+Because the seller advertises an explicit subset of lifecycle tools, teams can
+adopt the model incrementally. A sales agent can delegate proposal planning to
+an internal specialist while keeping one public endpoint and one execution
+identity. A client can add proposal exploration before it adds purchasing.
+Cross-agent transfer of a committed hold is deliberately not implied: the
+agent that accepts a proposal must be able to authenticate its buyer binding,
+resolve the immutable snapshot, and consume its inventory hold atomically.
+
+### A durable connection for authenticated principals
+
+3.2 adds an experimental principal layer for configuration that belongs to an
+authenticated caller's standing relationship with a seller, rather than to one
+advertiser account or media buy. The seller's authorization system still
+issues credentials and resolves the stable party before AdCP begins; the
+protocol does not turn a self-asserted agent URL or key ID into identity.
+
+After authentication, [`sync_principal`](/dist/docs/3.2.0-beta.11/protocol/sync_principal) lets a
+buyer agent or operator synchronize the sections a seller advertises:
+
+- caller-level webhook subscriptions, including a one-call endpoint kill
+  switch;
+- reusable reporting destinations whose setup and suspension state can be
+  shared across separately authorized accounts; and
+- declarations of asynchronous AdCP versions, signing algorithms, and
+  experimental features the caller can consume.
+
+[`get_principal`](/dist/docs/3.2.0-beta.11/protocol/get_principal) is the side-effect-free repair
+path. It returns the seller-resolved principal kind, an opaque configuration
+version for guarded replacement, destination generations and setup state, and
+the accepted intersection of caller declarations with seller support.
+`principal.changed` invalidates cached state after seller-side changes.
+
+Principal configuration never grants advertiser-account authority. Every
+account and reporting-feed binding is still authorized independently, and
+credential rotation preserves a record only when the seller maps the new
+credential to the same stable principal. The surface remains experimental so
+implementers can validate rotation, multi-account destination reuse,
+revocation timing, and delegated-operator boundaries before it freezes.
+
+### Targeting that survives discovery and execution
+
+Targeting-aware discovery separates concrete constraints from future
+selectability. Buyers place known values in `targeting_overlay` and use
+`required_overlay_support` when values will be chosen later. Sellers return
+configured products whose price, forecast, expiry, and targeting resolution
+match the request.
+
+The 3.2 surface includes portable demographics, country-aware subdivisions,
+named places, browser families, property exclusions, audience evidence, and
+exact package readback — including committed inventory selection:
+`placement_selection` for placements and `collection_selection` for
+collections, the latter materializing concrete selectors even when the
+selection came from collection-list references. Products can also disclose per-package cardinality for
+country inclusion, country exclusion, and proximity targeting before a buyer
+creates or updates a package. See [Targeting-aware product discovery](/dist/docs/3.2.0-beta.11/reference/migration/targeting-aware-discovery).
+
+### Commercial terms and controls are explicit
+
+3.2 adds seller-optimized shared budgets, bidding policy, atomic total-budget
+updates, daily caps, creative rotation, contingent revenue-share pricing, and
+structured warnings and durable indicators. Commercial changes outside an
+accepted proposal flow through refinement; operational changes inside accepted
+terms use `control_media_buy`.
+
+This split gives buyers one recovery rule: follow the accepted terms and current
+revision for control; request a new immutable commercial snapshot for anything
+that changes those terms.
+
+#### Where the commercial contract ends in 3.2
+
+`accept_proposal` creates or changes an executable MediaBuy under one exact
+commercial snapshot. It does not by itself standardize payment rails, invoice
+settlement, foreign-exchange authority, delivery disputes, credits, or
+makegoods. Those remain account, contract, or platform integrations unless the
+participants advertise and use a relevant AdCP capability.
+
+The [3.3 commercial-completion workstream](https://github.com/adcontextprotocol/adcp/issues/7064)
+is defining the smallest portable post-acceptance lifecycle backed by adopter
+requirements. That boundary is deliberate: 3.2 makes acceptance precise
+without claiming to replace every financial or legal system behind a seller.
+
+#### Cross-channel architecture, capability-specific depth
+
+The lifecycle applies across digital and offline channels, but implementation
+and reconciliation depth varies by channel. A seller's advertised products,
+formats, reporting capabilities, and lifecycle tools remain the source of
+truth. The [cross-channel maturity workstream](https://github.com/adcontextprotocol/adcp/issues/7065)
+will publish the channel-by-lifecycle matrix and recruit contributors for print,
+broadcast, OOH, and place-based audio gaps.
+
+### Programmed channels have first-class identity and carriage
+
+Collections can declare `kind: "channel"` for continuously programmed audio or
+video streams, including FAST, virtual linear, and syndicated audio channels.
+FAST describes a carriage and monetization model rather than a separate
+inventory kind. The channel owner remains the canonical collection publisher while
+`distribution[].property_ids` identifies each host app carrying it. A generic
+`platform_channel_id` supplies a host-scoped channel namespace when no
+platform-specific identifier exists.
+
+This keeps the inventory axes separate: the host app is the property, the
+programmed stream is the collection, and the avail is the placement. An owner's
+distribution entry is a discovery assertion only. Verified owner-sold carriage
+still requires the host's `adagents.json` to authorize the sales agent for the
+host property, narrowed by the owner's external collection selector. Hosts do
+not need to duplicate the collection or enumerate owner-managed placements.
+See [programmed channels and owner-sold carriage](/dist/docs/3.2.0-beta.11/media-buy/product-discovery/collections-and-installments#programmed-channels-and-owner-sold-carriage).
+
+### Canonical creative workflows
+
+Canonical format declarations become the authoring and discovery path.
+Creative agents advertise stable capability IDs and supported operations;
+products expose accepted `format_options[]`; build and transformer calls select
+those capabilities directly.
+
+3.2 also adds image pixel-density and rendition-set semantics, creative
+localization, optional async preview, audio loudness constraints, VAST-tagged
+audio delivery through the `audio_vast` canonical, VAST 4.3 and validation
+levels, structured accessibility rejection detail, and synthetic depiction
+provenance.
+
+`list_creative_formats` remains a compatibility task, but new discovery must
+use product format options and creative capabilities. Exact plural
+`format_ids` fields are deprecated for removal in 4.0.
+
+### Portable evidence and safer asset access
+
+Portable attestations allow a producer to reference signed evidence without
+embedding the full assertion in every payload. Audience evidence, rights
+grants, runtime signal quality, and brand-verifier authorization build on the
+same reference-and-verification pattern.
+
+Inline cloud credentials in secured asset payloads are deprecated. Prefer
+short-lived signed URLs, pre-authorized workload identity, or bounded
+asset-scoped bearer tokens. See [Migrating secured asset access](/dist/docs/3.2.0-beta.11/reference/migration/asset-access).
+
+### Stronger request integrity
+
+Request signing remains optional in 3.2, but a 3.2 signing profile has one
+cryptographic posture: every accepted signature on a body-bearing request
+covers `content-digest`. Legacy `"either"` and `"forbidden"` profiles remain
+only for explicit 3.0/3.1 compatibility endpoints.
+
+Request `Signature` and `Content-Digest` binary values also move from the 3.1
+unpadded Base64URL override to RFC 8941 padded standard Base64. Parser selection
+comes from the trusted endpoint/profile. Webhook v1 keeps its separately routed
+legacy Base64URL encoding throughout 3.x.
+
+The [3.3 production security profile](https://github.com/adcontextprotocol/adcp/issues/7066)
+will evaluate a stronger capability-declared production floor—including signed
+spend commits, least privilege, external-reference protections, audit, and
+anomaly limits—without silently breaking baseline 3.x compatibility. Mandatory
+signing across spend-committing operations remains a 4.0 floor.
+
+3.2 also grades OAuth discovery consistency, tightens signed-response verifier
+errors, and requires integer `error.retry_after` values from 3.2 producers.
+
+### Better convergence and accountability
+
+Capability-change notifications, account status notifications, snapshot/log
+repair rules, demographic and spot-level delivery reporting, package metric
+accountability, and relationship-scoped indicators make asynchronous agent
+state easier to reconcile.
+
+The compliance bundle adds deterministic read-filter checks, fixture
+resolution, grounded readbacks, and capability-selected runtime projections so
+agents are graded against behavior they actually advertise.
+
+### Experimental governance and Trusted Match revisions
+
+The experimental campaign-governance surface gains task-scoped enforcement,
+authenticated caller binding, opaque plan authorization, prepared execution,
+and governance-owned outcome reconciliation. Trusted Match experimental
+surfaces refine publisher authentication, router merge behavior, context
+attribution, and publisher-owned creative data.
+
+These remain experimental. Implementers must inspect `experimental_features`,
+pin an exact 3.2 release, and follow the applicable migration notice.
+
+## Reference implementation evidence
+
+The reference training agent is useful evidence, but it is not a badge and it
+does not turn every schema addition into an implementation claim. The current
+3.2 corpus draws the boundary as follows:
+
+| Surface | Executable evidence | Current boundary |
+|---|---|---|
+| Compact product and proposal lifecycle | `compact_product_lifecycle`, `compact_direct_buy_lifecycle`, declined-proposal, expired-proposal, and structured-rejection storyboards | End-to-end on the reference sales tenant; implementations still advertise only the lifecycle tools they actually serve. |
+| Targeting-aware discovery | `targeting_aware_discovery` covers conflicting legacy input, hard brief interpretation, forecasts, exact and modified configured products, fixed inventory, cardinality, compatibility, create, update, and readback | End-to-end on the reference sales tenant. Optional 3.1 downshift runs only when that release is advertised. |
+| Canonical creative validation | `premium_display_canonical_validation` and `ctv_experience_validate_input`, plus policy-backed rejection and asset-filter storyboards | Strong executable coverage. Native localization and lifecycle-webhook coverage remain capability- and runner-dependent. |
+| Portable attestations and audience evidence | Versioned `attestations`, `rights-attestations`, `governance-runtime-attestations`, and `audience-evidence` vector suites | Deterministic trust, binding, revocation, cache-reuse, and requirement-mode coverage. These library fixtures do not claim a live issuer/resolver network or replace an agent storyboard. |
+| Timezone and operational controls | Account-timezone and budget-cap-timezone storyboard families, plus deterministic media-buy read filters | End-to-end for the declared reference-agent routes. |
+| OAuth and cache isolation | `oauth_setup` and wholesale product/signal cache-scope isolation storyboards | Protocol and transport behavior are exercised independently of any one commercial workflow. |
+| Experimental governance and Trusted Match | Property-list webhook signing and publisher-authentication rejection storyboards | Partial reference evidence only; experimental declarations and exact-version pinning remain mandatory. |
+| Advanced delivery reporting | `advanced_delivery_reporting` covers metric narrowing, `time_based_views`, canonical `by_format` rows, limits, truncation disclosure, and applied-sort echoes across discovery, purchase, simulation, and delivery | End-to-end on the reference sales tenant for the declared product capabilities. Expanded channel-specific OOH/audio metrics remain separate coverage work. |
+| Audience activation | `audience_activation_discovery` covers the experimental feature gate, catalog-wide method union, per-product declarations, vendor-constrained matching, OR and wildcard semantics, and exclusion of undeclared products | Discovery is end-to-end on the reference sales tenant. External dataset or distributed-segment binding remains an account-setup integration until the external-source runtime extension lands; the storyboard does not imply that runtime exists. |
+
+The CI matrix resolves applicable storyboards from each tenant's live
+capability declaration, keeps skipped and quarantined work visible, and uses
+ratcheted floors only as regression guards. See [Known Limitations](/dist/docs/3.2.0-beta.11/reference/known-limitations#conformance-and-testing)
+for the remaining runner and coverage gaps.
+
+## What requires adopter attention
+
+| If you are… | Review before advertising 3.2 |
+|---|---|
+| Any seller or service | Advertise `"3.2-beta.N"` only for the exact beta served, echo it on responses, and keep 3.1 traffic on its negotiated contract. |
+| A buyer | Gate compact tools and optional targeting on capabilities; do not infer 3.2 support from a major-only declaration. |
+| A media-buy implementer | Use `media_buy_status` on create/update success payloads; root `status` is the task-envelope state. |
+| A signing implementation | Require `content-digest` coverage for every signed body on a 3.2 signing endpoint. |
+| A creative implementation | Prefer canonical capability and product format discovery; retain legacy conversion only at a proven compatibility boundary. |
+| An SDK maintainer | Generate from the signed beta.9 tarball, name the exact supported bundle, and feed accepted protocol corrections into the RC. |
+| A compliance operator | Test beta.9 from its signed assets or an SDK that explicitly lists beta.9, such as TypeScript SDK 14 beta.22 or Python SDK 8 beta.10; retain end-to-end integration evidence and do not issue a 3.2 badge from a beta. |
+
+## Start here
+
+1. Read the [3.2 beta program](/dist/docs/3.2.0-beta.11/reference/3-2-beta).
+2. Follow [Migrating from 3.1 to 3.2](/dist/docs/3.2.0-beta.11/reference/migration/3-1-to-3-2).
+3. Choose the exact package and support level in [Choose your SDK](/dist/docs/3.2.0-beta.11/building/by-layer/L4/choose-your-sdk).
+4. Use the [Release Notes](/dist/docs/3.2.0-beta.11/reference/release-notes#version-3-2-0) for the cumulative record.
