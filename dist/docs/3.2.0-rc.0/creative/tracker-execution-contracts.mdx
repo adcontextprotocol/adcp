@@ -1,0 +1,202 @@
+---
+title: Tracker execution contracts
+description: "Declare which buyer-supplied pixel, VAST, and DAAST trackers a product accepts and initiates, then preserve that commitment in the package snapshot."
+"og:title": "AdCP — Tracker Execution Contracts"
+---
+
+AdCP 3.2 separates two questions that a buyer must answer before assigning a creative:
+
+1. **Will the seller accept and initiate this tracker?** Read the selected product format option's `tracker_execution_contract`.
+2. **How will the tracker URL's macros be processed?** Match each occurrence against the exact [`macro_resolution_capabilities`](/dist/docs/3.2.0-rc.0/creative/universal-macros).
+
+Neither promise implies the other. A seller can resolve `{CACHEBUSTER}` without accepting the containing tracker, and it can accept a tracker whose required macro is unsupported. Buyers must satisfy both contracts before committing spend.
+
+This 3.2 surface covers only first-class `pixel_tracker`, `vast_tracker`, and `daast_tracker` manifest assets. It does not inspect trackers embedded in fetched VAST/DAAST documents, wrappers, JavaScript responses, or generic URL assets. Runtime preview observation is a separate, later capability; the production commitment does not depend on it.
+
+## Product-format authority
+
+The binding commitment is `Product.format_options[].tracker_execution_contract`, alongside `format_kind` and `params`. It is seller execution behavior, not a canonical-format parameter. A product option carrying the contract must have a stable `format_option_id` so the buyer can bind resolution and package assignment to exactly one option.
+
+```json
+{
+  "format_option_id": "acme_display_300x250",
+  "format_kind": "image",
+  "params": {
+    "width": 300,
+    "height": 250,
+    "slots": [
+      { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+      { "asset_group_id": "impression_tracker", "asset_type": "pixel_tracker", "required": false },
+      { "asset_group_id": "click_tracker", "asset_type": "pixel_tracker", "required": false }
+    ]
+  },
+  "tracker_execution_contract": {
+    "complete": true,
+    "honored": [
+      {
+        "selector_id": "display_impression_pixel",
+        "asset_type": "pixel_tracker",
+        "event": "impression",
+        "method": "img",
+        "execution_actor": "seller",
+        "firing_paths": ["client"]
+      },
+      {
+        "selector_id": "display_click_pixel",
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "execution_actor": "seller",
+        "firing_paths": ["client"]
+      }
+    ]
+  }
+}
+```
+
+Publisher and placement declarations may narrow an upstream contract, but the seller-returned product option contains the complete effective contract used for selection and purchase. Creative-agent `supported_formats[]`, transformer inputs, manifests, representations, and deprecated format projections cannot create seller authority; those projections strip the contract and its digest.
+
+Every asset type named in `honored[]` must also have at least one matching first-class slot in the effective selected format declaration. A contract cannot promise a `pixel_tracker`, `vast_tracker`, or `daast_tracker` that the same format rejects structurally. This is why the image example explicitly adds tracker slots instead of relying on the image canonical's default slots.
+
+Publisher, placement, and seller derivation is directional. Expand each selector to atomic tuples of `(normalized non-version selector identity, exact version or null, execution_actor, firing_path)`. When the parent contract is complete, every tuple in the child effective contract must exist in its parent; only then may tuples be compressed back into selector arrays. For example, a complete parent that permits VAST 4.2 on `client` and VAST 4.3 on `server` does not permit a child selector containing both versions and both paths, because that cross-product invents 4.2/server and 4.3/client commitments.
+
+An incomplete or omitted parent is not a closed ceiling. A downstream declaration may add or omit affirmative tuples for its narrower scope, but the effective contract remains incomplete until every applicable layer is complete. An omitted tuple in an incomplete child is undeclared, not an assertion that the tuple is unsupported. A complete parent remains complete after valid subset narrowing, and every child tuple must exist in that parent.
+
+## Exact selectors
+
+Each `honored[]` entry selects one exact tracker/event combination. It is not a cross-product of all declared events, versions, targets, actors, and paths.
+
+| Branch | Required identity | Important restrictions |
+|---|---|---|
+| `pixel_tracker` | `event`, `method: img` | `event: custom` requires a nonempty `custom_event_name`. JavaScript tracker execution is not supported by the 3.2 contract. |
+| `vast_tracker` | `vast_versions[]`, `vast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
+| `daast_tracker` | `daast_versions[]`, `daast_event`, `target` | `progress` requires `offset`; other events forbid it. The event/target pair must be valid in every listed version. |
+
+Every branch also requires a stable `selector_id`, one `execution_actor` (`seller` or `request_executor`), and a nonempty `firing_paths[]` set (`client`, `server`, or both). Multiple paths mean that one path may perform the single initiation for a logical event; they do not authorize duplicate client-and-server firing.
+
+Asset defaults are normalized before matching: omitted `pixel_tracker.method` is `img`, omitted VAST/DAAST `target` is `linear`, and a legacy `offset` on a non-`progress` asset is ignored and removed before comparison. Contract selectors themselves must omit `offset` for non-`progress` events. Existing 3.x asset schemas remain permissive about event/target combinations; the strict standards matrix is applied when matching those assets to a contract-bearing product. Two byte-identical URLs in different manifest slots are still two tracker instances. For each logical occurrence of the selected event, the named actor initiates every accepted instance exactly once. This promises construction and handoff of the outbound action—not network delivery, HTTP success, attribution, or reporting credit.
+
+The following VAST/DAAST contract is valid only on an effective option whose `params.slots[]` includes first-class `vast_tracker` and `daast_tracker` slots:
+
+```json
+[
+  {
+    "format_option_id": "acme_video_trackers",
+    "format_kind": "video_hosted",
+    "params": {
+      "slots": [
+        { "asset_group_id": "video_main", "asset_type": "video", "required": true },
+        { "asset_group_id": "video_start_tracker", "asset_type": "vast_tracker", "required": false }
+      ]
+    },
+    "tracker_execution_contract": {
+      "complete": true,
+      "honored": [{
+        "selector_id": "linear_vast_start",
+        "asset_type": "vast_tracker",
+        "vast_versions": ["4.2", "4.3"],
+        "vast_event": "start",
+        "target": "linear",
+        "execution_actor": "request_executor",
+        "firing_paths": ["client", "server"]
+      }]
+    }
+  },
+  {
+    "format_option_id": "acme_audio_trackers",
+    "format_kind": "audio_hosted",
+    "params": {
+      "slots": [
+        { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },
+        { "asset_group_id": "audio_quartile_tracker", "asset_type": "daast_tracker", "required": false }
+      ]
+    },
+    "tracker_execution_contract": {
+      "complete": true,
+      "honored": [{
+        "selector_id": "linear_daast_quartile",
+        "asset_type": "daast_tracker",
+        "daast_versions": ["1.1"],
+        "daast_event": "firstQuartile",
+        "target": "linear",
+        "execution_actor": "request_executor",
+        "firing_paths": ["client"]
+      }]
+    }
+  }
+]
+```
+
+`close` remains accepted in legacy DAAST asset payloads for AdCP 3.x compatibility, but it is not in the DAAST 1.0/1.1 standards event enum and therefore cannot appear in a closed 3.2 execution selector.
+
+`complete: true` makes unlisted combinations explicitly unsupported; `complete: true, honored: []` explicitly accepts no buyer-supplied trackers. An omitted contract or `complete: false` leaves omissions undeclared, never unsupported. Listed entries remain affirmative commitments in either case.
+
+## VAST and DAAST execution versions
+
+A first-class VAST/DAAST selector is matched against one exact execution version, never a guessed member of a plural acceptance set.
+
+- When the manifest includes the exact sibling VAST or DAAST delivery document, its version supplies the execution version.
+- When the seller assembles trackers without such a sibling document, `build_creative.representation_destination` must carry `execution_vast_version` or `execution_daast_version`.
+- The chosen value must belong to the destination format's accepted version set and the selector's version set.
+- `representation_selection` echoes the exact version as lineage through sync and list readback.
+
+The seller reviews the tuple `(selected_representation_id, selected_output_digest, execution_vast_version-or-null, execution_daast_version-or-null)`. Changing an execution version requires re-resolution and ordinary re-review even when the selected manifest bytes are unchanged. Later package assignment must use the same exact version; it cannot silently rebind an approved execution to a different package version.
+
+## Resolution, sync, and package assignment
+
+Seller-bound representation resolution follows this order:
+
+1. Normalize tracker defaults and select one exact VAST/DAAST execution version.
+2. Match every first-class manifest tracker against the destination option's effective contract.
+3. Match every declared macro occurrence independently against the exact macro-capability tuple.
+4. Select only a representation that satisfies both checks.
+
+With a complete contract, an unlisted tracker makes the candidate incompatible. A failed representation receives `tracker_contract_mismatch`, with the representation ID, manifest asset JSON Pointer, normalized selector identity, and destination format-option reference. Macro incompatibility remains the separate `macro_unsupported` rejection; an implementation must not collapse the two causes.
+
+Library-only `sync_creatives` can validate manifest structure and preserve revision/selection lineage, but it does not prove that an arbitrary product accepts the tracker. Package assignment and `create_media_buy` revalidate the selected manifest against the immutable package snapshot before spend. A mismatch rejects assignment; it never silently removes a tracker or weakens the package contract.
+
+## Immutable package snapshots
+
+Every package that selects a contract-bearing format stores a `PackageFormatSnapshot` in `formats_to_provide[]`, even when creative coverage is already complete. `formats_pending[]` may be empty, but the snapshot remains because serving uses the package-time commitment rather than mutable product discovery.
+
+```json
+{
+  "product_id": "prod_acme_video",
+  "format_option_id": "acme_vast_preroll",
+  "format_kind": "video_vast",
+  "params": {
+    "vast_versions": ["4.2", "4.3"]
+  },
+  "tracker_execution_contract": {
+    "complete": true,
+    "honored": []
+  },
+  "execution_vast_version": "4.3",
+  "placement_refs": [
+    {
+      "publisher_domain": "publisher.example",
+      "placement_id": "preroll"
+    }
+  ],
+  "tracker_execution_contract_digest": "sha256:11ba6e00858e9da168d855433c21052b6c2599abbc8b59e3a587e207b10669e0",
+  "product_snapshot_digest": "sha256:9f3abb83f15c6d16940d4ada694476397a71a9adc3a5dbc602f432bfd194bff2"
+}
+```
+
+`tracker_execution_contract_digest` is SHA-256 over RFC 8785 canonical JSON of the contract object. `product_snapshot_digest` covers the product ID, complete selected format declaration, sorted effective placement references, exact execution version when applicable, and the tracker-contract digest. Optional fields are omitted rather than encoded as `null`, schema defaults are not materialized, and duplicate JSON members are rejected before canonicalization.
+
+The snapshot and both digests are immutable for the package lifetime. Changing the selected format, placement set, execution version, or tracker contract requires a replacement package with a new `package_id`. A package spanning placements can snapshot only their common effective intersection; differing contracts require separate snapshots with disjoint placement sets or separate packages.
+
+## Buyer checklist
+
+Before assigning a creative, a buyer should verify:
+
+- the product option has a stable ID and matches the creative's `format_option_ref`;
+- each first-class tracker matches one honored selector after default normalization;
+- the exact VAST/DAAST execution version is accepted at every layer;
+- every required macro declaration matches the product and seller macro capabilities;
+- a complete contract contains no unlisted tracker instance;
+- the package snapshot and digests match the contract used during selection; and
+- assignment revalidation succeeds before spend.
+
+Absence is not rejection. If the contract is omitted or incomplete, the missing combinations are undeclared and the buyer must resolve the uncertainty out of band or choose another product.

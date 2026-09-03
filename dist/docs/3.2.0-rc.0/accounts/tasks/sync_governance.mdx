@@ -1,0 +1,315 @@
+---
+title: sync_governance
+description: "sync_governance syncs governance agent endpoints to specific accounts. The seller persists these agents and calls them via check_governance during media buy lifecycle events."
+"og:title": "AdCP — sync_governance"
+testable: false
+---
+
+Sync the governance agent endpoint for specific accounts. The seller persists the agent and calls it via [`check_governance`](/dist/docs/3.2.0-rc.0/governance/campaign/tasks/check_governance) during media buy lifecycle events. Each account entry pairs an [account reference](/dist/docs/3.2.0-rc.0/building/by-layer/L2/accounts-and-agents#account-references) with exactly one governance agent, supporting both account-id namespaces (`account_id`) and buyer-declared accounts (`brand` + `operator`).
+
+An account binds to one governance agent that owns the full lifecycle. Authorization, delivery monitoring, and compliance are phases of the same evaluation against one plan, not specialisms held by separate authorities; specialist review (legal, brand safety, category) composes inside the governance agent rather than across multiple registrations. `governance_agents` is an array with `maxItems: 1` because the array shape is the shape 3.0 shipped with — the constraint is load-bearing and not a staging post toward loosening. The envelope's `governance_context` is singular below this layer; relaxing the cap would require a coordinated wire-shape change that is not planned. See [One governance agent per account](/dist/docs/3.2.0-rc.0/governance/campaign/specification#one-governance-agent-per-account).
+
+This uses **replace semantics** — each call replaces any previously registered agent on the specified accounts. Accounts not included in the request keep their existing configuration.
+
+## Seller acceptance of governance agents
+
+Sellers may publish seller-wide advisory criteria at `adcp.governance_enforcement.accepted_governance_agents` in [`get_adcp_capabilities`](/dist/docs/3.2.0-rc.0/protocol/get_adcp_capabilities). `any_of[]` is a typed union: a candidate is acceptable when it satisfies at least one matcher.
+
+- `agent_url` matches one explicit HTTPS endpoint.
+- `verification` requires a fresh result from the named HTTPS registry for the declared agent role, AdCP version, allowed verification modes, and maximum result age.
+
+URL matchers use the shared [AdCP URL canonicalization rules](/dist/docs/3.2.0-rc.0/reference/url-canonicalization), not raw string equality. They match the exact canonical endpoint; redirects, DNS aliases, and candidate assertions do not expand an allowlist. A verification matcher is satisfied only by a deterministic result from the seller-configured trusted registry. The candidate cannot nominate the registry, and its self-described role or verification state is never evidence. Registry resolution uses HTTPS, no redirects or forwarded credentials, public-network address checks, DNS pinning through connection, bounded responses, and authenticated registry records. If the registry or verification service cannot be resolved, the seller returns [`GOVERNANCE_UNAVAILABLE`](/dist/docs/3.2.0-rc.0/building/verification/compliance-catalog#error-code-governance-unavailable); it does not guess or silently turn an availability problem into rejection.
+
+The capabilities declaration is seller-wide preflight guidance. The response to `sync_governance` is authoritative for each account because account contracts, jurisdictions, and product access may narrow the criteria. Verification evidence is evaluated for freshness at binding time and pinned to the accepted binding. Later capability or registry drift does not silently revoke or redirect an existing binding; an explicit account resynchronization creates a new decision. If the submitted agent does not satisfy the applicable criteria, the account result is `failed` with [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/dist/docs/3.2.0-rc.0/building/verification/compliance-catalog#error-code-governance-agent-not-accepted). A seller may return either opaque details (`{"disclosure":"opaque"}` plus an optional local `rejection_ref`) or disclosed details containing the parsed HTTPS origin and authoritative criteria. The disclosed arm uses `attempted_agent_origin`, never the submitted URL: userinfo, path, query, and fragment are stripped after parsing. Buyers reconciling a disclosed rejection against their `any_of[]` matcher list should compare full matcher entries, not origins — an `agent_url` matcher may include a path and therefore be narrower than the disclosed origin. The seller MUST NOT persist or contact a rejected endpoint and MUST NOT echo credentials or a raw candidate URL in responses, logs, or error details.
+
+Acceptance matchers MUST express objective operational, security, interoperability, or compliance requirements. A seller MUST NOT use a URL allowlist or verification criterion to exclude a functionally equivalent governance provider merely as commercial leverage. Sellers SHOULD prefer verification criteria over enumerating providers when the registry can express the requirement deterministically.
+
+Absence of `accepted_governance_agents` means the seller does not restrict governance-agent identity through this mechanism and accepts any otherwise valid binding. Adding or changing a declaration does not retroactively invalidate existing bindings; the seller applies it when a buyer next binds or replaces an agent. Account-specific criteria returned on a failed sync override the advisory capability for that attempt.
+
+**Response Time**: ~1s.
+
+**Request Schema**: [`/schemas/3.2.0-rc.0/account/sync-governance-request.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/account/sync-governance-request.json)
+**Response Schema**: [`/schemas/3.2.0-rc.0/account/sync-governance-response.json`](https://adcontextprotocol.org/schemas/3.2.0-rc.0/account/sync-governance-response.json)
+
+## Quick Start
+
+Sync the governance agent for an account-id namespace account:
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncGovernanceResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncGovernance({
+  accounts: [
+    {
+      account: { account_id: "acct-social-001" },
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+        }
+      ]
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncGovernanceResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const entry of validated.accounts) {
+  if (entry.status === "synced") {
+    console.log(`${JSON.stringify(entry.account)}: ${entry.governance_agents.length} agent registered`);
+  } else {
+    console.log(`${JSON.stringify(entry.account)}: failed — ${JSON.stringify(entry.errors)}`);
+  }
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_governance(
+        accounts=[
+            {
+                "account": {"account_id": "acct-social-001"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        }
+                    }
+                ]
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for entry in result.accounts:
+        if entry.status == "synced":
+            print(f"{entry.account}: {len(entry.governance_agents)} agent registered")
+        else:
+            print(f"{entry.account}: failed — {entry.errors}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|--------------|
+| `accounts` | array | Yes | Per-account governance agent entries. Each pairs an account reference with governance agents for that account. |
+
+**Each account entry:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|--------------|
+| `account` | object | Yes | [Account reference](/dist/docs/3.2.0-rc.0/building/by-layer/L2/accounts-and-agents#account-references): `{account_id}` for account-id namespaces or `{brand, operator}` for buyer-declared accounts. |
+| `governance_agents` | array | Yes | Governance agent endpoint for this account. Array with exactly one entry (`minItems: 1`, `maxItems: 1`). |
+
+**The governance agent:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|--------------|
+| `url` | string | Yes | HTTPS endpoint URL for the governance agent. |
+| `authentication` | object | Yes | Credentials the seller presents when calling this agent. Contains `schemes` (array with one auth scheme) and `credentials` (token, min 32 characters). |
+
+## Response
+
+**Success response:**
+
+Returns an `accounts` array with per-account results. Individual entries may fail even when the operation succeeds.
+
+| Field | Description |
+|-------|-------------|
+| `account` | Account reference, echoed from request. |
+| `status` | `"synced"` or `"failed"`. |
+| `governance_agents` | Governance agents now active on this account. Reflects persisted state. Only present when `status: "synced"`. |
+| `errors` | Per-account errors. Only present when `status: "failed"`. |
+
+For [`GOVERNANCE_AGENT_NOT_ACCEPTED`](/dist/docs/3.2.0-rc.0/building/verification/compliance-catalog#error-code-governance-agent-not-accepted), `errors[].details` conforms to `error-details/governance-agent-not-accepted.json`. It never contains authentication credentials.
+
+**Error response:**
+
+`errors` array with operation-level errors (auth failure, service unavailable). No `accounts` array is present.
+
+## Authorization
+
+The seller MUST verify that the authenticated agent has authority over each referenced account before persisting governance agents. Requests referencing accounts the agent does not own MUST return a `failed` status with an error for those entries.
+
+## Common Scenarios
+
+### Different governance agents per account
+
+A single `sync_governance` call can register a distinct agent per account — each account still binds to exactly one agent, but accounts on the same call need not share it.
+
+<CodeGroup>
+
+```javascript JavaScript
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncGovernanceResponseSchema } from "@adcp/sdk";
+
+const result = await testAgent.syncGovernance({
+  accounts: [
+    {
+      account: { account_id: "acct-social-001" },
+      governance_agents: [
+        {
+          url: "https://governance.pinnacle-media.com",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          }
+        }
+      ]
+    },
+    {
+      account: { account_id: "acct-social-002" },
+      governance_agents: [
+        {
+          url: "https://governance.acme-buyer.com",
+          authentication: {
+            schemes: ["Bearer"],
+            credentials: "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          }
+        }
+      ]
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = SyncGovernanceResponseSchema.parse(result.data);
+
+if ("errors" in validated && validated.errors) {
+  throw new Error(`Operation failed: ${JSON.stringify(validated.errors)}`);
+}
+
+for (const entry of validated.accounts) {
+  console.log(`${JSON.stringify(entry.account)}: ${entry.status}`);
+}
+```
+
+```python Python
+import asyncio
+from adcp.testing import test_agent
+
+async def main():
+    result = await test_agent.simple.sync_governance(
+        accounts=[
+            {
+                "account": {"account_id": "acct-social-001"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.pinnacle-media.com",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                        }
+                    }
+                ]
+            },
+            {
+                "account": {"account_id": "acct-social-002"},
+                "governance_agents": [
+                    {
+                        "url": "https://governance.acme-buyer.com",
+                        "authentication": {
+                            "schemes": ["Bearer"],
+                            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+                        }
+                    }
+                ]
+            }
+        ]
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Operation failed: {result.errors}")
+
+    for entry in result.accounts:
+        print(f"{entry.account}: {entry.status}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
+
+### Buyer-declared accounts (brand + operator)
+
+<CodeGroup>
+
+```json Request
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/account/sync-governance-request.json",
+  "idempotency_key": "e5b9f2c3-1234-48a0-1234-56789012345e",
+  "accounts": [
+    {
+      "account": {
+        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "operator": "pinnacle-media.com"
+      },
+      "governance_agents": [
+        {
+          "url": "https://governance.pinnacle-media.com",
+          "authentication": {
+            "schemes": ["Bearer"],
+            "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+### Rotate governance agent credentials
+
+Call `sync_governance` again with updated `authentication`. Replace semantics means the new credentials overwrite the previous configuration.
+
+### Migrating from pre-3.1 multi-agent registration
+
+Earlier drafts of 3.0 allowed up to 10 governance agents per account with per-agent `categories`. 3.1 constrains `governance_agents` to exactly one entry and removes `categories`. Buyers that registered more than one agent against the previous shape MUST collapse to a single agent on their next `sync_governance` call; the seller's persisted state is replaced. The new request schema rejects more than one agent outright, so no "mixed-mode" window exists.
+
+**Buyer-side collapse decision.** Which of the previously-registered agents becomes the single agent is a buyer-internal decision — the protocol does not rank or recommend. Typical paths: (a) keep the agent with the broadest policy coverage (usually the budget/spend-authority agent) and fold specialist logic (legal, brand safety, regulatory review) into it as internal workflow; (b) deploy a new "front-door" governance agent that fans out to the previous specialists internally, and register only that agent; (c) keep the agent that was always the de facto governance surface and fold the others' specialist review into it as internal workflow without re-registering them. Surface the internal decomposition to auditors via `categories_evaluated` and `findings[].details` on check responses so the audit trail retains what each internal reviewer contributed.
+
+**Seller-side.** Sellers MAY, on first boot under the new schema, collapse previously-persisted multi-agent state to the first entry (ordered by original sync position) and log the migration to their audit trail. Sellers SHOULD surface a clear error to buyers whose next `sync_governance` call attempts to re-register multiple agents, pointing at this migration guidance.
+
+## Error Handling
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| [`ACCOUNT_NOT_FOUND`](/dist/docs/3.2.0-rc.0/building/verification/compliance-catalog#error-code-account-not-found) | Referenced account does not exist or is not accessible | Verify account reference via [`list_accounts`](/dist/docs/3.2.0-rc.0/accounts/tasks/list_accounts) or [`sync_accounts`](/dist/docs/3.2.0-rc.0/accounts/tasks/sync_accounts) |
+| `UNAUTHORIZED` | Agent does not have authority over the referenced account | Check that you are authenticated as an agent with access to this account |
+
+## Next Steps
+
+- [Sell-side governance boundaries](/dist/docs/3.2.0-rc.0/governance/sell-side-governance) — Understand governance-agent acceptance as a seller binding constraint, not shared campaign authority
+- [list_accounts](/dist/docs/3.2.0-rc.0/accounts/tasks/list_accounts) — Discover accounts and their current governance agents
+- [sync_accounts](/dist/docs/3.2.0-rc.0/accounts/tasks/sync_accounts) — Provision or link advertiser accounts
+- [check_governance](/dist/docs/3.2.0-rc.0/governance/campaign/tasks/check_governance) — How sellers call governance agents during media buy events
+- [Accounts and agents](/dist/docs/3.2.0-rc.0/building/by-layer/L2/accounts-and-agents) — Account models, billing, and trust

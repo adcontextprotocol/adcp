@@ -1,0 +1,74 @@
+---
+title: sync_reporting_receipts
+description: "Record authenticated consumer reconciliation results for managed reporting materializations."
+"og:title": "AdCP — sync_reporting_receipts"
+---
+
+<Warning>
+This task is experimental and belongs to the optional **reconciled billing
+tier**: only sellers advertising
+`media_buy.reporting_delivery.reconciled_billing: true` implement it, and its
+presence is declared through `receipt_task`. Core-tier sellers never implement
+receipts. Sellers implementing it declare `media_buy.reporting_delivery` in
+`get_adcp_capabilities.experimental_features`.
+</Warning>
+
+`sync_reporting_receipts` closes the knowledge gap between “the seller published a
+report” and “this consumer independently observed matching data.” It is a batched,
+idempotent write. It does not acknowledge mere webhook delivery.
+
+**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/sync-reporting-receipts-request.json)
+
+**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/sync-reporting-receipts-response.json)
+
+```json
+{
+  "account": { "account_id": "acc_123" },
+  "idempotency_key": "019c9f25-5d28-7d4b-a6c2-4e7543291840",
+  "receipts": [
+    {
+      "reporting_receipt_id": "receipt_2026_08_billing_01",
+      "reporting_obligation_id": "obligation_2026_08_billing_01",
+      "reporting_revision_id": "revision_2026_08_billing_02",
+      "reporting_materialization_id": "materialization_2026_08_bq_01",
+      "status": "accepted",
+      "verification_profile": "canonical_digest",
+      "observed_row_count": 7,
+      "observed_control_totals": [
+        { "name": "impressions", "value": "4200", "value_type": "integer", "unit": "impressions" },
+        { "name": "spend", "value": "7000.00", "value_type": "decimal", "unit": "USD" }
+      ],
+      "observed_canonical_content_digest": {
+        "algorithm": "sha256",
+        "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "canonicalization_id": "billing-rows-v1",
+        "canonicalization_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "consumer_commit_ref": "buyer-ledger-run-42",
+      "observed_at": "2026-09-02T00:01:00Z"
+    }
+  ]
+}
+```
+
+The authenticated transport identity, not a payload field, identifies the buyer or
+governance consumer. The seller accepts a receipt only for that principal's
+account-bound obligation and materialization. Unknown, unauthorized, cross-account,
+and cross-caller identifiers return indistinguishable failures.
+
+An accepted receipt always carries independently observed row count and control
+totals. Its selected verification profile adds one of:
+
+- `native_commit`: the exact provider-native immutable version;
+- `manifest_checksums`: the digest-valid manifest whose file checksums were verified;
+  or
+- `canonical_digest`: the digest of canonical logical content, required for billing.
+
+If evidence differs, consumers submit `status: rejected` with stable rejection codes.
+A receipt ID is immutable. Exact retries are unchanged; reuse with different content
+is an idempotency conflict. Sellers return `received_at` and expose the durable receipt
+through [`get_reporting_status`](/dist/docs/3.2.0-rc.0/media-buy/task-reference/get_reporting_status), allowing the consumer to read back that agreement.
+
+One canonical revision may fan out to several destinations or principals. Each
+materialization is reconciled independently, and one consumer's receipt never counts
+as another consumer's acceptance.
