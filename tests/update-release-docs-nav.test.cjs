@@ -111,6 +111,30 @@ function sampleConfig() {
     );
   });
 
+  test('adds a promoted prerelease channel without discarding the frozen beta', () => {
+    const source = [
+      'export const DOCS_SCHEMA_RELEASES = Object.freeze({',
+      "  '3.1': '3.1.20',",
+      "  '3.2-beta': '3.2.0-beta.12',",
+      "  '3.0': '3.0.26',",
+      '});',
+      '',
+    ].join('\n');
+
+    assert.equal(
+      updateSchemaTools(source, '3.2.0-rc.0', '3.2-rc'),
+      [
+        'export const DOCS_SCHEMA_RELEASES = Object.freeze({',
+        "  '3.1': '3.1.20',",
+        "  '3.2-rc': '3.2.0-rc.0',",
+        "  '3.2-beta': '3.2.0-beta.12',",
+        "  '3.0': '3.0.26',",
+        '});',
+        '',
+      ].join('\n')
+    );
+  });
+
   test('adds a new snapshot version from the default nav and flattens the wrapper group', () => {
     const config = sampleConfig();
     const result = updateDocsConfig(config, '3.1.0-rc.5', '3.1-rc');
