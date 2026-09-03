@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-receipt.json",
+  "title": "Reporting Receipt",
+  "x-status": "experimental",
+  "description": "Authenticated consumer evidence for one materialization. A receipt closes the knowledge gap between producer availability and consumer reconciliation. Buyer and governance consumers submit independently; neither consumer's receipt implies acceptance by another principal.",
+  "type": "object",
+  "properties": {
+    "reporting_receipt_id": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "x-entity": "reporting_receipt"
+    },
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation"
+    },
+    "reporting_revision_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_revision"
+    },
+    "reporting_materialization_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_materialization"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected"
+      ]
+    },
+    "verification_profile": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-verification-profile.json"
+    },
+    "observed_row_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "observed_control_totals": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-control-total.json"
+      },
+      "uniqueItems": true
+    },
+    "observed_canonical_content_digest": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-canonical-content-digest.json"
+    },
+    "observed_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$"
+    },
+    "observed_native_version_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Immutable provider-native version observed by the consumer for native_commit verification."
+    },
+    "consumer_commit_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Optional non-secret consumer checkpoint, transaction, or load identifier. It is evidence for operations, not authorization or a credential."
+    },
+    "rejection_codes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    }
+  },
+  "required": [
+    "reporting_receipt_id",
+    "reporting_obligation_id",
+    "reporting_revision_id",
+    "reporting_materialization_id",
+    "status",
+    "verification_profile",
+    "observed_row_count",
+    "observed_control_totals",
+    "observed_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "rejected"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "rejection_codes"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verification_profile": {
+            "const": "canonical_digest"
+          },
+          "status": {
+            "const": "accepted"
+          }
+        },
+        "required": [
+          "verification_profile",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "observed_canonical_content_digest"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verification_profile": {
+            "const": "manifest_checksums"
+          },
+          "status": {
+            "const": "accepted"
+          }
+        },
+        "required": [
+          "verification_profile",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "observed_manifest_sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verification_profile": {
+            "const": "native_commit"
+          },
+          "status": {
+            "const": "accepted"
+          }
+        },
+        "required": [
+          "verification_profile",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "observed_native_version_ref"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "authorization": "The seller derives the consumer principal from authenticated transport and accepts receipts only for that principal's account-bound obligation and materialization. Unknown, unauthorized, cross-account, and cross-caller identifiers are indistinguishable.",
+    "acceptance_match": "accepted requires exact equality with the selected materialization verification evidence: row count and control totals always; canonical digest or manifest digest when selected. A mismatch MUST be submitted or recorded as rejected.",
+    "immutability": "A reporting_receipt_id is immutable. Exact retries are idempotent; reuse with different content is a conflict."
+  },
+  "additionalProperties": false
+}

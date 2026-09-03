@@ -1,0 +1,345 @@
+id: reporting_core
+version: "1.0.0"
+title: "Reporting Core lifecycle"
+category: schema_validation
+summary: "Validates reporting.core obligation-before-report behavior, clock-derived health, and explicit zero-row reporting."
+track: core
+required_tools:
+  - get_reporting_status
+
+requires:
+  - controller
+
+requires_capability:
+  path: "media_buy.reporting_delivery.supported"
+  equals: true
+
+narrative: |
+  Core is the only required reporting tier: obligations, revisions, the five
+  health states, and `get_reporting_status`, delivered over transports sellers
+  already have. Materializations begin at managed_delivery; both it and
+  reconciled_billing are separately advertised capabilities. Push is optional
+  in every tier, so a polling-only seller is fully Core-conformant;
+  `reporting.delivery_ready` is available only for managed delivery.
+
+  A deterministic controller fixture also proves the Core behavior that makes
+  the declaration useful: an elapsed obligation is queryable before its first
+  revision, lateness derives from the schedule rather than media-buy
+  acceptance, and a zero-row revision satisfies the obligation without being
+  confused with missing reporting.
+
+agent:
+  interaction_model: any
+  capabilities:
+    - "media_buy.reporting_delivery"
+  examples:
+    - "Any seller agent that advertises media_buy.reporting_delivery"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness acting as an authorized buyer"
+
+prerequisites:
+  description: |
+    The agent under test advertises `media_buy.reporting_delivery.supported:
+    true` plus the matching experimental feature.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+phases:
+  - id: obligation_lifecycle
+    title: "Observe an obligation before its first report"
+    narrative: |
+      The controller installs a Core-only hourly reporting configuration and
+      advances a virtual clock just beyond its first period boundary. The
+      seller must expose the obligation immediately even though no source data
+      or revision exists. Advancing beyond expected_at changes health; it does
+      not create the obligation.
+
+    steps:
+      - id: prepare_waiting_obligation
+        title: "Prepare the deterministic Core fixture"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_obligation_id
+            path: "simulated.reporting_obligation_id"
+          - name: reporting_core_period_end
+            path: "simulated.period.end"
+          - name: reporting_core_expected_at
+            path: "simulated.expected_at"
+          - name: reporting_core_recovery_deadline
+            path: "simulated.recovery_deadline"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-beta.11"
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "prepare"
+          context:
+            correlation_id: "reporting_core--prepare"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Fixture was prepared"
+          - check: field_present
+            path: "simulated.reporting_obligation_id"
+            description: "Controller returns the stable obligation identity"
+
+      - id: read_waiting_obligation
+        title: "Read the obligation before a revision exists"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-beta.11"
+          view: "periods"
+          context:
+            correlation_id: "reporting_core--waiting"
+        validations:
+          - check: response_schema
+            description: "Periods response is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "waiting"
+            description: "The elapsed obligation exists before its SLA"
+          - check: field_value
+            path: "periods[0].revision_count"
+            value: 0
+            description: "No revision has been produced yet"
+          - check: field_equals_context
+            path: "periods[0].reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "The status read returns the exact obligation prepared by the controller"
+          - check: field_equals_context
+            path: "periods[0].period.end"
+            context_key: "reporting_core_period_end"
+            description: "The obligation retains the returned period boundary"
+          - check: field_equals_context
+            path: "periods[0].expected_at"
+            context_key: "reporting_core_expected_at"
+            description: "The deadline is the one derived from the returned schedule"
+          - check: array_length
+            path: "revisions"
+            value: 0
+            description: "Missing first reporting is explicit, not a zero-row report"
+
+      - id: advance_beyond_sla
+        title: "Advance the same obligation beyond expected_at"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-beta.11"
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_time"
+            target_health: "delayed"
+          context:
+            correlation_id: "reporting_core--advance-delayed"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_value
+            path: "success"
+            value: true
+            description: "Virtual clock advanced"
+          - check: field_equals_context
+            path: "simulated.expected_at"
+            context_key: "reporting_core_expected_at"
+            description: "The controller advances relative to the deadline returned by prepare"
+          - check: field_value
+            path: "simulated.simulated_now"
+            value: "2026-08-01T02:05:00.000Z"
+            description: "The standardized virtual time is strictly after expected_at"
+
+      - id: read_delayed_summary
+        title: "Observe clock-derived delayed health"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-beta.11"
+          view: "summary"
+          context:
+            correlation_id: "reporting_core--delayed"
+        validations:
+          - check: response_schema
+            description: "Summary response is schema-valid"
+          - check: field_value
+            path: "health"
+            value: "delayed"
+            description: "The missing revision becomes late only after expected_at"
+          - check: field_value
+            path: "obligation_counts.delayed"
+            value: 1
+            description: "The existing obligation moved to delayed"
+          - check: field_present
+            path: "issues[0].issue_id"
+            description: "Delayed health has a durable operational issue"
+          - check: field_equals_context
+            path: "issues[0].reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "Delayed health belongs to the same obligation prepared earlier"
+
+      - id: advance_beyond_recovery
+        title: "Advance the same obligation beyond its recovery deadline"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-beta.11"
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "advance_time"
+            target_health: "action_required"
+          context:
+            correlation_id: "reporting_core--advance-action-required"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_equals_context
+            path: "simulated.reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "The clock advances the original obligation, not a replacement"
+          - check: field_equals_context
+            path: "simulated.recovery_deadline"
+            context_key: "reporting_core_recovery_deadline"
+            description: "The transition consumes the recovery deadline returned by prepare"
+          - check: field_value
+            path: "simulated.simulated_now"
+            value: "2026-08-01T04:05:00.000Z"
+            description: "The standardized virtual time is strictly after the recovery deadline"
+
+      - id: read_action_required
+        title: "Observe escalation after automated recovery closes"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-beta.11"
+          view: "summary"
+          context:
+            correlation_id: "reporting_core--action-required"
+        validations:
+          - check: response_schema
+            description: "Summary response is schema-valid"
+          - check: field_value
+            path: "health"
+            value: "action_required"
+            description: "Health escalates after the returned recovery deadline"
+          - check: field_equals_context
+            path: "issues[0].reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "Escalation remains attached to the original obligation"
+
+  - id: explicit_empty_reporting
+    title: "Distinguish zero rows from no report"
+    narrative: |
+      Publishing an empty but valid period creates an immutable revision whose
+      row_count is zero. The obligation is now satisfied because reporting was
+      produced, not because the seller removed the expectation.
+
+    steps:
+      - id: publish_zero_row
+        title: "Publish an explicit zero-row revision"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        context_outputs:
+          - name: reporting_core_revision_id
+            path: "simulated.reporting_revision_id"
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+            sandbox: true
+          adcp_version: "3.2-beta.11"
+          scenario: "reporting_core_lifecycle_probe"
+          params:
+            operation: "publish_zero_row"
+          context:
+            correlation_id: "reporting_core--publish-zero-row"
+        validations:
+          - check: response_schema
+            description: "Controller response is schema-valid"
+          - check: field_present
+            path: "simulated.reporting_revision_id"
+            description: "Publication created an immutable revision"
+          - check: field_equals_context
+            path: "simulated.reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "The revision satisfies the exact obligation prepared earlier"
+
+      - id: read_zero_row_revision
+        title: "Read the satisfied zero-row obligation"
+        task: get_reporting_status
+        schema_ref: "media-buy/get-reporting-status-request.json"
+        response_schema_ref: "media-buy/get-reporting-status-response.json"
+        doc_ref: "/media-buy/task-reference/get_reporting_status"
+        comply_scenario: reporting_core_lifecycle_probe
+        stateful: true
+        sample_request:
+          account:
+            account_id: "reporting_core_lab"
+          adcp_version: "3.2-beta.11"
+          view: "periods"
+          context:
+            correlation_id: "reporting_core--zero-row"
+        validations:
+          - check: response_schema
+            description: "Periods response is schema-valid"
+          - check: field_value
+            path: "periods[0].health"
+            value: "complete"
+            description: "The fixed elapsed scope is closed and its obligation is satisfied"
+          - check: field_value
+            path: "periods[0].revision_count"
+            value: 1
+            description: "Exactly one revision exists"
+          - check: field_value
+            path: "revisions[0].row_count"
+            value: 0
+            description: "Zero rows is explicit reporting, not missing reporting"
+          - check: field_equals_context
+            path: "periods[0].reporting_obligation_id"
+            context_key: "reporting_core_obligation_id"
+            description: "The satisfied record is the original prepared obligation"
+          - check: field_equals_context
+            path: "revisions[0].reporting_revision_id"
+            context_key: "reporting_core_revision_id"
+            description: "The status read returns the exact immutable revision just published"

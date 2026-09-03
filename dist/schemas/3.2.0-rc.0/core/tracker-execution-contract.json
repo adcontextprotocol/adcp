@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/tracker-execution-contract.json",
+  "title": "Tracker Execution Contract",
+  "description": "Seller-authored production commitment for first-class buyer-supplied tracker occurrences accepted by one effective product format option. Listed selectors are affirmative commitments. When complete is true, every unlisted combination is explicitly unsupported; when false, omissions are undeclared.",
+  "type": "object",
+  "properties": {
+    "complete": {
+      "type": "boolean",
+      "description": "Whether honored is the complete set. complete:true with an empty honored array explicitly supports no buyer-supplied trackers."
+    },
+    "honored": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/tracker-execution-selector.json"
+      },
+      "uniqueItems": true,
+      "description": "Exact tracker/event selectors the seller accepts and initiates once per manifest instance for each logical event occurrence. selector_id and structural selector identity are each unique within this array."
+    }
+  },
+  "required": [
+    "complete",
+    "honored"
+  ],
+  "x-adcp-validation": {
+    "selector_id_unique": true,
+    "structural_selector_identity_unique": true,
+    "version_sets": "For one non-version selector identity, version sets must be identical or disjoint; overlapping unequal sets are invalid.",
+    "asset_normalization": "Before selector matching, omitted pixel_tracker.method becomes img, omitted VAST/DAAST target becomes linear, and offset on a non-progress asset is ignored and removed. Existing 3.x asset schemas remain structurally permissive; the selector schema supplies the closed event/target matrix for contract matching.",
+    "format_slot_satisfiability": "Every asset_type named by honored MUST have at least one matching first-class slot in the effective selected canonical format declaration. A contract cannot promise execution for an asset shape that the same format rejects structurally.",
+    "layer_derivation": "Publisher, placement, and seller effective-contract derivation is evaluated over atomic tuples of normalized non-version selector identity, one exact version (or null for pixel), execution_actor, and one firing_path. For a complete parent, every child tuple MUST exist in the parent, the child remains complete, and array compression MUST NOT create a version/path cross-product. An incomplete or omitted parent is not a ceiling: a child may add or omit affirmative tuples for its narrower scope, but remains incomplete until every applicable layer is complete. Omission from an incomplete child is undeclared, not an assertion that the tuple is unsupported.",
+    "cardinality": "Each accepted manifest tracker instance is initiated exactly once in total for each logical event occurrence; identical URLs are not deduplicated."
+  },
+  "additionalProperties": false
+}

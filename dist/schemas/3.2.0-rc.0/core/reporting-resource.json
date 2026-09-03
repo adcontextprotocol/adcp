@@ -1,0 +1,127 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-resource.json",
+  "title": "Reporting Resource",
+  "x-status": "experimental",
+  "description": "Secret-free authenticated descriptor for an exact reporting materialization. The descriptor MUST select immutable bytes or a provider-native immutable snapshot/version so an exact older revision never resolves to mutable latest state. Callers resolve access through the previously validated caller/account-bound destination/share binding, never from credentials embedded here. No field, including future extensions, may contain credentials, signed URLs, bearer material, or private keys.",
+  "type": "object",
+  "definitions": {
+    "ReportingReaderCompatibilityItem": {
+      "title": "Reporting Reader Compatibility Item",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "properties": {
+    "resource_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_resource",
+      "description": "Seller-issued opaque reference to this exact authenticated resource descriptor."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "manifest",
+        "dataset",
+        "warehouse_relation"
+      ],
+      "description": "Shape through which the durable revision is consumed."
+    },
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "description": "Non-secret provider-native object, relation, or share identifier. MUST NOT contain an activation URL, signed URL, bearer token, password, private key, or embedded credential."
+    },
+    "native_version_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Optional immutable provider-native table version, transaction, snapshot, manifest generation, job, or run reference. It supplements but never replaces reporting_revision_id."
+    },
+    "manifest_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "Version of reporting-file-manifest.json used by a manifest resource."
+    },
+    "manifest_sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "SHA-256 over the exact manifest bytes. Consumers verify this before parsing the manifest."
+    },
+    "immutability": {
+      "type": "string",
+      "enum": [
+        "immutable_location",
+        "native_version"
+      ],
+      "description": "How this descriptor selects the exact immutable materialization."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Mandatory finite lower-bound endpoint through which this exact resource remains resolvable; it cannot be earlier than the advertised retention contract."
+    },
+    "reader_compatibility": {
+      "type": "array",
+      "description": "Reader features or format constraints required to consume this resource. Readiness verification MUST use a representative supported reader.",
+      "items": {
+        "$ref": "#/definitions/ReportingReaderCompatibilityItem"
+      },
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "resource_ref",
+    "kind",
+    "location",
+    "immutability",
+    "expires_at"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "manifest"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "manifest_version",
+          "manifest_sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "immutability": {
+            "const": "native_version"
+          }
+        },
+        "required": [
+          "immutability"
+        ]
+      },
+      "then": {
+        "required": [
+          "native_version_ref"
+        ]
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "retention": "expires_at MUST be no earlier than the owning obligation.resource_retained_until and publication plus advertised resource_retention_days. A completed obligation cannot rely on deterministic rematerialization in place of a readable exact resource."
+  },
+  "additionalProperties": false
+}

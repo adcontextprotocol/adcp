@@ -1,0 +1,820 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/bundled/protocol/sync-principal-request.json",
+  "title": "Sync Principal Request",
+  "x-status": "experimental",
+  "description": "This task begins after authentication: AdCP defines no credential-registration protocol, and the seller’s authorization system (OAuth, API keys, signed requests, workload identity) issues and maps credentials before the first call. Declaratively synchronize selected sections of the authenticated principal's standing configuration with one AdCP agent. The principal is a party: a buyer agent, or an operator-side identity acting through any client. Use this task only to change state; read current state, the configuration version, and destination setup progress through get_principal, and prefer this task over the narrower sync_agent_notification_configs when both are advertised. This task does not register a buyer agent: the stable principal MAY be a delegated human user or an autonomous workload. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body agent URLs, signing key IDs, account IDs, or other self-asserted fields. Each present section is the caller's complete desired set and replaces only that section; omitted sections remain unchanged. All submitted sections apply atomically or none do. This task configures reusable principal resources but grants no advertiser-account authority. Sellers implementing it MUST advertise adcp.principal and protocol.principal.",
+  "x-tool-summary": "Synchronize caller-scoped webhooks and reusable reporting destinations with this seller agent.",
+  "type": "object",
+  "allOf": [
+    {
+      "title": "AdCP Version Envelope",
+      "description": "Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP request and response schema so the version semantics live in exactly one place. Distinct from `core/protocol-envelope.json`, which wraps responses at the transport layer (context_id / task_id / status / payload). This envelope is part of the payload itself.",
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values.",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+          "examples": [
+            "3.0",
+            "3.1",
+            "3.1-beta",
+            "3.1-rc.1"
+          ]
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+          "minimum": 1,
+          "maximum": 99
+        }
+      },
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/version-envelope.json"
+    },
+    {
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "buyer_agent_url"
+            ]
+          },
+          {
+            "required": [
+              "agent_url"
+            ]
+          },
+          {
+            "required": [
+              "principal_id"
+            ]
+          },
+          {
+            "required": [
+              "connection_id"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key for at-most-once execution, at least 16 characters; a fresh UUID v4 per logical operation is recommended. Retries MUST reuse the same key with the same body.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "expected_configuration_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Optional optimistic-concurrency fence returned by a previous successful sync. When present and stale, the seller rejects the whole request without mutation. Compare only for equality."
+    },
+    "expected_principal_kind": {
+      "title": "Principal Kind",
+      "x-status": "experimental",
+      "description": "Optional assertion fence, not identity input: the caller states which party kind it believes it is authenticating as. When present and different from the seller-resolved principal_kind, the seller rejects the whole request with CONFLICT before mutation. The field never influences resolution.",
+      "type": "string",
+      "enum": [
+        "buyer_agent",
+        "operator"
+      ],
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/principal-kind.json"
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Sections to replace atomically. At least one section is required. A present array is complete desired state for that section; [] clears it; omission leaves it unchanged.",
+      "properties": {
+        "notification_configs": {
+          "type": "array",
+          "description": "Complete desired agent-level subscriber set. The same caller-scoping, proof-of-control, secret handling, and replacement rules as sync_agent_notification_configs apply.",
+          "items": {
+            "allOf": [
+              {
+                "title": "Agent Notification Config",
+                "description": "Caller-scoped agent-level webhook subscription. Caller-anchored event types (capabilities.changed, principal.changed) always fire principal-wide; account-anchored event types may also be listed here with the explicit all_authorized_accounts acknowledgment and fire with per-delivery-attempt authorization scoping over the caller's currently authorized accounts. Registration goes through the task declared by get_adcp_capabilities.adcp.capability_changes.notifications.registration_task: sync_principal when the broader principal surface is supported, or the specialized sync_agent_notification_configs compatibility task. Both tasks operate on one underlying caller-scoped subscriber set. This surface is intentionally separate from account-level notification_configs[]: a registry or buyer can subscribe before it has an account, and one fire invalidates the agent-wide get_adcp_capabilities cache. The persisted set is scoped to the authenticated caller or registry identity, so one caller's declarative replacement cannot clear another caller's subscribers. As with other AdCP webhooks, the default signing scheme is the RFC 9421 webhook profile against the seller's brand.json agents[] JWKS; the optional authentication block opts into the deprecated Bearer / HMAC-SHA256 fallback for compatibility. Credentials and shared secrets in authentication.credentials are write-only and MUST NOT be echoed on reads. Sellers MUST verify endpoint control before activating a new or changed active agent-level notification config; delivery-time SSRF validation still applies to every fire.",
+                "type": "object",
+                "properties": {
+                  "subscriber_id": {
+                    "type": "string",
+                    "description": "Buyer- or registry-supplied identifier for this agent-level subscription endpoint. This is the stable logical key within the authenticated caller's agent-level notification config set: re-sending the same subscriber_id replaces that caller's subscriber URL, event_types, authentication selector, and active flag rather than creating a duplicate. Echoed on every webhook payload so multi-subscriber consumers can route by endpoint. MUST be unique within the submitted `notification_configs[]` array.",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+                  },
+                  "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "Webhook endpoint URL. Same wire contract as `push-notification-config.url` and account-level `notification-config.url`: `format: \"uri\"`, no destination-port allowlist enforced by the protocol, SSRF protection via the IP-range check defined in docs/building/by-layer/L1/security.mdx#webhook-url-validation-ssrf. Sellers MUST validate URL syntax, HTTPS usage, hostname normalization, and reserved-range rejection when writing any config, including `active: false` configs. Sellers MUST complete an activation challenge or equivalent proof-of-control before treating a new or changed active subscriber as active."
+                  },
+                  "event_types": {
+                    "type": "array",
+                    "description": "Notification types this subscriber wishes to receive on the registered `url`. Caller-anchored types (`capabilities.changed`, `principal.changed`) always fire principal-wide. Account-anchored types additionally require the explicit all_authorized_accounts acknowledgment. Account-anchored types (such as `creative.status_changed` or `account.change_recorded`) are also accepted here: each fire then covers only accounts the authenticated caller is authorized for at each delivery attempt — the subscription is standing, authorization is evaluated per attempt including retries, and losing account authority both stops new fires and suppresses queued retries carrying that account's data. Media-buy-anchored types are rejected on this surface; their per-buy cadence configuration stays on `push_notification_config`. Caller-level and account-level subscriptions to the same event are independent — both fire, and receivers dedupe by the event's logical `notification_id`.",
+                    "items": {
+                      "allOf": [
+                        {
+                          "title": "Notification Type",
+                          "description": "Type of push notification fired by a seller agent. Media-buy-anchored cadence reports (`scheduled`, `final`, `delayed`, `adjusted`, `window_update`) fire against a media buy's `reporting_webhook`; `impairment` is media-buy-anchored but fires against `push_notification_config`. Account-anchored notifications include creative, account, product, signal, wholesale-feed, and reporting events, including `reporting.delivery_ready` and `reporting.status_changed`; these outlive any single media buy and fire against matching account `notification_configs[]`. The reporting events repair through `get_reporting_status`: delivery_ready is managed-delivery-only, while status_changed is valid in every reporting tier. Caller-anchored notifications (`capabilities.changed`, `principal.changed`) fire against the caller-scoped subscriber set managed by `sync_principal` or the specialized `sync_agent_notification_configs` compatibility task. New notification types MUST declare their anchor (media-buy, account, or caller), logical notification_id semantics, repair key, and classification in enumDescriptions; only invalidation-only caller-eligible types flow through include_future_event_types. Account-level subscribers MUST reject media-buy- or caller-anchored event types, and persistent account- or caller-anchored types MUST NOT use push_notification_config. Caller-level entries MAY include account-anchored types only with all_authorized_accounts true; each delivery attempt, including retries, is scoped to accounts currently authorized for that caller. Caller-level entries MUST NOT include media-buy-anchored types. Caller- and account-level subscriptions to the same event are independent and receivers dedupe by logical notification_id.",
+                          "type": "string",
+                          "enum": [
+                            "scheduled",
+                            "final",
+                            "delayed",
+                            "adjusted",
+                            "window_update",
+                            "impairment",
+                            "creative.status_changed",
+                            "creative.assignment_changed",
+                            "indicators.changed",
+                            "creative.purged",
+                            "account.status_changed",
+                            "account.change_recorded",
+                            "product.created",
+                            "product.updated",
+                            "product.priced",
+                            "product.removed",
+                            "signal.created",
+                            "signal.updated",
+                            "signal.priced",
+                            "signal.removed",
+                            "wholesale_feed.bulk_change",
+                            "capabilities.changed",
+                            "reporting.delivery_ready",
+                            "reporting.status_changed",
+                            "principal.changed"
+                          ],
+                          "enumDescriptions": {
+                            "scheduled": "Scheduled delivery report fire. Fired at the cadence the buyer registered on reporting_webhook (e.g., hourly, daily). Carries the window's delivery metrics. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+                            "final": "Terminal delivery report fire. Sent once after the media buy reaches a terminal lifecycle state (completed, canceled, rejected). Carries final delivery aggregates. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+                            "delayed": "Off-cadence delivery report fire indicating that the seller has detected late-arriving data for a prior window. Buyers SHOULD reconcile the affected window against this fire. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+                            "adjusted": "Off-cadence delivery report fire indicating that the seller has revised a prior window's metrics (e.g., IVT filtering applied, attribution model run, makegood adjustment). Buyers SHOULD replace prior values for the affected window. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+                            "window_update": "Off-cadence delivery report fire indicating that a wider measurement window supersedes an earlier window for the same reporting period (for example, C3 superseding live or C7 superseding C3). Buyers SHOULD replace the slice named by `supersedes_window` with the new `measurement_window` data. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+                            "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion. **notification_id**: equals `impairment.impairment_id`. Stable across re-emissions of the same open impairment and across the closing fire that signals resolution; a new impairment for the same resource after closure receives a new id.",
+                            "creative.status_changed": "Account-anchored fire. Sent when a creative in the account's library transitions status by seller or system initiative — `pending_review → approved`/`rejected`, `approved → pending_review` (re-review), `approved → suspended` (recoverable dependency/authorization loss), `suspended → approved` (recovery), `suspended → rejected` (terminal dependency/authorization loss), `approved → rejected` (post-approval revocation), `approved → archived` (seller-initiated). Fires per subscriber against each `notification_configs[]` entry whose `event_types` includes this value. Buyer-initiated transitions (archive, unarchive, resubmit) do NOT fire — those are acknowledged on the `sync_creatives` response path. Payload: `creative-status-changed-webhook.json`. **notification_id**: stable per (creative_id, transition) — re-emissions reuse the id; a fresh transition gets a new id.",
+                            "creative.assignment_changed": "Optional account-anchored invalidation for any seller that can detect assignment or approval changes, including inline-only sellers without an indicator catalog. Sent when a package–creative relationship is assigned, unassigned, or its aggregate/scoped approval outcome changes. Payload identifies account, media buy, package, and creative; receivers repair through get_media_buys. list_creatives may provide a bounded reverse projection but is not required. **notification_id**: stable per logical assignment change across re-emissions.",
+                            "indicators.changed": "Account-anchored invalidation. Sent to subscribed buyers when the semantic indicator assertion set or evaluated coverage changes on a media buy, package, or package–creative assignment, including invalidation after a material in-place creative update. A timestamp-only reevaluation does not fire. Payload identifies the relationship and affected types; get_media_buys is the universal repair path and creative-library sellers may additionally declare list_creatives. **notification_id**: stable per logical snapshot change across re-emissions.",
+                            "creative.purged": "Account-anchored fire. Sent when a creative is destroyed from the seller's library (retention sweep, takedown, legal erasure). Fires per subscriber against each `notification_configs[]` entry whose `event_types` includes this value. Soft purges retain a tombstone on `list_creatives` (with `include_purged: true`) for the webhook retention window and form a conformant snapshot/log pair. Hard purges do not retain a tombstone because compelled legal erasure forbids read-side recovery; they are explicitly outside the snapshot/log contract, and the webhook is the buyer's only signal. Payload: `creative-purged-webhook.json`. **notification_id**: stable per (creative_id, purge event); not coalesced (purge is a discrete destruction event).",
+                            "account.status_changed": "Account-anchored fire. Sent when an account lifecycle status changes after the initial sync_accounts result, including `pending_approval -> active`, `pending_approval -> rejected`, `active -> payment_required`, `active -> suspended`, recovery back to `active`, and terminal `closed`. Fires per subscriber against each `notification_configs[]` entry whose `event_types` includes this value. Payload: `account-status-changed-webhook.json`. The payload does not include the full account document or setup.url; receivers SHOULD re-run `list_accounts` for the account_id and reconcile from the authoritative account snapshot. **notification_id**: stable per (account_id, previous_status, status, observed_at) — re-emissions reuse the id; a fresh transition cycle receives a new id.",
+                            "account.change_recorded": "Account-anchored invalidation. Sent once per committed material change represented in `list_account_changes`, including changes made through AdCP, a seller operator or system, another authorized principal, or a connected platform. Payload: `account-change-recorded-webhook.json`. Receivers drain from their own persisted feed cursor and then call the change record's repair task; the webhook is not authoritative current state. **notification_id**: equals `change_id`. Transport retries reuse one `idempotency_key`; deliberate re-emission uses a new delivery key with the same notification_id.",
+                            "product.created": "Sent when a new product is added to the seller's wholesale product feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `product.created` event with the full post-change Product object. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "product.updated": "Sent when product metadata changes in the seller's wholesale product feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `product.updated` event with the changed Product object when available and indicator `changed_fields[]`. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "product.priced": "Sent when product pricing changes in the seller's wholesale product feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `product.priced` event with the full post-change `pricing_options[]`, optional retired pricing ids, and optional `effective_at`. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "product.removed": "Sent when a product is no longer available in the seller's wholesale product feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `product.removed` event with the product id, optional removal reason, and cache scope. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "signal.created": "Sent when a new signal is added to the seller's wholesale signals feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `signal.created` event with the post-change signal identifiers and available metadata. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "signal.updated": "Sent when signal metadata changes in the seller's wholesale signals feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `signal.updated` event with the changed signal data when available and indicator `changed_fields[]`. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "signal.priced": "Sent when signal pricing changes in the seller's wholesale signals feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `signal.priced` event with the full post-change `pricing_options[]`, optional retired pricing ids, and optional `effective_at`. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "signal.removed": "Sent when a signal is no longer available in the seller's wholesale signals feed for the subscriber's account scope. Payload: `wholesale-feed-webhook.json` carrying a `signal.removed` event with the signal id, optional removal reason, and cache scope. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "wholesale_feed.bulk_change": "Sent when one operation changes too many wholesale product-feed or wholesale signals-feed entities for useful per-entity pushes. Payload: `wholesale-feed-webhook.json` carrying a `wholesale_feed.bulk_change` event with one affected entity type, approximate count, and repair recommendation. Receivers repair products through `list_products` (or deprecated 3.x `get_products`) and signals through `get_signals`. **notification_id**: equals `event.event_id`; re-emissions of the same logical change reuse the same value under a new `idempotency_key`.",
+                            "capabilities.changed": "Agent-anchored fire. Sent when the seller's advertised `get_adcp_capabilities` document materially changes. Fires per subscriber against each caller-scoped agent `notification_configs[]` entry managed through `sync_principal` or `sync_agent_notification_configs` whose `event_types` includes this value. Payload: `capabilities-changed-webhook.json`. The payload does not include the full capability document; receivers SHOULD re-run `get_adcp_capabilities`, compare `adcp.capability_changes.capabilities_version` or `last_modified` when present, and update their cache from that fresh response. **notification_id**: stable per material capability revision; re-emissions of the same revision reuse the id, and a later material revision receives a new id.",
+                            "reporting.delivery_ready": "Experimental account-anchored readiness doorbell, managed-delivery tier only (it names a materialization at a destination; Core configurations never fire it). Fires after one immutable reporting materialization is observable through the intended consumer path. Payload: `reporting-delivery-ready-webhook.json`; it carries identities and readiness metadata, never report rows or credentials. Receivers repair missed, duplicate, or out-of-order fires through `get_reporting_status`. **notification_id**: stable per reporting_materialization_id reaching its ready state across re-emissions; a new retry/materialization receives a new id.",
+                            "reporting.status_changed": "Experimental account-anchored invalidation, valid in every reporting tier including Core. Fires when an obligation or configuration health state transitions in either direction — waiting to delayed, delayed to action_required, and recovery back to healthy or complete — including purely clock-driven transitions that no positive doorbell would ever announce. Payload: `reporting-status-changed-webhook.json`; it carries identifiers, the new health, and stable issue ids, never report rows. Push is optional in every tier: polling `get_reporting_status` remains the authoritative recovery path, and receivers repair every fire through it. **notification_id**: stable per (reporting_obligation_id or delivery_config_id, health transition); re-emissions reuse the id, and a later distinct transition receives a new id.",
+                            "principal.changed": "Caller-anchored invalidation. Sent when the seller changes the authenticated principal's standing configuration through a seller-driven transition that does not advance configuration_version: a reporting destination moving between validating, ready, action_required, and rejected, a setup action nearing or passing expires_at, a proof invalidation, or a change to the accepted declarations intersection. Not fired for the caller's own mutations — the sync response already reports those. Payload: `principal-changed-webhook.json`, an invalidation signal only; receivers repair by re-reading `get_principal`. **notification_id**: stable per logical principal-state transition; re-emissions reuse the id, and a later distinct transition receives a new id."
+                          },
+                          "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/notification-type.json"
+                        },
+                        {
+                          "not": {
+                            "enum": [
+                              "scheduled",
+                              "final",
+                              "delayed",
+                              "adjusted",
+                              "window_update",
+                              "impairment"
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "all_authorized_accounts": {
+                    "type": "boolean",
+                    "description": "Explicit scope acknowledgment required whenever event_types includes any account-anchored type: true states that this subscriber intentionally receives those events for every account the principal is authorized for at each delivery attempt. Subscribing an endpoint to all accounts is never implicit. Authorization is evaluated per delivery attempt, including retries: losing authority for an account suppresses queued retries carrying that account's data."
+                  },
+                  "include_future_event_types": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When true, the seller also fires caller-eligible notification types added to the enum by later AdCP versions — but only types classified invalidation-only, whose payloads carry identifiers and a repair pointer rather than domain data. Payload-bearing types always require explicit enumeration in event_types; this flag never silently opts a caller into more-sensitive payloads. There is deliberately no wildcard event type. Receivers setting this MUST tolerate unknown notification_type values."
+                  },
+                  "authentication": {
+                    "type": "object",
+                    "deprecated": true,
+                    "description": "Legacy authentication selector. Same precedence and semantics as `push-notification-config.authentication` and account-level `notification-config.authentication`: presence opts the seller into Bearer or HMAC-SHA256 signing; absence selects the default RFC 9421 webhook profile keyed off the seller's brand.json `agents[]` JWKS. Deprecated; removed in AdCP 4.0. Credentials are write-only and MUST NOT be echoed on reads.",
+                    "properties": {
+                      "schemes": {
+                        "type": "array",
+                        "items": {
+                          "title": "Authentication Scheme",
+                          "deprecated": true,
+                          "description": "Legacy authentication schemes for the webhook auth block. Bearer: token sent in Authorization header. HMAC-SHA256: legacy shared-secret signing. Both are deprecated; new integrations SHOULD omit the authentication block and use the RFC 9421 webhook signing profile (applicable on schemas where authentication is optional). Removed in AdCP 4.0.",
+                          "type": "string",
+                          "enum": [
+                            "Bearer",
+                            "HMAC-SHA256"
+                          ],
+                          "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/auth-scheme.json"
+                        },
+                        "minItems": 1,
+                        "maxItems": 1
+                      },
+                      "credentials": {
+                        "type": "string",
+                        "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
+                        "minLength": 32
+                      }
+                    },
+                    "required": [
+                      "schemes"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "When false, the seller persists the configuration but suppresses fires. Use to pause a subscriber without losing the registration. Paused configs may skip only the outbound proof challenge while inactive; sellers MUST still enforce URL parsing, HTTPS, hostname normalization, and reserved-range rejection at write time. Reactivation requires full SSRF validation with connect pinning plus proof-of-control for any tuple without current valid proof."
+                  },
+                  "ext": {
+                    "title": "Extension Object",
+                    "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+                    "type": "object",
+                    "additionalProperties": true,
+                    "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/ext.json"
+                  }
+                },
+                "required": [
+                  "subscriber_id",
+                  "url",
+                  "event_types"
+                ],
+                "if": {
+                  "properties": {
+                    "event_types": {
+                      "contains": {
+                        "enum": [
+                          "creative.status_changed",
+                          "creative.assignment_changed",
+                          "indicators.changed",
+                          "creative.purged",
+                          "account.status_changed",
+                          "account.change_recorded",
+                          "product.created",
+                          "product.updated",
+                          "product.priced",
+                          "product.removed",
+                          "signal.created",
+                          "signal.updated",
+                          "signal.priced",
+                          "signal.removed",
+                          "wholesale_feed.bulk_change"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "event_types"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "all_authorized_accounts": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "all_authorized_accounts"
+                  ]
+                },
+                "additionalProperties": false,
+                "examples": [
+                  {
+                    "description": "Registry subscriber receiving capability-change invalidations",
+                    "data": {
+                      "subscriber_id": "registry-cache",
+                      "url": "https://registry.example/webhooks/adcp/capabilities",
+                      "event_types": [
+                        "capabilities.changed"
+                      ],
+                      "active": true
+                    }
+                  }
+                ],
+                "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/agent-notification-config.json"
+              },
+              {
+                "if": {
+                  "required": [
+                    "authentication"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "authentication": {
+                      "required": [
+                        "credentials"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 16
+        },
+        "reporting_destinations": {
+          "type": "array",
+          "description": "Complete desired reusable reporting destination set. Omitting a previously present destination_id revokes it, and [] revokes every destination: the seller halts new deliveries to all of its generations within the advertised suspension_interval_seconds and retains it as a retired generation for reporting history. Revocation does not delete caller-owned data already delivered. destination_id values MUST be unique.",
+          "items": {
+            "title": "Agent Reporting Destination",
+            "x-status": "experimental",
+            "description": "Reusable, non-secret reporting destination owned by the authenticated caller's relationship with one seller. Exactly one delivery pattern per destination; pattern is the discriminator and matches the managed reporting delivery pattern vocabulary. It does not grant account authority: account/reporting configuration separately binds authorized data to the seller-issued destination_ref. Sellers key ownership to the stable transport principal, never a signing key, token, or request-body identity. Credentials, private keys, bearer profiles, signed URLs, and embedded passwords are forbidden. Sellers implementing this schema advertise protocol.principal.",
+            "oneOf": [
+              {
+                "title": "File transfer destination",
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "const": "file_transfer",
+                    "description": "Discriminator. Producer publishes immutable files plus a manifest to caller-controlled object storage."
+                  },
+                  "destination_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+                  },
+                  "operator_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "True permits use. False suspends the destination: the seller MUST stop initiating new deliveries to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered."
+                  },
+                  "provider": {
+                    "title": "Delivery Provider",
+                    "description": "Provider namespace for an external delivery or data-sharing service. This identifies a platform; it is not a credential, trust root, or authorization statement.",
+                    "type": "object",
+                    "properties": {
+                      "domain": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+                        "description": "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names are invalid."
+                      }
+                    },
+                    "required": [
+                      "domain"
+                    ],
+                    "additionalProperties": false,
+                    "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/delivery-provider.json"
+                  },
+                  "transport": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_.-]*$",
+                    "description": "Open provider transport name, such as s3, gcs, or azure_blob."
+                  },
+                  "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "pattern": "^[!$&-;=@-~]+$",
+                    "description": "Provider-native bucket/prefix locator, such as s3://bucket/prefix/ or abfss://container@account.dfs.core.windows.net/path. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
+                  },
+                  "accepted_formats": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "jsonl",
+                        "csv",
+                        "parquet",
+                        "avro",
+                        "orc"
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "description": "Physical formats accepted by this file-transfer destination."
+                  },
+                  "accepted_verification_profiles": {
+                    "title": "Reporting Verification Profile Set",
+                    "description": "Verification profiles the destination can accept. native_commit requires provider-native transaction/version evidence plus counts and control totals; manifest_checksums requires a committed file manifest with cryptographic checksums; canonical_digest requires recomputation of the canonical logical-content digest. A reporting feed selects one profile from this allowed set according to the seller offering and the feed's strictness requirements.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "native_commit",
+                        "manifest_checksums",
+                        "canonical_digest"
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-verification-profile-set.json"
+                  }
+                },
+                "required": [
+                  "pattern",
+                  "destination_id",
+                  "active",
+                  "provider",
+                  "transport",
+                  "location",
+                  "accepted_formats",
+                  "accepted_verification_profiles"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "title": "Warehouse materialization destination",
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "const": "warehouse_materialization",
+                    "description": "Discriminator. Producer or its connector commits reporting revisions into a caller-owned warehouse relation."
+                  },
+                  "destination_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+                  },
+                  "operator_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "True permits use. False suspends the destination: the seller MUST stop initiating new deliveries to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered."
+                  },
+                  "provider": {
+                    "title": "Delivery Provider",
+                    "description": "Provider namespace for an external delivery or data-sharing service. This identifies a platform; it is not a credential, trust root, or authorization statement.",
+                    "type": "object",
+                    "properties": {
+                      "domain": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+                        "description": "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names are invalid."
+                      }
+                    },
+                    "required": [
+                      "domain"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "transport": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_.-]*$",
+                    "description": "Open provider transport name, such as bigquery, snowflake, or databricks_sql."
+                  },
+                  "location": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2048,
+                    "pattern": "^[!$&-;=@-~]+$",
+                    "description": "Provider-native project/dataset, database/schema, or catalog/schema locator. Printable ASCII without whitespace, '?', '#', '%', '\"', '<', or '>'. Never a credential or signed URL; sellers additionally screen and normalize per the secret_rejection and normalization rules."
+                  },
+                  "accepted_verification_profiles": {
+                    "title": "Reporting Verification Profile Set",
+                    "description": "Verification profiles the destination can accept. native_commit requires provider-native transaction/version evidence plus counts and control totals; manifest_checksums requires a committed file manifest with cryptographic checksums; canonical_digest requires recomputation of the canonical logical-content digest. A reporting feed selects one profile from this allowed set according to the seller offering and the feed's strictness requirements.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "native_commit",
+                        "manifest_checksums",
+                        "canonical_digest"
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "pattern",
+                  "destination_id",
+                  "active",
+                  "provider",
+                  "transport",
+                  "location",
+                  "accepted_verification_profiles"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "title": "Dataset share recipient",
+                "type": "object",
+                "properties": {
+                  "pattern": {
+                    "type": "string",
+                    "const": "dataset_share",
+                    "description": "Discriminator. Producer retains and versions the dataset; the named recipient reads provider-hosted share objects."
+                  },
+                  "destination_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Caller-selected stable logical key, unique within this seller relationship. Reusing it replaces desired configuration; when proof-bound coordinates or the accepted delivery contract change, the seller issues a new immutable destination_ref generation while retaining the old reference for existing account bindings and reporting history."
+                  },
+                  "operator_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+                    "description": "Optional agent-scoped label naming the operator this destination serves, for per-operator isolation, audit, and offboarding under an agent principal. It is the principal's own bookkeeping and confers no identity or authority: sellers MUST NOT link, dedupe, or authorize across principals based on matching operator labels or domains."
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "True permits use. False suspends the destination: the seller MUST stop publishing new revisions to every generation of this destination_id within the advertised suspension interval, and new account-level delivery configurations MUST NOT select it. Suspension does not delete caller-owned data already delivered or revoke provider-side grants by itself."
+                  },
+                  "provider": {
+                    "title": "Delivery Provider",
+                    "description": "Provider namespace for an external delivery or data-sharing service. This identifies a platform; it is not a credential, trust root, or authorization statement.",
+                    "type": "object",
+                    "properties": {
+                      "domain": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+                        "description": "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names are invalid."
+                      }
+                    },
+                    "required": [
+                      "domain"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "transport": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_.-]*$",
+                    "description": "Open provider transport name, such as delta_sharing or snowflake_secure_sharing."
+                  },
+                  "access_mode": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[a-z][a-z0-9_.-]*$",
+                    "description": "Dataset-share access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing."
+                  },
+                  "recipient": {
+                    "title": "Delivery Recipient",
+                    "description": "Provider-interpreted recipient identity for a seller-hosted share. Examples include a sharing identifier or organization/account pair. The value is an identifier, never a credential.",
+                    "type": "object",
+                    "properties": {
+                      "identity": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "cloud": {
+                        "title": "Delivery Recipient Cloud",
+                        "x-status": "experimental",
+                        "description": "Cloud family hosting a delivery recipient's account, used together with region to disambiguate provider-native recipient identities.",
+                        "type": "string",
+                        "enum": [
+                          "aws",
+                          "azure",
+                          "gcp"
+                        ],
+                        "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/delivery-recipient-cloud.json"
+                      },
+                      "region": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 128
+                      }
+                    },
+                    "required": [
+                      "identity"
+                    ],
+                    "dependencies": {
+                      "cloud": [
+                        "region"
+                      ],
+                      "region": [
+                        "cloud"
+                      ]
+                    },
+                    "additionalProperties": false,
+                    "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/delivery-recipient.json"
+                  },
+                  "accepted_verification_profiles": {
+                    "title": "Reporting Verification Profile Set",
+                    "description": "Verification profiles the destination can accept. native_commit requires provider-native transaction/version evidence plus counts and control totals; manifest_checksums requires a committed file manifest with cryptographic checksums; canonical_digest requires recomputation of the canonical logical-content digest. A reporting feed selects one profile from this allowed set according to the seller offering and the feed's strictness requirements.",
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "native_commit",
+                        "manifest_checksums",
+                        "canonical_digest"
+                      ]
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "pattern",
+                  "destination_id",
+                  "active",
+                  "provider",
+                  "transport",
+                  "access_mode",
+                  "recipient",
+                  "accepted_verification_profiles"
+                ],
+                "additionalProperties": false
+              }
+            ],
+            "x-adcp-validation": {
+              "proof_file_transfer": "A file_transfer destination MUST NOT become ready until both hold: (1) the caller has proven control of the normalized location through a seller-verifiable challenge, such as writing a seller-named proof object under the prefix or granting the seller's published principal and surfacing provider-native evidence of that grant; and (2) the seller has successfully written and read back a probe object under the prefix. Grant existence alone is insufficient.",
+              "proof_warehouse_materialization": "A warehouse_materialization destination MUST NOT become ready until the seller has verified, through provider-native access it was granted, that it can create and commit into the normalized locator, and the seller has bound that verification to the caller's proof tuple. A caller-asserted locator with no observed grant MUST remain action_required.",
+              "proof_dataset_share": "A dataset_share destination MUST NOT become ready until the named recipient has affirmatively completed the provider's recipient-side acceptance or activation step and the provider reports the recipient able to read the share. For access modes that grant access to a named identifier with no recipient-side acceptance step, the seller MUST require an equivalent recipient-initiated proof (for example, a recipient read of a seller-published proof dataset) before ready; grant creation alone MUST NOT produce ready. Provider grant propagation can lag: ready asserts recipient readability was observed, and account-level delivery readiness additionally requires consumer-read verification as defined by managed reporting delivery.",
+              "normalization": "Before proof binding, uniqueness comparison, and generation comparison, sellers MUST canonicalize coordinates per transport: Unicode NFC, lowercase scheme and host authority, no default ports, single canonical path separators, and no percent-encoding of characters that are valid literally. Sellers MUST reject a location or recipient identity whose host authority is not ASCII after canonicalization. Proof is bound to the canonical form.",
+              "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, secret query parameters, and secret fragments in any field, including forms the schema pattern cannot express such as userinfo-style 'key:secret@host' prefixes inside an otherwise valid locator. The schema pattern is a transport guard, not the enforcement boundary; sellers MUST screen canonicalized values. Exchange access through provider-native control planes or out of band.",
+              "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
+              "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
+              "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
+              "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
+            },
+            "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/agent-reporting-destination.json"
+          },
+          "maxItems": 64
+        },
+        "declarations": {
+          "title": "Agent Declarations",
+          "x-status": "experimental",
+          "description": "Complete declared consumption facts for this principal record. A present object replaces the declared set wholesale; {} clears it; omission leaves it unchanged. The seller computes and returns the accepted intersection in state.",
+          "type": "object",
+          "properties": {
+            "async_adcp_versions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^\\d+\\.\\d+$"
+              },
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "description": "AdCP minor versions, such as 3.2, whose asynchronous payload shapes (webhooks and other seller-initiated pushes) the caller can parse. The seller selects payload shapes from the accepted intersection; without a declaration the seller uses its advertised default."
+            },
+            "webhook_signing_algorithms": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ed25519",
+                  "ecdsa-p256-sha256"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true,
+              "description": "RFC 9421 webhook-signing algorithms the caller can verify. The accepted intersection with the seller's webhook_signing.algorithms MUST be non-empty when the caller has any active webhook subscriber; an empty intersection fails the sync request with UNSUPPORTED_FEATURE because delivery would be unverifiable."
+            },
+            "experimental_features": {
+              "type": "array",
+              "items": {
+                "title": "Experimental Feature ID",
+                "description": "Dot-separated lowercase identifier for an experimental AdCP surface, such as protocol.principal or media_buy.reporting_delivery.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$",
+                "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/experimental-feature-id.json"
+              },
+              "minItems": 1,
+              "maxItems": 32,
+              "uniqueItems": true,
+              "description": "Experimental feature identifiers, matching the seller's experimental_features vocabulary, that the caller opts into receiving in asynchronous payloads. Unknown identifiers are accepted and excluded from the intersection rather than rejected, so a caller can declare once across sellers with different surfaces."
+            }
+          },
+          "additionalProperties": false,
+          "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/principal-declarations.json"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "Validate the proposed replacements and report the would-be action without persisting them, issuing durable identifiers or grants, or sending endpoint proof challenges."
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true,
+      "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/context.json"
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "configuration"
+  ],
+  "additionalProperties": true,
+  "x-adcp-validation": {
+    "stable_principal": "Reject NO_AUTH, anonymous, or unstable caller identities. Ownership is the server-resolved stable authenticated principal, not the current signing key, token, session, interactive client application identity, request-body identity, bucket coordinates, or principal_id. Any request-body field not defined by this schema MUST be ignored for identity, ownership, and authorization decisions. A delegated human user and an autonomous workload are both valid principal kinds. Interactive use through Claude, ChatGPT, another MCP host, or a UI MUST NOT require registration of that client or user as a buyer agent; it does require a stable delegated user subject. When an interactive client supplies only a shared service identity, require delegated authorization or account linking before persistence.",
+    "signed_agent_identity": "For an RFC 9421 signed caller resolved through operator brand.json, the stable Agent subject MUST be the canonical form of the exactly matched agents[].url after the publication chain and request-signing key authorization have verified. A request-body URL, matching domain, raw URL spelling, brand_json_url, jwks_uri, kid, key thumbprint, or key generation is not that subject. Distinct canonical Agent URLs remain distinct principals even when they share a domain, operator, functional type, or JWKS endpoint. Key rotation preserves the principal when the replacement key is authorized for the same canonical Agent URL. A resolver that cannot bind the verified caller to exactly one canonical Agent URL MUST fail closed without materializing or accessing principal state.",
+    "credential_rotation": "A new token or signing key MUST resolve to the existing principal record when and only when the authorization system maps it to the same stable principal. A key ID, key fingerprint, token, or session MUST NOT become the owner key.",
+    "principal_isolation": "Do not infer shared ownership from organization membership, client application, an unverified or merely domain-matched agent URL, destination coordinates, or advertiser account. The verified canonical Agent URL rule for RFC 9421 signed callers is the identity mapping, not cross-principal linking. Different principals cannot discover or claim each other's principal record or destination references. Cross-principal linking otherwise requires a separate explicitly authorized administrative operation.",
+    "account_authority": "Destination proof establishes where the authenticated principal can receive delivery; it does not establish which advertiser data that principal can receive. Every destination use MUST independently authorize the account-scoped feed binding.",
+    "atomic_sections": "Validate every submitted section, uniqueness constraint, and authorization check before commit; failure leaves all prior sections unchanged. A proof-bound resource may persist as validating or action_required, but cannot become ready until proof succeeds. Active notification subscribers require endpoint proof before replacement. dry_run performs no grants, challenges, or persistence.",
+    "optimistic_concurrency": "After resolving an exact idempotent replay, when expected_configuration_version is present and does not equal the current version, reject a new operation with CONFLICT without revealing another principal's version or configuration. Idempotency lookup precedes the version fence so a lost successful response remains replayable after the persisted version advances. When the seller advertises optimistic_concurrency false, a request carrying expected_configuration_version is rejected with UNSUPPORTED_FEATURE, never silently ignored.",
+    "idempotency_scope": "Idempotency records are scoped to the stable authenticated principal. A key first seen under a different principal MUST be treated as a new operation, never a replay, because a replayed applied response discloses the owner's complete principal state.",
+    "principal_kind_fence": "principal_kind is resolved solely from the seller's authorization system and reported on every applied or current readback. expected_principal_kind is an assertion fence evaluated after idempotent-replay resolution: on mismatch with the resolved kind, reject with CONFLICT before mutation. Neither field is identity input, and a caller cannot change its resolved kind through this task.",
+    "version_coherence": "Every successful configuration mutation through this task or sync_agent_notification_configs advances configuration_version over the one shared underlying state. Seller-driven setup-state transitions, such as a destination moving from validating to ready, MUST NOT advance it.",
+    "no_cross_principal_oracle": "Applied action values, dry_run outcomes, warnings, errors, and timing are computed solely against the caller's own state and MUST NOT reveal whether coordinates, recipients, endpoints, or references are registered to any other principal.",
+    "offering_boundary": "Schema violations, authorization failures, unsupported sections, oversize sections, and destinations outside the advertised reporting_destination_offerings fail the whole request atomically. Provider-side setup outcomes for in-offering destinations are expressed per destination as validating, action_required, or rejected states inside an applied response.",
+    "declarations_intersection": "On every declarations replacement the seller recomputes the accepted intersection against its objective support and returns it in state. Unknown experimental feature identifiers are accepted and excluded from the intersection, not rejected. An empty webhook_signing_algorithms intersection while any webhook subscriber is active — on either side of the same request — fails the whole request with UNSUPPORTED_FEATURE, because fires would be unverifiable. A later seller-side change to the accepted intersection fires principal.changed with reason declarations_intersection_changed and does not advance configuration_version. The readback MUST persist the declared set, the accepted intersection, the selected_async_adcp_version chosen from it, and an exclusions entry with a reason for every declared value not accepted.",
+    "caller_level_account_events": "Account-anchored event types on caller-level subscribers require the explicit all_authorized_accounts acknowledgment — subscribing an endpoint to every account is never implicit — and are authorized at each delivery attempt against the caller's current account authority: revocation suppresses queued retries carrying that account's data, not merely new fires. Registration itself requires no account authority and grants none. Media-buy-anchored event types are rejected. include_future_event_types extends only to invalidation-only classified types, never payload-bearing ones. Caller-level and account-level subscriptions are independent; sellers fire both and receivers dedupe by notification_id.",
+    "compatibility": "A notification_configs update has the same effect as sync_agent_notification_configs for that authenticated caller. Implementations supporting both tasks MUST expose one underlying subscriber set, not divergent copies, and MUST keep accepting the specialized task while notifications.supported is true."
+  },
+  "examples": [
+    {
+      "description": "Register one capability webhook and two reusable reporting destinations",
+      "data": {
+        "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
+        "configuration": {
+          "notification_configs": [
+            {
+              "subscriber_id": "buyer-events",
+              "url": "https://buyer.example/webhooks/adcp",
+              "event_types": [
+                "capabilities.changed"
+              ],
+              "active": true
+            }
+          ],
+          "reporting_destinations": [
+            {
+              "pattern": "file_transfer",
+              "destination_id": "reporting-archive",
+              "active": true,
+              "provider": {
+                "domain": "object-store.example"
+              },
+              "transport": "s3",
+              "location": "s3://pinnacle-reporting/adcp/",
+              "accepted_formats": [
+                "parquet"
+              ],
+              "accepted_verification_profiles": [
+                "manifest_checksums",
+                "canonical_digest"
+              ]
+            },
+            {
+              "pattern": "warehouse_materialization",
+              "destination_id": "analytics-warehouse",
+              "active": true,
+              "provider": {
+                "domain": "data-warehouse.example"
+              },
+              "transport": "bigquery",
+              "location": "pinnacle-analytics.adcp_reporting",
+              "accepted_verification_profiles": [
+                "native_commit",
+                "canonical_digest"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "_bundled": {
+    "generatedAt": "2026-09-03T16:22:03.970Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}

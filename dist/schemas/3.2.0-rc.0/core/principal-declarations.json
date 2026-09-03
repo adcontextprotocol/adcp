@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/principal-declarations.json",
+  "title": "Agent Declarations",
+  "x-status": "experimental",
+  "description": "Bounded, non-secret facts the authenticated caller declares about what it can consume from this seller. This is the buyer-declared half of capability negotiation: get_adcp_capabilities stays objective seller facts, declarations stay caller facts, and the seller-computed accepted intersection is the negotiated contract for asynchronous interactions. Declarations exist chiefly because webhook fires have no request context to negotiate against: the durable declaration is the version and algorithm channel for pushes. Declarations are facts about consumption ability, never preferences, policies, or an open-ended feature language. Submitting an empty object clears the declared set.",
+  "type": "object",
+  "properties": {
+    "async_adcp_versions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^\\d+\\.\\d+$"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "description": "AdCP minor versions, such as 3.2, whose asynchronous payload shapes (webhooks and other seller-initiated pushes) the caller can parse. The seller selects payload shapes from the accepted intersection; without a declaration the seller uses its advertised default."
+    },
+    "webhook_signing_algorithms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "ed25519",
+          "ecdsa-p256-sha256"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "RFC 9421 webhook-signing algorithms the caller can verify. The accepted intersection with the seller's webhook_signing.algorithms MUST be non-empty when the caller has any active webhook subscriber; an empty intersection fails the sync request with UNSUPPORTED_FEATURE because delivery would be unverifiable."
+    },
+    "experimental_features": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/experimental-feature-id.json"
+      },
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Experimental feature identifiers, matching the seller's experimental_features vocabulary, that the caller opts into receiving in asynchronous payloads. Unknown identifiers are accepted and excluded from the intersection rather than rejected, so a caller can declare once across sellers with different surfaces."
+    }
+  },
+  "additionalProperties": false
+}

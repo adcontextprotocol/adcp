@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/delivery-provider.json",
+  "title": "Delivery Provider",
+  "description": "Provider namespace for an external delivery or data-sharing service. This identifies a platform; it is not a credential, trust root, or authorization statement.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+      "description": "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names are invalid."
+    }
+  },
+  "required": [
+    "domain"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/product-identity.json",
+  "title": "Product Identity",
+  "description": "Experimental product-scoped identity and reach-measurement facts. Absence is undeclared, not a claim that the product has persistent identifiers. Sellers implementing this surface MUST list media_buy.product_identity in experimental_features on get_adcp_capabilities. When persistent_identifier is false, the product MUST NOT declare overlay_support.frequency_cap; create and update reject that overlay under the ordinary exact-apply-or-reject rule. Delivery for the product MUST NOT report devices, accounts, or cookies as reach_unit. Individuals and households remain valid for panel-based or place-based modeled measurement. When delivery reports reach or frequency with reach_unit custom, reach_methodology is required and explains that unit.",
+  "type": "object",
+  "x-status": "experimental",
+  "x-added-in": "3.2.0",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "identity_absence_delivery": {
+        "when": "A delivery row is bound to a package whose selected product declares identity.persistent_identifier: false. A totals row is bound only when every contributing package selects such a product.",
+        "frequency_requires_reach_unit": "Every package row or product-bound breakdown row which contains frequency MUST also contain reach_unit, including a frequency-only row. A bound totals row follows the same rule.",
+        "permitted_reach_units": [
+          "individuals",
+          "households",
+          "custom"
+        ],
+        "custom_reach_methodology": "When a row reports reach or frequency with reach_unit custom, identity.reach_methodology MUST be non-empty."
+      }
+    }
+  },
+  "properties": {
+    "persistent_identifier": {
+      "type": "boolean",
+      "description": "Whether delivery on this product has a persistent per-entity identifier suitable for identifier-backed reach, frequency, and frequency-cap enforcement. false does not prohibit modeled individuals or households measurement."
+    },
+    "reach_methodology": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable methodology for this product's custom reach unit. Required when the product reports reach or frequency with reach_unit custom, including frequency-only reporting."
+    }
+  },
+  "required": [
+    "persistent_identifier"
+  ],
+  "additionalProperties": false
+}

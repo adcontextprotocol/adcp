@@ -1,0 +1,188 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-canonicalization-contract.json",
+  "title": "Reporting Canonicalization Contract",
+  "x-status": "experimental",
+  "description": "Executable, immutable contract for producing the canonical logical-report bytes hashed by reporting-canonical-content-digest.json. The fetched document uses application/vnd.adcp.reporting-canonicalization+json and is verified by SHA-256 before parsing.",
+  "type": "object",
+  "definitions": {
+    "ReportingPrimaryKey": {
+      "title": "Reporting Primary Key",
+      "x-adcp-model-context-inline": true,
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    }
+  },
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "media_type": {
+      "type": "string",
+      "const": "application/vnd.adcp.reporting-canonicalization+json"
+    },
+    "algorithm": {
+      "type": "string",
+      "const": "adcp_jcs_rows_v1"
+    },
+    "schema_sha256": {
+      "type": "string",
+      "pattern": "^[A-Fa-f0-9]{64}$",
+      "description": "Digest of the exact row schema to which this contract applies."
+    },
+    "primary_keys": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReportingPrimaryKey"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Ordered scalar fields used to sort rows and reject duplicate logical rows. This MUST equal the offering's primary_keys."
+    },
+    "golden_vectors": {
+      "type": "object",
+      "properties": {
+        "empty_report": {
+          "title": "EmptyReportGoldenVector",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "purpose": {
+              "type": "string",
+              "const": "empty_report"
+            },
+            "input_rows": {
+              "type": "array",
+              "maxItems": 0
+            },
+            "canonical_utf8_base64": {
+              "type": "string",
+              "const": "W10=",
+              "description": "Base64 of the exact UTF-8 bytes for []."
+            },
+            "sha256": {
+              "type": "string",
+              "const": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+            }
+          },
+          "required": [
+            "name",
+            "purpose",
+            "input_rows",
+            "canonical_utf8_base64",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        "ordering_encoding": {
+          "title": "OrderingEncodingGoldenVector",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+            },
+            "purpose": {
+              "type": "string",
+              "const": "ordering_encoding"
+            },
+            "input_rows": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "minItems": 2
+            },
+            "canonical_utf8_base64": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Base64 of the exact expected canonical UTF-8 bytes."
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "name",
+            "purpose",
+            "input_rows",
+            "canonical_utf8_base64",
+            "sha256"
+          ],
+          "additionalProperties": false
+        },
+        "additional": {
+          "type": "array",
+          "items": {
+            "title": "AdditionalGoldenVector",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
+              },
+              "purpose": {
+                "type": "string",
+                "const": "additional"
+              },
+              "input_rows": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "canonical_utf8_base64": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Base64 of the exact expected canonical UTF-8 bytes."
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[A-Fa-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "name",
+              "purpose",
+              "input_rows",
+              "canonical_utf8_base64",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "empty_report",
+        "ordering_encoding"
+      ],
+      "additionalProperties": false,
+      "description": "Named cross-language conformance cases: exactly one empty_report vector, exactly one ordering_encoding vector, and an optional list of additional vectors."
+    }
+  },
+  "required": [
+    "contract_version",
+    "media_type",
+    "algorithm",
+    "schema_sha256",
+    "primary_keys",
+    "golden_vectors"
+  ],
+  "x-adcp-validation": {
+    "algorithm": "adcp_jcs_rows_v1 rejects duplicate JSON object keys, non-finite numbers, lone Unicode surrogates, missing/non-scalar primary keys, and duplicate primary-key tuples. Validate every row against the pinned row schema; do not normalize Unicode. RFC 8785-encode each primary-key value array and sort rows by unsigned lexicographic comparison of those UTF-8 bytes. RFC 8785-encode each complete row, then emit the UTF-8 bytes for '[' + the encoded rows joined by ',' + ']'. SHA-256 is computed over exactly those bytes.",
+    "binding": "schema_sha256 and primary_keys MUST exactly equal the selected offering. Golden-vector names MUST be unique across empty_report, ordering_encoding, and additional. empty_report is the exact [] case. ordering_encoding is non-trivial: its input row order differs from canonical primary-key order and its object member order differs from JCS order. SDKs MUST strictly base64-decode canonical_utf8_base64, reproduce every golden vector's exact bytes and sha256, and reject any mismatch before using the contract."
+  },
+  "additionalProperties": false
+}

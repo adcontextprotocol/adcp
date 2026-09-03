@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.2.0-rc.0
+
+### Minor Changes
+
+- efa8dbc: Add explicit inventory-local and IANA timezone semantics to daypart targeting, with product-scoped timezone-mode capability declarations.
+- 17162cf: Add experimental product-scoped identity-absence and reach-methodology declarations, require a reach unit on frequency-only delivery for identity-absent products, and add sales-DOOH conformance for frequency-cap rejection and identity-safe delivery reporting.
+- e037258: Define DOOH share of voice as duration-weighted time share, align contracted and delivered units, and add seller-packaged slot contiguity parameters.
+
+### Patch Changes
+
+- f9f0a6b: Align the public training agent, Addie certification guidance, and version documentation with the AdCP 3.2 beta.11 wire bundle and `@adcp/sdk@14.0.0-beta.29`.
+- deedffb: Define period-boundary reporting obligation availability and expand two-sided implementer guidance and training.
+- 91cbf0e: Grade current-source storyboard jobs for pull requests targeting main and pushes to main with the explicit candidate-version resolver, while keeping immutable 3.0 compatibility runs strict.
+- c12dfd3: Document Python SDK 8.0.0b12 as the exact schema and type pairing for AdCP 3.2.0-beta.11.
+- cd63082: Advance stable schema discovery aliases to the published 3.1.20 bundle and refresh the 3.2 beta documentation for the beta.10 TypeScript and Python SDK wave.
+
 ## 3.2.0-beta.11
 
 ### Patch Changes
