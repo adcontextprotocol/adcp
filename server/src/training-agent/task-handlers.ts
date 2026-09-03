@@ -14838,15 +14838,14 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // package row less unit context than its totals row.
   let reachGoalUnit: string | undefined;
   for (const pkg of simulatedPackages) {
-    const goal = pkg.optimizationGoals?.find(g => (
-      g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string'
-    ));
-    if (goal && typeof goal.reach_unit === 'string') {
+    for (const goal of pkg.optimizationGoals ?? []) {
+      if (goal?.kind !== 'metric' || goal?.metric !== 'reach' || typeof goal?.reach_unit !== 'string') continue;
       if (identityAbsencePermitsReachUnit(goal.reach_unit)) {
         reachGoalUnit = goal.reach_unit;
         break;
       }
     }
+    if (reachGoalUnit) break;
   }
   const simulatedReachUnit = identityAbsencePermitsReachUnit(simDelivery?.reachUnit)
     ? simDelivery?.reachUnit
@@ -15170,7 +15169,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // platform default). Documented as placeholders because the
   // get_media_buy_delivery contract requires field_present, not specific
   // numeric values, on the gating scenarios.
-  const hasReachGoal = mb.packages.some(pkg =>
+  const hasReachGoal = simulatedPackages.some(pkg =>
     pkg.optimizationGoals?.some(g => g?.kind === 'metric' && g?.metric === 'reach'),
   );
   const hasCompletedViewsGoal = mb.packages.some(pkg =>

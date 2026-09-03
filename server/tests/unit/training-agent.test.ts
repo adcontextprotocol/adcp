@@ -15259,6 +15259,53 @@ describe('get_media_buy_delivery handler', () => {
       .totals) as Record<string, unknown>;
     expect(canceledTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
 
+    // An inactive package's goal must not cause reach/frequency to appear for
+    // an active identity-absent package that has no reach goal of its own.
+    const { result: inactiveOnlyCreated, isError: inactiveOnlyCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+        },
+      ],
+    });
+    expect(inactiveOnlyCreateError, JSON.stringify(inactiveOnlyCreated)).toBeFalsy();
+    const inactiveOnlyPackages = inactiveOnlyCreated.packages as Array<Record<string, unknown>>;
+    await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: inactiveOnlyCreated.media_buy_id,
+      packages: [{ package_id: inactiveOnlyPackages[0].package_id, paused: true }],
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: inactiveOnlyCreated.media_buy_id,
+        impressions: 1_000,
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: inactiveOnlyDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: inactiveOnlyCreated.media_buy_id,
+    });
+    const inactiveOnlyTotals = ((inactiveOnlyDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(inactiveOnlyTotals.reach).toBeUndefined();
+    expect(inactiveOnlyTotals.frequency).toBeUndefined();
+    expect(inactiveOnlyTotals.reach_unit).toBeUndefined();
+
     const audioProductId = `identity-absent-audio-${randomUUID()}`;
     await simulateCallTool(server, 'comply_test_controller', {
       account,
@@ -15271,6 +15318,10 @@ describe('get_media_buy_delivery handler', () => {
           channels: ['podcast'],
           delivery_type: 'non_guaranteed',
           identity: { persistent_identifier: false },
+          metric_optimization: {
+            supported_metrics: ['reach'],
+            supported_reach_units: ['custom', 'households'],
+          },
         },
       },
     });
@@ -15292,6 +15343,10 @@ describe('get_media_buy_delivery handler', () => {
         product_id: audioProductId,
         pricing_option_id: 'identity-absent-audio-cpm',
         budget: 1_000,
+        optimization_goals: [
+          { kind: 'metric', metric: 'reach', reach_unit: 'custom' },
+          { kind: 'metric', metric: 'reach', reach_unit: 'households' },
+        ],
       }],
     });
     expect(audioCreateError, JSON.stringify(audioCreated)).toBeFalsy();
@@ -15313,10 +15368,8 @@ describe('get_media_buy_delivery handler', () => {
     });
     const audioDelivery = (audioDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0];
     const audioPackage = (audioDelivery.by_package as Array<Record<string, unknown>>)[0];
-    expect(audioPackage.frequency).toBeUndefined();
-    expect(audioPackage.reach_unit).toBeUndefined();
-    expect((audioDelivery.totals as Record<string, unknown>).frequency).toBeUndefined();
-    expect((audioDelivery.totals as Record<string, unknown>).reach_unit).toBeUndefined();
+    expect(audioPackage).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+    expect(audioDelivery.totals as Record<string, unknown>).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
   });
 
   it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {
