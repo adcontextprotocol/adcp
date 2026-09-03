@@ -1351,15 +1351,14 @@
         grid.appendChild(link);
       });
 
-      // Ghost placeholder slots
-      for (var i = 0; i < 2; i++) {
-        var ghost = document.createElement('div');
-        ghost.className = 'face-ghost';
-        ghost.innerHTML =
-          '<div class="face-ghost-ring">+</div>' +
-          '<span class="face-ghost-label">You?</span>';
-        grid.appendChild(ghost);
-      }
+      // A single ghost placeholder closes out the grid: one open seat reads as
+      // an invitation, where a run of identical ones reads as a rendering bug.
+      var ghost = document.createElement('div');
+      ghost.className = 'face-ghost';
+      ghost.innerHTML =
+        '<div class="face-ghost-ring">+</div>' +
+        '<span class="face-ghost-label">You?</span>';
+      grid.appendChild(ghost);
     })();
   </script>
 </body>
