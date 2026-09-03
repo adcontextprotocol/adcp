@@ -428,6 +428,7 @@ function applyExtendedDeliveryParams(cumulative: ComplyDeliveryAccumulator, para
   if (typeof params.measurement_window === 'string') cumulative.measurementWindow = params.measurement_window;
   if (typeof params.reach === 'number') cumulative.reach = params.reach;
   if (typeof params.frequency === 'number') cumulative.frequency = params.frequency;
+  if (typeof params.reach_unit === 'string') cumulative.reachUnit = params.reach_unit;
   if (typeof params.conversion_value === 'number') cumulative.conversionValue = params.conversion_value;
   if (typeof params.commissionable_value === 'number') cumulative.commissionableValue = params.commissionable_value;
   if (params.reach_window && typeof params.reach_window === 'object' && !Array.isArray(params.reach_window)) {
@@ -464,6 +465,7 @@ function extendedDeliverySnapshot(cumulative: ComplyDeliveryAccumulator): Record
     ...(cumulative.measurementWindow ? { measurement_window: cumulative.measurementWindow } : {}),
     ...(cumulative.reach !== undefined ? { reach: cumulative.reach } : {}),
     ...(cumulative.frequency !== undefined ? { frequency: cumulative.frequency } : {}),
+    ...(cumulative.reachUnit ? { reach_unit: cumulative.reachUnit } : {}),
     ...(cumulative.conversionValue !== undefined ? { conversion_value: cumulative.conversionValue } : {}),
     ...(cumulative.commissionableValue !== undefined ? { commissionable_value: cumulative.commissionableValue } : {}),
     ...(cumulative.reachWindow ? { reach_window: cumulative.reachWindow } : {}),
@@ -1165,6 +1167,7 @@ function createStore(
       if (typedParams.commissionable_value !== undefined) simulated.commissionable_value = typedParams.commissionable_value;
       if (typedParams.reach !== undefined) simulated.reach = typedParams.reach;
       if (typedParams.frequency !== undefined) simulated.frequency = typedParams.frequency;
+      if (typedParams.reach_unit !== undefined) simulated.reach_unit = typedParams.reach_unit;
       if (typedParams.reach_window !== undefined) simulated.reach_window = typedParams.reach_window;
       if (typedParams.viewability !== undefined) simulated.viewability = typedParams.viewability;
       if (typedParams.plays !== undefined) simulated.plays = typedParams.plays;
@@ -2319,6 +2322,7 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     const simulatedExtras: Record<string, unknown> = {};
     if (params.reach !== undefined) simulatedExtras.reach = params.reach;
     if (params.frequency !== undefined) simulatedExtras.frequency = params.frequency;
+    if (params.reach_unit !== undefined) simulatedExtras.reach_unit = params.reach_unit;
     if (params.conversion_value !== undefined) simulatedExtras.conversion_value = params.conversion_value;
     if (params.commissionable_value !== undefined) simulatedExtras.commissionable_value = params.commissionable_value;
     if (params.reach_window !== undefined) simulatedExtras.reach_window = params.reach_window;

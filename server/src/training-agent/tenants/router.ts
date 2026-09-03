@@ -915,6 +915,12 @@ function projectTenantCapabilities(
       ) {
         experimentalFeatures.push('media_buy.audience_activation');
       }
+      if (
+        supportsGetProductsRejected(servedVersion)
+        && !experimentalFeatures.includes('media_buy.product_identity')
+      ) {
+        experimentalFeatures.push('media_buy.product_identity');
+      }
       structured.experimental_features = experimentalFeatures;
       const mediaBuy = structured.media_buy && typeof structured.media_buy === 'object'
         ? structured.media_buy

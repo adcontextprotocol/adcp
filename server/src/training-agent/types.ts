@@ -332,6 +332,8 @@ export interface ComplyDeliveryAccumulator {
   measurementWindow?: string;
   reach?: number;
   frequency?: number;
+  /** Unit for simulated reach or frequency reporting. */
+  reachUnit?: string;
   reachWindow?: {
     kind: 'cumulative' | 'period' | 'rolling';
     period?: { interval: number; unit: string };

@@ -1037,7 +1037,11 @@
         "frequency": {
           "type": "number",
           "minimum": 0,
-          "description": "Average frequency per reach unit to inject. Used by simulate_delivery. When supplied alongside reach, sellers MUST surface this value at `totals.frequency`. The measurement window for this frequency value is declared in `reach_window` when also present."
+          "description": "Average frequency per reach unit to inject. Used by simulate_delivery. When supplied, sellers MUST surface this value at `totals.frequency`, including frequency-only delivery. The measurement window for this frequency value is declared in `reach_window` when also present."
+        },
+        "reach_unit": {
+          "$ref": "/schemas/enums/reach-unit.json",
+          "description": "Unit for an injected reach or frequency value. Used by simulate_delivery. When supplied with reach or frequency, sellers MUST surface it on the corresponding delivery row."
         },
         "reach_window": {
           "type": "object",
