@@ -1,0 +1,377 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-obligation.json",
+  "title": "Reporting Obligation",
+  "x-status": "experimental",
+  "description": "Period-level status joining what reporting was expected to any produced immutable revisions and delivery materializations. An obligation exists before its first revision or webhook, making missing-first-report detection possible. All nested revisions and materializations MUST match this obligation's authenticated caller/account, configuration generation, report definition, feed, period, and scope.",
+  "type": "object",
+  "properties": {
+    "reporting_obligation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_obligation"
+    },
+    "delivery_config_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "x-entity": "reporting_delivery_config"
+    },
+    "delivery_config_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "report_definition_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$",
+      "x-entity": "reporting_definition"
+    },
+    "feed_purpose": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose"
+    },
+    "reporting_profile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "account"
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
+      },
+      "uniqueItems": true,
+      "description": "Exact frozen media-buy denominator resolved for this period, including buys with zero rows. An empty array is the definitive zero-buy set; omission is never used to mean all, empty, or unknown."
+    },
+    "scope_resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Instant at which the configured scope was resolved and frozen for this obligation. For all_media_buys, include every caller-authorized account media buy whose effective flight overlaps the half-open period and was known by this cutoff. Later-created or backdated buys do not rewrite this obligation."
+    },
+    "coverage": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-coverage.json",
+      "description": "Immutable effective coverage of the exact selected offering at this period boundary. Delivery health is evaluated separately over the covered denominator."
+    },
+    "period": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_timezone": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "start",
+        "end",
+        "source_timezone"
+      ],
+      "additionalProperties": false
+    },
+    "expected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schedule": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-schedule.json",
+      "description": "Resolved immutable schedule generation that created this obligation."
+    },
+    "destination_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "x-entity": "reporting_destination",
+      "description": "Immutable caller-owned destination generation selected by this account-authorized obligation. The account/configuration join—not possession of this reusable reference—authorizes disclosure. Present when and only when the obligation’s configuration selects a managed-delivery offering; Core (API-delivered) obligations omit every destination and materialization field."
+    },
+    "required_finality": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/reporting-finality.json"
+    },
+    "reconciliation_mode": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-reconciliation-mode.json"
+    },
+    "reconciliation_status": {
+      "type": "string",
+      "enum": [
+        "not_required",
+        "pending",
+        "accepted",
+        "rejected"
+      ],
+      "description": "Consumer agreement state for the current required revision. A later superseding revision returns a receipt-required obligation to pending until that revision is accepted."
+    },
+    "health": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/reporting-health.json"
+    },
+    "production_status": {
+      "type": "string",
+      "enum": [
+        "not_due",
+        "pending",
+        "published",
+        "failed"
+      ],
+      "description": "Whether any revision has been produced for this obligation. published includes zero-row revisions."
+    },
+    "revision_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of revision records for this obligation in the consistent ledger snapshot."
+    },
+    "materialization_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of materialization records for this obligation's revisions in the consistent ledger snapshot. Present iff the obligation is managed-delivery (destination_ref present)."
+    },
+    "successful_materialization_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of available/delivered verified materializations in the consistent ledger snapshot. Present iff the obligation is managed-delivery (destination_ref present)."
+    },
+    "receipt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Complete number of authenticated receipts associated with this obligation in the ledger snapshot. Present iff reconciliation_mode is consumer_receipt."
+    },
+    "accepted_receipt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of accepted receipts. At most one current accepted receipt per consumer and revision contributes to reconciliation_status. Present iff reconciliation_mode is consumer_receipt."
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-status-issue.json"
+      }
+    },
+    "resource_retained_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Minimum time through which at least one verified materialization for a completed obligation remains readable. Managed-delivery only; Core revisions are retained per status_retention_days and readable through the existing API transports."
+    }
+  },
+  "required": [
+    "reporting_obligation_id",
+    "delivery_config_id",
+    "delivery_config_version",
+    "report_definition_id",
+    "feed_purpose",
+    "reporting_profile",
+    "account_id",
+    "media_buy_ids",
+    "scope_resolved_at",
+    "coverage",
+    "period",
+    "expected_at",
+    "schedule",
+    "required_finality",
+    "reconciliation_mode",
+    "reconciliation_status",
+    "health",
+    "production_status",
+    "revision_count",
+    "issues"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "enum": [
+              "healthy",
+              "complete"
+            ]
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "production_status": {
+            "const": "published"
+          },
+          "revision_count": {
+            "minimum": 1
+          },
+          "issues": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "enum": [
+              "healthy",
+              "complete"
+            ]
+          }
+        },
+        "required": [
+          "health",
+          "destination_ref"
+        ]
+      },
+      "then": {
+        "properties": {
+          "materialization_count": {
+            "minimum": 1
+          },
+          "successful_materialization_count": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "materialization_count",
+          "successful_materialization_count",
+          "resource_retained_until"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "production_status": {
+            "const": "published"
+          }
+        },
+        "required": [
+          "production_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "revision_count": {
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "delivery_only"
+          }
+        },
+        "required": [
+          "reconciliation_mode"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciliation_status": {
+            "const": "not_required"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation_mode": {
+            "const": "consumer_receipt"
+          },
+          "health": {
+            "enum": [
+              "healthy",
+              "complete"
+            ]
+          }
+        },
+        "required": [
+          "reconciliation_mode",
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reconciliation_status": {
+            "const": "accepted"
+          },
+          "receipt_count": {
+            "minimum": 1
+          },
+          "accepted_receipt_count": {
+            "minimum": 1
+          }
+        },
+        "required": [
+          "accepted_receipt_count",
+          "receipt_count"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "health": {
+            "enum": [
+              "delayed",
+              "action_required"
+            ]
+          }
+        },
+        "required": [
+          "health"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "production_status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "production_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "issues": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ],
+  "x-adcp-validation": {
+    "obligation_availability": "For every eligible elapsed period, the seller MUST commit the obligation independently of source availability and before committing any revision for that obligation or taking any get_reporting_status ledger snapshot whose ledger_as_of is later than period.end. A periods view whose selected denominator includes that configuration generation and period MUST include the obligation in its paginated record set. The seller MAY derive future boundaries and next_expected_at before close, but MUST NOT expose an obligation in a ledger snapshot whose ledger_as_of is at or before period.end or freeze an all_media_buys denominator before period.end. Media-buy acceptance alone does not create an obligation: the applicable reporting configuration generation determines the schedule, scope, finality, and delivery contract. Revision production, materialization, and any webhook MUST NOT be prerequisites for obligation creation.",
+    "scope_resolution": "scope_resolved_at MUST equal period.end. all_media_buys membership is frozen from the caller-authorized AdCP media buys known at that instant whose effective flights overlap [period.start, period.end); explicit configured media_buy_ids are echoed even when they produce zero rows. Provider object deletion does not remove a buy. Later-created or backdated buys do not alter the obligation.",
+    "coverage_resolution": "coverage.evaluated_at MUST equal scope_resolved_at and coverage.media_buy_ids MUST equal media_buy_ids. A configuration requiring full coverage makes incomplete coverage action_required with REPORTING_COVERAGE_INCOMPLETE. allow_partial evaluates delivery health over covered_package_ids but never changes coverage.status or represents covered-subset aggregates as whole-scope totals.",
+    "nested_identity": "Every materialization associated with this obligation MUST equal its delivery_config_id, delivery_config_version, destination_ref, feed_purpose, and method; its destination-independent revision MUST equal account_id, report_definition_id, reporting_profile, period, and applicable media_buy_ids.",
+    "complete_finality": "complete requires a published revision at required_finality. For Core, that revision MUST remain readable through the existing API transports for status_retention_days. Managed-delivery additionally requires at least one verified readable materialization for that revision through resource_retained_until. consumer_receipt additionally requires an accepted matching receipt for the current revision. A snapshot-required pacing obligation may therefore become complete from a snapshot revision.",
+    "revision_chain": "Supersession MUST be acyclic, remain within this logical slice, and every supersedes_reporting_revision_id MUST name the immediately prior retained revision.",
+    "record_counts": "revision_count is the number of distinct revision records for this obligation in ledger_snapshot_id. materialization_count, successful_materialization_count, receipt_count, and accepted_receipt_count, when present for their respective tiers, MUST equal the complete associated record totals in the same snapshot, even when records appear on different pages.",
+    "core_readability": "For a Core (API-delivered) obligation — no destination_ref — healthy and complete assert an authoritative readable revision: production_status published, at least one immutable revision retained per status_retention_days, and readable through the existing get_media_buy_delivery and reporting_webhook transports. Managed-delivery obligations additionally require at least one successful retained materialization."
+  },
+  "additionalProperties": false
+}

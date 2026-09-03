@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/demographic-system.json",
+  "title": "Demographic System",
+  "description": "Audience measurement systems for demographic notation in GRP forecasts and pricing, across video and audio channels. Specifies how demographics are written, not whose panel produced the numbers — provider identity is measurement_source.",
+  "type": "string",
+  "enum": [
+    "nielsen",
+    "nielsen_audio",
+    "barb",
+    "agf",
+    "oztam",
+    "mediametrie",
+    "custom"
+  ],
+  "enumDescriptions": {
+    "nielsen": "Nielsen notation. Prefix: P(ersons), M(en), W(omen), A(dults), C(hildren), T(eens) + age range. Examples: P18-49, M25-54, W35+",
+    "nielsen_audio": "Nielsen Audio (US radio, formerly Arbitron). Same P/M/W/A prefix + age-range notation as Nielsen TV, measured on the PPM/diary radio panel. Examples: P25-54, A18+, W25-54",
+    "barb": "BARB (UK). NRS social grade + age bands. Examples: ABC1 Adults, 16-34, Adults",
+    "agf": "AGF Videoforschung (Germany). Erwachsene notation + age bands. Examples: E 14-49, E 14+",
+    "oztam": "OzTAM (Australia). Age/gender bands, 4+ measurement universe",
+    "mediametrie": "Mediametrie (France). Named segments + age bands",
+    "custom": "Publisher-defined demographic notation"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/daypart-timezone-mode.json",
+  "title": "Daypart Timezone Mode",
+  "description": "Clock modes a product supports for daypart targeting.",
+  "type": "string",
+  "enum": [
+    "inventory_local",
+    "iana"
+  ],
+  "x-added-in": "3.2.0"
+}

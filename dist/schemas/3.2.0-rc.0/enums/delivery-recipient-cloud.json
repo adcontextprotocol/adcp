@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/enums/delivery-recipient-cloud.json",
+  "title": "Delivery Recipient Cloud",
+  "x-status": "experimental",
+  "description": "Cloud family hosting a delivery recipient's account, used together with region to disambiguate provider-native recipient identities.",
+  "type": "string",
+  "enum": [
+    "aws",
+    "azure",
+    "gcp"
+  ]
+}

@@ -1,0 +1,603 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/mcp/2026-07-28/profiles/production/protocol/sync-principal-request.json",
+  "x-status": "experimental",
+  "type": "object",
+  "x-mutates-state": true,
+  "properties": {
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$",
+      "description": "Release-precision AdCP version (VERSION.RELEASE, e.g. \"3.0\", \"3.1\", \"3.1-beta\"). On a request: the buyer's release pin — the seller validates against its supported_versions and returns VERSION_UNSUPPORTED on cross-major mismatch, or downshifts to the highest supported release within the same major. On a response: the release the seller actually served — clients SHOULD validate the response against that release's schema, not against their pin. Patches are not negotiated; surface them as build_version on capabilities for operational visibility. When omitted, falls back to adcp_major_version (deprecated) or server default. Buyers SHOULD emit both adcp_version and adcp_major_version through 3.x to remain compatible with sellers that only read the legacy field. NORMALIZATION: SDKs that read full-semver values from bundle metadata (e.g. ComplianceIndex.published_version = \"3.1.0-beta.1\") MUST normalize to release-precision (\"3.1-beta.1\") before emitting on the wire — meta-field values are NOT valid wire values."
+    },
+    "adcp_major_version": {
+      "type": "integer",
+      "deprecated": true,
+      "minimum": 1,
+      "maximum": 99,
+      "description": "DEPRECATED in favor of adcp_version (release-precision string). Servers MUST continue to honor this field through 3.x. Removed in 4.0. Original semantics: the AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "expected_configuration_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255
+    },
+    "expected_principal_kind": {
+      "$ref": "#/$defs/external:enums~1principal-kind.json"
+    },
+    "configuration": {
+      "type": "object",
+      "properties": {
+        "notification_configs": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:core~1agent-notification-config.json"
+              },
+              {
+                "if": {
+                  "required": [
+                    "authentication"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "authentication": {
+                      "required": [
+                        "credentials"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "maxItems": 16
+        },
+        "reporting_destinations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1agent-reporting-destination.json"
+          },
+          "maxItems": 64
+        },
+        "declarations": {
+          "$ref": "#/$defs/external:core~1principal-declarations.json"
+        }
+      },
+      "minProperties": 1,
+      "additionalProperties": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false
+    },
+    "context": {
+      "$ref": "#/$defs/external:core~1context.json"
+    },
+    "ext": {
+      "$ref": "#/$defs/external:core~1ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "configuration"
+  ],
+  "additionalProperties": true,
+  "x-adcp-validation": {
+    "stable_principal": "Reject NO_AUTH, anonymous, or unstable caller identities. Ownership is the server-resolved stable authenticated principal, not the current signing key, token, session, interactive client application identity, request-body identity, bucket coordinates, or principal_id. Any request-body field not defined by this schema MUST be ignored for identity, ownership, and authorization decisions. A delegated human user and an autonomous workload are both valid principal kinds. Interactive use through Claude, ChatGPT, another MCP host, or a UI MUST NOT require registration of that client or user as a buyer agent; it does require a stable delegated user subject. When an interactive client supplies only a shared service identity, require delegated authorization or account linking before persistence.",
+    "signed_agent_identity": "For an RFC 9421 signed caller resolved through operator brand.json, the stable Agent subject MUST be the canonical form of the exactly matched agents[].url after the publication chain and request-signing key authorization have verified. A request-body URL, matching domain, raw URL spelling, brand_json_url, jwks_uri, kid, key thumbprint, or key generation is not that subject. Distinct canonical Agent URLs remain distinct principals even when they share a domain, operator, functional type, or JWKS endpoint. Key rotation preserves the principal when the replacement key is authorized for the same canonical Agent URL. A resolver that cannot bind the verified caller to exactly one canonical Agent URL MUST fail closed without materializing or accessing principal state.",
+    "credential_rotation": "A new token or signing key MUST resolve to the existing principal record when and only when the authorization system maps it to the same stable principal. A key ID, key fingerprint, token, or session MUST NOT become the owner key.",
+    "principal_isolation": "Do not infer shared ownership from organization membership, client application, an unverified or merely domain-matched agent URL, destination coordinates, or advertiser account. The verified canonical Agent URL rule for RFC 9421 signed callers is the identity mapping, not cross-principal linking. Different principals cannot discover or claim each other's principal record or destination references. Cross-principal linking otherwise requires a separate explicitly authorized administrative operation.",
+    "account_authority": "Destination proof establishes where the authenticated principal can receive delivery; it does not establish which advertiser data that principal can receive. Every destination use MUST independently authorize the account-scoped feed binding.",
+    "atomic_sections": "Validate every submitted section, uniqueness constraint, and authorization check before commit; failure leaves all prior sections unchanged. A proof-bound resource may persist as validating or action_required, but cannot become ready until proof succeeds. Active notification subscribers require endpoint proof before replacement. dry_run performs no grants, challenges, or persistence.",
+    "optimistic_concurrency": "After resolving an exact idempotent replay, when expected_configuration_version is present and does not equal the current version, reject a new operation with CONFLICT without revealing another principal's version or configuration. Idempotency lookup precedes the version fence so a lost successful response remains replayable after the persisted version advances. When the seller advertises optimistic_concurrency false, a request carrying expected_configuration_version is rejected with UNSUPPORTED_FEATURE, never silently ignored.",
+    "idempotency_scope": "Idempotency records are scoped to the stable authenticated principal. A key first seen under a different principal MUST be treated as a new operation, never a replay, because a replayed applied response discloses the owner's complete principal state.",
+    "principal_kind_fence": "principal_kind is resolved solely from the seller's authorization system and reported on every applied or current readback. expected_principal_kind is an assertion fence evaluated after idempotent-replay resolution: on mismatch with the resolved kind, reject with CONFLICT before mutation. Neither field is identity input, and a caller cannot change its resolved kind through this task.",
+    "version_coherence": "Every successful configuration mutation through this task or sync_agent_notification_configs advances configuration_version over the one shared underlying state. Seller-driven setup-state transitions, such as a destination moving from validating to ready, MUST NOT advance it.",
+    "no_cross_principal_oracle": "Applied action values, dry_run outcomes, warnings, errors, and timing are computed solely against the caller's own state and MUST NOT reveal whether coordinates, recipients, endpoints, or references are registered to any other principal.",
+    "offering_boundary": "Schema violations, authorization failures, unsupported sections, oversize sections, and destinations outside the advertised reporting_destination_offerings fail the whole request atomically. Provider-side setup outcomes for in-offering destinations are expressed per destination as validating, action_required, or rejected states inside an applied response.",
+    "declarations_intersection": "On every declarations replacement the seller recomputes the accepted intersection against its objective support and returns it in state. Unknown experimental feature identifiers are accepted and excluded from the intersection, not rejected. An empty webhook_signing_algorithms intersection while any webhook subscriber is active — on either side of the same request — fails the whole request with UNSUPPORTED_FEATURE, because fires would be unverifiable. A later seller-side change to the accepted intersection fires principal.changed with reason declarations_intersection_changed and does not advance configuration_version. The readback MUST persist the declared set, the accepted intersection, the selected_async_adcp_version chosen from it, and an exclusions entry with a reason for every declared value not accepted.",
+    "caller_level_account_events": "Account-anchored event types on caller-level subscribers require the explicit all_authorized_accounts acknowledgment — subscribing an endpoint to every account is never implicit — and are authorized at each delivery attempt against the caller's current account authority: revocation suppresses queued retries carrying that account's data, not merely new fires. Registration itself requires no account authority and grants none. Media-buy-anchored event types are rejected. include_future_event_types extends only to invalidation-only classified types, never payload-bearing ones. Caller-level and account-level subscriptions are independent; sellers fire both and receivers dedupe by notification_id.",
+    "compatibility": "A notification_configs update has the same effect as sync_agent_notification_configs for that authenticated caller. Implementations supporting both tasks MUST expose one underlying subscriber set, not divergent copies, and MUST keep accepting the specialized task while notifications.supported is true."
+  },
+  "$defs": {
+    "external:core/version-envelope.json": {
+      "type": "object",
+      "properties": {
+        "adcp_version": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        },
+        "adcp_major_version": {
+          "type": "integer",
+          "deprecated": true,
+          "minimum": 1,
+          "maximum": 99
+        }
+      }
+    },
+    "external:enums/principal-kind.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "buyer_agent",
+        "operator"
+      ]
+    },
+    "external:core/agent-notification-config.json": {
+      "type": "object",
+      "properties": {
+        "subscriber_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/external:enums~1notification-type.json"
+              },
+              {
+                "not": {
+                  "enum": [
+                    "scheduled",
+                    "final",
+                    "delayed",
+                    "adjusted",
+                    "window_update",
+                    "impairment"
+                  ]
+                }
+              }
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "all_authorized_accounts": {
+          "type": "boolean"
+        },
+        "include_future_event_types": {
+          "type": "boolean",
+          "default": false
+        },
+        "authentication": {
+          "type": "object",
+          "deprecated": true,
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/external:enums~1auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes"
+          ],
+          "additionalProperties": false
+        },
+        "active": {
+          "type": "boolean",
+          "default": true
+        },
+        "ext": {
+          "$ref": "#/$defs/external:core~1ext.json"
+        }
+      },
+      "required": [
+        "subscriber_id",
+        "url",
+        "event_types"
+      ],
+      "if": {
+        "properties": {
+          "event_types": {
+            "contains": {
+              "enum": [
+                "creative.status_changed",
+                "creative.assignment_changed",
+                "indicators.changed",
+                "creative.purged",
+                "account.status_changed",
+                "account.change_recorded",
+                "product.created",
+                "product.updated",
+                "product.priced",
+                "product.removed",
+                "signal.created",
+                "signal.updated",
+                "signal.priced",
+                "signal.removed",
+                "wholesale_feed.bulk_change"
+              ]
+            }
+          }
+        },
+        "required": [
+          "event_types"
+        ]
+      },
+      "then": {
+        "properties": {
+          "all_authorized_accounts": {
+            "const": true
+          }
+        },
+        "required": [
+          "all_authorized_accounts"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "external:enums/notification-type.json": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "final",
+        "delayed",
+        "adjusted",
+        "window_update",
+        "impairment",
+        "creative.status_changed",
+        "creative.assignment_changed",
+        "indicators.changed",
+        "creative.purged",
+        "account.status_changed",
+        "account.change_recorded",
+        "product.created",
+        "product.updated",
+        "product.priced",
+        "product.removed",
+        "signal.created",
+        "signal.updated",
+        "signal.priced",
+        "signal.removed",
+        "wholesale_feed.bulk_change",
+        "capabilities.changed",
+        "reporting.delivery_ready",
+        "reporting.status_changed",
+        "principal.changed"
+      ]
+    },
+    "external:enums/auth-scheme.json": {
+      "deprecated": true,
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "HMAC-SHA256"
+      ]
+    },
+    "external:core/ext.json": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "external:core/agent-reporting-destination.json": {
+      "x-status": "experimental",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "file_transfer"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "pattern": "^[!$&-;=@-~]+$"
+            },
+            "accepted_formats": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "jsonl",
+                  "csv",
+                  "parquet",
+                  "avro",
+                  "orc"
+                ]
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_formats",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "warehouse_materialization"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "location": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048,
+              "pattern": "^[!$&-;=@-~]+$"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "location",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "const": "dataset_share"
+            },
+            "destination_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "operator_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/$defs/external:core~1delivery-provider.json"
+            },
+            "transport": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "access_mode": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9_.-]*$"
+            },
+            "recipient": {
+              "$ref": "#/$defs/external:core~1delivery-recipient.json"
+            },
+            "accepted_verification_profiles": {
+              "$ref": "#/$defs/external:core~1reporting-verification-profile-set.json"
+            }
+          },
+          "required": [
+            "pattern",
+            "destination_id",
+            "active",
+            "provider",
+            "transport",
+            "access_mode",
+            "recipient",
+            "accepted_verification_profiles"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "x-adcp-validation": {
+        "proof_file_transfer": "A file_transfer destination MUST NOT become ready until both hold: (1) the caller has proven control of the normalized location through a seller-verifiable challenge, such as writing a seller-named proof object under the prefix or granting the seller's published principal and surfacing provider-native evidence of that grant; and (2) the seller has successfully written and read back a probe object under the prefix. Grant existence alone is insufficient.",
+        "proof_warehouse_materialization": "A warehouse_materialization destination MUST NOT become ready until the seller has verified, through provider-native access it was granted, that it can create and commit into the normalized locator, and the seller has bound that verification to the caller's proof tuple. A caller-asserted locator with no observed grant MUST remain action_required.",
+        "proof_dataset_share": "A dataset_share destination MUST NOT become ready until the named recipient has affirmatively completed the provider's recipient-side acceptance or activation step and the provider reports the recipient able to read the share. For access modes that grant access to a named identifier with no recipient-side acceptance step, the seller MUST require an equivalent recipient-initiated proof (for example, a recipient read of a seller-published proof dataset) before ready; grant creation alone MUST NOT produce ready. Provider grant propagation can lag: ready asserts recipient readability was observed, and account-level delivery readiness additionally requires consumer-read verification as defined by managed reporting delivery.",
+        "normalization": "Before proof binding, uniqueness comparison, and generation comparison, sellers MUST canonicalize coordinates per transport: Unicode NFC, lowercase scheme and host authority, no default ports, single canonical path separators, and no percent-encoding of characters that are valid literally. Sellers MUST reject a location or recipient identity whose host authority is not ASCII after canonicalization. Proof is bound to the canonical form.",
+        "secret_rejection": "Reject credentials, bearer profiles, private keys, signed URLs, password-bearing authorities, secret query parameters, and secret fragments in any field, including forms the schema pattern cannot express such as userinfo-style 'key:secret@host' prefixes inside an otherwise valid locator. The schema pattern is a transport guard, not the enforcement boundary; sellers MUST screen canonicalized values. Exchange access through provider-native control planes or out of band.",
+        "account_isolation": "Readiness authorizes coordinate reuse only. Each account/feed binding still requires caller authorization. Reject unknown, unauthorized, and cross-principal destination_ref values indistinguishably.",
+        "replacement": "destination_id values are unique within reporting_destinations. An exact replay preserves destination_ref. Changing provider, transport, normalized location/recipient, accepted formats, access mode, or accepted verification profiles requires fresh proof and a new destination_ref; old references remain immutable and resolvable for authorized account bindings and retained reporting history, and remain enumerable to their owner through configuration readback.",
+        "suspension_and_revocation": "Setting active to false suspends every generation of the destination_id: the seller MUST stop initiating new deliveries within its advertised suspension interval and mark affected account bindings with a typed destination_suspended issue. Omitting a previously present destination_id from a submitted reporting_destinations section revokes it: in addition to suspension effects, the destination and its generations leave current state, remain enumerable as retired generations, and can only be reused through fresh registration and proof. Neither operation deletes data already delivered.",
+        "operator_scope": "operator_id scopes resources within one principal only. Suspension, revocation, and audit enumeration MAY be applied per operator_id, and consolidated delivery for one operator SHOULD use that operator's own destinations when contracted. Matching operator_id values or operator domains across different principals MUST NOT be linked, deduped, or granted shared authority; bridging principals requires the explicitly authorized administrative delegation surface."
+      }
+    },
+    "external:core/delivery-provider.json": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        }
+      },
+      "required": [
+        "domain"
+      ],
+      "additionalProperties": false
+    },
+    "external:core/reporting-verification-profile-set.json": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "native_commit",
+          "manifest_checksums",
+          "canonical_digest"
+        ]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "external:core/delivery-recipient.json": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "cloud": {
+          "$ref": "#/$defs/external:enums~1delivery-recipient-cloud.json"
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "identity"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "cloud": [
+          "region"
+        ],
+        "region": [
+          "cloud"
+        ]
+      }
+    },
+    "external:enums/delivery-recipient-cloud.json": {
+      "x-status": "experimental",
+      "type": "string",
+      "enum": [
+        "aws",
+        "azure",
+        "gcp"
+      ]
+    },
+    "external:core/principal-declarations.json": {
+      "x-status": "experimental",
+      "type": "object",
+      "properties": {
+        "async_adcp_versions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d+$"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "webhook_signing_algorithms": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "ed25519",
+              "ecdsa-p256-sha256"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "experimental_features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/external:core~1experimental-feature-id.json"
+          },
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "external:core/experimental-feature-id.json": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+    },
+    "external:core/context.json": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "description": "This task begins after authentication: AdCP defines no credential-registration protocol, and the seller’s authorization system (OAuth, API keys, signed requests, workload identity) issues and maps credentials before the first call. Declaratively synchronize selected sections of the authenticated principal's standing configuration with one AdCP agent. The principal is a party: a buyer agent, or an operator-side identity acting through any client. Use this task only to change state; read current state, the configuration version, and destination setup progress through get_principal, and prefer this task over the narrower sync_agent_notification_configs when both are advertised. This task does not register a buyer agent: the stable principal MAY be a delegated human user or an autonomous workload. Identity is resolved from authenticated transport and MUST NOT be accepted from request-body agent URLs, signing key IDs, account IDs, or other self-asserted fields. Each present section is the caller's complete desired set and replaces only that section; omitted sections remain unchanged. All submitted sections apply atomically or none do. This task configures reusable principal resources but grants no advertiser-account authority. Sellers implementing it MUST advertise adcp.principal and protocol.principal."
+}

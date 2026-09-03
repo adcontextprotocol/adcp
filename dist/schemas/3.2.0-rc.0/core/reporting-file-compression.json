@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.2.0-rc.0/core/reporting-file-compression.json",
+  "title": "Reporting File Compression",
+  "x-status": "experimental",
+  "description": "Physical compression applied to each data object listed by a reporting file manifest.",
+  "type": "string",
+  "enum": [
+    "none",
+    "gzip",
+    "zstd",
+    "snappy"
+  ]
+}
