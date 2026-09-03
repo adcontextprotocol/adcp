@@ -24,6 +24,8 @@ import {
   getDocsCorpusFingerprint,
   getSupportedDocsVersions,
   resolveDocsVersion,
+  versionAliases,
+  type DocsVersion,
 } from '../../src/addie/mcp/docs-indexer.js';
 import {
   KNOWLEDGE_TOOLS,
@@ -47,6 +49,23 @@ const BETA_SNAPSHOT = DOCS_SCHEMA_RELEASES['3.2-beta'];
  * geo_proximity returned no results despite the content existing in
  * docs/media-buy/advanced-topics/targeting.mdx.
  */
+
+it('uses the newest same-line prerelease for the bare release selector', () => {
+  const versions = [
+    { version: '3.2-rc', artifactVersion: '3.2.0-rc.0', displayName: '3.2-rc' },
+    { version: '3.2-beta', artifactVersion: '3.2.0-beta.12', displayName: '3.2-beta' },
+  ].map((version) => ({
+    ...version,
+    isDefault: false,
+    isArchived: false,
+    pagePaths: new Set<string>(),
+  })) satisfies DocsVersion[];
+
+  expect(versionAliases(versions[0], versions)).toContain('3.2');
+  expect(versionAliases(versions[0], versions)).toContain('3.2 rc');
+  expect(versionAliases(versions[1], versions)).not.toContain('3.2');
+  expect(versionAliases(versions[1], versions)).toContain('3.2 beta');
+});
 
 describe('docs-indexer', () => {
   beforeAll(async () => {
@@ -229,6 +248,8 @@ describe('docs-indexer', () => {
       const getDocTool = KNOWLEDGE_TOOLS.find((tool) => tool.name === 'get_doc');
       expect(searchTool?.input_schema.properties).toHaveProperty('version');
       expect(getDocTool?.input_schema.properties).toHaveProperty('version');
+      expect(searchTool?.input_schema.properties.version).not.toHaveProperty('enum');
+      expect(getDocTool?.input_schema.properties.version).not.toHaveProperty('enum');
       expect(searchTool?.input_schema.properties.limit).toMatchObject({
         type: 'integer',
         minimum: 1,

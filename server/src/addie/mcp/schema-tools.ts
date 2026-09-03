@@ -24,16 +24,52 @@ const SCHEMA_HOST = 'https://adcontextprotocol.org';
 // Legacy aliases remain available for callers that already use them.
 export const DOCS_SCHEMA_RELEASES = Object.freeze({
   '3.1': '3.1.20',
-  '3.2-beta': '3.2.0-beta.10',
+  '3.2-beta': '3.2.0-beta.11',
   '3.0': '3.0.26',
   '2.5': '2.5.3',
 });
 
+const PREVIEW_RELEASE_LINE = '3.2';
+export function buildPreviewSchemaRouting(
+  releases: Readonly<Record<string, string>>,
+  releaseLine: string,
+): { selectors: string[]; current: string; aliases: Record<string, string> } {
+  const selectors = Object.keys(releases).filter(
+    (selector) => selector.startsWith(`${releaseLine}-`),
+  );
+  const current = selectors[0];
+  if (!current) {
+    throw new Error(`DOCS_SCHEMA_RELEASES must contain a ${releaseLine} prerelease`);
+  }
+  const aliases = Object.fromEntries(
+    selectors.flatMap((selector) => {
+      const channel = selector.slice(releaseLine.length + 1);
+      const entries = [
+        [selector, selector],
+        [`${releaseLine} ${channel}`, selector],
+      ];
+      if (selector === current) entries.push([releaseLine, current]);
+      entries.push([releases[selector], selector]);
+      return entries;
+    }),
+  );
+  return { selectors, current, aliases };
+}
+
+const previewSchemaRouting = buildPreviewSchemaRouting(
+  DOCS_SCHEMA_RELEASES,
+  PREVIEW_RELEASE_LINE,
+);
+const PREVIEW_SCHEMA_SELECTORS = previewSchemaRouting.selectors;
+const CURRENT_PREVIEW_SELECTOR = previewSchemaRouting.current;
+
 const SCHEMA_BASE_URLS: Record<string, string> = {
-  '3.1': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.1']}`,
-  '3.2-beta': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.2-beta']}`,
-  '3.0': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['3.0']}`,
-  '2.5': `${SCHEMA_HOST}/schemas/${DOCS_SCHEMA_RELEASES['2.5']}`,
+  ...Object.fromEntries(
+    Object.entries(DOCS_SCHEMA_RELEASES).map(([selector, release]) => [
+      selector,
+      `${SCHEMA_HOST}/schemas/${release}`,
+    ]),
+  ),
   v2: `${SCHEMA_HOST}/schemas/v2`,
   '2.6': `${SCHEMA_HOST}/schemas/v2.6`,
   '2.6.0': `${SCHEMA_HOST}/schemas/2.6.0`,
@@ -51,10 +87,7 @@ const SCHEMA_VERSION_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   latest: '3.1',
   v3: '3.1',
   [DOCS_SCHEMA_RELEASES['3.1']]: '3.1',
-  '3.2-beta': '3.2-beta',
-  '3.2 beta': '3.2-beta',
-  '3.2': '3.2-beta',
-  [DOCS_SCHEMA_RELEASES['3.2-beta']]: '3.2-beta',
+  ...previewSchemaRouting.aliases,
   '3.0': '3.0',
   [DOCS_SCHEMA_RELEASES['3.0']]: '3.0',
   '2.5': '2.5',
@@ -104,7 +137,10 @@ function resolveInferredSchemaVersion(requested: string): string {
   const prereleaseMatch = selector.match(/^(\d+\.\d+)\.0-(beta|rc)\.(\d+)$/);
   if (prereleaseMatch) {
     const [, releaseLine, prereleaseKind, prereleaseNumberText] = prereleaseMatch;
-    const canonical = releaseLine === '3.2' ? '3.2-beta' : releaseLine;
+    const channelSelector = `${releaseLine}-${prereleaseKind}`;
+    const canonical = channelSelector in DOCS_SCHEMA_RELEASES
+      ? channelSelector
+      : releaseLine;
     const historicalRange = HISTORICAL_PRERELEASE_RANGES[canonical]?.[
       prereleaseKind as 'beta' | 'rc'
     ];
@@ -454,6 +490,21 @@ const VERSION_CHANGES: Record<string, string[]> = {
   ],
 };
 
+function schemaVersionTable(): string {
+  const rows = Object.entries(DOCS_SCHEMA_RELEASES).map(([selector, release]) => {
+    const note = selector === DEFAULT_VERSION
+      ? 'Current stable schema snapshot'
+      : selector.startsWith(`${PREVIEW_RELEASE_LINE}-`)
+        ? `${selector.endsWith('-rc') ? 'RC' : 'Beta'} docs snapshot`
+        : selector === '3.0'
+          ? 'Previous 3.x snapshot'
+          : 'Archived snapshot';
+    return `| ${selector} | ${SCHEMA_BASE_URLS[selector]} | ${note} (${release}) |`;
+  });
+  rows.push(`| v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |`);
+  return rows.join('\n');
+}
+
 /**
  * Schema tools for Addie
  */
@@ -479,8 +530,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use. Public docs selectors are 3.1 (stable default), 3.2-beta, 3.0, and 2.5; exact snapshot and legacy aliases are also accepted.',
-          enum: SCHEMA_VERSION_OPTIONS,
+            'Schema version to use. Omission means stable 3.1; use 3.2 for the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
       },
       required: ['json'],
@@ -502,8 +552,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version. Match search_docs: 3.1 (stable default), 3.2-beta, 3.0, or 2.5. Exact snapshot and legacy aliases are also accepted.',
-          enum: SCHEMA_VERSION_OPTIONS,
+          description: 'Schema version. Match search_docs; omission means stable 3.1 and 3.2 selects the current preview. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
         property: {
           type: 'string',
@@ -525,7 +574,6 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description: 'Optional schema version. Defaults to stable 3.1.',
-          enum: SCHEMA_VERSION_OPTIONS,
         },
       },
     },
@@ -546,12 +594,10 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         from_version: {
           type: 'string',
           description: 'Source version to compare from (default: "v2")',
-          enum: SCHEMA_VERSION_OPTIONS,
         },
         to_version: {
           type: 'string',
           description: 'Target version to compare to (default: stable 3.1)',
-          enum: SCHEMA_VERSION_OPTIONS,
         },
       },
       required: ['schema_path'],
@@ -760,11 +806,7 @@ ${formatCandidates(requestedPath, registry)}`);
 ### Schema Versions
 | Version | URL | Notes |
 |---------|-----|-------|
-| 3.1 | ${SCHEMA_BASE_URLS['3.1']} | Current stable schema snapshot (${DOCS_SCHEMA_RELEASES['3.1']}) |
-| 3.2-beta | ${SCHEMA_BASE_URLS['3.2-beta']} | Beta docs snapshot (${DOCS_SCHEMA_RELEASES['3.2-beta']}) |
-| 3.0 | ${SCHEMA_BASE_URLS['3.0']} | Previous 3.x snapshot (${DOCS_SCHEMA_RELEASES['3.0']}) |
-| 2.5 | ${SCHEMA_BASE_URLS['2.5']} | Archived snapshot (${DOCS_SCHEMA_RELEASES['2.5']}) |
-| v2 | ${SCHEMA_BASE_URLS.v2} | Legacy (2.x) |
+${schemaVersionTable()}
 
 ### Key Differences: v2 vs v3
 ${VERSION_CHANGES['v2-to-v3'].map((change) => `- ${change}`).join('\n')}

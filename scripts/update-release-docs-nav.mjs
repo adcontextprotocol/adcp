@@ -330,10 +330,33 @@ export function updateSchemaTools(content, releaseVersion, majorMinor) {
   const releaseLinePattern = new RegExp(
     `(export const DOCS_SCHEMA_RELEASES = Object\\.freeze\\(\\{[\\s\\S]*?\\n\\s*'${escapedKey}':\\s*')[^']+(',)`
   );
-  if (!releaseLinePattern.test(content)) {
+  if (releaseLinePattern.test(content)) {
+    return content.replace(releaseLinePattern, `$1${releaseVersion}$2`);
+  }
+
+  const prereleaseMatch = PRERELEASE_DOCS_LABEL_RE.exec(majorMinor);
+  if (!prereleaseMatch) {
     throw new Error(`schema-tools.ts is missing docs release line ${majorMinor}`);
   }
-  return content.replace(releaseLinePattern, `$1${releaseVersion}$2`);
+
+  const releaseLine = `${prereleaseMatch[1]}.${prereleaseMatch[2]}`;
+  const escapedReleaseLine = releaseLine.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sameLinePrereleasePattern = new RegExp(
+    `(export const DOCS_SCHEMA_RELEASES = Object\\.freeze\\(\\{[\\s\\S]*?)(\\n(\\s*)'${escapedReleaseLine}-[0-9A-Za-z]+':\\s*'[^']+',)`
+  );
+  if (!sameLinePrereleasePattern.test(content)) {
+    throw new Error(
+      `schema-tools.ts is missing docs release line ${majorMinor} and a ${releaseLine} prerelease source`
+    );
+  }
+
+  // Keep the previous channel frozen and insert the newly promoted channel
+  // first. Runtime routing treats the first prerelease on a release line as
+  // its current preview while preserving explicit beta/RC selectors.
+  return content.replace(
+    sameLinePrereleasePattern,
+    `$1\n$3'${majorMinor}': '${releaseVersion}',$2`
+  );
 }
 
 function main() {
