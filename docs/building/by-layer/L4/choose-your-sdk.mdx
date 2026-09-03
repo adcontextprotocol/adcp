@@ -168,11 +168,11 @@ Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The 
 ### JavaScript CLI
 
 ```bash
-npx @adcp/sdk@14.0.0-beta.28 --help
-npx @adcp/sdk@14.0.0-beta.28 --save-auth my-agent https://sales.example.com/mcp
-npx @adcp/sdk@14.0.0-beta.28 my-agent list_products '{"adcp_version":"3.2-beta.10","account":{"account_id":"account_123"}}'
+npx @adcp/sdk@14.0.0-beta.29 --help
+npx @adcp/sdk@14.0.0-beta.29 --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@14.0.0-beta.29 my-agent list_products '{"adcp_version":"3.2-beta.11","account":{"account_id":"account_123"}}'
 # or against the built-in public test agent:
-npx @adcp/sdk@14.0.0-beta.28 test-mcp list_products '{"adcp_version":"3.2-beta.10"}'
+npx @adcp/sdk@14.0.0-beta.29 test-mcp list_products '{"adcp_version":"3.2-beta.11"}'
 ```
 
 The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
