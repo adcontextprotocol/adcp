@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Community - AgenticAdvertising.org</title>
   <meta name="description" content="The people and agents building the future of agentic advertising. Members, AI assistants, and the characters who tell our stories.">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -222,15 +222,13 @@
       align-items: center;
       justify-content: space-between;
       padding: var(--space-4) var(--space-6);
-      background: var(--color-warning-50);
-      border: var(--border-1) solid var(--color-warning-500);
       border-radius: var(--card-radius);
     }
 
     .pending-banner-text {
       font-size: var(--text-sm);
       font-weight: var(--font-medium);
-      color: var(--color-warning-700);
+      color: var(--color-text);
     }
 
     /* Section card base */
@@ -433,7 +431,7 @@
     .event-date-box {
       width: 48px;
       height: 48px;
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
       border-radius: var(--radius-lg);
       display: flex;
       flex-direction: column;
@@ -445,7 +443,7 @@
     .event-date-month {
       font-size: var(--text-xs);
       font-weight: var(--font-bold);
-      color: var(--color-brand);
+      color: var(--color-brand-fg, var(--color-brand));
       text-transform: uppercase;
     }
 
@@ -543,7 +541,7 @@
     .journey-card-title { font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading); }
 
     /* Level stepper */
-    .level-stepper { display: flex; align-items: flex-start; margin-bottom: var(--space-6); overflow-x: auto; padding-bottom: var(--space-2); }
+    .level-stepper { display: flex; align-items: flex-start; margin-bottom: var(--space-6); overflow-x: auto; padding-top: var(--space-1); padding-bottom: var(--space-2); }
     .level-step { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 72px; position: relative; }
     .level-step-dot {
       width: 32px; height: 32px; border-radius: var(--radius-full);
@@ -552,7 +550,7 @@
       position: relative; z-index: 1; font-size: var(--text-xs); font-weight: var(--font-bold); color: var(--color-text-muted);
     }
     .level-step--completed .level-step-dot { background: var(--color-brand); border-color: var(--color-brand); color: white; }
-    .level-step--current .level-step-dot { background: var(--color-brand); border-color: var(--color-brand); color: white; box-shadow: 0 0 0 4px var(--color-primary-100); }
+    .level-step--current .level-step-dot { background: var(--color-brand); border-color: var(--color-brand); color: white; box-shadow: 0 0 0 4px var(--color-focus-ring, var(--color-brand-bg)); }
     .level-step-label { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-2); text-align: center; }
     .level-step--completed .level-step-label, .level-step--current .level-step-label { color: var(--color-text-heading); font-weight: var(--font-medium); }
     .level-step:not(:last-child)::after { content: ''; position: absolute; top: 16px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: var(--color-bg-button-secondary); z-index: 0; }
@@ -561,7 +559,7 @@
     /* Achievements grid */
     .achievements-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
     .achievement { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); }
-    .achievement--earned { background: var(--color-success-bg); border: var(--border-1) solid var(--color-success-200); }
+    .achievement--earned { background: var(--color-success-bg); border: var(--border-1) solid var(--color-success-border, var(--color-border)); }
     .achievement--locked { background: var(--color-bg-subtle); border: var(--border-1) dashed var(--color-border); }
     .achievement-icon { width: 36px; height: 36px; border-radius: var(--radius-lg); display: flex; align-items: center; justify-content: center; font-size: var(--text-lg); flex-shrink: 0; }
     .achievement--earned .achievement-icon { background: var(--color-success-bg); }
@@ -1059,7 +1057,7 @@
 
       // Pending banner
       const pendingHtml = pending_request_count > 0 ? `
-        <div class="pending-banner">
+        <div class="pending-banner ds-alert ds-alert-warning ds-alert-ring">
           <span class="pending-banner-text">You have ${pending_request_count} pending connection request${pending_request_count > 1 ? 's' : ''}</span>
           <a href="/community/connections#pending" class="btn btn-primary btn-sm">View requests</a>
         </div>

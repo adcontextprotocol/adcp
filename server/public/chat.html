@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ask Addie - AgenticAdvertising.org</title>
-  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <!-- Runs before CSS to apply stored theme and avoid flash of wrong theme -->
   <script>
     (function () {
@@ -156,11 +156,11 @@
     }
 
     .message--assistant .message-avatar {
-      background: none;
+      background: var(--color-avatar-disc, var(--color-brand-bg));
     }
 
     .message--assistant .message-avatar img {
-      width: 100%;
+      width: 82%;
       height: auto;
     }
 
@@ -490,6 +490,12 @@
       max-width: 680px;
     }
 
+    /* Welcome state — the header's only content was the theme toggle, which now
+       lives in .chat-header-actions, so the bar itself has nothing to show. */
+    .chat-container:not(.has-messages) .chat-header {
+      display: none;
+    }
+
     .chat-container:not(.has-messages) .messages-container {
       flex: none;
       padding: 0;
@@ -645,9 +651,117 @@
       min-width: 0;
     }
 
-    .chat-container.drag-over .chat-input-container {
-      box-shadow: inset 0 0 0 2px var(--color-brand);
-      border-radius: 12px;
+    /* Drag-and-drop attachment overlay ----------------------------------------
+       A pointer-only affordance covering the whole viewport, because the drag
+       listeners sit on `document` — a file dropped anywhere on the page
+       attaches. `pointer-events: none` is load-bearing: an overlay that
+       hit-tests fires `dragleave` the instant it appears, collapsing the drag
+       state on the very frame it becomes visible. */
+    .drop-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: var(--z-overlay, 40);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      pointer-events: none;
+      background: var(--color-drop-scrim, var(--color-surface-overlay));
+      animation: drop-overlay-in 120ms ease-out;
+    }
+
+    @supports (backdrop-filter: blur(2px)) {
+      .drop-overlay {
+        backdrop-filter: blur(2px);
+      }
+    }
+
+    .drop-overlay.visible {
+      display: flex;
+    }
+
+    .drop-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      max-width: 340px;
+      padding: 32px 36px;
+      text-align: center;
+      border-radius: 16px;
+      border: 2px dashed var(--color-brand);
+      background: var(--color-bg-card);
+      box-shadow: var(--shadow-2xl);
+      animation: drop-card-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .drop-card-icon {
+      width: 36px;
+      height: 36px;
+      color: var(--color-brand);
+    }
+
+    .drop-card-title {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+
+    .drop-card-hint {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--color-text-secondary);
+      /* Progressive enhancement: evens out the two wrapped lines where
+         supported, ignored everywhere else. */
+      text-wrap: balance;
+    }
+
+    /* Refusal state — the dragged items carry no supported MIME type, the
+       per-message cap is already reached, or the conversation is read-only.
+       Only the MIME type is legible mid-drag, never the filename or size, so
+       size errors still surface after release via showError(). */
+    .drop-overlay.reject .drop-card {
+      border-color: var(--color-error-fg);
+    }
+
+    .drop-overlay.reject .drop-card-icon {
+      color: var(--color-error-fg);
+    }
+
+    /* One glyph per state — an upload arrow beside "Can't attach this" reads
+       as a contradiction. */
+    .drop-card-icon-reject,
+    .drop-overlay.reject .drop-card-icon-accept {
+      display: none;
+    }
+
+    .drop-overlay.reject .drop-card-icon-reject {
+      display: block;
+    }
+
+    @keyframes drop-overlay-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    @keyframes drop-card-in {
+      from { opacity: 0; transform: scale(0.96) translateY(6px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .drop-overlay,
+      .drop-card {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .drop-card {
+        padding: 24px 22px;
+      }
     }
 
     .chat-input {
@@ -790,7 +904,7 @@
     .addie-home-error {
       text-align: center;
       padding: 16px;
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
       background: var(--color-error-bg);
       border-radius: var(--radius-lg);
       margin-bottom: 16px;
@@ -1308,6 +1422,15 @@
       .chat-header h1 {
         font-size: 20px;
       }
+
+      /* The larger title reaches further, so the actions collapse to icons */
+      .video-call-btn {
+        padding: var(--space-2);
+      }
+
+      .video-call-btn span {
+        display: none;
+      }
     }
 
     /* Chat Sidebar - Vertical Tab Layout */
@@ -1795,10 +1918,6 @@
       color: var(--color-text-secondary);
       cursor: pointer;
       transition: all 0.15s;
-      position: absolute;
-      top: 12px;
-      right: 16px;
-      z-index: 10;
     }
     .video-call-btn:hover {
       border-color: var(--color-brand);
@@ -1979,6 +2098,7 @@
     /* Native app mode - hide site nav, chat header, and status indicator (app provides its own) */
     body.native-app #adcp-nav,
     body.native-app .chat-header,
+    body.native-app .dark-mode-toggle,
     body.native-app .status-indicator {
       display: none !important;
     }
@@ -2682,16 +2802,25 @@
       flex-shrink: 0;
     }
 
+    /* Matches .video-call-btn — the two sit together in .chat-header-actions and
+       read as one control group, so they must give the same hover feedback. */
     .dark-mode-toggle:hover {
-      background: var(--color-bg-subtle);
-      border-color: var(--color-border-strong);
-      color: var(--color-text);
+      background: var(--color-brand-bg);
+      border-color: var(--color-brand);
+      color: var(--color-brand);
     }
 
-    /* In conversation state the toggle sits at the right edge of the header */
-    .chat-container.has-messages .dark-mode-toggle {
+    /* Header actions — video call + theme toggle share one containing block so they
+       can never overlap. The 8px offset centres the 34px controls in the 50px
+       conversation-state header; in the welcome state it floats at the top right. */
+    .chat-header-actions {
       position: absolute;
-      right: 32px;
+      top: var(--space-2);
+      right: 16px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
     }
 
     /* Icon visibility — sun shows in dark mode, moon in light mode */
@@ -2762,6 +2891,25 @@
   <!-- Mobile overlay -->
   <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
+  <!-- Drag-and-drop attachment overlay. aria-hidden because dragging is a
+       pointer-only interaction — the paperclip button is the keyboard path,
+       and #attachmentTray already announces the result via aria-live. -->
+  <div class="drop-overlay" id="dropOverlay" aria-hidden="true">
+    <div class="drop-card">
+      <svg class="drop-card-icon drop-card-icon-accept" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+        <path d="M17 8l-5-5-5 5"></path>
+        <path d="M12 3v12"></path>
+      </svg>
+      <svg class="drop-card-icon drop-card-icon-reject" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M5.6 5.6l12.8 12.8"></path>
+      </svg>
+      <p class="drop-card-title" id="dropCardTitle">Drop to attach</p>
+      <p class="drop-card-hint" id="dropCardHint"></p>
+    </div>
+  </div>
+
   <div class="page-layout">
     <!-- Chat Sidebar -->
     <div class="chat-sidebar" id="chatSidebar">
@@ -2825,6 +2973,16 @@
           Ask Addie
         </h1>
         <p>Your AI guide to agentic advertising</p>
+      </div>
+
+      <div class="chat-header-actions">
+        <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+          </svg>
+          <span>Video chat</span>
+        </button>
         <button type="button" class="dark-mode-toggle" id="darkModeToggle">
           <!-- moon icon — shown in light mode -->
           <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -2844,14 +3002,6 @@
           </svg>
         </button>
       </div>
-
-      <button class="video-call-btn" id="videoCallBtn" title="Video chat with Addie">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="23 7 16 12 23 17 23 7"></polygon>
-          <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-        </svg>
-        <span>Video chat</span>
-      </button>
 
       <div class="video-panel" id="videoPanel">
         <div class="video-panel-loading" id="videoPanelLoading">
@@ -5322,24 +5472,129 @@
         }
       });
 
-      ['dragenter', 'dragover'].forEach(eventName => {
-        document.addEventListener(eventName, (e) => {
-          if (Array.from(e.dataTransfer?.items || []).some(item => item.kind === 'file')) {
-            e.preventDefault();
-            document.getElementById('chatContainer')?.classList.add('drag-over');
-          }
-        });
+      // --- Drag-and-drop attachments -----------------------------------------
+      // Listened for on `document`, so a file dropped anywhere on the page
+      // attaches. Two traps shape this code:
+      //
+      //  1. `dragleave` bubbles up from every element the pointer crosses, so
+      //     naively hiding on it strobes the overlay as the cursor moves. Depth
+      //     counting tracks entries against exits; the short debounce absorbs
+      //     browsers that fire dragleave-before-dragenter when crossing a
+      //     boundary, which momentarily zeroes the count.
+      //  2. A drag that leaves the window or ends outside the page fires no
+      //     balancing dragleave, which would strand the overlay on screen.
+      //     A null relatedTarget, dragend, and window blur all force a reset.
+      const dropOverlay = document.getElementById('dropOverlay');
+      const dropCardTitle = document.getElementById('dropCardTitle');
+      const dropCardHint = document.getElementById('dropCardHint');
+      const ACCEPTED_ATTACHMENT_LABEL = 'PNG, JPEG, GIF, WebP or PDF';
+      let dragDepth = 0;
+      let dragHideTimer = null;
+
+      function dragCarriesFiles(e) {
+        if (Array.from(e.dataTransfer?.types || []).includes('Files')) return true;
+        return Array.from(e.dataTransfer?.items || []).some(item => item.kind === 'file');
+      }
+
+      // Only the MIME type is legible while a drag is in flight — never the
+      // filename or the byte size. So type and count can be refused before the
+      // user lets go; size is still reported by addAttachmentFiles afterwards.
+      function assessDrag(e) {
+        if (isReadOnly) {
+          return { ok: false, title: 'Can\u2019t attach here', hint: 'This conversation is read-only.' };
+        }
+        if (pendingAttachments.length >= ATTACHMENT_MAX_COUNT) {
+          return {
+            ok: false,
+            title: 'Attachment limit reached',
+            hint: `You can attach up to ${ATTACHMENT_MAX_COUNT} files per message.`,
+          };
+        }
+        // An empty type means the source told us nothing (a folder, for
+        // instance). Stay optimistic rather than refusing a valid file.
+        const draggedTypes = Array.from(e.dataTransfer?.items || [])
+          .filter(item => item.kind === 'file')
+          .map(item => (item.type || '').toLowerCase())
+          .filter(Boolean);
+        if (draggedTypes.length > 0 && !draggedTypes.some(type => ALLOWED_ATTACHMENT_TYPES.has(type))) {
+          return {
+            ok: false,
+            title: 'Can\u2019t attach this',
+            hint: 'Addie accepts images (PNG, JPEG, GIF, WebP) and PDFs.',
+          };
+        }
+        return {
+          ok: true,
+          title: 'Drop to attach',
+          hint: `${ACCEPTED_ATTACHMENT_LABEL} \u00b7 up to ${ATTACHMENT_MAX_COUNT} files, ${formatBytes(ATTACHMENT_MAX_BYTES)} each`,
+        };
+      }
+
+      function showDropOverlay(e) {
+        const verdict = assessDrag(e);
+        dropCardTitle.textContent = verdict.title;
+        dropCardHint.textContent = verdict.hint;
+        dropOverlay.classList.toggle('reject', !verdict.ok);
+        dropOverlay.classList.add('visible');
+      }
+
+      function hideDropOverlay() {
+        clearTimeout(dragHideTimer);
+        dragHideTimer = null;
+        dragDepth = 0;
+        dropOverlay.classList.remove('visible', 'reject');
+      }
+
+      function cancelPendingDropHide() {
+        clearTimeout(dragHideTimer);
+        dragHideTimer = null;
+      }
+
+      document.addEventListener('dragenter', (e) => {
+        if (!dragCarriesFiles(e)) return;
+        e.preventDefault();
+        cancelPendingDropHide();
+        dragDepth++;
+        if (!dropOverlay.classList.contains('visible')) showDropOverlay(e);
       });
 
-      ['dragleave', 'drop'].forEach(eventName => {
-        document.addEventListener(eventName, (e) => {
-          document.getElementById('chatContainer')?.classList.remove('drag-over');
-          if (eventName === 'drop' && e.dataTransfer?.files?.length) {
-            e.preventDefault();
-            addAttachmentFiles(e.dataTransfer.files);
-          }
-        });
+      document.addEventListener('dragover', (e) => {
+        if (!dragCarriesFiles(e)) return;
+        // Required even when the drop will be refused: without it the browser
+        // takes over and navigates the tab to the dropped file.
+        e.preventDefault();
+        cancelPendingDropHide();
+        if (!dropOverlay.classList.contains('visible')) {
+          dragDepth = Math.max(dragDepth, 1);
+          showDropOverlay(e);
+        }
       });
+
+      document.addEventListener('dragleave', (e) => {
+        if (!dropOverlay.classList.contains('visible')) return;
+        // A null relatedTarget means the pointer left the window outright.
+        if (!e.relatedTarget) {
+          hideDropOverlay();
+          return;
+        }
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth > 0 || dragHideTimer) return;
+        dragHideTimer = setTimeout(() => {
+          dragHideTimer = null;
+          if (dragDepth <= 0) hideDropOverlay();
+        }, 120);
+      });
+
+      document.addEventListener('drop', (e) => {
+        if (!dragCarriesFiles(e)) return;
+        e.preventDefault();
+        hideDropOverlay();
+        if (isReadOnly) return;
+        if (e.dataTransfer?.files?.length) addAttachmentFiles(e.dataTransfer.files);
+      });
+
+      document.addEventListener('dragend', hideDropOverlay);
+      window.addEventListener('blur', hideDropOverlay);
 
       chatInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {

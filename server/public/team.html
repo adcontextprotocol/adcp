@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Team Management - AdCP Registry</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -204,8 +205,6 @@
       margin-top: var(--space-1);
     }
     .error-message {
-      background: var(--color-error-50);
-      color: var(--color-error-600);
       padding: var(--space-2_5) var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-4);
@@ -220,25 +219,21 @@
       font-size: var(--text-sm);
     }
     .info-box {
-      background: var(--color-info-50);
-      border-left: var(--border-4) solid var(--color-info-500);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
     }
     .info-box p {
-      color: var(--color-info-700);
+      color: var(--color-text);
       margin: 0;
     }
     .permission-warning {
-      background: var(--color-warning-50);
-      border-left: var(--border-4) solid var(--color-warning-500);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
     }
     .permission-warning p {
-      color: var(--color-warning-700);
+      color: var(--color-text);
       margin: 0;
     }
     /* Override dashboard-nav's container reset to keep content properly sized */
@@ -274,7 +269,7 @@
   <div id="inviteModal" class="modal-overlay">
     <div class="modal">
       <h2>Add team member</h2>
-      <div id="inviteError" class="error-message" style="display: none;"></div>
+      <div id="inviteError" class="error-message ds-alert ds-alert-error" style="display: none;"></div>
       <form id="inviteForm">
         <div class="form-group">
           <label for="inviteEmail">Email address</label>
@@ -308,7 +303,7 @@
   <div id="editRoleModal" class="modal-overlay">
     <div class="modal">
       <h2>Edit Member</h2>
-      <div id="editRoleError" class="error-message" style="display: none;"></div>
+      <div id="editRoleError" class="error-message ds-alert ds-alert-error" style="display: none;"></div>
       <form id="editRoleForm">
         <input type="hidden" id="editMembershipId">
         <input type="hidden" id="editMemberSlackLinked">
@@ -369,12 +364,12 @@
       Loading...
     </div>
 
-    <div id="permissionWarning" class="permission-warning" style="display: none;">
+    <div id="permissionWarning" class="permission-warning ds-alert ds-alert-warning" style="display: none;">
       <p>You have view-only access to this organization. Contact an admin or owner to manage team members.</p>
     </div>
 
     <!-- Personal workspace notice -->
-    <div id="personalWorkspaceNotice" class="info-box" style="display: none;">
+    <div id="personalWorkspaceNotice" class="info-box ds-alert ds-alert-info" style="display: none;">
       <p><strong>Personal workspaces don't support team features.</strong></p>
       <p style="margin-top: 8px;">Personal workspaces are for individual use only. To invite team members and claim a corporate domain, you'll need to convert this to a team workspace.</p>
       <div style="margin-top: 16px;">
@@ -525,7 +520,7 @@
           <span>Potential Members</span>
           <button id="addAllBtn" class="btn btn-primary" onclick="addAllDomainUsers()" style="display: none;">+ Add All</button>
         </h2>
-        <div class="info-box">
+        <div class="info-box ds-alert ds-alert-info">
           <p>These people are in the AgenticAdvertising.org Slack workspace with your verified domain but haven't joined your organization yet. Click "Add" to add them directly to your team.</p>
         </div>
         <div id="domainUsersContent">
@@ -881,13 +876,13 @@
       el.style.gridTemplateColumns = hasCommunitySeats ? '1fr 1fr' : '1fr';
       el.style.gap = 'var(--space-3)';
       el.innerHTML = `
-        <div style="padding: var(--space-3); background: var(--color-primary-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+        <div style="padding: var(--space-3); background: var(--color-brand-bg); border-radius: var(--radius-md); font-size: var(--text-sm);">
           <strong>${usage.contributor} / ${limits.contributor}</strong> Contributor seats
-          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Slack, working groups, councils, summit</div>
+          <div style="font-size: 10px; color: var(--color-text-secondary); margin-top: 2px;">Slack, working groups, councils, summit</div>
         </div>
-        ${hasCommunitySeats ? `<div style="padding: var(--space-3); background: var(--color-success-50); border-radius: var(--radius-md); font-size: var(--text-sm);">
+        ${hasCommunitySeats ? `<div style="padding: var(--space-3); background: var(--color-success-bg); border-radius: var(--radius-md); font-size: var(--text-sm);">
           <strong>${usage.community_only} / ${communityLimit}</strong> Community seats
-          <div style="font-size: 10px; color: var(--color-text-muted); margin-top: 2px;">Addie, certification, training, chapters</div>
+          <div style="font-size: 10px; color: var(--color-text-secondary); margin-top: 2px;">Addie, certification, training, chapters</div>
         </div>` : ''}
       `;
     }
@@ -1329,7 +1324,7 @@
       // (the better path) vs email us to dispute.
       const sourceBadge = (source) => {
         if (source === 'brand_json') {
-          return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-success-50); color: var(--color-success-700);" title="Self-asserted in brand.json">Asserted</span>`;
+          return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-success-bg); color: var(--color-success-fg);" title="Self-asserted in brand.json">Asserted</span>`;
         }
         return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-bg-subtle); color: var(--color-text-secondary);" title="Inferred by automated classification">Inferred</span>`;
       };

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Governance - AgenticAdvertising.org</title>
   <meta name="description" content="Learn about the Agentic Advertising Network's governance structure, board composition, and how decisions are made.">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -54,13 +54,15 @@
       border-bottom: var(--border-3) solid transparent;
       transition: var(--transition-all);
     }
-    .sub-nav-links a:hover {
-      color: var(--aao-primary);
+    .sub-nav-links a:hover,
+    .sub-nav-links a:focus-visible {
+      color: var(--color-brand-hover);
       background: var(--color-brand-bg);
+      border-bottom-color: var(--color-border-strong);
     }
     .sub-nav-links a.active {
-      color: var(--aao-primary);
-      border-bottom-color: var(--aao-primary);
+      color: var(--color-brand);
+      border-bottom-color: var(--color-brand);
     }
 
     /* Main Content */

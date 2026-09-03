@@ -1076,16 +1076,16 @@ function getPublisherCardStyles() {
       margin-bottom: 8px;
     }
     .publisher-card.success {
-      background: var(--color-success-50);
-      border-color: var(--color-success-500);
+      background: var(--color-success-bg);
+      border-color: var(--color-success-border, var(--color-border));
     }
     .publisher-card.error {
-      background: var(--color-error-50);
-      border-color: var(--color-error-100);
+      background: var(--color-error-bg);
+      border-color: var(--color-error-border, var(--color-border));
     }
     .publisher-card.loading {
-      background: var(--color-warning-50);
-      border-color: var(--color-warning-100);
+      background: var(--color-warning-bg);
+      border-color: var(--color-warning-border, var(--color-border));
     }
     .publisher-card-main {
       display: flex;
@@ -1119,7 +1119,7 @@ function getPublisherCardStyles() {
     }
     .publisher-card-error {
       font-size: 13px;
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
     }
     .publisher-type-badge {
       display: inline-block;
@@ -1166,13 +1166,13 @@ function getPublisherCardStyles() {
     }
     .publisher-card-status.valid {
       background: var(--color-success-100);
-      color: var(--color-success-700);
+      color: var(--color-success-fg);
     }
     .publisher-card-status.error {
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
     }
     .publisher-card-status.loading {
-      color: var(--color-warning-600);
+      color: var(--color-warning-fg);
     }
     .publisher-card-status .status-dot {
       width: 6px;
@@ -1204,7 +1204,7 @@ function getPublisherCardStyles() {
     .publisher-card-remove {
       padding: 6px 12px;
       background: var(--color-error-100);
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
       border: none;
       border-radius: 6px;
       font-size: 12px;
@@ -1242,8 +1242,8 @@ function getPublisherCardStyles() {
       border: 1px solid var(--color-border);
     }
     a.publisher-card-compact.publisher-card-link:hover {
-      background: var(--color-success-50);
-      border-color: var(--color-success-500);
+      background: var(--color-success-bg);
+      border-color: var(--color-success-border, var(--color-border));
     }
   `;
 }

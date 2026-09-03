@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Addie mark for saturated brand fills (buttons, CTAs): white body,
+     original dark eyes. Pairs with color: white, so it stays legible on
+     whatever value color-brand resolves to in either theme. -->
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="65.00 10.00 200.00 175.00">
-<path fill="#2b3796" d="
+<path fill="#ffffff" d="
   M 245.14 140.82
   Q 240.72 149.79 230.17 148.82
   Q 226.96 148.53 220.79 149.07
@@ -57,7 +60,7 @@
   Q 144.59 45.53 137.44 56.81
   Z"
 />
-<path fill="#688ae8" d="
+<path fill="#ffffff" d="
   M 192.19 55.43
   Q 164.92 59.79 137.44 56.81
   Q 144.59 45.53 151.76 34.03
@@ -66,7 +69,7 @@
   Q 184.22 42.58 192.19 55.43
   Z"
 />
-<path fill="#576fdd" d="
+<path fill="#ffffff" d="
   M 211.80 86.43
   Q 200.33 90.13 188.62 92.20
   Q 191.25 85.45 187.90 79.64
@@ -98,7 +101,7 @@
   Q 191.25 85.45 188.62 92.20
   Z"
 />
-<path fill="#4859d0" d="
+<path fill="#ffffff" d="
   M 225.74 108.39
   C 209.19 113.34 193.11 113.45 176.09 111.92
   Q 178.93 110.40 178.56 108.31
@@ -116,7 +119,7 @@
   L 225.74 108.39
   Z"
 />
-<path fill="#3b4ac2" d="
+<path fill="#ffffff" d="
   M 153.14 110.70
   Q 164.30 119.14 176.09 111.92
   C 193.11 113.45 209.19 113.34 225.74 108.39
@@ -149,7 +152,7 @@
   Q 178.93 110.40 176.09 111.92
   Z"
 />
-<path fill="#3b4ac2" d="
+<path fill="#ffffff" d="
   M 85.68 140.49
   Q 89.87 149.53 99.75 148.73
   Q 105.41 148.28 110.71 149.04
@@ -160,7 +163,7 @@
   C 76.49 148.40 81.24 144.75 85.68 140.49
   Z"
 />
-<path fill="#3b4ac2" d="
+<path fill="#ffffff" d="
   M 245.14 140.82
   C 249.53 144.14 254.45 148.58 257.18 153.49
   C 260.72 159.88 258.26 164.97 250.75 165.10
@@ -169,7 +172,7 @@
   Q 240.72 149.79 245.14 140.82
   Z"
 />
-<path fill="#3b4ac2" d="
+<path fill="#ffffff" d="
   M 145.00 154.82
   Q 142.37 164.02 137.95 170.95
   C 134.61 176.18 127.06 181.26 121.54 176.71
@@ -178,7 +181,7 @@
   Q 134.60 154.60 145.00 154.82
   Z"
 />
-<path fill="#3b4ac2" d="
+<path fill="#ffffff" d="
   M 213.16 155.24
   C 213.69 161.96 214.21 167.76 211.48 173.97
   C 209.75 177.90 205.20 179.36 201.10 177.72

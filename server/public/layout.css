@@ -164,12 +164,17 @@ body {
   font-size: var(--text-sm);
   white-space: nowrap;
   border-bottom: 3px solid transparent;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.sub-nav-links a:hover {
-  color: var(--color-brand);
-  background: var(--color-primary-50);
+/* Hover previews the active state: a brand tint plus a muted underline.
+   --color-brand-bg is semantic and swaps for dark; --color-primary-50 does
+   not, and rendered as a near-white slab on the dark sub-nav. */
+.sub-nav-links a:hover,
+.sub-nav-links a:focus-visible {
+  color: var(--color-brand-hover);
+  background: var(--color-brand-bg);
+  border-bottom-color: var(--color-border-strong);
 }
 
 .sub-nav-links a.active {
@@ -281,7 +286,7 @@ body {
 }
 
 .hero-cta-secondary:hover {
-  background: var(--color-primary-50);
+  background: var(--color-brand-bg);
 }
 
 /* -- Dark hero variant (must come after base styles to win cascade) -- */
@@ -542,6 +547,8 @@ body {
 }
 
 .cta-card {
+  display: flex;
+  flex-direction: column;
   padding: var(--space-6);
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
@@ -568,6 +575,8 @@ body {
 }
 
 .cta-card a {
+  align-self: flex-start;
+  margin-top: auto;
   font-size: var(--text-base);
   font-weight: var(--font-semibold);
   color: var(--color-brand);

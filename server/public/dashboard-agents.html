@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agents - AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
@@ -108,8 +108,8 @@
 
     .agent-streak {
       padding: 1px var(--space-2);
-      background: var(--color-success-50);
-      color: var(--color-success-700);
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
       border-radius: var(--radius-full);
       font-size: 10px;
       font-weight: var(--font-semibold);
@@ -3712,7 +3712,7 @@
           : '<div style="margin-bottom:var(--space-3);font-size:var(--text-sm);color:var(--color-text-secondary);">This agent requires OAuth authorization before storyboards can run.</div>';
         const ctxAttr = agentContextId ? ' data-agent-context-id="' + escapeHtml(agentContextId) + '"' : '';
         return (
-          '<div style="padding:var(--space-3);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);">'
+          '<div style="padding:var(--space-3);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);">'
           + '<div style="font-weight:var(--font-semibold);margin-bottom:var(--space-2);">Connect via OAuth</div>'
           + safeReason
           + '<button class="agent-oauth-challenge-btn" data-agent-url="' + escapeHtml(agentUrl) + '"' + ctxAttr + '>Authorize with agent</button>'
@@ -3737,7 +3737,7 @@
         const retryText = retryMinutes
           ? ' Try again in ' + retryMinutes + ' minute' + (retryMinutes === 1 ? '.' : 's.')
           : ' Try again later.';
-        let html = '<div class="capability-probe-rate-limit" style="padding:var(--space-3);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);color:var(--color-warning-800);font-size:var(--text-sm);margin-bottom:var(--space-2);">';
+        let html = '<div class="capability-probe-rate-limit" style="padding:var(--space-3);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);color:var(--color-warning-fg);font-size:var(--text-sm);margin-bottom:var(--space-2);">';
         html += '<strong>Capability check paused.</strong> AgenticAdvertising.org has temporarily limited capability checks. Your agent was not contacted.' + retryText;
         html += '</div>';
         html += savedStatusSummary || '';
@@ -3764,7 +3764,7 @@
             let html = '';
 
             if (data.capabilities_probe_error) {
-              html += '<div style="padding:var(--space-2) var(--space-3);margin-bottom:var(--space-2);background:var(--color-warning-50);border:1px solid var(--color-warning-200);border-radius:var(--radius-md);font-size:var(--text-xs);color:var(--color-warning-800);">';
+              html += '<div style="padding:var(--space-2) var(--space-3);margin-bottom:var(--space-2);background:var(--color-warning-bg);border:1px solid var(--color-warning-border, var(--color-border));border-radius:var(--radius-md);font-size:var(--text-xs);color:var(--color-warning-fg);">';
               html += 'Capabilities probe warning: ' + escapeHtml(String(data.capabilities_probe_error));
               html += '</div>';
             }
@@ -3913,10 +3913,10 @@
           if (errBody.error_kind === 'unsupported_adcp_version') {
             const complianceVersion = errBody.compliance_version || 'the selected cache';
             const supportedVersions = errBody.supported_versions || '(none advertised)';
-            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-bg);border:1px solid var(--color-error-border, var(--color-border));border-radius:var(--radius-md);color:var(--color-error-fg);font-size:var(--text-sm);">';
             html += '<strong>Unsupported compliance target.</strong> This check selected <code>' + escapeHtml(String(complianceVersion)) + '</code>, but the agent advertises <code>adcp.supported_versions</code>:';
             html += '<div style="margin-top:var(--space-2);font-family:var(--font-mono);font-size:var(--text-xs);">' + escapeHtml(String(supportedVersions)) + '</div>';
-            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">Targets are selected automatically. Use Recheck &amp; retest to re-detect the advertised versions and run the matching suite. If the versions shown above are not what the agent intends to support, update <code>get_adcp_capabilities</code> first.</div>';
+            html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-fg);">Targets are selected automatically. Use Recheck &amp; retest to re-detect the advertised versions and run the matching suite. If the versions shown above are not what the agent intends to support, update <code>get_adcp_capabilities</code> first.</div>';
             html += '</div>';
             panel.innerHTML = html;
             return;

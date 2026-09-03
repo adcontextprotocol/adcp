@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Addie Video Lab (admin) - Agentic Advertising</title>
-  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/design-system.css">
   <!-- Daily JS SDK loaded from CDN. Lab is admin-only and experimental;
        pin a version before promoting any of this to production. -->
@@ -74,8 +74,8 @@
       margin-left: auto;
       padding: 2px 7px;
       border-radius: 999px;
-      background: var(--color-warning-50);
-      color: var(--color-warning-700);
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
       font-size: 10px;
       font-weight: 600;
     }
@@ -411,9 +411,9 @@
 
     #error-banner {
       display: none;
-      background: var(--color-error-50);
-      border: 1px solid var(--color-error-100);
-      color: var(--color-error-600);
+      background: var(--color-error-bg);
+      border: 1px solid var(--color-error-border, var(--color-border));
+      color: var(--color-error-fg);
       padding: 12px 16px;
       border-radius: 8px;
       font-size: 13px;

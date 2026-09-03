@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Admin - Products - AdCP Registry</title>
   <script src="/admin-nav.js"></script>
   <link rel="stylesheet" href="/design-system.css">
@@ -277,12 +277,9 @@
       border-color: var(--color-error-700);
     }
     .form-error {
-      background: var(--color-error-50);
-      border: 1px solid var(--color-error-200);
       border-radius: var(--radius-md);
       padding: var(--space-3);
       margin-bottom: var(--space-4);
-      color: var(--color-error-700);
       font-size: var(--text-sm);
     }
     .invoiceable-yes {
@@ -386,7 +383,7 @@
         <button class="modal-close" onclick="closeProductModal()">&times;</button>
       </div>
 
-      <div id="formError" class="form-error" style="display: none;"></div>
+      <div id="formError" class="form-error ds-alert ds-alert-error ds-alert-ring" style="display: none;"></div>
 
       <form id="productForm" onsubmit="saveProduct(event)">
         <input type="hidden" id="editProductId" value="">

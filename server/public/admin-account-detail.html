@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Account - AgenticAdvertising.org</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/js/company-types.js"></script>
@@ -284,7 +284,7 @@
     /* Pending invoice highlight */
     .invoice-highlight {
       background: var(--color-warning-bg);
-      border-left: 3px solid var(--color-warning-500);
+      border-left: 3px solid var(--color-warning-fg);
       padding: var(--space-3);
       border-radius: var(--radius-sm);
       margin-bottom: var(--space-4);
@@ -299,13 +299,13 @@
     .next-step-item {
       padding: var(--space-3);
       background: var(--color-warning-bg);
-      border-left: 3px solid var(--color-warning-500);
+      border-left: 3px solid var(--color-warning-fg);
       border-radius: var(--radius-sm);
       margin-bottom: var(--space-3);
     }
     .next-step-item.overdue {
       background: var(--color-error-bg);
-      border-left-color: var(--color-error-500);
+      border-left-color: var(--color-error-fg);
     }
     .next-step-due {
       font-size: var(--text-xs);
@@ -313,7 +313,7 @@
       margin-bottom: var(--space-1);
     }
     .next-step-item.overdue .next-step-due {
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
     }
     .next-step-description {
       font-size: var(--text-sm);
@@ -1770,7 +1770,7 @@
 
         // Show warning if no owner
         if (!hasOwner) {
-          membersHtml += `<li class="no-owner-warning" role="alert" style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);">
+          membersHtml += `<li class="no-owner-warning" role="alert" style="background: var(--color-warning-bg); border: 1px solid var(--color-warning-border, var(--color-border)); border-radius: var(--radius-md); padding: var(--space-3); margin-bottom: var(--space-3);">
             <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-warning-fg);">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>

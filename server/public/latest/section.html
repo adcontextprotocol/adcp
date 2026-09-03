@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>The Latest | AgenticAdvertising.org</title>
   <meta name="description" content="Curated content about agentic AI in advertising.">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -118,8 +118,6 @@
 
     .article-notes {
       font-size: 0.85rem;
-      color: var(--color-info-700);
-      background: var(--color-info-50);
       border-radius: 6px;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
@@ -286,7 +284,7 @@
                 ${titleHtml}
               </h2>
               ${article.summary ? `<p class="article-summary">${escapeHtml(article.summary)}</p>` : ''}
-              ${article.addie_notes ? `<div class="article-notes"><strong>Why it matters:</strong> ${escapeHtml(article.addie_notes)}</div>` : ''}
+              ${article.addie_notes ? `<div class="article-notes ds-alert ds-alert-info"><strong>Why it matters:</strong> ${escapeHtml(article.addie_notes)}</div>` : ''}
               ${tags.length > 0 ? `<div class="article-tags">${tagsHtml}</div>` : ''}
             </div>
           `;

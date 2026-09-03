@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agent registry profile</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/design-system.css" />
     <style>
       body {
@@ -98,26 +99,26 @@
         font-weight: var(--font-semibold);
         background: var(--color-info-bg);
         color: var(--color-info-fg);
-        border: 1px solid var(--color-info-200);
+        border: 1px solid var(--color-info-border, var(--color-border));
         white-space: nowrap;
       }
 
       .pill.success {
         background: var(--color-success-bg);
         color: var(--color-success-fg);
-        border-color: var(--color-success-200);
+        border-color: var(--color-success-border, var(--color-border));
       }
 
       .pill.warning {
         background: var(--color-warning-bg);
         color: var(--color-warning-fg);
-        border-color: var(--color-warning-200);
+        border-color: var(--color-warning-border, var(--color-border));
       }
 
       .pill.error {
         background: var(--color-error-bg);
         color: var(--color-error-fg);
-        border-color: var(--color-error-200);
+        border-color: var(--color-error-border, var(--color-border));
       }
 
       .badge-list {

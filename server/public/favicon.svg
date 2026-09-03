@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!--
+    AgenticAdvertising.org favicon. Derived from the AAo wordmark (/AAo.svg),
+    redrawn with solid glyphs because the wordmark's hairline strokes fall
+    below one pixel at 16px. The plate is what lets a single file stay legible
+    on both a light and a dark browser tab strip.
+
+    Colours are literals because an SVG asset cannot read page custom
+    properties. The plate mirrors the token "color-primary-700" and the mark
+    "color-text-on-dark", both defined in design-system.css. Keep them in
+    step with those tokens.
+  -->
+  <rect width="32" height="32" rx="7" fill="#1a36b4"/>
+  <g transform="translate(3 11.616) scale(1.0277)" fill="#ffffff">
+    <polygon points="3.936,0 7.872,8.532 0,8.532"/>
+    <polygon points="12.819,0 16.755,8.532 8.883,8.532"/>
+    <circle cx="21.7" cy="4.6" r="3.6"/>
+  </g>
+</svg>

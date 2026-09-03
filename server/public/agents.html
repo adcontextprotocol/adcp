@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agents | AgenticAdvertising.org</title>
     <meta name="description" content="Sales, creative, and signals agents implementing AdCP.">
-    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <style>
@@ -40,7 +40,7 @@
         .search-box input:focus {
             outline: none;
             border-color: var(--color-brand);
-            box-shadow: 0 0 0 3px var(--color-primary-100);
+            box-shadow: 0 0 0 3px var(--color-focus-ring);
         }
         .filter-row {
             display: flex;
@@ -196,8 +196,8 @@
         }
         .streak-badge {
             padding: var(--space-1) var(--space-2);
-            background: var(--color-success-50);
-            color: var(--color-success-700);
+            background: var(--color-success-bg);
+            color: var(--color-success-fg);
             border-radius: var(--radius-full);
             font-size: var(--text-xs);
             font-weight: var(--font-semibold);
@@ -301,19 +301,14 @@
         .status-banner > div:first-child { display: flex; flex-direction: column; align-items: flex-start; }
 
         /* Compliance badge */
+        /* Layout only — colour, padding and the left accent come from .ds-alert */
         .compliance-badge {
-            border-left: 4px solid;
-            padding: var(--space-4);
-            border-radius: var(--radius-md);
             margin-bottom: var(--space-8);
             display: flex;
             align-items: center;
             gap: var(--space-3);
         }
-        .compliance-badge--compliant { background: var(--color-success-50); border-color: var(--color-success-500); }
-        .compliance-badge--incomplete { background: var(--color-warning-50); border-color: var(--color-warning-500); }
-        .compliance-badge__title { font-size: var(--text-lg); font-weight: var(--font-semibold); }
-        .compliance-badge__subtitle { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: var(--space-1); }
+        .compliance-badge__title { font-size: var(--text-lg); }
 
         /* Collapsible detail sections */
         .detail-section__summary {
@@ -332,15 +327,7 @@
         details summary::-webkit-details-marker { display: none; }
 
         /* Tools list */
-        .tools-summary {
-            background: var(--color-info-50);
-            padding: var(--space-4);
-            border-radius: var(--radius-md);
-            border-left: 3px solid var(--color-info-500);
-            margin-bottom: var(--space-6);
-        }
-        .tools-summary__count { font-weight: var(--font-semibold); }
-        .tools-summary__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
+        .tools-summary { margin-bottom: var(--space-6); }
         .tools-list { display: grid; gap: var(--space-4); }
         .tool-item {
             background: var(--color-bg-subtle);
@@ -367,7 +354,7 @@
             border-radius: var(--radius-md);
         }
         .publisher-item--verified { border-left: 3px solid var(--color-success-500); }
-        .publisher-item--unverified { border-left: 3px solid var(--color-error-500); background: var(--color-error-bg); }
+        .publisher-item--unverified { border-left: 3px solid var(--color-error-fg); background: var(--color-error-bg); }
         .publisher-item--unchecked { border-left: 3px solid var(--color-warning-500); }
         .publisher-domain { font-weight: var(--font-semibold); margin-bottom: var(--space-1); }
         .publisher-verify-link { color: var(--color-brand); text-decoration: none; font-size: var(--text-xs); white-space: nowrap; }
@@ -387,14 +374,6 @@
         .product-card__name { font-weight: var(--font-semibold); margin-bottom: var(--space-2); }
         .product-card__desc { font-size: var(--text-sm); color: var(--color-text-muted); margin-bottom: var(--space-2); }
         .product-card__meta { font-size: var(--text-xs); color: var(--color-text-muted); }
-        .agent-params-required {
-            background: var(--color-warning-50);
-            padding: var(--space-4);
-            border-radius: var(--radius-md);
-            border-left: 3px solid var(--color-warning-500);
-        }
-        .agent-params-required__title { font-weight: var(--font-semibold); }
-        .agent-params-required__desc { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-text-muted); }
 
         /* Format cards */
         .format-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
@@ -450,15 +429,15 @@
         .format-modal__cta:hover { background: var(--color-brand-hover); }
 
         /* Info box */
-        .info-box { background: var(--color-bg-subtle); padding: var(--space-4); border-radius: var(--radius-md); }
+        .info-box { background: var(--color-bg-subtle); border: 1px solid var(--color-border); padding: var(--space-4); border-radius: var(--radius-md); }
         .info-box__desc { margin-bottom: var(--space-4); font-size: var(--text-base); }
         .info-box__grid { display: grid; gap: var(--space-3); }
-        .info-box__code { background: var(--color-primary-100); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-sm); word-break: break-all; }
+        .info-box__code { background: var(--color-code-bg); color: var(--color-code-text); border: 1px solid var(--color-code-border); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--text-sm); word-break: break-all; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
         .info-box__contact { margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--color-border); }
         .info-box__contact-link { color: var(--color-brand); }
 
         /* Error states */
-        .tool-error-box { font-size: var(--text-xs); color: var(--color-error-fg); padding: var(--space-2); background: var(--color-error-bg); border-radius: var(--radius-sm); border-left: 3px solid var(--color-error-500); }
+        .tool-error-box { font-size: var(--text-xs); color: var(--color-error-fg); padding: var(--space-2); background: var(--color-error-bg); border-radius: var(--radius-sm); border-left: 3px solid var(--color-error-fg); }
         .tool-error-box__title { font-weight: var(--font-semibold); }
         .tool-error-box__msg { font-size: var(--text-xs); color: var(--color-error-fg); font-family: monospace; word-break: break-word; }
 
@@ -975,10 +954,10 @@
                     if (toolNames.has('get_media_buy_delivery')) capLabels.push('Reporting');
 
                     html += `
-                        <div class="compliance-badge ${hasCoreTools ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                        <div class="compliance-badge ds-alert ${hasCoreTools ? 'ds-alert-success' : 'ds-alert-warning'}">
                             <div>
-                                <div class="compliance-badge__title">${hasCoreTools ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
-                                <div class="compliance-badge__subtitle">
+                                <div class="ds-alert__title compliance-badge__title">${hasCoreTools ? 'AdCP sales agent' : 'Incomplete implementation'}</div>
+                                <div class="ds-alert__desc">
                                     ${capLabels.length > 0 ? capLabels.join(' &middot; ') : 'Implements ' + coreImplemented.length + ' tools'}
                                     &middot; ${agentToolCount(agentWithCaps)} tools
                                 </div>
@@ -997,10 +976,10 @@
                     if (hasOptionalPreview) capabilities.push('Preview');
 
                     html += `
-                        <div class="compliance-badge ${isCompliant ? 'compliance-badge--compliant' : 'compliance-badge--incomplete'}">
+                        <div class="compliance-badge ds-alert ${isCompliant ? 'ds-alert-success' : 'ds-alert-warning'}">
                             <div>
-                                <div class="compliance-badge__title">${isCompliant ? 'AdCP creative agent' : 'Incomplete implementation'}</div>
-                                <div class="compliance-badge__subtitle">
+                                <div class="ds-alert__title compliance-badge__title">${isCompliant ? 'AdCP creative agent' : 'Incomplete implementation'}</div>
+                                <div class="ds-alert__desc">
                                     ${isCompliant ?
                                         `${supportedFormats.length} canonical capability(s)${capabilities.length > 0 ? ' &middot; ' + capabilities.join(' &middot; ') : ''}` :
                                         'Missing creative.supported_formats declaration'}
@@ -1015,11 +994,11 @@
             if (agent.compliance && agent.compliance.status !== 'unknown') {
                 const cs = agent.compliance;
                 const statusColors = {
-                    passing: { bg: 'var(--color-success-50)', border: 'var(--color-success-500)', label: 'Passing' },
-                    degraded: { bg: 'var(--color-warning-50)', border: 'var(--color-warning-500)', label: 'Degraded' },
-                    failing: { bg: 'var(--color-error-50)', border: 'var(--color-error-500)', label: 'Failing' },
+                    passing: { variant: 'ds-alert-success', label: 'Passing' },
+                    degraded: { variant: 'ds-alert-warning', label: 'Degraded' },
+                    failing: { variant: 'ds-alert-error', label: 'Failing' },
                 };
-                const sc = statusColors[cs.status] || { bg: 'var(--color-gray-100)', border: 'var(--color-gray-400)', label: 'Unknown' };
+                const sc = statusColors[cs.status] || { variant: 'ds-alert-info', label: 'Unknown' };
 
                 let trackPillsHtml = '';
                 const tracks = cs.tracks || {};
@@ -1032,13 +1011,13 @@
                 }
 
                 html += `
-                    <div class="compliance-badge" style="background: ${sc.bg}; border-color: ${sc.border};">
+                    <div class="compliance-badge ds-alert ${sc.variant}">
                         <div>
-                            <div class="compliance-badge__title">
+                            <div class="ds-alert__title compliance-badge__title">
                                 Compliance: ${sc.label}
                                 ${cs.streak_days > 0 ? `<span class="streak-badge">${parseInt(cs.streak_days, 10)}d streak</span>` : ''}
                             </div>
-                            <div class="compliance-badge__subtitle">
+                            <div class="ds-alert__desc">
                                 ${cs.headline ? escapeHtml(cs.headline) : ''}
                                 ${cs.last_checked_at ? ` &middot; Last checked: ${new Date(cs.last_checked_at).toLocaleString()}` : ''}
                             </div>
@@ -1172,18 +1151,18 @@
 
             if (tools.length === 0) {
                 section.innerHTML = `
-                    <div class="tools-summary">
-                        <span class="tools-summary__count">Total tools: ${toolCount}</span>
-                        <p class="tools-summary__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                    <div class="tools-summary ds-alert ds-alert-info">
+                        <span class="ds-alert__title">Total tools: ${toolCount}</span>
+                        <p class="ds-alert__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
                     </div>
                 `;
                 return;
             }
 
             let html = `
-                <div class="tools-summary">
-                    <span class="tools-summary__count">Total tools: ${toolCount}</span>
-                    <p class="tools-summary__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
+                <div class="tools-summary ds-alert ds-alert-info">
+                    <span class="ds-alert__title">Total tools: ${toolCount}</span>
+                    <p class="ds-alert__desc">This agent exposes ${toolCount} tools via ${agent.protocol || 'mcp'} protocol.</p>
                 </div>
                 <div class="tools-list">
             `;
@@ -1372,9 +1351,9 @@
                 const message = data.error?.message || data.message || data.error || 'Unknown error';
                 const isValidationError = message.includes('does not match') || message.includes('Input should be');
                 section.innerHTML = `
-                    <div class="agent-params-required">
-                        <div class="agent-params-required__title">${isValidationError ? 'Agent requires parameters' : 'Agent error'}</div>
-                        <div class="agent-params-required__desc">
+                    <div class="ds-alert ds-alert-warning">
+                        <div class="ds-alert__title">${isValidationError ? 'Agent requires parameters' : 'Agent error'}</div>
+                        <div class="ds-alert__desc">
                             ${isValidationError ? 'This agent requires specific targeting criteria (brief, brand_manifest, etc.) and does not support browsing public products.' : escapeHtml(message)}
                         </div>
                     </div>
