@@ -40,6 +40,7 @@ function resultWith(
       headline: 'Complete',
     },
     observations: [],
+    storyboards_executed: storyboardIds,
     tested_at: '2026-08-30T00:00:00.000Z',
     total_duration_ms: 10,
     notices: [],
@@ -83,7 +84,7 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment).toMatchObject({
-      policy_version: 'verification-profiles-v2',
+      policy_version: 'verification-profiles-v3',
       proposed_spec_status: 'partial',
       proposed_sandbox_status: 'partial',
       recommended_profile: null,
@@ -277,6 +278,9 @@ describe('deriveVerificationProfileShadowAssessment', () => {
 
     expect(assessment.incomplete_bundle_count).toBe(1);
     expect(assessment.sandbox_unresolved_bundle_count).toBe(1);
+    expect(assessment.sandbox_unresolved_executed_bundle_count).toBe(1);
+    expect(assessment.sandbox_unresolved_missing_tools_bundle_count).toBe(0);
+    expect(assessment.sandbox_unresolved_unknown_bundle_count).toBe(0);
     expect(assessment.controller_gap_phase_count).toBe(1);
     expect(assessment.proposed_spec_status).toBe('partial');
     expect(assessment.proposed_sandbox_status).toBe('partial');
@@ -450,6 +454,32 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     expect(assessment.proposed_sandbox_status).toBe('partial');
   });
 
+  it('classifies unresolved missing-tool and unknown bundle causes without projecting them', () => {
+    const result = resultWith([], {
+      adcp_version: '3.1.18',
+      storyboards_executed: [],
+      storyboards_missing_tools: ['media_buy_seller/audience_buy_flow'],
+      bundle_results: [{
+        kind: 'specialism',
+        id: 'missing-tool-bundle',
+        storyboard_ids: ['media_buy_seller/audience_buy_flow'],
+        status: 'partial',
+      }, {
+        kind: 'universal',
+        id: 'unknown-bundle',
+        storyboard_ids: [],
+        status: 'untested',
+      }],
+    });
+
+    const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'partial');
+
+    expect(assessment.sandbox_unresolved_bundle_count).toBe(2);
+    expect(assessment.sandbox_unresolved_executed_bundle_count).toBe(0);
+    expect(assessment.sandbox_unresolved_missing_tools_bundle_count).toBe(1);
+    expect(assessment.sandbox_unresolved_unknown_bundle_count).toBe(1);
+  });
+
   it.each(['seeded_state', 'future_runtime_gate'])('does not neutralize unmet %s requirements', (requirement) => {
     const result = resultWith([{
       scenario: 'media_buy_seller/observe',
@@ -514,8 +544,24 @@ describe('deriveVerificationProfileShadowAssessment', () => {
     const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'passing');
 
     expect(assessment.unattributed_failure_count).toBe(1);
+    expect(assessment.unattributed_flat_failure_count).toBe(1);
+    expect(assessment.unexplained_phase_failure_count).toBe(0);
     expect(assessment.proposed_spec_status).toBe('failing');
     expect(assessment.proposed_sandbox_status).toBe('failing');
+  });
+
+  it('separates unexplained phase failures from malformed flat failures', () => {
+    const result = resultWith([{
+      scenario: 'media_buy_seller/observe',
+      overall_passed: false,
+      steps: [],
+    }], { overall_status: 'failing', failures: [] });
+
+    const assessment = deriveVerificationProfileShadowAssessment(result, 'production', 'failing');
+
+    expect(assessment.unattributed_failure_count).toBe(1);
+    expect(assessment.unattributed_flat_failure_count).toBe(0);
+    expect(assessment.unexplained_phase_failure_count).toBe(1);
   });
 
   it('does not promote an unexplained public partial result to Sandbox passing', () => {

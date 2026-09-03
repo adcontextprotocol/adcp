@@ -29,6 +29,21 @@ const mocks = vi.hoisted(() => ({
   deriveVerificationProfileShadowAssessment: vi.fn(),
   acquireAgentExecutionFence: vi.fn(),
   releaseExecutionFence: vi.fn(),
+  loggerDebug: vi.fn(),
+  loggerInfo: vi.fn(),
+  loggerWarn: vi.fn(),
+  loggerError: vi.fn(),
+}));
+
+vi.mock('../../src/logger.js', () => ({
+  logger: {
+    child: () => ({
+      debug: mocks.loggerDebug,
+      info: mocks.loggerInfo,
+      warn: mocks.loggerWarn,
+      error: mocks.loggerError,
+    }),
+  },
 }));
 
 vi.mock('../../src/db/compliance-db.js', () => ({
@@ -100,6 +115,7 @@ vi.mock('../../src/db/verification-profile-shadow-db.js', () => ({
 }));
 
 vi.mock('../../src/services/verification-profile-shadow.js', () => ({
+  VERIFICATION_PROFILE_SHADOW_POLICY_VERSION: 'verification-profiles-v3',
   deriveVerificationProfileShadowAssessment: mocks.deriveVerificationProfileShadowAssessment,
 }));
 
@@ -173,6 +189,47 @@ describe('runComplianceHeartbeatJob', () => {
 
     expect(mocks.pruneVerificationProfileShadowAssessments).toHaveBeenCalledOnce();
     expect(mocks.comply).not.toHaveBeenCalled();
+    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queue: { eligibleBacklog: 0, selectedCount: 0, batchLimit: 1 },
+        inputs: expect.objectContaining({ policyVersion: 'verification-profiles-v3' }),
+        outcomes: { checked: 0, passed: 0, failed: 0, skipped: 0 },
+        shadow: expect.objectContaining({ candidates: 0, errors: 0, setting_errors: 0 }),
+      }),
+      'Compliance heartbeat shadow flush completed after public processing',
+    );
+  });
+
+  it('reports the full due backlog without increasing the selected batch', async () => {
+    mocks.getAgentsDueForCheck.mockResolvedValueOnce([
+      {
+        agent_url: 'https://agent.example.com/mcp',
+        lifecycle_stage: 'testing',
+        last_checked_at: null,
+        eligible_backlog: 37,
+      },
+    ]);
+    mocks.comply.mockResolvedValueOnce({
+      overall_status: 'passing',
+      summary: { headline: 'All good' },
+      agent_profile: { specialisms: [], adcp_supported_versions: ['3.1'] },
+    });
+    mocks.recordComplianceRun.mockResolvedValueOnce({
+      run: { id: 'run-backlog' },
+      statusTransition: null,
+      storyboardStatuses: [],
+    });
+
+    const { runComplianceHeartbeatJob } = await import('../../src/addie/jobs/compliance-heartbeat.js');
+    await runComplianceHeartbeatJob({ limit: 1 });
+
+    expect(mocks.loggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queue: { eligibleBacklog: 37, selectedCount: 1, batchLimit: 1 },
+      }),
+      'Compliance heartbeat shadow flush completed after public processing',
+    );
   });
 
   it('runs heartbeat against the selected canonical target and passes supported versions to badge fan-out', async () => {

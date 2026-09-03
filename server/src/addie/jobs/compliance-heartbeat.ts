@@ -5,6 +5,7 @@
  * Updates compliance status and triggers notifications on status transitions.
  */
 
+import { LIBRARY_VERSION } from '@adcp/sdk';
 import {
   comply,
   complianceResultToDbInput,
@@ -33,7 +34,10 @@ import {
   pruneVerificationProfileShadowAssessments,
   recordVerificationProfileShadowAssessment,
 } from '../../db/verification-profile-shadow-db.js';
-import { deriveVerificationProfileShadowAssessment } from '../../services/verification-profile-shadow.js';
+import {
+  deriveVerificationProfileShadowAssessment,
+  VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+} from '../../services/verification-profile-shadow.js';
 import {
   hostedComplianceTarget,
   HOSTED_FULL_COMPLIANCE_TIMEOUT_MS,
@@ -55,6 +59,15 @@ interface HeartbeatResult {
   skipped: number;
 }
 
+interface HeartbeatSkipReasons {
+  execution_fence_busy: number;
+  execution_fence_lost: number;
+  target_unconfirmed: number;
+  target_superseded: number;
+  pre_target_error: number;
+  agent_error: number;
+}
+
 type PendingShadowAssessment = Parameters<typeof recordVerificationProfileShadowAssessment>[0];
 
 async function pruneShadowLedgerBestEffort(): Promise<void> {
@@ -74,15 +87,24 @@ async function pruneShadowLedgerBestEffort(): Promise<void> {
 export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}): Promise<HeartbeatResult> {
   const limit = options.limit ?? 10;
   const result: HeartbeatResult = { checked: 0, passed: 0, failed: 0, skipped: 0 };
+  const skipReasons: HeartbeatSkipReasons = {
+    execution_fence_busy: 0,
+    execution_fence_lost: 0,
+    target_unconfirmed: 0,
+    target_superseded: 0,
+    pre_target_error: 0,
+    agent_error: 0,
+  };
 
   const agentsDue = await complianceDb.getAgentsDueForCheck(limit);
-
-  if (agentsDue.length === 0) {
-    await pruneShadowLedgerBestEffort();
-    return result;
-  }
-
-  logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
+  // COUNT(*) OVER() is calculated before LIMIT in the due-agent query. Keep a
+  // defensive fallback for tests and rolling deploys where an older database
+  // result shape may briefly coexist with this worker build.
+  const eligibleBacklog = Number(agentsDue[0]?.eligible_backlog ?? agentsDue.length);
+  logger.debug(
+    { selectedCount: agentsDue.length, eligibleBacklog, batchLimit: limit },
+    'Agents due for compliance check',
+  );
   const batchStartedAt = Date.now();
   const pendingShadowAssessments: PendingShadowAssessment[] = [];
 
@@ -99,20 +121,23 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
   // Each agent has two bounded capability pre-discoveries: target selection,
   // then hosted auth defaults inside comply(). Account for both explicitly so
   // the lock remains valid for the documented worst case.
-  const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
-  const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
-  await query(
-    `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-     SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
-     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
-    [urls, lockSeconds],
-  );
+  if (urls.length > 0) {
+    const perAgentBudgetMs = HOSTED_FULL_COMPLIANCE_TIMEOUT_MS + (2 * HOSTED_TARGET_DISCOVERY_TIMEOUT_MS);
+    const lockSeconds = urls.length * (perAgentBudgetMs / 1000) + 300;
+    await query(
+      `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
+       SELECT unnest($1::text[]), 'unknown', NOW() + make_interval(secs => $2)
+       ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + make_interval(secs => $2)`,
+      [urls, lockSeconds],
+    );
+  }
 
   for (const agent of agentsDue) {
     const executionFence = await complianceRefreshDb.acquireAgentExecutionFence(agent.agent_url);
     if (!executionFence) {
       await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
       result.skipped++;
+      skipReasons.execution_fence_busy++;
       logger.debug(
         { agentUrl: agent.agent_url },
         'Compliance heartbeat skipped because another full suite is running',
@@ -168,6 +193,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
+        skipReasons.target_unconfirmed++;
         continue;
       }
       runTarget = runTargetSelection.target;
@@ -185,6 +211,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
+        skipReasons.target_superseded++;
         continue;
       }
 
@@ -326,6 +353,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         );
         await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
         result.skipped++;
+        skipReasons.execution_fence_lost++;
         continue;
       }
 
@@ -348,6 +376,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           );
         }
         result.skipped++;
+        skipReasons.pre_target_error++;
         continue;
       }
 
@@ -491,6 +520,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           );
           await complianceDb.deferComplianceCheckAfterInconclusiveTarget(agent.agent_url);
           result.skipped++;
+          skipReasons.execution_fence_lost++;
           continue;
         }
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');
@@ -504,6 +534,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         result.failed++;
       } else {
         result.skipped++;
+        skipReasons.agent_error++;
       }
     } finally {
       await executionFence.release();
@@ -582,16 +613,30 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
       shadowStats.max_write_latency_ms = Math.max(shadowStats.max_write_latency_ms, writeLatencyMs);
     }
   }
-  if (pendingShadowAssessments.length > 0) {
-    logger.info(
-      {
-        publicProcessingDurationMs,
-        shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
-        shadow: shadowStats,
+  // Emit one aggregate health record for every scheduled heartbeat, including
+  // empty queues and disabled collection. That makes a frozen pre-rollout
+  // baseline and the collection window comparable without exposing endpoints.
+  logger.info(
+    {
+      publicProcessingDurationMs,
+      shadowFlushDurationMs: Date.now() - shadowFlushStartedAt,
+      queue: {
+        eligibleBacklog,
+        selectedCount: agentsDue.length,
+        batchLimit: limit,
       },
-      'Compliance heartbeat shadow flush completed after public processing',
-    );
-  }
+      inputs: {
+        policyVersion: VERIFICATION_PROFILE_SHADOW_POLICY_VERSION,
+        sdkVersion: LIBRARY_VERSION,
+        complianceTarget: fallbackComplianceTarget.requested,
+        complianceCacheVersion: fallbackComplianceTarget.version,
+      },
+      outcomes: result,
+      skipReasons,
+      shadow: shadowStats,
+    },
+    'Compliance heartbeat shadow flush completed after public processing',
+  );
   await pruneShadowLedgerBestEffort();
 
   return result;

@@ -2,7 +2,7 @@ import type { ComplianceResult, Storyboard, TestStepResult } from '@adcp/sdk/tes
 import type { LifecycleStage, OverallRunStatus } from '../db/compliance-db.js';
 import { getStoryboardsForVersion } from './storyboards.js';
 
-export const VERIFICATION_PROFILE_SHADOW_POLICY_VERSION = 'verification-profiles-v2';
+export const VERIFICATION_PROFILE_SHADOW_POLICY_VERSION = 'verification-profiles-v3';
 
 export type ShadowCandidateStatus = 'passing' | 'partial' | 'failing';
 export type ShadowRecommendedProfile = 'spec' | 'sandbox' | null;
@@ -31,6 +31,11 @@ export interface VerificationProfileShadowAssessment {
   incomplete_bundle_count: number;
   sandbox_unresolved_bundle_count: number;
   unattributed_failure_count: number;
+  unattributed_flat_failure_count: number;
+  unexplained_phase_failure_count: number;
+  sandbox_unresolved_executed_bundle_count: number;
+  sandbox_unresolved_missing_tools_bundle_count: number;
+  sandbox_unresolved_unknown_bundle_count: number;
 }
 
 type ShadowStep = TestStepResult & {
@@ -251,6 +256,21 @@ export function deriveVerificationProfileShadowAssessment(
   const sandboxFailingBundleCount = failingBundles.length;
   const sandboxIncompleteBundleCount = incompleteBundles.filter((bundle) =>
     !sandboxBundleCanProjectPassing(bundle.storyboard_ids ?? [])).length;
+  const executedStoryboards = new Set(result.storyboards_executed ?? []);
+  let sandboxUnresolvedExecutedBundleCount = 0;
+  let sandboxUnresolvedMissingToolsBundleCount = 0;
+  let sandboxUnresolvedUnknownBundleCount = 0;
+  for (const bundle of incompleteBundles) {
+    const storyboardIds = bundle.storyboard_ids ?? [];
+    if (sandboxBundleCanProjectPassing(storyboardIds)) continue;
+    if (storyboardIds.some((id) => executedStoryboards.has(id))) {
+      sandboxUnresolvedExecutedBundleCount++;
+    } else if (storyboardIds.some((id) => missingStoryboards.has(id))) {
+      sandboxUnresolvedMissingToolsBundleCount++;
+    } else {
+      sandboxUnresolvedUnknownBundleCount++;
+    }
+  }
 
   const flatFailures = result.failures ?? [];
   // The SDK's flat failure list may contain detached assertion failures in
@@ -346,5 +366,16 @@ export function deriveVerificationProfileShadowAssessment(
     incomplete_bundle_count: incompleteBundles.length,
     sandbox_unresolved_bundle_count: sandboxEligible ? sandboxIncompleteBundleCount : 0,
     unattributed_failure_count: unattributedFailureCount,
+    unattributed_flat_failure_count: unattributedFlatFailureCount,
+    unexplained_phase_failure_count: unexplainedPhaseFailureCount,
+    sandbox_unresolved_executed_bundle_count: sandboxEligible
+      ? sandboxUnresolvedExecutedBundleCount
+      : 0,
+    sandbox_unresolved_missing_tools_bundle_count: sandboxEligible
+      ? sandboxUnresolvedMissingToolsBundleCount
+      : 0,
+    sandbox_unresolved_unknown_bundle_count: sandboxEligible
+      ? sandboxUnresolvedUnknownBundleCount
+      : 0,
   };
 }

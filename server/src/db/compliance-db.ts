@@ -1285,6 +1285,8 @@ export class ComplianceDatabase {
     agent_url: string;
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
+    /** Total due before LIMIT; repeated on each selected row for one-query telemetry. */
+    eligible_backlog: number;
   }>> {
     // `known_agents` unions every source the heartbeat is allowed to test:
     //
@@ -1311,25 +1313,33 @@ export class ComplianceDatabase {
         SELECT (a->>'url') AS agent_url
         FROM member_profiles, jsonb_array_elements(agents) a
         WHERE a->>'url' IS NOT NULL
+      ),
+      due_agents AS (
+        SELECT
+          ka.agent_url,
+          COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+          s.last_checked_at
+        FROM known_agents ka
+        LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
+        LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
+        WHERE
+          COALESCE(m.lifecycle_stage, 'production') IN ('production', 'testing')
+          AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
+          AND COALESCE(m.monitoring_paused, FALSE) = FALSE
+          AND (
+            s.last_checked_at IS NULL
+            OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
+              CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
+            ))
+          )
       )
       SELECT
-        ka.agent_url,
-        COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
-        s.last_checked_at
-      FROM known_agents ka
-      LEFT JOIN agent_registry_metadata m ON m.agent_url = ka.agent_url
-      LEFT JOIN agent_compliance_status s ON s.agent_url = ka.agent_url
-      WHERE
-        COALESCE(m.lifecycle_stage, 'production') IN ('production', 'testing')
-        AND COALESCE(m.compliance_opt_out, FALSE) = FALSE
-        AND COALESCE(m.monitoring_paused, FALSE) = FALSE
-        AND (
-          s.last_checked_at IS NULL
-          OR s.last_checked_at < NOW() - make_interval(hours => COALESCE(m.check_interval_hours,
-            CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
-          ))
-        )
-      ORDER BY s.last_checked_at ASC NULLS FIRST, ka.agent_url ASC
+        agent_url,
+        lifecycle_stage,
+        last_checked_at,
+        COUNT(*) OVER()::int AS eligible_backlog
+      FROM due_agents
+      ORDER BY last_checked_at ASC NULLS FIRST, agent_url ASC
       LIMIT $1`,
       [limit],
     );
