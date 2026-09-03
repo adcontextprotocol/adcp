@@ -1181,12 +1181,10 @@
 
     document.addEventListener('DOMContentLoaded', loadAgents);
 
-    // Single source of truth for the chat seed prompt sent when a user
+    // Single source of truth for the allowlisted chat action used when a user
     // clicks "+ Register agent" or "Register your first agent". Both
-    // CTAs link to /chat?prompt=<encoded>; the matching trigger phrase
-    // is handled by the "Registering an Agent in the AAO Registry" rule
-    // in server/src/addie/rules/behaviors.md.
-    const REGISTER_AGENT_SEED_PROMPT = 'Help me register my agent.';
+    // CTAs start a fresh chat whose fixed prompt is resolved by chat.html.
+    const REGISTER_AGENT_CHAT_URL = '/chat?action=register-agent';
 
     // Shared across the page so event handlers (e.g. retry) can re-render
     // a single card without a full reload.
@@ -1450,13 +1448,11 @@
         injectAgentCardStyles();
       }
 
-      const addPrompt = encodeURIComponent(REGISTER_AGENT_SEED_PROMPT);
-
       content.innerHTML = `
         <div class="page-header">
           <h1>Agents</h1>
           <div class="page-header-actions">
-            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Register agent</a>
+            <a href="${REGISTER_AGENT_CHAT_URL}" class="btn btn-primary btn-sm">+ Register agent</a>
           </div>
         </div>
         <div id="agents-list">
@@ -1878,7 +1874,7 @@
             <div style="font-size: var(--text-2xl); margin-bottom: var(--space-3);">🤖</div>
             <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Monitor your agents' protocol compliance</p>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 400px; margin: 0 auto var(--space-4);">Register your buyer or seller agents to get automated compliance checks, public trust badges, and storyboard testing — included with your membership.</p>
-            <a href="/chat?prompt=${encodeURIComponent(REGISTER_AGENT_SEED_PROMPT)}" class="btn btn-primary btn-sm">Register your first agent</a>
+            <a href="${REGISTER_AGENT_CHAT_URL}" class="btn btn-primary btn-sm">Register your first agent</a>
           </div>
         `;
       }
