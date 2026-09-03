@@ -145,6 +145,10 @@ const CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS = ADMIN_TOOLS.filter((definition) => 
   'list_slack_users_by_org',
 ].includes(definition.name));
 
+const CANONICAL_ADMIN_BRAND_LOGO_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'list_pending_brand_logos',
+].includes(definition.name));
+
 const TOOL_DEFINITIONS = [
   'search_docs',
   'get_doc',
@@ -156,6 +160,7 @@ const TOOL_DEFINITIONS = [
   CANONICAL_MEETING_TOOLS,
   CANONICAL_COMMUNITY_GROUP_TOOLS,
   CANONICAL_ADMIN_MEMBER_RECORDS_TOOLS,
+  CANONICAL_ADMIN_BRAND_LOGO_TOOLS,
 );
 
 function stage(provider: ModelProvider, maxIterations: number): FixedTraceProviderStageConfig {
