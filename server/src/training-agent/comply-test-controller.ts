@@ -39,7 +39,7 @@ import {
   atLeastAdcpVersion,
   supportsAccountChangeFeed,
   supportsGetProductsRejected,
-  REPORTING_LIFECYCLE_PROBE_ADCP_VERSION,
+  REPORTING_STATUS_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -1692,7 +1692,7 @@ function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
-  const currentOnly = atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_LIFECYCLE_PROBE_ADCP_VERSION)
+  const currentOnly = atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
     ? scenarios
     : scenarios.filter(s => s !== 'reporting_core_lifecycle_probe');
   return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)

@@ -29,7 +29,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { atLeastAdcpVersion, supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, REPORTING_LIFECYCLE_PROBE_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { atLeastAdcpVersion, supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, REPORTING_STATUS_ADCP_VERSION, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -195,7 +195,7 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
-  const current = atLeastAdcpVersion(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_LIFECYCLE_PROBE_ADCP_VERSION)
+  const current = atLeastAdcpVersion(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
     : SALES_CURRENT_SCENARIOS.filter(scenario => scenario !== 'reporting_core_lifecycle_probe');
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
@@ -532,7 +532,7 @@ async function tryHandleLocalComplyScenario(
     });
     return true;
   }
-  if (isReportingLifecycleProbe && !atLeastAdcpVersion(versionResolution.servedVersion, REPORTING_LIFECYCLE_PROBE_ADCP_VERSION)) {
+  if (isReportingLifecycleProbe && !atLeastAdcpVersion(versionResolution.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
     return false;
   }
 

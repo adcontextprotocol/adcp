@@ -200,10 +200,11 @@ its source contains none of
   `get_reporting_status` and reconcile obligations against what they
   received.
 
-The reporting lab requires negotiated `adcp_version: "3.2-beta.12"` or later;
-the training agent otherwise serves its default 3.0 surface, where these
-experimental reporting fields are unavailable. Put that version on every
-`sync_accounts`, controller, and `get_reporting_status` request.
+The reporting lab requires a negotiated AdCP 3.2 release that supports
+`get_reporting_status` (the current training surface is `3.2-beta.11`); the
+training agent otherwise serves its default 3.0 surface, where these
+experimental reporting fields are unavailable. Put the same negotiated version
+on every `sync_accounts`, controller, and `get_reporting_status` request.
 
 In the public sales sandbox, call `comply_test_controller` with
 `scenario: "reporting_core_lifecycle_probe"` and `operation: "prepare"`. Use

@@ -757,10 +757,6 @@ function emptyCoverage(evaluatedAt: string, mediaBuyIds: string[]): ReportingCov
   };
 }
 
-function mediaBuyIds(config: CoreConfig): string[] {
-  return 'media_buy_ids' in config.scope ? [...config.scope.media_buy_ids].sort() : [];
-}
-
 export interface ReportingMediaBuyCandidate {
   mediaBuyId: string;
   startTime: string;
