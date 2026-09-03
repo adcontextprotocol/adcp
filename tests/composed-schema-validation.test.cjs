@@ -1791,10 +1791,41 @@ async function runTests() {
   );
   delete emptySingleCurrencyTotals.media_buy_deliveries[0].currency;
   emptySingleCurrencyTotals.currency = 'USD';
-  await testSchemaRejection(
+  emptySingleCurrencyTotals.media_buy_deliveries[0].status = 'reporting_delayed';
+  emptySingleCurrencyTotals.media_buy_deliveries[0].by_package = [];
+  await testSchemaValidation(
     '/schemas/media-buy/get-media-buy-delivery-response.json',
     emptySingleCurrencyTotals,
-    'Delivery response requires spend when legacy response currency is present'
+    'Delivery response permits a delayed non-monetary row with legacy response currency'
+  );
+
+  const ambiguousAggregatedTotals = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));
+  ambiguousAggregatedTotals.aggregated_totals = {
+    impressions: 1000000,
+    spend: 25000,
+    media_buy_count: 1
+  };
+  await testSchemaRejection(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    ambiguousAggregatedTotals,
+    'Delivery response rejects aggregated totals without legacy response currency'
+  );
+  ambiguousAggregatedTotals.currency = 'USD';
+  await testSchemaValidation(
+    '/schemas/media-buy/get-media-buy-delivery-response.json',
+    ambiguousAggregatedTotals,
+    'Delivery response requires legacy response currency to denominate aggregated totals'
+  );
+
+  await testSchemaValidation(
+    '/schemas/media-buy/media-buy-delivery-webhook-result.json',
+    {
+      notification_type: 'delayed',
+      reporting_period: emptySingleCurrencyTotals.reporting_period,
+      currency: 'USD',
+      media_buy_deliveries: emptySingleCurrencyTotals.media_buy_deliveries
+    },
+    'Delivery webhook permits a delayed non-monetary row with legacy response currency'
   );
 
   const unqualifiedMetricValueResponse = JSON.parse(JSON.stringify(deliveryResponseWithBreakdowns));

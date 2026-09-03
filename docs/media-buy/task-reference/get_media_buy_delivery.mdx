@@ -71,7 +71,7 @@ Returns delivery data as per-media-buy rows:
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | **Deprecated in 3.2; removed in 4.0.** Optional legacy response-wide currency for reports whose monetary values all share one denomination. Do not treat it as an aggregation currency. Prefer row or package currency. |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. Sellers should omit it and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
+| `aggregated_totals` | **Deprecated in 3.2; removed in 4.0.** Legacy cross-buy aggregate. When present, the deprecated response-wide `currency` is required and denominates its spend. Sellers should omit it and buyers should calculate only aggregates whose row currencies and metric semantics are compatible. |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -117,7 +117,7 @@ See [Billing authority](/docs/media-buy/advanced-topics/billing-authority) for t
 
 ### Currency and cross-buy aggregation
 
-The response-wide `currency` and `aggregated_totals` fields are deprecated in AdCP 3.2 and removed in 4.0. One response can contain media buys in different currencies, and AdCP does not define exchange rates, conversion timestamps, or an FX authority. The response-wide currency therefore MUST NOT be interpreted as an aggregation currency or as evidence that the seller converted package spend.
+The response-wide `currency` and `aggregated_totals` fields are deprecated in AdCP 3.2 and removed in 4.0. When legacy `aggregated_totals` is present, the response-wide currency is required solely to denominate its spend. One response can contain media buys in different currencies, and AdCP does not define exchange rates, conversion timestamps, or an FX authority. The response-wide currency therefore MUST NOT otherwise be interpreted as an aggregation currency or as evidence that the seller converted package spend.
 
 Sellers SHOULD populate `media_buy_deliveries[].currency` whenever a row has one denomination. It denominates that row's monetary `totals` and every package monetary value. For an AdCP-authored buy, every `by_package[].currency` MUST equal the row currency and the media-buy currency. For a legacy or externally created mixed-currency buy, sellers omit row currency, `daily_breakdown`, and all monetary or money-derived values from row and window totals. They report those values only on package rows (including window package rows) with each package's own currency.
 

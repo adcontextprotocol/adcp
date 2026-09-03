@@ -22,23 +22,13 @@
     {
       "if": {
         "required": [
-          "currency"
+          "aggregated_totals"
         ]
       },
       "then": {
-        "properties": {
-          "media_buy_deliveries": {
-            "items": {
-              "properties": {
-                "totals": {
-                  "required": [
-                    "spend"
-                  ]
-                }
-              }
-            }
-          }
-        }
+        "required": [
+          "currency"
+        ]
       }
     }
   ],
@@ -106,7 +96,7 @@
     },
     "aggregated_totals": {
       "type": "object",
-      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
+      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. When this field is present, the deprecated response-wide currency is required and denominates its spend. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
       "deprecated": true,
       "properties": {
         "impressions": {

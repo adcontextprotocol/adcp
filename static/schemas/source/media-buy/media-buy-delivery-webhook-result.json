@@ -12,30 +12,6 @@
     }
   },
   "type": "object",
-  "allOf": [
-    {
-      "if": {
-        "required": [
-          "currency"
-        ]
-      },
-      "then": {
-        "properties": {
-          "media_buy_deliveries": {
-            "items": {
-              "properties": {
-                "totals": {
-                  "required": [
-                    "spend"
-                  ]
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  ],
   "properties": {
     "notification_type": {
       "type": "string",

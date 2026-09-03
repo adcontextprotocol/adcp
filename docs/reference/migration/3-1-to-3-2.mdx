@@ -113,8 +113,10 @@ their bounded retry policy. Do not read `retry_after` from `error.data`.
 
 The response-wide `currency` and `aggregated_totals` fields on
 `get_media_buy_delivery` are deprecated in 3.2 and removed in 4.0. Sellers
-SHOULD omit new `aggregated_totals` output. Buyers MUST tolerate both fields
-being absent and MUST NOT treat the legacy currency as an aggregation currency.
+SHOULD omit new `aggregated_totals` output. When retaining `aggregated_totals`,
+sellers MUST also emit the legacy response-wide `currency` to denominate its
+spend. Buyers MUST tolerate both fields being absent and MUST NOT otherwise
+treat the legacy currency as an aggregation currency.
 
 For a single-currency media buy, sellers SHOULD emit
 `media_buy_deliveries[].currency`; package currencies MUST match it. For a
