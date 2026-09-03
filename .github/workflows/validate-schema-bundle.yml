@@ -208,21 +208,31 @@ jobs:
           sdk_version = os.environ["SDK_VERSION"]
           bundle_version = os.environ["BUNDLE_VERSION"]
           replacements = {
-              "sdk/pyproject.toml": (
-                  f"_schemas/{sdk_version}/",
-                  f"_schemas/{bundle_version}/",
-              ),
-              "sdk/MANIFEST.in": (
-                  f"_schemas/{sdk_version} ",
-                  f"_schemas/{bundle_version} ",
-              ),
+              "sdk/pyproject.toml": [
+                  (
+                      f"_schemas/{sdk_version}/",
+                      f"_schemas/{bundle_version}/",
+                  ),
+              ],
+              "sdk/MANIFEST.in": [
+                  (
+                      f"_schemas/{sdk_version} ",
+                      f"_schemas/{bundle_version} ",
+                  ),
+                  (
+                      f"schemas/cache/{sdk_version} ",
+                      f"schemas/cache/{bundle_version} ",
+                  ),
+              ],
           }
-          for filename, (old, new) in replacements.items():
+          for filename, file_replacements in replacements.items():
               path = Path(filename)
               source = path.read_text()
-              if old not in source:
-                  raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
-              path.write_text(source.replace(old, new))
+              for old, new in file_replacements:
+                  if old not in source:
+                      raise SystemExit(f"{filename} does not package the pinned SDK schema {old}")
+                  source = source.replace(old, new)
+              path.write_text(source)
           PY
           mkdir -p "${RUNNER_TEMP}/protocol-host/protocol"
           cp bundle/latest.tgz "${RUNNER_TEMP}/protocol-host/protocol/${bundle_version}.tgz"
