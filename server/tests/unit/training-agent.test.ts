@@ -15176,6 +15176,8 @@ describe('get_media_buy_delivery handler', () => {
       params: {
         media_buy_id: audioCreated.media_buy_id,
         impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'custom',
         reported_spend: { amount: 10, currency: 'USD' },
       },
     });

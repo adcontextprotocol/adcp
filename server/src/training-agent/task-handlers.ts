@@ -14814,18 +14814,22 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     ? (singlePackageProduct as unknown as Record<string, unknown>).identity as Record<string, unknown>
     : undefined;
   const singlePackageHasNoPersistentIdentifier = singlePackageIdentity?.persistent_identifier === false;
-  const totalsBoundToIdentityAbsence = mb.packages.length > 0 && mb.packages.every(pkg => {
+  const identityAbsenceProducts = simulatedPackages.flatMap(pkg => {
     const product = productMap.get(pkg.productId);
     const identity: Record<string, unknown> | undefined = product && isRecord((product as unknown as Record<string, unknown>).identity)
       ? (product as unknown as Record<string, unknown>).identity as Record<string, unknown>
       : undefined;
-    return identity?.persistent_identifier === false;
+    return identity?.persistent_identifier === false ? [identity] : [];
   });
+  const totalsBoundToIdentityAbsence = simulatedPackages.length > 0
+    && identityAbsenceProducts.length === simulatedPackages.length;
   const identityAbsencePermitsReachUnit = (unit: string | undefined): boolean => (
     !totalsBoundToIdentityAbsence
     || unit === 'individuals'
     || unit === 'households'
-    || unit === 'custom'
+    || (unit === 'custom' && identityAbsenceProducts.every(identity => (
+      typeof identity.reach_methodology === 'string' && identity.reach_methodology.trim().length > 0
+    )))
   );
 
   // A reach-goal unit is the only product-bound fallback for injected reach
