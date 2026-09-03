@@ -168,10 +168,16 @@ describe('docs-indexer', () => {
   describe('protocol version isolation', () => {
     it('loads every public docs version and keeps 3.1 as stable default', () => {
       const versions = getSupportedDocsVersions();
-      expect(versions.map(({ version }) => version)).toEqual(['3.1', '3.2-beta', '3.0', '2.5']);
+      expect(versions.map(({ version }) => version)).toEqual([
+        '3.1',
+        '3.2-rc',
+        '3.2-beta',
+        '3.0',
+        '2.5',
+      ]);
       expect(resolveDocsVersion()?.version).toBe('3.1');
       expect(resolveDocsVersion('latest')?.version).toBe('3.1');
-      expect(resolveDocsVersion('3.2')?.version).toBe('3.2-beta');
+      expect(resolveDocsVersion('3.2')?.version).toBe('3.2-rc');
       expect(Object.fromEntries(
         versions.map(({ version, artifactVersion }) => [version, artifactVersion]),
       )).toEqual(DOCS_SCHEMA_RELEASES);

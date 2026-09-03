@@ -30,7 +30,13 @@ describe('schema version selection', () => {
   });
 
   it('accepts every public docs release and defaults its guidance to stable', () => {
-    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual(['3.1', '3.2-beta', '3.0', '2.5']);
+    expect(Object.keys(DOCS_SCHEMA_RELEASES)).toEqual([
+      '3.1',
+      '3.2-rc',
+      '3.2-beta',
+      '3.0',
+      '2.5',
+    ]);
     expect(SCHEMA_VERSION_OPTIONS).toEqual(expect.arrayContaining([
       '3.1',
       'stable',
@@ -38,9 +44,12 @@ describe('schema version selection', () => {
       'latest',
       'v3',
       DOCS_SCHEMA_RELEASES['3.1'],
+      '3.2-rc',
+      '3.2 rc',
+      '3.2',
+      DOCS_SCHEMA_RELEASES['3.2-rc'],
       '3.2-beta',
       '3.2 beta',
-      '3.2',
       DOCS_SCHEMA_RELEASES['3.2-beta'],
       '3.0',
       DOCS_SCHEMA_RELEASES['3.0'],
@@ -109,9 +118,12 @@ describe('schema handler version resolution', () => {
     { selector: 'latest', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
     { selector: 'v3', canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
     { selector: DOCS_SCHEMA_RELEASES['3.1'], canonical: '3.1', artifact: DOCS_SCHEMA_RELEASES['3.1'] },
+    { selector: '3.2-rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
+    { selector: '3.2 rc', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
+    { selector: '3.2', canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
+    { selector: DOCS_SCHEMA_RELEASES['3.2-rc'], canonical: '3.2-rc', artifact: DOCS_SCHEMA_RELEASES['3.2-rc'] },
     { selector: '3.2-beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
     { selector: '3.2 beta', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
-    { selector: '3.2', canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
     { selector: DOCS_SCHEMA_RELEASES['3.2-beta'], canonical: '3.2-beta', artifact: DOCS_SCHEMA_RELEASES['3.2-beta'] },
     { selector: '3.0', canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },
     { selector: DOCS_SCHEMA_RELEASES['3.0'], canonical: '3.0', artifact: DOCS_SCHEMA_RELEASES['3.0'] },

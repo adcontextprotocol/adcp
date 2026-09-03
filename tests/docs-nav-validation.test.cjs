@@ -230,43 +230,39 @@ test('default navigation matches the stable release branch surface', () => {
   }
 });
 
-test('prerelease banner links directly or through a public alias to the current beta story', () => {
-  const betaVersion = navigation.versions.find(versionEntry =>
-    /-beta$/.test(versionEntry.version)
+test('prerelease banner links directly or through a public alias to the current preview story', () => {
+  const previewVersion = navigation.versions.find(versionEntry =>
+    /-(?:rc|beta)$/.test(versionEntry.version)
   );
-  if (!betaVersion) return;
+  if (!previewVersion) return;
 
-  const [majorMinor] = betaVersion.version.split('-');
+  const [majorMinor] = previewVersion.version.split('-');
   const [major, minor] = majorMinor.split('.');
   const landingSuffix = `/reference/${major}-${minor}-beta`;
-  const landingPage = collectPages(betaVersion.groups).find(page =>
+  const landingPage = collectPages(previewVersion.groups).find(page =>
     page.endsWith(landingSuffix)
   );
-  if (!landingPage) {
-    throw new Error(`Version "${betaVersion.version}" has no beta landing page`);
-  }
 
   const bannerContent = docsConfig.banner?.content || '';
   const bannerLink = bannerContent.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1];
   const bannerRedirect = docsConfig.redirects?.find(redirect =>
     redirect.source === bannerLink
   );
-  const expectedDestination = `/${landingPage}`;
-  const overviewPage = collectPages(betaVersion.groups).find(page =>
+  const overviewPage = collectPages(previewVersion.groups).find(page =>
     page.endsWith(`/reference/whats-new-in-${major}-${minor}`)
   );
   const allowedDestinations = new Set([
-    expectedDestination,
+    landingPage ? `/${landingPage}` : null,
     overviewPage ? `/${overviewPage}` : null
   ]);
   const resolvedDestination = bannerRedirect?.destination || bannerLink;
   if (!allowedDestinations.has(resolvedDestination)) {
     throw new Error(
-      `Beta banner must resolve to the current story; found ${bannerLink || 'no link'}`
+      `Prerelease banner must resolve to the current story; found ${bannerLink || 'no link'}`
     );
   }
-  if (new RegExp(`AdCP ${major}\\.${minor} beta\\.\\d+`).test(bannerContent)) {
-    throw new Error('Beta banner must not freeze a moving beta ordinal in its copy');
+  if (new RegExp(`AdCP ${major}\\.${minor} (?:beta|rc)\\.\\d+`).test(bannerContent)) {
+    throw new Error('Prerelease banner must not freeze a moving prerelease ordinal in its copy');
   }
 });
 
