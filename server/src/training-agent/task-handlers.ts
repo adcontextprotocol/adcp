@@ -14806,6 +14806,28 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
   const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
+  const singlePackageProduct = mb.packages.length === 1
+    ? productMap.get(mb.packages[0]!.productId)
+    : undefined;
+  const singlePackageIdentity: Record<string, unknown> | undefined = singlePackageProduct
+    && isRecord((singlePackageProduct as unknown as Record<string, unknown>).identity)
+    ? (singlePackageProduct as unknown as Record<string, unknown>).identity as Record<string, unknown>
+    : undefined;
+  const singlePackageHasNoPersistentIdentifier = singlePackageIdentity?.persistent_identifier === false;
+  const totalsBoundToIdentityAbsence = mb.packages.length > 0 && mb.packages.every(pkg => {
+    const product = productMap.get(pkg.productId);
+    const identity: Record<string, unknown> | undefined = product && isRecord((product as unknown as Record<string, unknown>).identity)
+      ? (product as unknown as Record<string, unknown>).identity as Record<string, unknown>
+      : undefined;
+    return identity?.persistent_identifier === false;
+  });
+  const identityAbsencePermitsReachUnit = (unit: string | undefined): boolean => (
+    !totalsBoundToIdentityAbsence
+    || unit === 'individuals'
+    || unit === 'households'
+    || unit === 'custom'
+  );
+
   // A reach-goal unit is the only product-bound fallback for injected reach
   // and frequency metrics before package rows are assembled. Reuse it below
   // for totals, so a single-package identity-absent buy never gives its
@@ -14816,10 +14838,16 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string'
     ));
     if (goal && typeof goal.reach_unit === 'string') {
-      reachGoalUnit = goal.reach_unit;
+      reachGoalUnit = identityAbsencePermitsReachUnit(goal.reach_unit)
+        ? goal.reach_unit
+        : undefined;
       break;
     }
   }
+  const simulatedReachUnit = identityAbsencePermitsReachUnit(simDelivery?.reachUnit)
+    ? simDelivery?.reachUnit
+    : undefined;
+  const simulatedOrGoalReachUnit = simulatedReachUnit ?? reachGoalUnit;
 
   // Controller-injected reach metrics apply to the one package supported by
   // the media-buy-scoped simulation form. Keep the package row coherent with
@@ -14830,11 +14858,15 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     || simDelivery.reachWindow
   )
     ? {
-      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
-      ...(simDelivery.reachUnit ?? reachGoalUnit
-        ? { reach_unit: simDelivery.reachUnit ?? reachGoalUnit }
+      ...(simDelivery.reach !== undefined && (!singlePackageHasNoPersistentIdentifier || simulatedOrGoalReachUnit)
+        ? { reach: simDelivery.reach }
         : {}),
-      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simulatedOrGoalReachUnit
+        ? { reach_unit: simulatedOrGoalReachUnit }
+        : {}),
+      ...(simDelivery.frequency !== undefined && (!singlePackageHasNoPersistentIdentifier || simulatedOrGoalReachUnit)
+        ? { frequency: simDelivery.frequency }
+        : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
     }
     : {};
@@ -14868,6 +14900,11 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
 
     // Channel-appropriate CTR
     const product = productMap.get(pkg.productId);
+    const productIdentity: Record<string, unknown> | undefined = product
+      && isRecord((product as unknown as Record<string, unknown>).identity)
+      ? (product as unknown as Record<string, unknown>).identity as Record<string, unknown>
+      : undefined;
+    const productHasNoPersistentIdentifier = productIdentity?.persistent_identifier === false;
     const channels = product?.channels;
     let ctr: number;
     if (channels?.some(c => ['social', 'influencer'].includes(c))) ctr = 0.012;
@@ -14902,7 +14939,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     else if (channels?.some(c => ['ctv', 'linear_tv'].includes(c))) completionRate = 0.82;
 
     const reachUnit = channels?.some(c => ['streaming_audio', 'podcast'].includes(c)) ? 'accounts' as const : 'devices' as const;
-    const audioMetrics = isAudioVideo && impressions > 0
+    const audioMetrics = isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0
       ? {
         views: Math.round(impressions * 0.9),
         completed_views: Math.round(impressions * completionRate),
@@ -15050,7 +15087,7 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
       return missing;
     }, []);
 
-    if (isAudioVideo && impressions > 0) {
+    if (isAudioVideo && !productHasNoPersistentIdentifier && impressions > 0) {
       totalCompletedViews += Math.round(impressions * completionRate);
       totalViews += Math.round(impressions * 0.9);
       totalReach += Math.round(impressions * 0.72);
@@ -15142,8 +15179,12 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   let derivedReachUnit: string | undefined = simDelivery?.reachUnit
     ?? (totalReachUnit !== 'mixed' ? totalReachUnit : undefined)
     ?? reachGoalUnit;
+  if (!identityAbsencePermitsReachUnit(derivedReachUnit)) {
+    derivedReachUnit = reachGoalUnit;
+  }
 
   const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
+    && (!totalsBoundToIdentityAbsence || derivedReachUnit)
     ? {
       reach: Math.max(1, Math.floor(totalImpressions / 3)),
       ...(derivedReachUnit && { reach_unit: derivedReachUnit }),
@@ -15168,9 +15209,13 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     || simDelivery.reachWindow
   )
     ? {
-      ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
+      ...(simDelivery.reach !== undefined && (!totalsBoundToIdentityAbsence || derivedReachUnit)
+        ? { reach: simDelivery.reach }
+        : {}),
       ...(derivedReachUnit ? { reach_unit: derivedReachUnit } : {}),
-      ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
+      ...(simDelivery.frequency !== undefined && (!totalsBoundToIdentityAbsence || derivedReachUnit)
+        ? { frequency: simDelivery.frequency }
+        : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
       ...(defaultReachWindow ? { reach_window: defaultReachWindow } : {}),
     }

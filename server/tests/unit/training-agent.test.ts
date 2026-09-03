@@ -15132,6 +15132,63 @@ describe('get_media_buy_delivery handler', () => {
     const totals = delivery.totals as Record<string, unknown>;
     expect(packageRow).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
     expect(totals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
+    const audioProductId = `identity-absent-audio-${randomUUID()}`;
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: audioProductId,
+        fixture: {
+          name: 'Identity-absent audio product',
+          channels: ['podcast'],
+          delivery_type: 'non_guaranteed',
+          identity: { persistent_identifier: false },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: audioProductId,
+        pricing_option_id: 'identity-absent-audio-cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: audioCreated, isError: audioCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: audioProductId,
+        pricing_option_id: 'identity-absent-audio-cpm',
+        budget: 1_000,
+      }],
+    });
+    expect(audioCreateError, JSON.stringify(audioCreated)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: audioCreated.media_buy_id,
+        impressions: 1_000,
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: audioDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: audioCreated.media_buy_id,
+    });
+    const audioDelivery = (audioDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const audioPackage = (audioDelivery.by_package as Array<Record<string, unknown>>)[0];
+    expect(audioPackage.frequency).toBeUndefined();
+    expect(audioPackage.reach_unit).toBeUndefined();
+    expect((audioDelivery.totals as Record<string, unknown>).frequency).toBeUndefined();
+    expect((audioDelivery.totals as Record<string, unknown>).reach_unit).toBeUndefined();
   });
 
   it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {

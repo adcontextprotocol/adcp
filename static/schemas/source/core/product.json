@@ -711,6 +711,24 @@
         "properties": {
           "overlay_support": {
             "not": { "required": ["frequency_cap"] }
+          },
+          "metric_optimization": {
+            "properties": {
+              "supported_reach_units": {
+                "not": {
+                  "contains": { "enum": ["cookies", "devices", "accounts"] }
+                }
+              }
+            }
+          },
+          "reporting_capabilities": {
+            "properties": {
+              "supported_reach_units": {
+                "not": {
+                  "contains": { "enum": ["cookies", "devices", "accounts"] }
+                }
+              }
+            }
           }
         }
       }

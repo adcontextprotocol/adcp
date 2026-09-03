@@ -59,6 +59,51 @@ test("identity-absent products cannot advertise identifier-backed frequency-cap 
   assert.equal(
     validate({
       ...completeProduct,
+      metric_optimization: {
+        supported_metrics: ["reach"],
+        supported_reach_units: ["devices"],
+      },
+    }),
+    false,
+    "identity absence must forbid identifier-backed reach optimization units"
+  );
+  const reportingCapabilities = {
+    available_reporting_frequencies: ["daily"],
+    expected_delay_minutes: 60,
+    timezone: "UTC",
+    supports_webhooks: false,
+    available_metrics: ["impressions"],
+    date_range_support: "date_range",
+  };
+  assert.equal(
+    validate({
+      ...completeProduct,
+      metric_optimization: {
+        supported_metrics: ["reach"],
+        supported_reach_units: ["households"],
+      },
+      reporting_capabilities: {
+        ...reportingCapabilities,
+        supported_reach_units: ["households"],
+      },
+    }),
+    true,
+    "identity absence retains modeled households reach declarations"
+  );
+  assert.equal(
+    validate({
+      ...completeProduct,
+      reporting_capabilities: {
+        ...reportingCapabilities,
+        supported_reach_units: ["devices"],
+      },
+    }),
+    false,
+    "identity absence must forbid identifier-backed reporting reach units"
+  );
+  assert.equal(
+    validate({
+      ...completeProduct,
       identity: { ...completeProduct.identity, undeclared: true },
     }),
     false,
