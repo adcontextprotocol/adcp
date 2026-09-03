@@ -15133,6 +15133,80 @@ describe('get_media_buy_delivery handler', () => {
     expect(packageRow).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
     expect(totals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
 
+    // Totals must bind to packages that can actually contribute delivery. A paused
+    // identity-capable package cannot make device-level reporting legal for the
+    // active identity-absent package.
+    const identityCapableProductId = `identity-capable-reach-${randomUUID()}`;
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: identityCapableProductId,
+        fixture: {
+          name: 'Identity-capable reach product',
+          channels: ['display'],
+          delivery_type: 'non_guaranteed',
+          identity: { persistent_identifier: true },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: identityCapableProductId,
+        pricing_option_id: 'identity-capable-reach-cpm',
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: mixedCreated, isError: mixedCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+        },
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+        },
+      ],
+    });
+    expect(mixedCreateError, JSON.stringify(mixedCreated)).toBeFalsy();
+    const mixedPackages = mixedCreated.packages as Array<Record<string, unknown>>;
+    const { result: mixedPaused, isError: mixedPauseError } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: mixedCreated.media_buy_id,
+      packages: [{ package_id: mixedPackages[1].package_id, paused: true }],
+    });
+    expect(mixedPauseError, JSON.stringify(mixedPaused)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mixedCreated.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'devices',
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: mixedDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mixedCreated.media_buy_id,
+    });
+    const mixedTotals = ((mixedDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(mixedTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
     const audioProductId = `identity-absent-audio-${randomUUID()}`;
     await simulateCallTool(server, 'comply_test_controller', {
       account,
