@@ -15167,15 +15167,16 @@ describe('get_media_buy_delivery handler', () => {
       ...futureFlight(),
       packages: [
         {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
           product_id: productId,
           pricing_option_id: pricingOptionId,
           budget: 1_000,
           optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
-        },
-        {
-          product_id: identityCapableProductId,
-          pricing_option_id: 'identity-capable-reach-cpm',
-          budget: 1_000,
         },
       ],
     });
@@ -15184,7 +15185,7 @@ describe('get_media_buy_delivery handler', () => {
     const { result: mixedPaused, isError: mixedPauseError } = await simulateCallTool(server, 'update_media_buy', {
       account,
       media_buy_id: mixedCreated.media_buy_id,
-      packages: [{ package_id: mixedPackages[1].package_id, paused: true }],
+      packages: [{ package_id: mixedPackages[0].package_id, paused: true }],
     });
     expect(mixedPauseError, JSON.stringify(mixedPaused)).toBeFalsy();
     await simulateCallTool(server, 'comply_test_controller', {
@@ -15206,6 +15207,57 @@ describe('get_media_buy_delivery handler', () => {
     const mixedTotals = ((mixedDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
       .totals) as Record<string, unknown>;
     expect(mixedTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+
+    const { result: canceledCreated, isError: canceledCreateError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [
+        {
+          product_id: identityCapableProductId,
+          pricing_option_id: 'identity-capable-reach-cpm',
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
+        },
+        {
+          product_id: productId,
+          pricing_option_id: pricingOptionId,
+          budget: 1_000,
+          optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+        },
+      ],
+    });
+    expect(canceledCreateError, JSON.stringify(canceledCreated)).toBeFalsy();
+    const canceledPackages = canceledCreated.packages as Array<Record<string, unknown>>;
+    const { result: canceledResult, isError: canceledUpdateError } = await simulateCallTool(server, 'update_media_buy', {
+      account,
+      media_buy_id: canceledCreated.media_buy_id,
+      packages: [{
+        package_id: canceledPackages[0].package_id,
+        canceled: true,
+        cancellation_reason: 'No longer participating in this buy.',
+      }],
+    });
+    expect(canceledUpdateError, JSON.stringify(canceledResult)).toBeFalsy();
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: canceledCreated.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reach_unit: 'devices',
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result: canceledDeliveryResult } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: canceledCreated.media_buy_id,
+    });
+    const canceledTotals = ((canceledDeliveryResult.media_buy_deliveries as Array<Record<string, unknown>>)[0]
+      .totals) as Record<string, unknown>;
+    expect(canceledTotals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
 
     const audioProductId = `identity-absent-audio-${randomUUID()}`;
     await simulateCallTool(server, 'comply_test_controller', {

@@ -14837,15 +14837,15 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // for totals, so a single-package identity-absent buy never gives its
   // package row less unit context than its totals row.
   let reachGoalUnit: string | undefined;
-  for (const pkg of mb.packages) {
+  for (const pkg of simulatedPackages) {
     const goal = pkg.optimizationGoals?.find(g => (
       g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string'
     ));
     if (goal && typeof goal.reach_unit === 'string') {
-      reachGoalUnit = identityAbsencePermitsReachUnit(goal.reach_unit)
-        ? goal.reach_unit
-        : undefined;
-      break;
+      if (identityAbsencePermitsReachUnit(goal.reach_unit)) {
+        reachGoalUnit = goal.reach_unit;
+        break;
+      }
     }
   }
   const simulatedReachUnit = identityAbsencePermitsReachUnit(simDelivery?.reachUnit)
