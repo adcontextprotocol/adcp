@@ -15060,6 +15060,80 @@ describe('get_media_buy_delivery handler', () => {
     expect((totals.reach as number) > 0).toBe(true);
   });
 
+  it('keeps an identity-absent package unit-bearing when frequency is injected without a unit', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = {
+      brand: { domain: 'identity-absent-delivery-unit.example' },
+      operator: 'identity-absent-delivery-unit.example',
+    };
+    const productId = `identity-absent-reach-${randomUUID()}`;
+    const pricingOptionId = 'identity-absent-reach-cpm';
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_product',
+      params: {
+        product_id: productId,
+        fixture: {
+          name: 'Identity-absent reach product',
+          channels: ['dooh'],
+          delivery_type: 'non_guaranteed',
+          identity: {
+            persistent_identifier: false,
+            reach_methodology: 'Venue and dwell-modelled aggregate measurement.',
+          },
+          metric_optimization: {
+            supported_metrics: ['reach'],
+            supported_reach_units: ['households'],
+          },
+        },
+      },
+    });
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'seed_pricing_option',
+      params: {
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        fixture: { pricing_model: 'cpm', currency: 'USD', fixed_price: 10 },
+      },
+    });
+    const { result: created, isError } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: account.brand,
+      ...futureFlight(),
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 1_000,
+        optimization_goals: [{ kind: 'metric', metric: 'reach', reach_unit: 'households' }],
+      }],
+    });
+    expect(isError, JSON.stringify(created)).toBeFalsy();
+
+    await simulateCallTool(server, 'comply_test_controller', {
+      account,
+      brand: account.brand,
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: created.media_buy_id,
+        impressions: 1_000,
+        frequency: 2.5,
+        reported_spend: { amount: 10, currency: 'USD' },
+      },
+    });
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: created.media_buy_id,
+    });
+    const delivery = (result.media_buy_deliveries as Array<Record<string, unknown>>)[0];
+    const packageRow = (delivery.by_package as Array<Record<string, unknown>>)[0];
+    const totals = delivery.totals as Record<string, unknown>;
+    expect(packageRow).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+    expect(totals).toMatchObject({ frequency: 2.5, reach_unit: 'households' });
+  });
+
   it('emits completed_views + completion_rate for a buy created with a completed_views optimization goal', async () => {
     const catalog = buildCatalog();
     const cvProduct = catalog.find(cp =>

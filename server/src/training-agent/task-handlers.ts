@@ -14806,6 +14806,21 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   const simulatedConversionValueByPackage = allocateSimulatedMetric(simDelivery?.conversionValue ?? 0, 2);
   const simulatedCommissionableValueByPackage = allocateSimulatedMetric(simDelivery?.commissionableValue ?? 0, 2);
 
+  // A reach-goal unit is the only product-bound fallback for injected reach
+  // and frequency metrics before package rows are assembled. Reuse it below
+  // for totals, so a single-package identity-absent buy never gives its
+  // package row less unit context than its totals row.
+  let reachGoalUnit: string | undefined;
+  for (const pkg of mb.packages) {
+    const goal = pkg.optimizationGoals?.find(g => (
+      g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string'
+    ));
+    if (goal && typeof goal.reach_unit === 'string') {
+      reachGoalUnit = goal.reach_unit;
+      break;
+    }
+  }
+
   // Controller-injected reach metrics apply to the one package supported by
   // the media-buy-scoped simulation form. Keep the package row coherent with
   // totals so product-scoped identity conformance can be verified directly.
@@ -14816,7 +14831,9 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   )
     ? {
       ...(simDelivery.reach !== undefined ? { reach: simDelivery.reach } : {}),
-      ...(simDelivery.reachUnit ? { reach_unit: simDelivery.reachUnit } : {}),
+      ...(simDelivery.reachUnit ?? reachGoalUnit
+        ? { reach_unit: simDelivery.reachUnit ?? reachGoalUnit }
+        : {}),
       ...(simDelivery.frequency !== undefined ? { frequency: simDelivery.frequency } : {}),
       ...(simDelivery.reachWindow ? { reach_window: simDelivery.reachWindow } : {}),
     }
@@ -15123,16 +15140,8 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
   // comparable). When goals omitted the unit, fall back to the existing
   // channel-derived unit (totalReachUnit) computed above.
   let derivedReachUnit: string | undefined = simDelivery?.reachUnit
-    ?? (totalReachUnit !== 'mixed' ? totalReachUnit : undefined);
-  if (!derivedReachUnit && hasReachGoal) {
-    for (const pkg of mb.packages) {
-      const goal = pkg.optimizationGoals?.find(g => g?.kind === 'metric' && g?.metric === 'reach' && typeof g?.reach_unit === 'string');
-      if (goal && typeof goal.reach_unit === 'string') {
-        derivedReachUnit = goal.reach_unit;
-        break;
-      }
-    }
-  }
+    ?? (totalReachUnit !== 'mixed' ? totalReachUnit : undefined)
+    ?? reachGoalUnit;
 
   const goalDerivedReach = hasReachGoal && totalImpressions > 0 && totalReach === 0
     ? {
