@@ -415,7 +415,7 @@ describe('call_adcp_task training module isolation', () => {
     } as any, { moduleId: 'S1' });
     const callAdcpTask = handlers.get('call_adcp_task');
     const params = {
-      adcp_version: '3.2-beta.10',
+      adcp_version: '3.2-beta.11',
       adcp_major_version: 3,
       idempotency_key: 'proposal-refinement-key',
       refinements: [{ proposal_id: 'proposal_123', action: 'finalize' }],
