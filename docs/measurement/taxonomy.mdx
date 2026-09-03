@@ -123,9 +123,10 @@ The protocol's measurement primitives reduce to one tuple, indexed and reconcile
 
 - **`committed_metrics` rows**: `{ scope, metric_id, qualifier, committed_at }` — what the seller agreed to populate ([#3576](https://github.com/adcontextprotocol/adcp/pull/3576), shipped)
 - **`missing_metrics` rows**: `{ scope, metric_id, qualifier }` — what didn't show up ([#3576](https://github.com/adcontextprotocol/adcp/pull/3576), shipped)
-- **`metric_aggregates` rows**: `{ metric_id, qualifier, value, …components }` — what was actually delivered, partitioned by qualifier ([#3848](https://github.com/adcontextprotocol/adcp/issues/3848), proposed)
+- **`by_package[].metric_values` rows**: `{ scope: "standard", metric_id, qualifier, value, …components }` — what was actually delivered for qualified standard metrics at package grain
+- **`by_package[].vendor_metric_values` rows**: `{ vendor, metric_id, qualifier, value, … }` — the existing package-grain carrier for vendor-defined metrics (with vendor scope implicit)
 
-Reconciliation collapses to a join on `(metric_id, qualifier)`. For each `committed_metrics` row, find the matching `metric_aggregates` row; absent matches surface as `missing_metrics`. No bespoke per-metric reconciliation logic, no traversal asymmetry between contract and delivery.
+Reconciliation collapses to a join on `(scope, metric_id, qualifier)`. For each standard `committed_metrics` row, find the matching package `metric_values` row; for each vendor row, find the matching `vendor_metric_values` row using its vendor identity and implicit vendor scope. Absent matches surface as `missing_metrics`. The legacy cross-buy `aggregated_totals.metric_aggregates` surface is deprecated with `aggregated_totals`; buyers perform only semantically compatible aggregation from package rows.
 
 The `qualifier` vocabulary differs by surface: contract is closed (`additionalProperties: false`, today carrying only `viewability_standard`); delivery is a deliberate **superset** (e.g., `tracker_firing` exists as a transparency disclosure that buyers don't commit to but sellers can expose post-delivery). The asymmetry is named, not accidental — the buyer commits to what they share vocabulary on, the seller exposes path-level transparency on what was delivered.
 
@@ -186,7 +187,7 @@ Products that cannot support DV's measurement on this inventory — for whatever
 
 **3. Execution.** The creative manifest carries DV's tracker assets. They fire — client-side, server-side, OMID, SIVA, whatever path the seller chose to honor the commitment. The buyer doesn't see the path.
 
-**4. Reporting.** Per-buy `totals` populate the standard `viewability` block (the graduated Tier 1 surface — `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `standard`). Cross-buy `aggregated_totals` partition by qualifier via `metric_aggregates` ([#3848](https://github.com/adcontextprotocol/adcp/issues/3848), proposed) — same atomic unit as the contract, joined on `(metric_id, qualifier)`. If the seller fails to deliver any committed metric, it appears in `missing_metrics` — an accountability breach, surfaced in-protocol.
+**4. Reporting.** Per-buy `totals` populate the standard `viewability` block (the graduated Tier 1 surface — `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `standard`). Each package's qualified standard outcomes appear in `by_package[].metric_values`; vendor outcomes remain in `by_package[].vendor_metric_values`. Both reconcile to the contract on `(scope, metric_id, qualifier)`. If the seller fails to deliver any committed metric, it appears in `missing_metrics` — an accountability breach, surfaced in-protocol.
 
 **What this example shows.** The buyer never asks _"is this SSAI?"_ The question they actually have — _"can my chosen verification vendor produce trustworthy viewability on this inventory?"_ — is answered structurally by whether the product passes the filter. The seller's plumbing is a private implementation detail bound by a contract they signed at create-time. SSAI, CSAI, in-app, web, DOOH all flow through the same surface; none gets a special schema.
 

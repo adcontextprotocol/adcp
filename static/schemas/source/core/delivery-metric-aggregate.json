@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/delivery-metric-aggregate.json",
   "title": "Delivery Metric Aggregate",
-  "description": "One cross-buy delivery aggregate partitioned by metric scope and qualifier. Row-symmetric with `package.committed_metrics` and delivery `missing_metrics` so buyers can reconcile by `(scope, metric_id, qualifier)`.",
+  "description": "One delivery metric value partitioned by metric scope and qualifier. Its standard branch is used at package grain by `by_package[].metric_values`; both branches are retained for the deprecated cross-buy `aggregated_totals.metric_aggregates` compatibility field. Row-symmetric with `package.committed_metrics` and delivery `missing_metrics` so buyers can reconcile by `(scope, metric_id, qualifier)`.",
   "type": "object",
   "discriminator": {
     "propertyName": "scope"

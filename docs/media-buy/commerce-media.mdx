@@ -588,7 +588,7 @@ Commerce media's defining advantage is deterministic purchase attribution. Retai
 
 Products signal closed-loop capability through two fields:
 
-**`reporting_capabilities.available_metrics`** declares which outcome metrics the product reports. Closed-loop retail media products typically report `conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `units_sold`, `new_to_brand_rate`, and incremental-lift metrics like `incremental_sales_lift` and `conversion_lift`. The methodology and attribution window flow through the `qualifier` slot on `committed_metrics` and `metric_aggregates` (`attribution_methodology: "deterministic_purchase"` for retail-media closed loop; `attribution_window: { interval: 14, unit: "days" }` for the 14-day match window).
+**`reporting_capabilities.available_metrics`** declares which outcome metrics the product reports. Closed-loop retail media products typically report `conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `units_sold`, `new_to_brand_rate`, and incremental-lift metrics like `incremental_sales_lift` and `conversion_lift`. The methodology and attribution window flow through the `qualifier` slot on `committed_metrics` and package-level delivery `metric_values` (`attribution_methodology: "deterministic_purchase"` for retail-media closed loop; `attribution_window: { interval: 14, unit: "days" }` for the 14-day match window).
 
 ```json
 {

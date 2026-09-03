@@ -3,6 +3,14 @@
   "$id": "/schemas/media-buy/get-media-buy-delivery-response.json",
   "title": "Get Media Buy Delivery Response",
   "description": "Response payload for get_media_buy_delivery task",
+  "x-adcp-validation": {
+    "verifier_constraints": {
+      "row_currency_consistency": "When media_buy_deliveries[].currency is present, every present by_package[].currency and windows[].by_package[].currency MUST equal it",
+      "legacy_currency_consistency": "When deprecated response-wide currency is present, every present media-buy and package currency MUST equal it",
+      "package_currency_presence": "When a package has spend or another currency-denominated monetary value and both the media-buy row currency and deprecated response-wide currency are absent, that package MUST include currency",
+      "mixed_currency_row": "When packages in a legacy or externally created media buy use different currencies, the row currency and all monetary or money-derived values at row or window-total grain MUST be omitted; daily_breakdown MUST also be omitted"
+    }
+  },
   "type": "object",
   "allOf": [
     {
@@ -10,6 +18,18 @@
     },
     {
       "$ref": "/schemas/core/protocol-envelope.json"
+    },
+    {
+      "if": {
+        "required": [
+          "aggregated_totals"
+        ]
+      },
+      "then": {
+        "required": [
+          "currency"
+        ]
+      }
     }
   ],
   "properties": {
@@ -66,7 +86,8 @@
     },
     "currency": {
       "type": "string",
-      "description": "ISO 4217 currency code",
+      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Optional legacy response-wide ISO 4217 currency code. It may be used only when every monetary value in the response has that denomination. A delivery response can contain media buys with different currencies, so buyers MUST NOT interpret this field as an aggregation currency or evidence of currency conversion. Prefer media_buy_deliveries[].currency when present and package-level currency otherwise.",
+      "deprecated": true,
       "pattern": "^[A-Z]{3}$"
     },
     "attribution_window": {
@@ -75,7 +96,8 @@
     },
     "aggregated_totals": {
       "type": "object",
-      "description": "Combined metrics across all returned media buys. Only included in API responses (get_media_buy_delivery), not in webhook notifications.",
+      "description": "Deprecated in AdCP 3.2 and removed in AdCP 4.0. Legacy combined metrics across all returned media buys. When this field is present, the deprecated response-wide currency is required and denominates its spend. Cross-buy totals are unsafe when currencies, metric qualifiers, measurement windows, finality, or deduplication semantics differ. Sellers SHOULD omit this field; buyers SHOULD aggregate media_buy_deliveries[] only when the relevant row semantics are compatible.",
+      "deprecated": true,
       "properties": {
         "impressions": {
           "type": "number",
@@ -222,6 +244,11 @@
             "description": "Seller's media buy identifier",
             "x-entity": "media_buy"
           },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 denomination for monetary values in this media-buy delivery row, including totals, package spend, and currency-denominated package rates. Sellers SHOULD populate this field whenever all monetary values in the row share one currency. For AdCP-authored buys it MUST equal the media-buy currency, and every by_package[].currency MUST equal it. For a legacy or externally created mixed-currency buy, omit this field, daily_breakdown, and all monetary or money-derived values from row and window totals; report those values only at package grain with each package's own currency. AdCP does not perform currency conversion.",
+            "pattern": "^[A-Z]{3}$"
+          },
           "status": {
             "type": "string",
             "description": "Current media buy status. Lifecycle states use the same taxonomy as media-buy-status (`pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled`). In webhook context, reporting_delayed indicates data temporarily unavailable. `pending` is accepted as a legacy alias for pending_start.",
@@ -280,9 +307,7 @@
                     "minimum": 0
                   }
                 },
-                "required": [
-                  "spend"
-                ]
+                "additionalProperties": true
               }
             ]
           },
@@ -318,7 +343,7 @@
                     },
                     "currency": {
                       "type": "string",
-                      "description": "ISO 4217 currency code for this package's pricing rate and spend. For AdCP-authored media buys this MUST equal the media-buy currency. A different package currency may appear only when reporting a legacy or externally created buy whose original contract allowed mixed denominations.",
+                      "description": "ISO 4217 currency code for this package's spend and currency-denominated pricing rate. The rate for revenue_share is a dimensionless commission fraction, but attributed monetary values still use this currency. When the enclosing media_buy_deliveries[].currency is present, this value MUST equal it. For AdCP-authored buys both values MUST equal the media-buy currency. A different package currency is permitted only for a legacy or externally created mixed-currency buy whose row currency, daily_breakdown, and row/window monetary totals are omitted. AdCP does not perform currency conversion.",
                       "pattern": "^[A-Z]{3}$"
                     },
                     "delivery_status": {
@@ -385,6 +410,39 @@
                           }
                         ]
                       ]
+                    },
+                    "metric_values": {
+                      "type": "array",
+                      "description": "Qualified standard delivery values for this package. Each entry is the delivered counterpart to a standard-scope package.committed_metrics or by_package[].missing_metrics row, using the same atomic key (scope, metric_id, qualifier). Sellers report one row per full qualifier set at package grain; when a metric appears here, its flat scalar counterpart on the package MUST be omitted to avoid two sources of truth. Vendor-scope values continue to use vendor_metric_values. Buyers reconcile rows directly and perform any compatible cross-package aggregation themselves.",
+                      "items": {
+                        "title": "GetMediaBuyDeliveryPackageMetricValue",
+                        "allOf": [
+                          {
+                            "$ref": "/schemas/core/delivery-metric-aggregate.json#/oneOf/0"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "qualifier": {
+                                "minProperties": 1
+                              }
+                            },
+                            "required": [
+                              "qualifier"
+                            ],
+                            "not": {
+                              "properties": {
+                                "metric_id": {
+                                  "const": "spend"
+                                }
+                              },
+                              "required": [
+                                "metric_id"
+                              ]
+                            }
+                          }
+                        ]
+                      }
                     },
                     "by_catalog_item": {
                       "type": "array",
@@ -935,7 +993,7 @@
           },
           "windows": {
             "type": "array",
-            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window — buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
+            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window — buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. For a legacy or external mixed-currency media buy, monetary and money-derived values MUST be omitted from each window totals object and reported only in currency-qualified windows[].by_package rows. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
             "items": {
               "type": "object",
               "properties": {
@@ -972,6 +1030,11 @@
                             "type": "string",
                             "description": "Seller's package identifier",
                             "x-entity": "package"
+                          },
+                          "currency": {
+                            "type": "string",
+                            "description": "ISO 4217 denomination for this package window's monetary values. Required by the runtime currency-coherence rule when neither the parent media-buy row nor deprecated response-wide field supplies a currency and this package window contains monetary values; otherwise it MUST match the row or response currency when present.",
+                            "pattern": "^[A-Z]{3}$"
                           }
                         },
                         "required": [
@@ -1000,7 +1063,7 @@
           },
           "daily_breakdown": {
             "type": "array",
-            "description": "Day-by-day delivery",
+            "description": "Day-by-day delivery for a media-buy row with one currency. Sellers MUST omit this aggregate breakdown for a legacy or externally created mixed-currency buy because these rows have no package currency field.",
             "items": {
               "type": "object",
               "properties": {
@@ -1055,6 +1118,24 @@
             }
           }
         },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "currency"
+              ]
+            },
+            "then": {
+              "properties": {
+                "totals": {
+                  "required": [
+                    "spend"
+                  ]
+                }
+              }
+            }
+          }
+        ],
         "required": [
           "media_buy_id",
           "status",
@@ -1084,7 +1165,6 @@
   },
   "required": [
     "reporting_period",
-    "currency",
     "media_buy_deliveries"
   ],
   "additionalProperties": true
