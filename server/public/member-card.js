@@ -1105,7 +1105,7 @@ function getPublisherCardStyles() {
     }
     .publisher-card-domain {
       font-size: 13px;
-      color: var(--color-text-secondary);
+      color: var(--color-text);
       word-break: break-all;
       margin-bottom: 6px;
     }
@@ -1140,7 +1140,7 @@ function getPublisherCardStyles() {
       color: var(--color-gray-700);
     }
     .publisher-stat {
-      color: var(--color-gray-700);
+      color: var(--color-text);
     }
     .publisher-visibility-badge {
       font-size: 11px;
