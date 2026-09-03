@@ -14,8 +14,9 @@ Every buyer eventually asks one question: **"do I have definitive reporting
 for this period — and if not, whose problem is it?"** `reporting.core` makes
 that question machine-answerable. It is deliberately small: a seller that
 already serves [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery)
-and fires the existing `reporting_webhook` implements Core **without any
-destination, manifest, canonicalization, digest, receipt, or push code**.
+can add Core while any existing reporting webhooks continue unchanged. Core
+itself requires **no destination, manifest, canonicalization, digest, receipt,
+or push code**.
 
 ## What Core is
 
@@ -40,6 +41,75 @@ Four ideas, one task:
 | `action_required` | A human on the named `responsible_party` must act. |
 | `complete` | The queried scope is closed and every final obligation is satisfied. |
 
+## Lifecycle at a glance
+
+The reporting configuration creates the clock. Accepting a media buy does not
+start a separate reporting SLA. Before a period closes, both sides can derive
+its boundary and `next_expected_at`, but the seller cannot freeze an
+`all_media_buys` denominator yet. At the period boundary, the obligation
+becomes part of the authoritative ledger whether or not source data exists.
+
+```mermaid
+%%{init: {"sequence": {"showSequenceNumbers": true}}}%%
+sequenceDiagram
+    accTitle: Reporting Core obligation and revision lifecycle
+    accDescr: A buyer installs a reporting configuration. At period end the seller commits an obligation before acquiring source data, then commits an immutable revision. Managed delivery can optionally materialize and notify; status reads remain authoritative.
+    participant Buyer as Buyer agent
+    participant Seller as Seller agent
+    participant Ledger as Reporting ledger
+    participant Source as Reporting source
+    participant Destination as Managed destination
+
+    Buyer->>Seller: sync_accounts(reporting_delivery_configs)
+    Seller-->>Buyer: Ready configuration + resolved schedule
+    Note over Buyer,Seller: Both derive the next full period and expected_at
+
+    Note over Seller,Ledger: period.end — freeze scope_resolved_at and media_buy_ids
+    Seller->>Ledger: Commit obligation independently of source availability
+    Buyer->>Seller: get_reporting_status
+    Seller-->>Buyer: Obligation is visible (usually waiting)
+
+    Seller->>Source: Acquire and normalize period data
+    Source-->>Seller: Rows, including a valid zero-row result
+    Seller->>Ledger: Commit immutable revision
+
+    alt Core
+        Seller-->>Buyer: Revision readable through reporting API
+    else Managed delivery
+        Seller->>Destination: Materialize and verify revision
+        Seller->>Ledger: Commit verified materialization
+        Seller-->>Buyer: reporting.delivery_ready (optional)
+    end
+
+    opt Nothing satisfies the obligation by expected_at
+        Seller->>Ledger: waiting → delayed
+        Seller-->>Buyer: reporting.status_changed (optional)
+    end
+
+    Buyer->>Seller: get_reporting_status (authoritative repair)
+```
+
+This gives each side a distinct responsibility:
+
+- **Seller:** commit every elapsed eligible period before taking a ledger
+  snapshot after `period.end`, independently of source availability and before
+  committing a revision. A matching `periods` view includes it in the
+  paginated record set.
+- **Buyer:** retain the accepted configuration generation, derive the same
+  expected periods, and treat a missing obligation as a protocol failure rather
+  than evidence that no activity occurred.
+- **Both:** calculate `expected_at` as `period.end + delivery_sla`. The
+  obligation is committed at period close and appears in the first ledger
+  snapshot strictly after it; the report becomes late only at
+  `expected_at`.
+
+For example, a configuration activated at `00:20Z` with hourly aligned periods
+starts at the next full boundary. Its first period is `[01:00Z, 02:00Z)`. The
+obligation appears in the first ledger snapshot strictly after `02:00Z`; with
+`delivery_sla: PT1H`, it stays `waiting` through `03:00Z` and becomes
+`delayed` after that if no revision has been produced. A snapshot exactly at
+`02:00Z` does not expose it.
+
 ## What Core is not
 
 - **No push requirement.** Polling `get_reporting_status` is the
@@ -48,10 +118,11 @@ Four ideas, one task:
   invalidation for health transitions in either direction, with stable
   `issue_ids`. `reporting.delivery_ready` belongs to the managed-delivery
   tier and never fires for Core configurations.
-- **No delivery machinery.** Core offerings omit `method`: rows flow through
-  `get_media_buy_delivery` and the `reporting_webhook` you already serve.
-  Destinations, manifests, and provisioning belong to the `managed_delivery`
-  tier.
+- **No delivery machinery.** Core offerings omit `method`: the status ledger
+  and its immutable revision metadata are required, while any existing
+  `get_media_buy_delivery` read or legacy reporting webhook remains an
+  optional data transport. Core never requires push. Destinations, manifests,
+  and provisioning belong to the `managed_delivery` tier.
 - **No canonical hashing or receipts.** `reconciliation_mode` is
   `delivery_only`, offering profiles omit the `canonicalization_*` contract,
   and `sync_reporting_receipts` does not exist for you. Those belong to the
@@ -77,9 +148,13 @@ its source contains none of
    `reconciliation_mode: "delivery_only"`. No `method`.
 3. **Generate obligations.** When an account installs a delivery
    configuration through [`sync_accounts`](/docs/accounts/tasks/sync_accounts),
-   derive one obligation per period from the schedule and the frozen
-   media-buy scope. Campaign starts, stops, and configuration generations
-   change *future* obligations, never past ones.
+   derive its future period boundaries and `next_expected_at`. At each eligible
+   `period.end`, freeze the media-buy scope and commit that obligation
+   independently of source availability and before committing its first
+   revision. Every later ledger snapshot must record it, and a
+   matching `get_reporting_status` `periods` view must return it, even when the
+   first report never arrives. Campaign starts, stops, and configuration
+   generations change *future* obligations, never past ones.
 4. **Commit revisions.** When a period's data is final enough for its
    declared finality, record an immutable revision — including zero-row
    periods. Restatements create superseding revisions.
@@ -92,15 +167,51 @@ its source contains none of
    recovery runs, for at most `automated_recovery_window_seconds`; after
    that it is `action_required`. Never park a dead feed in `delayed`.
 
+## Build order for a buyer
+
+1. **Save the contract.** Persist every accepted reporting configuration
+   generation, including its schedule, activation boundary, scope, report
+   definition, coverage requirement, and required finality. Do not reconstruct
+   historical expectations from a seller's current configuration.
+2. **Derive expected periods.** Calculate the same half-open intervals and
+   `expected_at` timestamps. A mid-period configuration activation begins at
+   the next full boundary; deactivation still owes a period that already
+   started.
+3. **Use your own denominator.** For each elapsed expected period, require a
+   matching obligation in the complete paginated `periods` view. The seller's
+   returned obligation list cannot prove that the first one was not omitted.
+4. **Close the history.** Keep one `ledger_snapshot_id` across every page,
+   deduplicate immutable IDs, match the returned record counts, and distinguish
+   a zero-row revision from no revision. Apply managed-resource and receipt
+   checks only when the selected tier requires them.
+5. **Treat push as a wake-up.** A doorbell starts a status read; it never
+   substitutes for one. Poll periodically even when notifications are enabled.
+
 ## How to verify
 
-- The **`reporting-core` universal storyboard** grades your capability
-  declaration and tier boundaries.
+- The **`reporting-core-declaration` universal storyboard** grades capability
+  and tier boundaries without a controller. The lifecycle-focused
+  **`reporting-core` storyboard** uses `reporting_core_lifecycle_probe` to
+  verify an obligation-before-report, clock-derived delayed health, and
+  explicit zero-row publication.
 - The **reporting-core fixture test** is the tier boundary stated as code —
   copy its Core capability block and offering as your starting fixtures.
 - Buyers verify you the same way their SDKs do: webhook or not, they poll
   `get_reporting_status` and reconcile obligations against what they
   received.
+
+The reporting lab requires negotiated `adcp_version: "3.2-beta.12"` or later;
+the training agent otherwise serves its default 3.0 surface, where these
+experimental reporting fields are unavailable. Put that version on every
+`sync_accounts`, controller, and `get_reporting_status` request.
+
+In the public sales sandbox, call `comply_test_controller` with
+`scenario: "reporting_core_lifecycle_probe"` and `operation: "prepare"`. Use
+the returned account and stable identifiers in a `get_reporting_status`
+`periods` read. Then run `advance_time` with `target_health: "delayed"`, read
+the summary, run `publish_zero_row`, and read the periods view again. The
+[controller reference](/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe)
+contains the exact request shapes.
 
 ## The ladder above Core
 

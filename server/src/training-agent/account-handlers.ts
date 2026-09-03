@@ -10,7 +10,8 @@ import { canonicalTargetUri } from '@adcp/sdk/signing';
 import type { WebhookAuthentication } from '@adcp/sdk/server';
 import type { TrainingContext, ToolArgs, AccountRef, OperatorUnit } from './types.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
-import { SESSION_STORE_UNAVAILABLE_MESSAGE, sessionKeyFromArgs } from './state.js';
+import { getSession, SESSION_STORE_UNAVAILABLE_MESSAGE, sessionKeyFromArgs } from './state.js';
+import { buildCatalog } from './product-factory.js';
 import {
   clearInMemoryGovernanceBindings,
   governanceBindingStore,
@@ -33,6 +34,20 @@ import {
 import { emitAccountNotificationWebhook } from './webhooks.js';
 import { clearSharedAccountResources } from './shared-account-resources.js';
 import { isPrivateHostname, normalizeExternalHostname } from '../utils/url-security.js';
+import {
+  bindReportingAccountDurably,
+  clearReportingReliabilityStore,
+  listReportingAccountsDurably,
+  projectedReportingConfigurationStates,
+  replaceReportingConfigurationsDurably,
+  resolveReportingAccountDurably,
+  reportingConfigurationStatesForAccountDurably,
+  TRAINING_REPORTING_CORE_OFFERING,
+  validateReportingConfigurationReplacementDurably,
+  validateReportingConfigurationScopes,
+  validateReportingConfigurations,
+  type ReportingMediaBuyCandidate,
+} from './reporting-reliability.js';
 
 // One account may legitimately use the protocol's full 16-subscriber fan-out.
 // Larger multi-account activations must be split by account so a single call
@@ -84,6 +99,7 @@ interface SyncAccountInput {
   payment_terms?: string;
   sandbox?: boolean;
   notification_configs?: NotificationConfigInput[];
+  reporting_delivery_configs?: unknown[];
 }
 
 interface AccountState {
@@ -376,6 +392,95 @@ function findAccountByIdAcrossSessions(accountId: string, principal?: string): A
   return undefined;
 }
 
+function reportingAccountRef(account: AccountState): AccountRef {
+  return {
+    brand: {
+      domain: account.brand.domain,
+      ...(account.brand.brand_id && { brand_id: account.brand.brand_id }),
+      ...(account.brand.countries && { countries: [...account.brand.countries] }),
+    },
+    operator: account.operator,
+    ...(account.operatorUnit && { operator_unit: structuredClone(account.operatorUnit) }),
+    ...(account.currency && { currency: account.currency }),
+    ...(account.timezone && { timezone: account.timezone }),
+    sandbox: account.sandbox,
+  };
+}
+
+function accountStateFromReportingBinding(
+  binding: { accountId: string; account: AccountRef; accountState?: Record<string, unknown> },
+  principal: string | undefined,
+  now: string,
+): AccountState | undefined {
+  if (
+    binding.accountState?.accountId === binding.accountId
+    && typeof binding.accountState.operator === 'string'
+    && binding.accountState.brand !== null
+    && typeof binding.accountState.brand === 'object'
+  ) {
+    return structuredClone(binding.accountState) as unknown as AccountState;
+  }
+  const canonical = canonicalizeAccountRef(binding.account);
+  if (canonical.kind !== 'natural') return undefined;
+  return {
+    changeScopeId: principalAccountChangeScope(principal, binding.accountId),
+    accountId: binding.accountId,
+    brand: structuredClone(canonical.brand),
+    operator: canonical.operator,
+    ...(canonical.operator_unit && { operatorUnit: structuredClone(canonical.operator_unit) }),
+    ...(canonical.currency && { currency: canonical.currency }),
+    ...(canonical.timezone && { timezone: canonical.timezone }),
+    billing: 'operator',
+    paymentTerms: 'net_30',
+    status: canonical.sandbox ? 'active' : 'pending_approval',
+    accountScope: 'operator_brand',
+    sandbox: canonical.sandbox,
+    rateCard: canonical.sandbox ? 'sandbox' : 'standard',
+    ...(!canonical.sandbox && {
+      creditLimit: { amount: 100000, currency: canonical.currency ?? 'USD' },
+    }),
+    governanceAgents: [],
+    notificationConfigs: [],
+    syncedAt: now,
+  };
+}
+
+async function reportingMediaBuyCandidates(
+  ctx: TrainingContext,
+  account: AccountState,
+): Promise<ReportingMediaBuyCandidate[]> {
+  const session = await getSession(sessionKeyFromArgs(
+    { account: reportingAccountRef(account) },
+    ctx.mode,
+    ctx.userId,
+    ctx.moduleId,
+    ctx.principal,
+  ));
+  const products = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
+  for (const [productId, product] of session.configuredProducts) products.set(productId, product);
+  return [...session.mediaBuys.values()].map(mediaBuy => ({
+    mediaBuyId: mediaBuy.mediaBuyId,
+    startTime: mediaBuy.startTime,
+    endTime: mediaBuy.canceledAt && mediaBuy.canceledAt < mediaBuy.endTime
+      ? mediaBuy.canceledAt
+      : mediaBuy.endTime,
+    knownAt: mediaBuy.confirmedAt || mediaBuy.createdAt,
+    effectiveAt: mediaBuy.updatedAt,
+    packages: mediaBuy.packages.filter(pkg => !pkg.canceled).map(pkg => {
+      const capabilities = products.get(pkg.productId)?.reporting_capabilities as {
+        reporting_delivery_offering_ids?: string[];
+      } | undefined;
+      const acceptedOfferingIds = mediaBuy.reportingOfferingIdsByPackage?.[pkg.packageId]
+        ?? capabilities?.reporting_delivery_offering_ids
+        ?? [];
+      return {
+        packageId: pkg.packageId,
+        supported: acceptedOfferingIds.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id),
+      };
+    }),
+  }));
+}
+
 /** Resolve a principal-owned sandbox account id to its trusted brand domain. */
 export function sandboxBrandDomainForAccountId(
   accountId: string,
@@ -408,12 +513,12 @@ export function sandboxAccountRefForId(
 
 function accountsForPrincipal(principal?: string): AccountState[] {
   const prefix = `${principalScope(principal)}\u001F`;
-  const accounts: AccountState[] = [];
+  const accounts = new Map<string, AccountState>();
   for (const [key, scopedAccounts] of accountStore) {
     if (!key.startsWith(prefix)) continue;
-    accounts.push(...scopedAccounts.values());
+    for (const account of scopedAccounts.values()) accounts.set(account.accountId, account);
   }
-  return accounts;
+  return [...accounts.values()];
 }
 
 function accountMapsForPrincipal(sessionKey: string, principal?: string): Map<string, AccountState>[] {
@@ -472,6 +577,7 @@ export function clearProcessLocalAccountStore(): void {
 export function clearAccountStore(): void {
   clearProcessLocalAccountStore();
   clearInMemoryGovernanceBindings();
+  clearReportingReliabilityStore();
 }
 
 interface AccountWireShape {
@@ -493,6 +599,7 @@ interface AccountWireShape {
   credit_limit?: { amount: number; currency: string };
   sandbox?: true;
   notification_configs?: Array<Record<string, unknown>>;
+  reporting_delivery_configs?: Array<Record<string, unknown>>;
 }
 
 function accountStateToWire(account: AccountState): AccountWireShape {
@@ -575,6 +682,19 @@ function validationFailure(input: SyncAccountInput, field: string, message: stri
     status: 'rejected',
     errors: [{ code: 'VALIDATION_ERROR', field, message }],
   };
+}
+
+function reportingConfigurationsAreValid(input: SyncAccountInput): string | undefined {
+  if (input.reporting_delivery_configs === undefined) return undefined;
+  if (!Array.isArray(input.reporting_delivery_configs)) {
+    return 'reporting_delivery_configs must be an array';
+  }
+  try {
+    validateReportingConfigurations(input.reporting_delivery_configs);
+  } catch (error) {
+    return error instanceof Error ? error.message : 'reporting_delivery_configs is invalid';
+  }
+  return undefined;
 }
 
 function durableAccountIdentityError(ctx: TrainingContext): { errors: Array<{ code: string; message: string; recovery: string }> } | null {
@@ -1415,9 +1535,13 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         });
         continue;
       }
+      const durableReportingAccount = await resolveReportingAccountDurably(ctx.principal, input.account);
       const existing = findAccountByRef(accounts, input.account)
         ?? (input.account.account_id ? findAccountByIdAcrossSessions(input.account.account_id, ctx.principal) : undefined)
-        ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined);
+        ?? (input.account.account_id ? findComplianceAccountById(input.account.account_id, now) : undefined)
+        ?? (durableReportingAccount
+          ? accountStateFromReportingBinding(durableReportingAccount, ctx.principal, now)
+          : undefined);
       if (!existing) {
         results.push({
           account: input.account,
@@ -1468,6 +1592,51 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       const nextNotificationConfigs = notificationConfigsProvided
         ? notificationConfigs
         : existing.notificationConfigs;
+      const nextAccountState = structuredClone(existing);
+      if (input.payment_terms) nextAccountState.paymentTerms = input.payment_terms;
+      if (input.billing_entity) nextAccountState.billingEntity = input.billing_entity;
+      if (notificationConfigsProvided) {
+        nextAccountState.notificationConfigs = nextNotificationConfigs;
+        nextAccountState.notificationConfigsTouched = true;
+      }
+      nextAccountState.syncedAt = now;
+      const reportingConfigError = reportingConfigurationsAreValid(input);
+      if (reportingConfigError) {
+        results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+        continue;
+      }
+      let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;
+      if (input.reporting_delivery_configs !== undefined) {
+        try {
+          reportingCandidates = await reportingMediaBuyCandidates(ctx, existing);
+          validateReportingConfigurationScopes(input.reporting_delivery_configs, reportingCandidates);
+          await validateReportingConfigurationReplacementDurably(ctx.principal, existing.accountId, input.reporting_delivery_configs);
+        } catch (error) {
+          results.push(validationFailure(input, 'reporting_delivery_configs', error instanceof Error ? error.message : 'reporting_delivery_configs is invalid'));
+          continue;
+        }
+      }
+      if (!req.dry_run && input.reporting_delivery_configs !== undefined) {
+        await replaceReportingConfigurationsDurably(
+          ctx.principal,
+          existing.accountId,
+          input.reporting_delivery_configs,
+          now,
+          reportingAccountRef(existing),
+          reportingCandidates,
+          nextAccountState as unknown as Record<string, unknown>,
+        );
+      } else if (!req.dry_run) {
+        await bindReportingAccountDurably(
+          ctx.principal,
+          existing.accountId,
+          reportingAccountRef(existing),
+          nextAccountState as unknown as Record<string, unknown>,
+        );
+      }
+      const reportingDeliveryConfigs = req.dry_run && input.reporting_delivery_configs !== undefined
+        ? projectedReportingConfigurationStates(input.reporting_delivery_configs, now, reportingCandidates)
+        : await reportingConfigurationStatesForAccountDurably(ctx.principal, existing.accountId);
       const changedPaths: string[] = [];
       if (input.payment_terms && input.payment_terms !== existing.paymentTerms) {
         changedPaths.push('/payment_terms');
@@ -1479,6 +1648,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       ) {
         changedPaths.push('/notification_configs');
       }
+      if (input.reporting_delivery_configs !== undefined) changedPaths.push('/reporting_delivery_configs');
 
       const result: Record<string, unknown> = {
         account_id: existing.accountId,
@@ -1494,19 +1664,14 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         account_scope: existing.accountScope,
         payment_terms: input.payment_terms ?? existing.paymentTerms,
         notification_configs: sanitizeNotificationConfigs(nextNotificationConfigs),
+        reporting_delivery_configs: reportingDeliveryConfigs,
       };
       if (req.dry_run) {
         results.push(result);
         continue;
       }
 
-      if (input.payment_terms) existing.paymentTerms = input.payment_terms;
-      if (input.billing_entity) existing.billingEntity = input.billing_entity;
-      if (notificationConfigsProvided) {
-        existing.notificationConfigs = notificationConfigs;
-        existing.notificationConfigsTouched = true;
-      }
-      existing.syncedAt = now;
+      Object.assign(existing, nextAccountState);
       if (changedPaths.length > 0) {
         const change = recordAccountChange(ctx.principal, {
           resource: {
@@ -1655,7 +1820,26 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       input.sandbox === true,
       input.timezone,
     );
-    const existing = accounts.get(key);
+    const requestedReportingAccount: AccountRef = {
+      brand: {
+        domain: input.brand.domain,
+        ...(input.brand.brand_id && { brand_id: input.brand.brand_id }),
+        ...(input.brand.countries && { countries: [...input.brand.countries] }),
+      },
+      operator: input.operator,
+      ...(input.operator_unit && { operator_unit: structuredClone(input.operator_unit) }),
+      ...(input.currency && { currency: input.currency }),
+      ...(input.timezone && { timezone: input.timezone }),
+      sandbox: input.sandbox === true,
+    };
+    const durableReportingAccount = await resolveReportingAccountDurably(
+      ctx.principal,
+      requestedReportingAccount,
+    );
+    const existing = accounts.get(key)
+      ?? (durableReportingAccount
+        ? accountStateFromReportingBinding(durableReportingAccount, ctx.principal, now)
+        : undefined);
     const isSandbox = input.sandbox === true;
     const accountId = existing?.accountId || `acc_${input.brand.domain.replace(/\./g, '_')}_${randomUUID().slice(0, 8)}`;
     const notificationConfigs = await normalizeNotificationConfigs(input, {
@@ -1668,9 +1852,28 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       results.push(notificationConfigs.error);
       continue;
     }
+    const reportingConfigError = reportingConfigurationsAreValid(input);
+    if (reportingConfigError) {
+      results.push(validationFailure(input, 'reporting_delivery_configs', reportingConfigError));
+      continue;
+    }
+    let reportingCandidates: ReportingMediaBuyCandidate[] | undefined;
+    if (input.reporting_delivery_configs !== undefined) {
+      try {
+        reportingCandidates = existing
+          ? await reportingMediaBuyCandidates(ctx, existing)
+          : [];
+        validateReportingConfigurationScopes(input.reporting_delivery_configs, reportingCandidates);
+        await validateReportingConfigurationReplacementDurably(ctx.principal, accountId, input.reporting_delivery_configs);
+      } catch (error) {
+        results.push(validationFailure(input, 'reporting_delivery_configs', error instanceof Error ? error.message : 'reporting_delivery_configs is invalid'));
+        continue;
+      }
+    }
 
     if (req.dry_run) {
       results.push({
+        ...(existing && { account_id: accountId }),
         brand: input.brand,
         operator: input.operator,
         ...(input.operator_unit && { operator_unit: input.operator_unit }),
@@ -1688,6 +1891,9 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
               ? { notification_configs: sanitizeNotificationConfigs(existing.notificationConfigs) }
               : {}
         ),
+        reporting_delivery_configs: input.reporting_delivery_configs !== undefined
+          ? projectedReportingConfigurationStates(input.reporting_delivery_configs, now, reportingCandidates)
+          : await reportingConfigurationStatesForAccountDurably(ctx.principal, accountId),
       });
       continue;
     }
@@ -1738,7 +1944,26 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         ]
       : undefined;
 
+    if (input.reporting_delivery_configs !== undefined) {
+      await replaceReportingConfigurationsDurably(
+        ctx.principal,
+        accountId,
+        input.reporting_delivery_configs,
+        now,
+        reportingAccountRef(state),
+        reportingCandidates,
+        state as unknown as Record<string, unknown>,
+      );
+    } else {
+      await bindReportingAccountDurably(
+        ctx.principal,
+        accountId,
+        reportingAccountRef(state),
+        state as unknown as Record<string, unknown>,
+      );
+    }
     accounts.set(key, state);
+    const reportingDeliveryConfigs = await reportingConfigurationStatesForAccountDurably(ctx.principal, accountId);
     const currentWire = JSON.stringify(accountStateToWire(state));
     if (!existing || previousWire !== currentWire) {
       const change = recordAccountChange(ctx.principal, {
@@ -1774,6 +1999,7 @@ export async function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
       account_scope: 'operator_brand',
       payment_terms: state.paymentTerms,
       rate_card: state.rateCard,
+      reporting_delivery_configs: reportingDeliveryConfigs,
     };
 
     if (input.billing_entity) {
@@ -1858,12 +2084,24 @@ function mergeAccountFixtures(accounts: AccountWireShape[], fixtures: AccountWir
   return merged;
 }
 
-export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object {
+export async function handleListAccounts(args: ToolArgs, ctx: TrainingContext): Promise<object> {
   const req = args as unknown as ListAccountsRequest;
   const identityError = durableAccountIdentityError(ctx);
   if (identityError) return identityError;
   const sessionKey = sessionKeyFromArgs({}, ctx.mode, ctx.userId, ctx.moduleId);
   const accountMap = getAccountMap(sessionKey, ctx.principal);
+  for (const binding of await listReportingAccountsDurably(ctx.principal)) {
+    const restored = accountStateFromReportingBinding(binding, ctx.principal, new Date().toISOString());
+    if (!restored) continue;
+    accountMap.set(accountKey(
+      restored.brand,
+      restored.operator,
+      restored.operatorUnit,
+      restored.currency,
+      restored.sandbox,
+      restored.timezone,
+    ), restored);
+  }
   const preferFixtureAccounts = ctx.storyboardCompat?.version === '3.0';
   const complianceAccounts = preferFixtureAccounts
     ? getComplianceAccounts().filter(account => account.account_id !== 'acc_luma_shared')
@@ -1896,6 +2134,15 @@ export function handleListAccounts(args: ToolArgs, ctx: TrainingContext): object
       ? accounts.filter(a => a.sandbox === true)
       : accounts.filter(a => !a.sandbox);
   }
+
+  // The durable configuration set is caller-owned even when the account ID
+  // happens to be known by another buyer. Project only this principal's
+  // secret-free states; credentials and destination grants never enter the
+  // account response.
+  accounts = await Promise.all(accounts.map(async account => ({
+    ...account,
+    reporting_delivery_configs: await reportingConfigurationStatesForAccountDurably(ctx.principal, account.account_id),
+  })));
 
   const totalMatching = accounts.length;
   const requestedMax = req.pagination?.max_results;
@@ -2319,7 +2566,18 @@ export async function handleSyncGovernance(args: ToolArgs, ctx: TrainingContext)
     // aliases. Do not mutate the process-local account projection until the
     // durable replacement succeeds.
     await governanceBindingStore().upsert(durableBinding);
-    acct.governanceAgents = validAgents;
+    const nextAccountState = {
+      ...structuredClone(acct),
+      governanceAgents: structuredClone(validAgents),
+      syncedAt: durableBinding.updatedAt,
+    };
+    await bindReportingAccountDurably(
+      ctx.principal,
+      acct.accountId,
+      completeAccountRef,
+      nextAccountState as unknown as Record<string, unknown>,
+    );
+    Object.assign(acct, nextAccountState);
 
     results.push({
       account: acctRef,

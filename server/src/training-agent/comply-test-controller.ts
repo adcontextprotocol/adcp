@@ -36,8 +36,10 @@ import type {
   SeededProductAvailability,
 } from './types.js';
 import {
+  atLeastAdcpVersion,
   supportsAccountChangeFeed,
   supportsGetProductsRejected,
+  REPORTING_LIFECYCLE_PROBE_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -90,6 +92,14 @@ import {
   type TaskRegistryTenant,
   type TrainingTaskRegistryScope,
 } from './task-registry-scope.js';
+import {
+  advanceReportingCoreLifecycleProbe,
+  omitReportingCoreObligationProbe,
+  prepareReportingCoreLifecycleProbe,
+  publishZeroRowReportingCoreLifecycleProbe,
+  resolveReportingAccountDurably,
+  withDurableReportingLedger,
+} from './reporting-reliability.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1444,6 +1454,7 @@ const LOCAL_SCENARIOS = [
   'seed_measurement_catalog',
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
+  'reporting_core_lifecycle_probe',
   'query_provenance_audit_observations',
   'query_account_governance_binding',
   'evaluate_distributed_brand_resolution',
@@ -1597,13 +1608,96 @@ async function handleCompactLifecycleProbe(
   };
 }
 
+/**
+ * Deterministic reporting lab: the virtual clock starts after a closed
+ * period but before its SLA, can cross the overdue boundaries, then publishes
+ * a successful empty report. It is intentionally controller-only: normal
+ * reporting configurations use the real clock and never backdate activation.
+ */
+async function handleReportingCoreLifecycleProbe(
+  args: ToolArgs,
+  params: Record<string, unknown>,
+  ctx: TrainingContext,
+): Promise<object> {
+  const operation = typeof params.operation === 'string' ? params.operation : undefined;
+  let accountId: string;
+  try {
+    const account = normalizeControllerAccountRef(args.account);
+    const reportingAccount = await resolveReportingAccountDurably(ctx.principal, account);
+    if (!reportingAccount || reportingAccount.account.sandbox !== true) {
+      throw new Error('Unknown or non-sandbox reporting account');
+    }
+    accountId = reportingAccount.accountId;
+  } catch {
+    return {
+      success: false,
+      error: 'ACCOUNT_NOT_FOUND',
+      error_detail: 'reporting_core_lifecycle_probe requires a caller-owned sandbox account with reporting configured',
+    };
+  }
+  return await withDurableReportingLedger(ctx.principal, accountId, true, () => {
+  try {
+    if (operation === 'prepare') {
+      return {
+        success: true,
+        simulated: prepareReportingCoreLifecycleProbe(ctx.principal, accountId),
+        message: 'Prepared one elapsed reporting period before its delivery SLA; it is visible with no revision.',
+      };
+    }
+    if (operation === 'advance_time') {
+      const targetHealth = params.target_health;
+      if (targetHealth !== 'delayed' && targetHealth !== 'action_required') {
+        return {
+          success: false,
+          error: 'INVALID_PARAMS',
+          error_detail: 'reporting_core_lifecycle_probe advance_time requires params.target_health: delayed or action_required',
+        };
+      }
+      return {
+        success: true,
+        simulated: advanceReportingCoreLifecycleProbe(ctx.principal, accountId, targetHealth),
+        message: `Advanced the reporting ledger clock to ${targetHealth}.`,
+      };
+    }
+    if (operation === 'publish_zero_row') {
+      return {
+        success: true,
+        simulated: publishZeroRowReportingCoreLifecycleProbe(ctx.principal, accountId),
+        message: 'Published a zero-row immutable Core revision for the original obligation.',
+      };
+    }
+    if (operation === 'omit_obligation') {
+      return {
+        success: true,
+        simulated: omitReportingCoreObligationProbe(ctx.principal, accountId),
+        message: 'Prepared a deliberately omitted elapsed obligation for buyer-side denominator reconciliation.',
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: 'INVALID_STATE',
+      error_detail: error instanceof Error ? error.message : 'Unable to update reporting lifecycle fixture',
+    };
+  }
+  return {
+    success: false,
+    error: 'INVALID_PARAMS',
+    error_detail: 'reporting_core_lifecycle_probe requires params.operation: prepare, advance_time, publish_zero_row, or omit_obligation',
+  };
+  });
+}
+
 function localScenariosFor(ctx: TrainingContext): string[] {
   const scenarios = ctx.storyboardCompat?.version === '3.0'
     ? LOCAL_SCENARIOS.filter(s => s !== 'force_creative_purge' && s !== 'force_wholesale_feed_webhook' && s !== 'seed_rights_grant' && s !== 'query_provenance_audit_observations' && s !== 'query_account_governance_binding')
     : [...LOCAL_SCENARIOS];
-  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+  const currentOnly = atLeastAdcpVersion(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_LIFECYCLE_PROBE_ADCP_VERSION)
     ? scenarios
-    : scenarios.filter(s => s !== 'expire_account_change_cursor');
+    : scenarios.filter(s => s !== 'reporting_core_lifecycle_probe');
+  return supportsAccountChangeFeed(ctx.servedAdcpVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
+    ? currentOnly
+    : currentOnly.filter(s => s !== 'expire_account_change_cursor');
 }
 
 /**
@@ -1912,6 +2006,9 @@ export async function handleComplyTestController(args: ToolArgs, ctx: TrainingCo
     || scenario === 'compact_direct_buy_lifecycle_probe'
   ) {
     return handleCompactLifecycleProbe(scenario, session, params, ctx);
+  }
+  if (scenario === 'reporting_core_lifecycle_probe') {
+    return handleReportingCoreLifecycleProbe(args, params, ctx);
   }
   if (scenario === 'force_get_products_arm' && params.arm === 'rejected') {
     if (!supportsGetProductsRejected(ctx.servedAdcpVersion)) {

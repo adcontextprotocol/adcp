@@ -77,6 +77,14 @@ export const syncAccountsUpsert: NonNullable<AccountStore['upsert']> = async (re
         ...(rawAccounts[i].notification_configs !== undefined && {
           notification_configs: rawAccounts[i].notification_configs,
         }),
+        // The SDK resolves the account reference before calling upsert and
+        // intentionally projects only account fields into `refs`. Preserve
+        // this experimental account setting from the validated raw input so
+        // the sales reporting ledger can apply caller-scoped replacement
+        // semantics after account provisioning succeeds.
+        ...(rawAccounts[i].reporting_delivery_configs !== undefined && {
+          reporting_delivery_configs: rawAccounts[i].reporting_delivery_configs,
+        }),
       }))
     : refs;
   const v5Result = await handleSyncAccounts(

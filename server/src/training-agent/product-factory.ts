@@ -814,6 +814,7 @@ function buildProduct(
       expected_delay_minutes: 240,
       timezone: 'UTC',
       supports_webhooks: false,
+      reporting_delivery_offering_ids: ['pacing-hourly-core'],
       available_metrics: pub.reportingMetrics as NonNullable<Product['reporting_capabilities']>['available_metrics'],
       date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,

@@ -1347,6 +1347,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
     { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
     { label: 'Delivery reporting', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_media_buy_delivery` },
+    { label: 'Implementing reporting.core', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide` },
+    { label: 'Reporting status and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status` },
+    { label: 'Reporting lifecycle sandbox probe', url: `${DOCS_BASE}/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
     { label: 'Campaign governance — seller perspective', url: `${DOCS_BASE}/docs/governance/campaign` },
     { label: 'check_governance task', url: `${DOCS_BASE}/docs/governance/campaign/tasks/check_governance` },
@@ -1462,6 +1465,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track S: Specialist deep dives
   S1: [
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
+    { label: 'Implementing reporting.core', url: `${DOCS_BASE}/docs/media-buy/reporting-core-implementation-guide` },
+    { label: 'Reporting status and reconciliation', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_reporting_status` },
+    { label: 'Reporting lifecycle sandbox probe', url: `${DOCS_BASE}/docs/building/by-layer/L3/comply-test-controller#reporting_core_lifecycle_probe` },
     { label: 'Shared-account change feed lab', url: `${DOCS_BASE}/docs/learning/shared-account-change-feed` },
     { label: 'List account changes task', url: `${DOCS_BASE}/docs/accounts/tasks/list_account_changes` },
     { label: 'Proposal negotiation with refine_proposals', url: `${DOCS_BASE}/docs/media-buy/task-reference/refine_proposals` },

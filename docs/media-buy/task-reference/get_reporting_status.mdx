@@ -176,6 +176,18 @@ all, empty, or unknown. A later-created or backdated media buy does not rewrite 
 historical obligation. This prevents current authorization state, deleted provider
 objects, and zero-delivery campaigns from silently changing the denominator.
 
+The period boundary is also the obligation's availability boundary. Before taking
+any ledger snapshot whose `ledger_as_of` is later than `period.end`, the seller must
+have committed the obligation independently of source availability and before
+committing any revision for it. A `periods` view whose selected denominator includes
+that configuration generation and period must return it in the paginated record set.
+Snapshots whose `ledger_as_of` is at or before the boundary do not expose the
+obligation; they may expose only the derived future `next_expected_at`.
+Media-buy acceptance alone does not create an obligation, and a revision,
+materialization, or doorbell is never a prerequisite. The applicable reporting
+configuration generation defines the clock; `expected_at` remains `period.end +
+schedule.delivery_sla`.
+
 Per-buy `reporting_webhook` remains the existing low-latency data API. It is not a
 durable materialization in this first managed-ledger version; a short-period pacing
 configuration plus the signed readiness doorbell is the reliable fast path here.

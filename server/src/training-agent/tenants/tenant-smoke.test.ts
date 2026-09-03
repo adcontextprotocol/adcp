@@ -34,6 +34,11 @@ import { TrainingCreativePlatform } from '../v6-creative-platform.js';
 import { accountScopeFromRef } from '../account-scope.js';
 import { trainingBuyerAgentRegistry } from '../buyer-agent-registry.js';
 import { GovernanceAgentStub } from '@adcp/sdk/testing';
+import {
+  clearReportingAccountBindingCacheForTesting,
+  reportingMediaBuyCandidateHistoryForTesting,
+  resolveReportingAccountDurably,
+} from '../reporting-reliability.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -2058,7 +2063,7 @@ describe('tenant routing smoke', () => {
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2-beta.11');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.11']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.11', '3.2-beta.12']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -2070,6 +2075,15 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.compliance_testing?.scenarios).toEqual(
         expect.arrayContaining(SALES_CURRENT_SCENARIOS),
       );
+      expect(body.result?.structuredContent?.compliance_testing?.scenarios)
+        .not.toContain('reporting_core_lifecycle_probe');
+      const beta12Capabilities = await callTenantTool(url, 3, 'get_adcp_capabilities', {
+        adcp_version: '3.2-beta.12',
+      }) as {
+        result?: { structuredContent?: { compliance_testing?: { scenarios?: string[] } } };
+      };
+      expect(beta12Capabilities.result?.structuredContent?.compliance_testing?.scenarios)
+        .toContain('reporting_core_lifecycle_probe');
       const validation = validateSourceSchema(
         'protocol/get-adcp-capabilities-response.json',
         body.result?.structuredContent,
@@ -3185,7 +3199,16 @@ describe('tenant routing smoke', () => {
       expect(created.result?.structuredContent?.packages?.[0]?.format_ids).toEqual([legacyFormat]);
       expect(created.result?.structuredContent?.packages?.[0]).not.toHaveProperty('format_option_refs');
       const mediaBuyId = created.result?.structuredContent?.media_buy_id;
+      expect(mediaBuyId).toBeTruthy();
+      const createdBinding = await resolveReportingAccountDurably('static:public', account);
+      expect(createdBinding?.accountId).toBeTruthy();
+      expect(reportingMediaBuyCandidateHistoryForTesting(
+        'static:public',
+        createdBinding!.accountId,
+        mediaBuyId!,
+      )).toHaveLength(1);
 
+      clearReportingAccountBindingCacheForTesting();
       const updated = await callTenantTool(url, 73, 'update_media_buy', {
         adcp_version: '3.0',
         idempotency_key: 'legacy-only-native-update-0001',
@@ -3215,6 +3238,17 @@ describe('tenant routing smoke', () => {
       expect(affected?.format_ids).toEqual([legacyFormat]);
       expect(affected).not.toHaveProperty('format_option_refs');
       expect(JSON.stringify(updated.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+      await expect(resolveReportingAccountDurably('static:public', account)).resolves.toMatchObject({
+        accountId: createdBinding!.accountId,
+        account,
+      });
+      const updatedHistory = reportingMediaBuyCandidateHistoryForTesting(
+        'static:public',
+        createdBinding!.accountId,
+        mediaBuyId!,
+      );
+      expect(updatedHistory).toHaveLength(2);
+      expect(updatedHistory.at(-1)?.packages).toHaveLength(2);
 
       const read = await callTenantTool(url, 74, 'get_media_buys', {
         adcp_version: '3.0',
@@ -3228,6 +3262,31 @@ describe('tenant routing smoke', () => {
       expect(packages?.every(pkg => JSON.stringify(pkg.format_ids) === JSON.stringify([legacyFormat]))).toBe(true);
       expect(packages?.every(pkg => !Object.hasOwn(pkg, 'format_option_refs'))).toBe(true);
       expect(JSON.stringify(read.result?.structuredContent)).not.toContain('__selected_legacy_format_ids');
+
+      clearReportingAccountBindingCacheForTesting();
+      const canceled = await callTenantTool(url, 75, 'update_media_buy', {
+        adcp_version: '3.0',
+        idempotency_key: 'legacy-only-native-cancel-0001',
+        account,
+        media_buy_id: mediaBuyId,
+        canceled: true,
+        cancellation_reason: 'Legacy reporting capture regression',
+      }) as {
+        result?: { structuredContent?: { media_buy_status?: string; adcp_error?: unknown } };
+      };
+      expect(canceled.result?.structuredContent?.adcp_error, JSON.stringify(canceled)).toBeUndefined();
+      expect(canceled.result?.structuredContent?.media_buy_status).toBe('canceled');
+      await expect(resolveReportingAccountDurably('static:public', account)).resolves.toMatchObject({
+        accountId: createdBinding!.accountId,
+        account,
+      });
+      const canceledHistory = reportingMediaBuyCandidateHistoryForTesting(
+        'static:public',
+        createdBinding!.accountId,
+        mediaBuyId!,
+      );
+      expect(canceledHistory).toHaveLength(3);
+      expect(canceledHistory.at(-1)?.end).not.toBe('2027-07-01T00:00:00Z');
     } finally {
       await close();
     }
@@ -3502,7 +3561,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.11'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-beta.11', '3.2-beta.12'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');
