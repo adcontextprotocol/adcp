@@ -60,10 +60,10 @@ const MIN = 1;
 const HOUR = 60;
 const DAY = 24 * HOUR;
 
-// Types and title shapes copied from the real call sites (routes/community.ts,
+// Types and title shapes follow the real call sites (routes/community.ts,
 // db/community-db.ts, notifications/compliance.ts, addie/jobs/job-definitions.ts,
-// services/working-group-membership-service.ts) so seeded rows look like
-// production rows.
+// services/working-group-membership-service.ts), with canonical organization
+// naming, so seeded rows look like production rows without carrying legacy copy.
 const NOTIFICATIONS: SeedNotification[] = [
   // --- Unread, recent: what the bell dropdown shows ---
   {
@@ -124,7 +124,7 @@ const NOTIFICATIONS: SeedNotification[] = [
   {
     minutesAgo: 9 * HOUR,
     type: 'verification_earned',
-    title: 'Your agent Northstar Sales Agent is now an AAO Verified sales agent (v1.7.0).',
+    title: 'Your agent Northstar Sales Agent is now an AgenticAdvertising.org Verified sales agent (v1.7.0).',
     url: '/registry/agents/northstar-sales-agent',
     referenceType: 'agent',
   },
@@ -205,7 +205,7 @@ const NOTIFICATIONS: SeedNotification[] = [
   {
     minutesAgo: 4 * DAY + 6 * HOUR,
     type: 'verification_lost',
-    title: 'Your agent Harbor Signals Agent lost its AAO Verified signals badge (v0.9.2). Two required tracks regressed.',
+    title: 'Your agent Harbor Signals Agent lost its AgenticAdvertising.org Verified signals badge (v0.9.2). Two required tracks regressed.',
     url: '/registry/agents/harbor-signals-agent',
     referenceType: 'agent',
     read: true,

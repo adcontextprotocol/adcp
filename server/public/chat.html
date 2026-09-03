@@ -83,8 +83,12 @@
     }
 
     .chat-header h1 .addie-avatar {
-      width: 28px;
-      height: auto;
+      width: 32px;
+      height: 32px;
+      padding: 3px;
+      border-radius: 50%;
+      background: var(--color-avatar-disc);
+      object-fit: contain;
     }
 
     .chat-header p {
@@ -102,7 +106,11 @@
 
     .welcome-identity .addie-avatar {
       width: 64px;
-      height: auto;
+      height: 64px;
+      padding: 6px;
+      border-radius: 50%;
+      background: var(--color-avatar-disc);
+      object-fit: contain;
       margin-bottom: 4px;
     }
 
@@ -783,11 +791,11 @@
     .chat-input:focus {
       outline: none;
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     .chat-input::placeholder {
-      color: var(--color-text-muted);
+      color: var(--color-text-placeholder);
     }
 
     .send-button {
@@ -2343,7 +2351,7 @@
     }
 
     .si-modal-input::placeholder {
-      color: var(--color-text-muted);
+      color: var(--color-text-placeholder);
     }
 
     .si-modal-send {
@@ -5503,7 +5511,14 @@
         if (isReadOnly) {
           return { ok: false, title: 'Can\u2019t attach here', hint: 'This conversation is read-only.' };
         }
-        if (pendingAttachments.length >= ATTACHMENT_MAX_COUNT) {
+        const draggedItems = Array.from(e.dataTransfer?.items || [])
+          .filter(item => item.kind === 'file');
+        const droppedFiles = Array.from(e.dataTransfer?.files || []);
+        const draggedCount = Math.max(draggedItems.length, droppedFiles.length);
+        if (
+          pendingAttachments.length >= ATTACHMENT_MAX_COUNT
+          || pendingAttachments.length + draggedCount > ATTACHMENT_MAX_COUNT
+        ) {
           return {
             ok: false,
             title: 'Attachment limit reached',
@@ -5512,11 +5527,10 @@
         }
         // An empty type means the source told us nothing (a folder, for
         // instance). Stay optimistic rather than refusing a valid file.
-        const draggedTypes = Array.from(e.dataTransfer?.items || [])
-          .filter(item => item.kind === 'file')
+        const draggedTypes = [...draggedItems, ...droppedFiles]
           .map(item => (item.type || '').toLowerCase())
           .filter(Boolean);
-        if (draggedTypes.length > 0 && !draggedTypes.some(type => ALLOWED_ATTACHMENT_TYPES.has(type))) {
+        if (draggedTypes.some(type => !ALLOWED_ATTACHMENT_TYPES.has(type))) {
           return {
             ok: false,
             title: 'Can\u2019t attach this',
@@ -5588,8 +5602,13 @@
       document.addEventListener('drop', (e) => {
         if (!dragCarriesFiles(e)) return;
         e.preventDefault();
+        const verdict = assessDrag(e);
         hideDropOverlay();
         if (isReadOnly) return;
+        if (!verdict.ok) {
+          showError(verdict.hint);
+          return;
+        }
         if (e.dataTransfer?.files?.length) addAttachmentFiles(e.dataTransfer.files);
       });
 

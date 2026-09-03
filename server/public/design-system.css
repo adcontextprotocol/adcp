@@ -829,7 +829,7 @@ textarea::placeholder {
 }
 
 .ds-input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--color-text-placeholder);
 }
 
 .ds-input:disabled {
