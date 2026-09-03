@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Admin - Industry Feeds - AdCP Registry</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
@@ -428,8 +428,6 @@
       font-size: var(--text-xs);
     }
     .email-info-box {
-      background: var(--color-info-50);
-      border: var(--border-1) solid var(--color-info-200);
       border-radius: var(--radius-md);
       padding: var(--space-4);
     }
@@ -440,7 +438,7 @@
     .email-info-box ol {
       margin: 0;
       padding-left: var(--space-5);
-      color: var(--color-text-secondary);
+      color: var(--color-text);
       font-size: var(--text-sm);
     }
     .email-info-box li {
@@ -449,9 +447,9 @@
     .email-section {
       margin-top: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-info-50);
+      background: var(--color-info-bg);
       border-radius: var(--radius-md);
-      border: var(--border-1) solid var(--color-info-200);
+      border: var(--border-1) solid var(--color-info-border, var(--color-border));
     }
     .email-address {
       font-family: var(--font-mono);
@@ -608,7 +606,7 @@
         <!-- Email-specific info -->
         <div id="emailFields" style="display: none;">
           <div class="form-group">
-            <div class="email-info-box">
+            <div class="email-info-box ds-alert ds-alert-info ds-alert-ring">
               <p><strong>How it works:</strong></p>
               <ol>
                 <li>Enter a name for the newsletter source below</li>

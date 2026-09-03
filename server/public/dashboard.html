@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard - AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -63,8 +63,8 @@
     }
 
     .info-box {
-      background: var(--color-info-50);
-      border-left: var(--border-4) solid var(--color-info-500);
+      background: var(--color-info-bg);
+      border-left: var(--border-4) solid var(--color-info-fg);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
@@ -1019,9 +1019,6 @@
 
         /* Setup alerts banner styles */
         .setup-alert {
-          background: var(--color-warning-50);
-          border: 1px solid var(--color-warning-200);
-          border-left: 4px solid var(--color-warning-500);
           border-radius: var(--radius-md);
           padding: var(--space-4);
           margin-bottom: var(--space-4);
@@ -1040,12 +1037,12 @@
         }
         .setup-alert-title {
           font-weight: 600;
-          color: var(--color-warning-800);
+          color: var(--color-text-heading);
           margin: 0 0 2px 0;
           font-size: 14px;
         }
         .setup-alert-message {
-          color: var(--color-warning-700);
+          color: var(--color-text);
           margin: 0;
           font-size: 13px;
         }
@@ -1059,7 +1056,7 @@
         .setup-alert-dismiss {
           background: none;
           border: none;
-          color: var(--color-warning-500);
+          color: var(--color-text-secondary);
           cursor: pointer;
           padding: 4px;
           font-size: 16px;
@@ -1071,9 +1068,9 @@
         }
 
         .support-alert {
-          background: var(--color-warning-50);
-          border: 1px solid var(--color-warning-200);
-          border-left: 4px solid var(--color-warning-500);
+          background: var(--color-warning-bg);
+          border: 1px solid var(--color-warning-border, var(--color-border));
+          border-left: 4px solid var(--color-warning-fg);
           border-radius: var(--radius-md);
           padding: var(--space-4);
           margin-bottom: var(--space-4);
@@ -1082,9 +1079,9 @@
           gap: var(--space-3);
         }
         .support-alert--urgent {
-          background: var(--color-error-50);
-          border-color: var(--color-error-200);
-          border-left-color: var(--color-error-500);
+          background: var(--color-error-bg);
+          border-color: var(--color-error-border, var(--color-border));
+          border-left-color: var(--color-error-fg);
         }
         .support-alert-content {
           flex: 1;
@@ -1161,8 +1158,8 @@
           white-space: nowrap;
         }
         .escalation-badge--follow-up {
-          background: var(--color-warning-50);
-          color: var(--color-warning-700);
+          background: var(--color-warning-bg);
+          color: var(--color-warning-fg);
         }
         .escalation-actions {
           flex-shrink: 0;
@@ -2354,7 +2351,7 @@
 
         // Render alerts
         setupAlerts.innerHTML = alerts.map(alert => `
-          <div class="setup-alert" data-alert-id="${escapeHtml(alert.id)}">
+          <div class="setup-alert ds-alert ds-alert-warning ds-alert-ring" data-alert-id="${escapeHtml(alert.id)}">
             <div class="setup-alert-icon">${alert.icon}</div>
             <div class="setup-alert-content">
               <h4 class="setup-alert-title">${escapeHtml(alert.title)}</h4>
@@ -2565,8 +2562,8 @@
       } catch (error) {
         console.error('Error loading products:', error);
         container.innerHTML = `
-          <div style="text-align: center; padding: 40px; background: var(--color-error-50); border-radius: 8px;">
-            <p style="color: var(--color-error-600); margin-bottom: 16px;">Unable to load membership options.</p>
+          <div style="text-align: center; padding: 40px; background: var(--color-error-bg); border-radius: 8px;">
+            <p style="color: var(--color-error-fg); margin-bottom: 16px;">Unable to load membership options.</p>
             <button onclick="updatePricingTable(currentOrg)" class="btn btn-secondary">Try Again</button>
           </div>
         `;

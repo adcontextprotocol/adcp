@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Get Started - AgenticAdvertising.org</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     /* =============================================================================
@@ -102,14 +103,12 @@
 
     /* Invitations section */
     .invitations-section {
-      background: var(--color-info-50);
-      border: var(--border-1) solid var(--color-info-200);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       margin-bottom: var(--space-6);
     }
     .invitations-section h3 {
-      color: var(--color-info-700);
+      color: var(--color-text-heading);
       font-size: var(--text-base);
       margin-bottom: var(--space-4);
     }
@@ -216,17 +215,17 @@
       background: var(--color-bg-button-secondary);
     }
     .error {
-      background: var(--color-error-50);
-      border: var(--border-1) solid var(--color-error-200);
-      color: var(--color-error-600);
+      background: var(--color-error-bg);
+      border: var(--border-1) solid var(--color-error-border, var(--color-border));
+      color: var(--color-error-fg);
       padding: var(--space-3);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
     }
     .info {
-      background: var(--color-info-50);
-      border: var(--border-1) solid var(--color-info-200);
-      color: var(--color-info-700);
+      background: var(--color-info-bg);
+      border: var(--border-1) solid var(--color-info-border, var(--color-border));
+      color: var(--color-info-fg);
       padding: var(--space-3);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
@@ -463,13 +462,13 @@
       <div id="error" class="error" style="display:none;"></div>
 
       <!-- Pending Invitations -->
-      <div id="invitationsSection" class="invitations-section" style="display: none;">
+      <div id="invitationsSection" class="invitations-section ds-alert ds-alert-info ds-alert-ring" style="display: none;">
         <h3>You have pending invitations</h3>
         <div id="invitationsList"></div>
       </div>
 
       <!-- Claim a sales-touched prospect org by domain -->
-      <div id="claimOrgSection" class="invitations-section" style="display: none;">
+      <div id="claimOrgSection" class="invitations-section ds-alert ds-alert-info ds-alert-ring" style="display: none;">
         <h3>We've been tracking your company</h3>
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-3); font-size: var(--text-sm);">
           A record exists for <strong id="claimOrgName"></strong> based on your email domain. Claim it to consolidate the work

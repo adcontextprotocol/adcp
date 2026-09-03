@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>brand.json Builder - AdCP Brand Protocol</title>
-    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -331,16 +331,11 @@
         color: var(--color-primary-800);
       }
 
-      .result-warning {
-        background: var(--color-warning-50);
-        border: 1px solid var(--color-warning-200);
-        color: var(--color-warning-800);
-      }
 
       .result-error {
-        background: var(--color-error-50);
-        border: 1px solid var(--color-error-200);
-        color: var(--color-error-800);
+        background: var(--color-error-bg);
+        border: 1px solid var(--color-error-border, var(--color-border));
+        color: var(--color-error-fg);
       }
 
       .result-info {
@@ -553,8 +548,6 @@
 
       /* Next Steps Styles */
       .next-steps {
-        background: var(--color-success-50);
-        border: 1px solid var(--color-success-100);
         border-radius: var(--radius-lg);
         padding: var(--space-5);
         margin-top: var(--space-6);
@@ -562,7 +555,7 @@
 
       .next-steps h4 {
         margin: 0 0 var(--space-4) 0;
-        color: var(--color-success-700);
+        color: var(--color-text-heading);
         display: flex;
         align-items: center;
         gap: var(--space-2);
@@ -608,13 +601,13 @@
       .step-content strong {
         display: block;
         margin-bottom: var(--space-1);
-        color: var(--color-success-700);
+        color: var(--color-text-heading);
       }
 
       .step-content p {
         margin: 0 0 var(--space-2) 0;
         font-size: var(--text-sm);
-        color: var(--text-secondary);
+        color: var(--color-text);
       }
 
       .step-content code {
@@ -622,7 +615,7 @@
         padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-sm);
         font-size: var(--text-sm);
-        border: 1px solid var(--color-success-100);
+        border: 1px solid var(--color-success-border, var(--color-border));
       }
 
       .registry-setup-panel {
@@ -667,21 +660,21 @@
       }
 
       .verify-result.success {
-        background: var(--color-success-50);
-        border: 1px solid var(--color-success-100);
-        color: var(--color-success-700);
+        background: var(--color-success-bg);
+        border: 1px solid var(--color-success-border, var(--color-border));
+        color: var(--color-success-fg);
       }
 
       .verify-result.error {
-        background: var(--color-error-50);
-        border: 1px solid var(--color-error-100);
-        color: var(--color-error-700);
+        background: var(--color-error-bg);
+        border: 1px solid var(--color-error-border, var(--color-border));
+        color: var(--color-error-fg);
       }
 
       .verify-result.pending {
-        background: var(--color-warning-50);
-        border: 1px solid var(--color-warning-100);
-        color: var(--color-warning-700);
+        background: var(--color-warning-bg);
+        border: 1px solid var(--color-warning-border, var(--color-border));
+        color: var(--color-warning-fg);
       }
 
       /* Portfolio Two-Panel Layout */
@@ -973,7 +966,7 @@
 
       .chip-container:focus-within {
         border-color: var(--color-brand);
-        box-shadow: 0 0 0 3px var(--color-primary-100);
+        box-shadow: 0 0 0 3px var(--color-focus-ring);
       }
 
       .chip {
@@ -1632,7 +1625,7 @@
           </details>
 
           <!-- Next Steps / Success State -->
-          <div class="next-steps" id="next-steps">
+          <div class="next-steps ds-alert ds-alert-success ds-alert-ring" id="next-steps">
             <h4>Next steps</h4>
             <div class="registry-setup-panel hidden" id="registry-setup-panel">
               <p id="registry-setup-message">
@@ -2066,7 +2059,7 @@
           try {
             const savedDate = new Date(savedDraft.savedAt).toLocaleString();
             validationResults.innerHTML = `
-              <div class="validation-result result-warning">
+              <div class="validation-result result-warning ds-alert ds-alert-warning ds-alert-ring">
                 <strong>No brand.json found</strong><br>
                 Restored your previous draft for ${escapeHtml(domain)} (saved ${escapeHtml(savedDate)})
               </div>

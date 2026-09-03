@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Admin - Escalations - AgenticAdvertising.org</title>
   <script src="/nav.js"></script>
   <script src="/admin-sidebar.js"></script>
@@ -176,16 +176,13 @@
       white-space: pre-wrap;
     }
     .info-banner {
-      background: var(--color-warning-50);
-      border: var(--border-1) solid var(--color-warning-200);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-5);
       font-size: var(--text-sm);
-      color: var(--color-warning-800);
     }
     .info-banner a {
-      color: var(--color-warning-700);
+      color: var(--color-brand);
       font-weight: var(--font-medium);
     }
   </style>
@@ -207,7 +204,7 @@
           </div>
         </div>
 
-        <div id="notConfiguredBanner" class="info-banner" style="display: none;">
+        <div id="notConfiguredBanner" class="info-banner ds-alert ds-alert-warning ds-alert-ring" style="display: none;">
           <strong>Notifications not configured.</strong>
           Escalation notifications are disabled. <a href="/admin/settings">Configure a Slack channel</a> to receive alerts when users need help.
         </div>

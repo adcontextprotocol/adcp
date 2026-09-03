@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>API keys - Dashboard</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
@@ -213,7 +213,7 @@
     .form-group input:focus {
       outline: none;
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     /* Created key display */
@@ -253,11 +253,8 @@
     .created-key-warning {
       margin-top: 12px;
       padding: 12px;
-      background: var(--color-warning-50);
-      border-left: 4px solid var(--color-warning-500);
       border-radius: 4px;
       font-size: 13px;
-      color: var(--color-warning-700);
     }
 
     /* Usage hint */
@@ -318,7 +315,7 @@
             <code id="createdKeyValue"></code>
             <button class="btn btn-secondary btn-sm" onclick="copyKey()">Copy</button>
           </div>
-          <div class="created-key-warning">
+          <div class="created-key-warning ds-alert ds-alert-warning">
             Copy this key now. You won't be able to see it again.
           </div>
         </div>

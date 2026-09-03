@@ -184,8 +184,8 @@
     }
 
     .admin-nav-item.active {
-      background: var(--color-primary-50);
-      color: var(--color-brand);
+      background: var(--color-brand-bg);
+      color: var(--color-brand-fg, var(--color-brand));
       border-left-color: var(--color-brand);
       font-weight: 500;
     }

@@ -6,7 +6,7 @@
   <meta name="referrer" content="same-origin">
   <title>Membership Invitation - AgenticAdvertising.org</title>
   <meta name="description" content="Accept your AgenticAdvertising.org membership invitation.">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     * { box-sizing: border-box; }
@@ -52,8 +52,6 @@
       margin: var(--space-4) 0;
     }
     .error {
-      color: var(--color-error-600);
-      background: var(--color-error-50);
       padding: var(--space-3);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
@@ -166,7 +164,7 @@
               </label>
             </div>
 
-            <div id="acceptError" class="error hidden"></div>
+            <div id="acceptError" class="error hidden ds-alert ds-alert-error"></div>
 
             <div style="display: flex; gap: var(--space-3); justify-content: flex-end;">
               <a href="/" class="btn-secondary">Cancel</a>

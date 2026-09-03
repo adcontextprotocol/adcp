@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Billing - Admin</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -133,7 +133,7 @@
     .link-form input:focus {
       outline: none;
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 2px var(--color-primary-100);
+      box-shadow: 0 0 0 2px var(--color-focus-ring);
     }
 
     .btn {
@@ -277,7 +277,7 @@
 
     /* Conflicts section */
     .conflicts-card {
-      border: var(--border-1) solid var(--color-error-200);
+      border: var(--border-1) solid var(--color-error-border, var(--color-border));
       background: var(--color-error-bg);
     }
     .conflicts-card .card-title {

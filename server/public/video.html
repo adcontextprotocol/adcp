@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Video chat with Addie - Agentic Advertising</title>
-  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     * {
@@ -60,7 +60,11 @@
 
     .addie-avatar {
       width: 36px;
-      height: auto;
+      height: 36px;
+      padding: 3px;
+      border-radius: 50%;
+      background: var(--color-avatar-disc);
+      object-fit: contain;
       flex-shrink: 0;
     }
 
@@ -263,11 +267,11 @@
     /* Error state */
     #error-message {
       display: none;
-      background: var(--color-error-50);
-      border: 1px solid var(--color-error-100);
+      background: var(--color-error-bg);
+      border: 1px solid var(--color-error-border, var(--color-border));
       border-radius: 8px;
       padding: 16px;
-      color: var(--color-error-600);
+      color: var(--color-error-fg);
       font-size: 14px;
       max-width: 480px;
       text-align: center;

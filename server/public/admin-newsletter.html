@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/sage-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Admin - Newsletter</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -81,7 +81,7 @@
 
     .paste-area { width: 100%; min-height: 200px; font-family: monospace; font-size: 13px; padding: 12px; border: 1px solid var(--color-border-strong); border-radius: 6px; resize: vertical; box-sizing: border-box; }
     .paste-area:focus { border-color: var(--nl-primary); outline: none; }
-    .paste-warning { background: var(--color-warning-50); border: 1px solid var(--color-warning-200); border-left: 4px solid var(--color-warning-500); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; color: var(--color-warning-800); font-size: 13px; line-height: 1.45; }
+    .paste-warning { border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.45; }
 
     .mode-tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 2px solid var(--color-border); }
     .mode-tab { padding: 8px 16px; font-size: 14px; font-weight: 500; color: var(--color-text-secondary); cursor: pointer; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; background: none; }
@@ -125,7 +125,7 @@
       <div id="pasteMode" style="display:none;">
         <div class="section">
           <h2>Paste your newsletter</h2>
-          <div class="paste-warning">
+          <div class="paste-warning ds-alert ds-alert-warning ds-alert-ring">
             Replace content hides the auto-generated body sections and sends this pasted body instead. Custom sections still send unless you remove them separately.
           </div>
           <p class="section-hint">Replaces all auto-generated sections. Use **bold**, [links](url), and `code` markdown.</p>

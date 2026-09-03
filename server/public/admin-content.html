@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Content — AgenticAdvertising.org</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -44,9 +44,9 @@
     .tab .count.alert { background: var(--color-warning-100); color: var(--color-warning-700); }
 
     /* Alert banner */
-    .alert-banner { background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5); display: flex; align-items: center; gap: var(--space-3); }
-    .alert-banner-content h3 { color: var(--color-warning-800); font-size: var(--text-sm); margin-bottom: var(--space-1); }
-    .alert-banner-content p { color: var(--color-warning-700); font-size: var(--text-sm); }
+    .alert-banner { border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-5); display: flex; align-items: center; gap: var(--space-3); }
+    .alert-banner-content h3 { color: var(--color-text-heading); font-size: var(--text-sm); margin-bottom: var(--space-1); }
+    .alert-banner-content p { color: var(--color-text); font-size: var(--text-sm); }
 
     /* Filter bar */
     .filter-bar { display: flex; gap: var(--space-2_5); margin-bottom: var(--space-5); flex-wrap: wrap; align-items: center; }
@@ -83,15 +83,15 @@
     .badge-article { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-committee { background: var(--color-primary-50); color: var(--color-primary-700); }
-    .badge-author { background: var(--color-info-50); color: var(--color-info-700); }
+    .badge-author { background: var(--color-info-bg); color: var(--color-info-fg); }
     .badge-hero-ready { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-hero-manual { background: var(--color-primary-100); color: var(--color-primary-700); }
-    .badge-proposer { background: var(--color-warning-50); color: var(--color-warning-700); }
-    .badge-owner { background: var(--color-success-50); color: var(--color-success-700); }
+    .badge-proposer { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+    .badge-owner { background: var(--color-success-bg); color: var(--color-success-fg); }
     .authors-list { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-1); }
     .author-tag { background: var(--color-bg-subtle); padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: var(--text-xs); color: var(--color-text-secondary); }
     .proposer-info { font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-2); }
-    .rejection-reason { background: var(--color-error-50); border: var(--border-1) solid var(--color-error-200); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); font-size: var(--text-sm); color: var(--color-error-700); }
+    .rejection-reason { border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); font-size: var(--text-sm); }
 
     /* Buttons */
     .btn { padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; transition: var(--transition-all); text-decoration: none; display: inline-flex; align-items: center; gap: var(--space-1_5); }
@@ -218,7 +218,7 @@
     .empty-state p { max-width: 36ch; margin: 0 auto; line-height: var(--leading-relaxed); }
 
     /* Confirm dialog inline */
-    .confirm-inline { background: var(--color-warning-50); border: var(--border-1) solid var(--color-warning-200); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+    .confirm-inline { background: var(--color-warning-bg); border: var(--border-1) solid var(--color-warning-border, var(--color-border)); border-radius: var(--radius-md); padding: var(--space-3); margin-top: var(--space-2); display: flex; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
 
     /* Participation summary */
     .participation-summary { display: flex; gap: var(--space-5); align-items: center; padding: var(--space-4) var(--space-5); margin-bottom: var(--space-4); background: var(--color-bg-subtle); border-radius: var(--radius-md); border: var(--border-1) solid var(--color-gray-200); }
@@ -291,7 +291,7 @@
       </div>
 
       <!-- Alert banner for pending reviews -->
-      <div id="pendingAlert" class="alert-banner hidden">
+      <div id="pendingAlert" class="alert-banner hidden ds-alert ds-alert-warning ds-alert-ring">
         <div class="alert-banner-content">
           <h3>Content awaiting review</h3>
           <p id="pendingAlertText"></p>
@@ -522,7 +522,7 @@
           </div>
         </div>
 
-        <div id="publishedEditWarning" class="alert-banner hidden">
+        <div id="publishedEditWarning" class="alert-banner hidden ds-alert ds-alert-warning ds-alert-ring">
           <div class="alert-banner-content">
             <h3>Published edits require review</h3>
             <p>Your changes will be removed from the live site and submitted for review before they are published again.</p>
@@ -1037,9 +1037,9 @@
       const authors = (item.authors || []).map(a => `<span class="author-tag">${esc(a.display_name)}</span>`).join('');
       const proposerInfo = item.proposer ? `<div class="proposer-info">Proposed by ${esc(item.proposer.name)} on ${formatDate(item.proposed_at)}</div>` : '';
       const rejectionInfo = item.status === 'rejected' && item.rejection_reason
-        ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${esc(item.rejection_reason)}</div>`
+        ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring"><strong>Rejection reason:</strong> ${esc(item.rejection_reason)}</div>`
         : item.status === 'needs_revisions' && item.revision_notes
-          ? `<div class="rejection-reason" style="border-color: var(--color-warning-300);"><strong>Revision notes:</strong> ${esc(item.revision_notes)}</div>`
+          ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring" style="border-color: var(--color-warning-300);"><strong>Revision notes:</strong> ${esc(item.revision_notes)}</div>`
           : '';
 
       const pageviews30d = Number(item.performance?.pageviews_last_30d || 0);
@@ -1263,10 +1263,10 @@
 
       const reviewNotes = document.getElementById('articleReviewNotes');
       const rejectionInfo = item.rejection_reason
-        ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${esc(item.rejection_reason)}</div>`
+        ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring"><strong>Rejection reason:</strong> ${esc(item.rejection_reason)}</div>`
         : '';
       const revisionInfo = item.revision_notes
-        ? `<div class="rejection-reason" style="border-color: var(--color-warning-300); color: var(--color-warning-700); background: var(--color-warning-50);"><strong>Revision notes:</strong> ${esc(item.revision_notes)}</div>`
+        ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring" style="border-color: var(--color-warning-300); color: var(--color-warning-700); background: var(--color-warning-50);"><strong>Revision notes:</strong> ${esc(item.revision_notes)}</div>`
         : '';
       reviewNotes.innerHTML = `${rejectionInfo}${revisionInfo}`;
 

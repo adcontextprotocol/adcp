@@ -35,6 +35,17 @@
   --color-brand-hover: var(--color-primary-600);
   --color-brand-light: var(--color-primary-300);
   --color-brand-bg: var(--color-primary-50);
+  --color-brand-border: var(--color-primary-200);
+  /* Brand-hued ink for text on --color-brand-bg. The brand hue itself is
+     too dark-on-dark there (4.00:1); this is the missing sibling of
+     --color-{success,error,warning,info}-fg. */
+  --color-brand-fg: var(--color-primary-700);
+  --color-brand-solid: var(--color-primary-700);
+  --color-brand-solid-hover: var(--color-primary-600);
+  /* Focus halo painted behind the brand border on a focused control. It has
+     to be semantic: --color-primary-100 is a fixed palette step, so it drew
+     a near-white ring on the dark page background. */
+  --color-focus-ring: var(--color-primary-100);
 
   /* Semantic tag/badge color pairs (adapt in dark mode) */
   --color-success-bg: var(--color-success-100);
@@ -45,6 +56,11 @@
   --color-error-fg: var(--color-error-700);
   --color-info-bg: var(--color-info-100);
   --color-info-fg: var(--color-info-700);
+  /* Tinted 1px ring for a status surface; -fg stays the strong accent/ink */
+  --color-success-border: var(--color-success-200);
+  --color-warning-border: var(--color-warning-200);
+  --color-error-border: var(--color-error-200);
+  --color-info-border: var(--color-info-200);
 
   /* -----------------------------------------------------------------------------
      1.2 Neutral Colors (Gray Scale)
@@ -65,12 +81,22 @@
   --color-text: var(--color-gray-900);
   --color-text-secondary: var(--color-gray-500);
   --color-text-muted: var(--color-gray-400);
+  --color-text-placeholder: var(--color-gray-500);
   --color-text-heading: var(--color-gray-800);
   --color-border: var(--color-gray-200);
   --color-border-strong: var(--color-gray-300);
   --color-bg-page: var(--color-gray-100);
   --color-bg-subtle: var(--color-gray-50);
   --color-bg-card: #ffffff;
+  /* Avatar disc: the plate behind Addie's mark in chat. Deliberately
+     FIXED across all four theme blocks — the mark artwork is dark navy,
+     so a swapping surface would hide it in dark. Fixed plate + fixed
+     ink is legible in both themes by construction. */
+  --color-avatar-disc: #dfe7fb;
+  /* Inline code: a recessed field holding a literal value (URL, ID, snippet). */
+  --color-code-bg: #e9effb;
+  --color-code-text: #1f2937;
+  --color-code-border: #bacff2;
 
   /* -----------------------------------------------------------------------------
      1.3 Status Colors (Semantic)
@@ -135,6 +161,24 @@
   --color-text-on-dark: #ffffff;
   --color-text-on-dark-secondary: rgba(255, 255, 255, 0.8);
 
+  /* Mirror of --color-text-on-dark: always-dark brand ink for use on the
+     always-light surfaces that sit on saturated colored backgrounds (the
+     white .btn-on-dark pill in a hero). Does not swap — the surface it
+     sits on doesn't either, so a swapping brand blue would drop to
+     3.17:1 there in dark mode. */
+  --color-brand-on-light: var(--color-primary-700);
+
+  /* Mirror of --color-text-on-dark for neutral copy: fixed dark ink for the
+     fixed light surfaces that sit on saturated backgrounds. One step down
+     from --color-brand-on-light, which reads as the primary action. */
+  --color-text-on-light: var(--color-gray-700);
+
+  /* Neutral counterpart to the fixed --color-{success,warning}-100 pill
+     backgrounds, for a status that carries no judgement ("community
+     contributed", "unverified"). Fixed for the same reason its siblings
+     are: these pills sit on non-swapping surfaces. */
+  --color-pill-neutral-bg: var(--color-gray-100);
+
   /* Secondary button surfaces — swap in dark mode so the button stays
      distinguishable from the page background under both themes. */
   --color-bg-button-secondary: var(--color-gray-200);
@@ -149,6 +193,7 @@
      Swaps from black-tint in light mode to white-tint in dark mode so the
      hover affordance stays visible against either page background. */
   --color-hover-overlay: rgba(0, 0, 0, 0.05);
+  --color-drop-scrim: rgba(23, 37, 84, 0.35);
 
   /* -----------------------------------------------------------------------------
      1.5 Legacy Compatibility (map old vars to new)
@@ -502,6 +547,43 @@ textarea {
   color: inherit;
 }
 
+/* The same gap applies to the background: an input with no background of its
+   own paints the browser's default (a neutral #3b3b3b in dark Chrome), which
+   clashes with the blue-tinted --color-bg-* scale. Give text-entry controls
+   the card background, matching .ds-input, so an unclassed input is theme-
+   correct by default. Scoped to text-entry types by an explicit list —
+   checkbox, radio, file, color, range and button-like inputs are left to
+   their native rendering. background-color, not the shorthand, so a control
+   carrying a background-image (.ds-select's chevron) keeps it. */
+input:not([type]),
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"],
+input[type="week"],
+select,
+textarea {
+  background-color: var(--color-bg-card);
+}
+
+/* Placeholders leak the same UA default (~3.2:1 in dark Chrome, and Chrome's
+   light default is only ~4.6:1). --color-text-muted is not usable here: it is
+   gray-400 in BOTH themes, so it measures 2.54:1 on a white card. Hence a
+   dedicated token, tuned per theme — 4.83:1 light, 5.78:1 dark: clearly
+   secondary to entered text, but still AA. ::placeholder is inert on
+   checkbox/radio, so the broad selector needs no type list. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-placeholder);
+}
+
 /* =============================================================================
    10. BASE COMPONENT CLASSES
 
@@ -535,12 +617,13 @@ textarea {
 
 /* Primary Button - Solid brand color */
 .ds-btn-primary {
-  background: var(--color-brand);
-  color: white;
+  background: var(--color-brand-solid, var(--color-brand));
+  color: var(--color-text-on-dark);
+  box-shadow: inset 0 0 0 var(--border-1) var(--color-brand);
 }
 
 .ds-btn-primary:hover:not(:disabled) {
-  background: var(--color-brand-hover);
+  background: var(--color-brand-solid-hover, var(--color-brand-hover));
   transform: translateY(-1px);
 }
 
@@ -636,7 +719,7 @@ textarea {
 .ds-pill.active {
   color: var(--color-warning-fg);
   background: var(--color-warning-bg);
-  border-color: var(--color-warning-500);
+  border-color: var(--color-warning-fg);
 }
 
 /* -----------------------------------------------------------------------------
@@ -742,11 +825,11 @@ textarea {
 .ds-input:focus {
   outline: none;
   border: var(--input-border-focus);
-  box-shadow: 0 0 0 3px var(--color-primary-100);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .ds-input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--color-text-placeholder);
 }
 
 .ds-input:disabled {
@@ -802,30 +885,48 @@ textarea {
   padding: var(--space-4);
   border-radius: var(--radius-lg);
   border-left: var(--border-4) solid;
+  /* Explicit ink: the tints below swap for dark, so inheriting the page's
+     body color would put light text on a light panel. */
+  color: var(--color-text);
 }
 
 .ds-alert-info {
-  background: var(--color-info-50);
-  border-left-color: var(--color-info-500);
-  color: var(--color-info-700);
+  background: var(--color-info-bg);
+  border-left-color: var(--color-info-fg);
 }
 
 .ds-alert-success {
-  background: var(--color-success-50);
-  border-left-color: var(--color-success-500);
-  color: var(--color-success-700);
+  background: var(--color-success-bg);
+  border-left-color: var(--color-success-fg);
 }
 
 .ds-alert-warning {
-  background: var(--color-warning-50);
-  border-left-color: var(--color-warning-500);
-  color: var(--color-warning-700);
+  background: var(--color-warning-bg);
+  border-left-color: var(--color-warning-fg);
 }
 
 .ds-alert-error {
-  background: var(--color-error-50);
-  border-left-color: var(--color-error-500);
-  color: var(--color-error-700);
+  background: var(--color-error-bg);
+  border-left-color: var(--color-error-fg);
+}
+
+/* Optional ring, for panels that read as a bordered card rather than a
+   left-accented banner. The `border` shorthand resets border-left-color,
+   so the accent has to be restated after it. */
+.ds-alert-info.ds-alert-ring { border: var(--border-1) solid var(--color-info-border); border-left-width: var(--border-4); border-left-color: var(--color-info-fg); }
+.ds-alert-success.ds-alert-ring { border: var(--border-1) solid var(--color-success-border); border-left-width: var(--border-4); border-left-color: var(--color-success-fg); }
+.ds-alert-warning.ds-alert-ring { border: var(--border-1) solid var(--color-warning-border); border-left-width: var(--border-4); border-left-color: var(--color-warning-fg); }
+.ds-alert-error.ds-alert-ring { border: var(--border-1) solid var(--color-error-border); border-left-width: var(--border-4); border-left-color: var(--color-error-fg); }
+
+.ds-alert__title {
+  font-weight: var(--font-semibold);
+  color: var(--color-text-heading);
+}
+
+.ds-alert__desc {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
 }
 
 /* -----------------------------------------------------------------------------
@@ -1100,7 +1201,12 @@ textarea {
 
    Context modifiers (for dark backgrounds like hero/CTA):
    - .btn-on-dark = white background (use instead of btn-primary on dark bg)
-   - .btn-outline-on-dark = white outline (use instead of btn-secondary on dark bg)
+   - .btn-secondary-on-dark = light background, neutral ink (use instead of
+     btn-secondary on dark bg)
+   - .btn-outline-on-dark = white outline. Note: .hero and .cta are both the
+     brand gradient, not a true dark surface, so this variant's white label
+     only clears AA at large sizes there. Prefer .btn-secondary-on-dark for
+     anything at body size.
    ----------------------------------------------------------------------------- */
 
 /* Base button - all buttons need this */
@@ -1113,6 +1219,9 @@ textarea {
   border-radius: var(--radius-md);
   font-weight: var(--font-medium);
   font-size: var(--text-sm);
+  /* Match .ds-btn: without this a button inherits surrounding prose leading,
+     so the same class renders a different height depending on its context. */
+  line-height: var(--leading-tight);
   text-decoration: none;
   border: none;
   cursor: pointer;
@@ -1124,14 +1233,15 @@ textarea {
 .btn-primary,
 a.btn-primary,
 a.btn-primary:visited {
-  background: var(--color-brand);
-  color: white;
+  background: var(--color-brand-solid, var(--color-brand));
+  color: var(--color-text-on-dark);
+  box-shadow: inset 0 0 0 var(--border-1) var(--color-brand);
 }
 
 .btn-primary:hover,
 a.btn-primary:hover {
-  background: var(--color-brand-hover);
-  color: white;
+  background: var(--color-brand-solid-hover, var(--color-brand-hover));
+  color: var(--color-text-on-dark);
 }
 
 /* Secondary button - Surface background (secondary actions) */
@@ -1224,11 +1334,26 @@ a.btn-success:hover {
 /* White button on dark backgrounds */
 .btn-on-dark {
   background: white;
-  color: var(--color-brand);
+  color: var(--color-brand-on-light);
 }
 
 .btn-on-dark:hover {
   background: var(--color-off-white);
+}
+
+/* Muted button on dark backgrounds — a light pill with neutral ink, one step
+   down from .btn-on-dark's brand-blue ink. White text is not an option for a
+   secondary action here: both .hero and .cta are the brand gradient, whose
+   light end is #6b8cef in dark mode, where white at body size measures
+   3.17:1. Hierarchy therefore comes from the ink, not the fill. */
+.btn-secondary-on-dark {
+  background: white;
+  color: var(--color-text-on-light);
+}
+
+.btn-secondary-on-dark:hover {
+  background: var(--color-off-white);
+  color: var(--color-brand-on-light);
 }
 
 /* Outline button on dark backgrounds */
@@ -1403,7 +1528,7 @@ a.btn-success:hover {
 .card a.btn-primary,
 .card a.btn-primary:visited,
 .card a.btn-primary:hover {
-  color: white;
+  color: var(--color-text-on-dark);
 }
 
 .card a.btn-danger,
@@ -2213,12 +2338,17 @@ body {
     --color-text: #f9fafb;
     --color-text-secondary: #d1d5db;
     --color-text-muted: #9ca3af;
+    --color-text-placeholder: #9ca3af;
     --color-text-heading: #f9fafb;
     --color-border: #374151;
     --color-border-strong: #4b5563;
     --color-bg-page: #111827;
     --color-bg-subtle: #1f2937;
     --color-bg-card: #1f2937;
+    --color-avatar-disc: #dfe7fb;
+    --color-code-bg: #111827;
+    --color-code-text: #c7d7fb;
+    --color-code-border: #374151;
     --color-surface: #1f2937;
     --color-surface-raised: #374151;
     --color-bg-button-secondary: #4b5563;
@@ -2226,9 +2356,15 @@ body {
     --color-bg-table-header: #1f2937;
     --color-bg-row-hover: #374151;
     --color-hover-overlay: rgba(255, 255, 255, 0.06);
+    --color-drop-scrim: rgba(3, 7, 18, 0.62);
     --color-brand: #6b8cef;
     --color-brand-hover: #8aa3f4;
     --color-brand-bg: rgba(107, 140, 239, 0.1);
+    --color-brand-border: rgba(107, 140, 239, 0.35);
+    --color-brand-fg: #8aa3f4;
+    --color-brand-solid: #4169e1;
+    --color-brand-solid-hover: #2d4fd6;
+    --color-focus-ring: #6b8cef;
     --color-success-bg: rgba(16, 185, 129, 0.18);
     --color-success-fg: #6ee7b7;
     --color-warning-bg: rgba(245, 158, 11, 0.18);
@@ -2237,6 +2373,10 @@ body {
     --color-error-fg: #fca5a5;
     --color-info-bg: rgba(107, 140, 239, 0.18);
     --color-info-fg: #a4c2f4;
+    --color-success-border: rgba(16, 185, 129, 0.35);
+    --color-warning-border: rgba(245, 158, 11, 0.35);
+    --color-error-border: rgba(239, 68, 68, 0.35);
+    --color-info-border: rgba(107, 140, 239, 0.35);
   }
 }
 
@@ -2247,12 +2387,17 @@ html[data-theme="dark"] {
   --color-text: #f9fafb;
   --color-text-secondary: #d1d5db;
   --color-text-muted: #9ca3af;
+  --color-text-placeholder: #9ca3af;
   --color-text-heading: #f9fafb;
   --color-border: #374151;
   --color-border-strong: #4b5563;
   --color-bg-page: #111827;
   --color-bg-subtle: #1f2937;
   --color-bg-card: #1f2937;
+  --color-avatar-disc: #dfe7fb;
+  --color-code-bg: #111827;
+  --color-code-text: #c7d7fb;
+  --color-code-border: #374151;
   --color-surface: #1f2937;
   --color-surface-raised: #374151;
   --color-bg-button-secondary: #4b5563;
@@ -2260,9 +2405,15 @@ html[data-theme="dark"] {
   --color-bg-table-header: #1f2937;
   --color-bg-row-hover: #374151;
   --color-hover-overlay: rgba(255, 255, 255, 0.06);
+  --color-drop-scrim: rgba(3, 7, 18, 0.62);
   --color-brand: #6b8cef;
   --color-brand-hover: #8aa3f4;
   --color-brand-bg: rgba(107, 140, 239, 0.1);
+  --color-brand-border: rgba(107, 140, 239, 0.35);
+  --color-brand-fg: #8aa3f4;
+  --color-brand-solid: #4169e1;
+  --color-brand-solid-hover: #2d4fd6;
+  --color-focus-ring: #6b8cef;
   --color-success-bg: rgba(16, 185, 129, 0.18);
   --color-success-fg: #6ee7b7;
   --color-warning-bg: rgba(245, 158, 11, 0.18);
@@ -2271,6 +2422,10 @@ html[data-theme="dark"] {
   --color-error-fg: #fca5a5;
   --color-info-bg: rgba(107, 140, 239, 0.18);
   --color-info-fg: #a4c2f4;
+  --color-success-border: rgba(16, 185, 129, 0.35);
+  --color-warning-border: rgba(245, 158, 11, 0.35);
+  --color-error-border: rgba(239, 68, 68, 0.35);
+  --color-info-border: rgba(107, 140, 239, 0.35);
 }
 
 html[data-theme="light"] {
@@ -2278,12 +2433,17 @@ html[data-theme="light"] {
   --color-text: #1d1d1d;
   --color-text-secondary: #6b7280;
   --color-text-muted: #9ca3af;
+  --color-text-placeholder: #6b7280;
   --color-text-heading: #2d3748;
   --color-border: #e5e7eb;
   --color-border-strong: #d1d5db;
   --color-bg-page: #f3f4f6;
   --color-bg-subtle: #f9fafb;
   --color-bg-card: #ffffff;
+  --color-avatar-disc: #dfe7fb;
+  --color-code-bg: #e9effb;
+  --color-code-text: #1f2937;
+  --color-code-border: #bacff2;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
   --color-bg-button-secondary: #e5e7eb;
@@ -2291,9 +2451,15 @@ html[data-theme="light"] {
   --color-bg-table-header: #f9fafb;
   --color-bg-row-hover: #f9fafb;
   --color-hover-overlay: rgba(0, 0, 0, 0.05);
+  --color-drop-scrim: rgba(23, 37, 84, 0.35);
   --color-brand: #1a36b4;
   --color-brand-hover: #2d4fd6;
   --color-brand-bg: #eef4fc;
+  --color-brand-border: #c5d9f7;
+  --color-brand-fg: #1a36b4;
+  --color-brand-solid: #1a36b4;
+  --color-brand-solid-hover: #2d4fd6;
+  --color-focus-ring: #dbe8fc;
   --color-success-bg: #d1fae5;
   --color-success-fg: #047857;
   --color-warning-bg: #fef3c7;
@@ -2302,4 +2468,8 @@ html[data-theme="light"] {
   --color-error-fg: #b91c1c;
   --color-info-bg: #dbe8fc;
   --color-info-fg: #1a36b4;
+  --color-success-border: #a7f3d0;
+  --color-warning-border: #fde68a;
+  --color-error-border: #fecaca;
+  --color-info-border: #c5d9f7;
 }

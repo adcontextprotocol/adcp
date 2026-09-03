@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Your profile - AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -118,7 +118,7 @@
     .form-input:focus {
       outline: none;
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     .form-input:disabled {
@@ -284,7 +284,7 @@
 
     .tag-input-container:focus-within {
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     .tag {
@@ -345,7 +345,7 @@
     }
 
     .tag-text-input::placeholder {
-      color: var(--color-text-muted);
+      color: var(--color-text-placeholder);
     }
 
     /* Social links prefix */
@@ -361,7 +361,7 @@
 
     .input-with-prefix:focus-within {
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     .input-prefix {
@@ -462,20 +462,8 @@
       gap: var(--space-4);
     }
 
-    .addie-cta-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--space-2);
-      padding: var(--space-3) var(--space-5);
-      background: var(--color-brand);
-      color: white;
-      border: none;
-      border-radius: var(--radius-md);
-      font-size: var(--text-sm);
-      font-weight: var(--font-medium);
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
+    /* Layout only - appearance comes from .btn .btn-primary */
+    .addie-cta-row .btn {
       flex-shrink: 0;
     }
 
@@ -569,8 +557,6 @@
     }
 
     .unsubscribed-banner {
-      background: var(--color-warning-50);
-      border: 1px solid var(--color-warning-300);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-4);
@@ -583,13 +569,13 @@
     .unsubscribed-banner h3 {
       margin: 0 0 var(--space-1) 0;
       font-size: var(--text-sm);
-      color: var(--color-warning-800);
+      color: var(--color-text-heading);
     }
 
     .unsubscribed-banner p {
       margin: 0;
       font-size: var(--text-xs);
-      color: var(--color-warning-700);
+      color: var(--color-text);
     }
 
     /* Modal */
@@ -655,7 +641,7 @@
     .modal .modal-form-group input:focus {
       outline: none;
       border-color: var(--color-brand);
-      box-shadow: 0 0 0 3px var(--color-primary-100);
+      box-shadow: 0 0 0 3px var(--color-focus-ring);
     }
 
     @media (max-width: 640px) {
@@ -678,11 +664,6 @@
       .addie-cta-row {
         flex-direction: column;
         align-items: stretch;
-      }
-
-      .addie-cta-btn {
-        text-align: center;
-        justify-content: center;
       }
     }
   </style>
@@ -778,7 +759,7 @@
                 </div>
 
                 <div style="margin-top: var(--space-3); display: flex; align-items: center; gap: var(--space-3);">
-                  <button type="button" id="portrait-generate-btn" style="padding: var(--space-2) var(--space-4); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); font-weight: var(--font-medium); cursor: pointer;">Generate portrait</button>
+                  <button type="button" id="portrait-generate-btn" class="btn btn-primary btn-sm">Generate portrait</button>
                   <span id="portrait-gen-count" style="font-size: var(--text-xs); color: var(--color-text-muted);"></span>
                 </div>
               </div>
@@ -811,13 +792,13 @@
         </div>
 
         <!-- Addie setup CTA (new members only) -->
-        <div class="edit-section" id="addie-setup-section" style="background: var(--color-primary-50); border-color: var(--color-primary-200);">
+        <div class="edit-section" id="addie-setup-section" style="background: var(--color-brand-bg); border-color: var(--color-brand-border, var(--color-border));">
           <div class="addie-cta-row">
             <div style="flex: 1;">
               <div style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-1);">Let Addie fill this in for you</div>
-              <p style="font-size: var(--text-xs); color: var(--color-text-muted); line-height: var(--leading-relaxed); margin: 0;">Addie can set up your headline, bio, expertise, and everything else from a quick conversation.</p>
+              <p style="font-size: var(--text-xs); color: var(--color-text); line-height: var(--leading-relaxed); margin: 0;">Addie can set up your headline, bio, expertise, and everything else from a quick conversation.</p>
             </div>
-            <a id="addie-setup-link" href="/chat?prompt=I%27d%20like%20to%20set%20up%20my%20community%20profile.%20Can%20you%20help%3F" class="addie-cta-btn">Ask Addie</a>
+            <a id="addie-setup-link" href="/chat?prompt=I%27d%20like%20to%20set%20up%20my%20community%20profile.%20Can%20you%20help%3F" class="btn btn-primary">Ask Addie</a>
           </div>
         </div>
 
@@ -1022,7 +1003,7 @@
           <svg class="chevron" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
         </summary>
         <p class="edit-section-description">Choose which emails you receive from AgenticAdvertising.org.</p>
-        <div id="unsubscribedBanner" class="unsubscribed-banner" style="display: none;">
+        <div id="unsubscribedBanner" class="unsubscribed-banner ds-alert ds-alert-warning ds-alert-ring" style="display: none;">
           <div>
             <h3>You're unsubscribed from all emails</h3>
             <p>You won't receive any marketing or community emails. Transactional emails (password resets, billing) will still be sent.</p>
@@ -1082,7 +1063,7 @@
         for (var i = 0; i < data.aliases.length; i++) {
           html += '<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">' +
             '<span style="font-size: var(--text-sm);">' + accountEscapeHtml(data.aliases[i].email) + '</span>' +
-            '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-success-50); color: var(--color-success-600); padding: 2px 8px; border-radius: 4px;">Linked</span>' +
+            '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-success-bg); color: var(--color-success-fg); padding: 2px 8px; border-radius: 4px;">Linked</span>' +
             '<button class="btn btn-ghost make-primary-btn" data-email="' + accountEscapeHtml(data.aliases[i].email) + '" style="margin-left: auto; font-size: var(--text-xs); padding: 2px 8px;">Make primary</button>' +
             '</div>';
         }
@@ -1090,7 +1071,7 @@
         for (var j = 0; j < data.pending.length; j++) {
           html += '<div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-border);">' +
             '<span style="font-size: var(--text-sm); color: var(--color-text-muted);">' + accountEscapeHtml(data.pending[j].target_email) + '</span>' +
-            '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-warning-50); color: var(--color-warning-600); padding: 2px 8px; border-radius: 4px;">Pending</span>' +
+            '<span style="margin-left: 8px; font-size: var(--text-xs); background: var(--color-warning-bg); color: var(--color-warning-fg); padding: 2px 8px; border-radius: 4px;">Pending</span>' +
             '</div>';
         }
 

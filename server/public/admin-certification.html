@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>Certification - AdCP Admin</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -109,8 +109,6 @@
       100% { transform: rotate(360deg); }
     }
     .error {
-      background-color: var(--color-error-50);
-      color: var(--color-error-800);
       padding: 16px;
       border-radius: 8px;
       margin-bottom: 20px;
@@ -340,7 +338,7 @@
       <p>Loading certification data...</p>
     </div>
 
-    <div id="error" class="error" style="display: none;"></div>
+    <div id="error" class="error ds-alert ds-alert-error" style="display: none;"></div>
 
     <div id="content" style="display: none;">
       <!-- Overview metrics -->
@@ -957,7 +955,7 @@
         `;
       } catch (err) {
         console.error('Error loading detail:', err);
-        panel.innerHTML = '<button class="close-btn" onclick="closeDetail()">&times;</button><p class="error">Error loading learner detail.</p>';
+        panel.innerHTML = '<button class="close-btn" onclick="closeDetail()">&times;</button><p class="error ds-alert ds-alert-error">Error loading learner detail.</p>';
       }
     }
 

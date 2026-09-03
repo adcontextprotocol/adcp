@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Your hub - AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
@@ -312,6 +312,9 @@
       gap: 0;
       margin-bottom: var(--space-6);
       overflow-x: auto;
+      /* overflow-x forces overflow-y to auto, so the 4px focus ring on the
+         current dot needs room or it clips against the top edge. */
+      padding-top: var(--space-1);
       padding-bottom: var(--space-2);
       -webkit-overflow-scrolling: touch;
     }
@@ -352,7 +355,7 @@
       background: var(--color-brand);
       border-color: var(--color-brand);
       color: white;
-      box-shadow: 0 0 0 4px var(--color-primary-100);
+      box-shadow: 0 0 0 4px var(--color-focus-ring, var(--color-brand-bg));
     }
 
     .level-step-label {
@@ -554,7 +557,7 @@
 
     .achievement--earned {
       background: var(--color-success-bg);
-      border: var(--border-1) solid var(--color-success-200);
+      border: var(--border-1) solid var(--color-success-border, var(--color-border));
     }
 
     .achievement--locked {
@@ -745,8 +748,8 @@
     }
 
     .academy-stat:nth-child(1) { background: var(--color-brand-bg); }
-    .academy-stat:nth-child(2) { background: var(--color-warning-50); }
-    .academy-stat:nth-child(3) { background: var(--color-success-50); }
+    .academy-stat:nth-child(2) { background: var(--color-warning-bg); }
+    .academy-stat:nth-child(3) { background: var(--color-success-bg); }
 
     .academy-stat-value {
       font-size: var(--text-2xl);
@@ -1024,8 +1027,8 @@
     }
 
     .content-studio-stat:nth-child(1) { background: var(--color-bg-subtle); }
-    .content-studio-stat:nth-child(2) { background: var(--color-warning-50); }
-    .content-studio-stat:nth-child(3) { background: var(--color-success-50); }
+    .content-studio-stat:nth-child(2) { background: var(--color-warning-bg); }
+    .content-studio-stat:nth-child(3) { background: var(--color-success-bg); }
 
     .content-studio-stat-value {
       font-size: var(--text-2xl);

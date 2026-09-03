@@ -90,19 +90,21 @@
         const avatarInitial = ((user.firstName || '')[0] || safeEmail[0] || displayName[0] || 'M').toUpperCase();
         const adminLink = user.isAdmin ? `<a href="${authBaseUrl}/admin" class="navbar__dropdown-item">Admin</a>` : '';
         authSection = `
-          <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span class="navbar__notif-badge" id="notifBadge" style="display:none;"></span>
-          </button>
-          <div class="navbar__notif-dropdown" id="notifDropdown">
-            <div class="navbar__notif-header">
-              <span>Notifications</span>
-              <a href="${authBaseUrl}/community/notifications" class="navbar__notif-view-all">View all</a>
+          <div class="navbar__notif">
+            <button class="navbar__notif-btn" id="notifBell" aria-label="Notifications">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+              <span class="navbar__notif-badge" id="notifBadge" style="display:none;"></span>
+            </button>
+            <div class="navbar__notif-dropdown" id="notifDropdown">
+              <div class="navbar__notif-header">
+                <span>Notifications</span>
+                <a href="${authBaseUrl}/community/notifications" class="navbar__notif-view-all">View all</a>
+              </div>
+              <div class="navbar__notif-list" id="notifList"></div>
             </div>
-            <div class="navbar__notif-list" id="notifList"></div>
           </div>
           <div class="navbar__account">
             <button class="navbar__account-btn" id="accountMenuBtn">
@@ -328,6 +330,11 @@
       }
 
       /* Notification bell */
+      .navbar__notif {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
       .navbar__notif-btn {
         position: relative;
         background: none;
@@ -794,6 +801,16 @@
         .navbar__items--right {
           gap: 0.75rem;
         }
+
+        /* Too narrow to hang a 360px panel off the bell without clipping the
+           left edge — pin it across the viewport under the navbar instead. */
+        .navbar__notif-dropdown {
+          position: fixed;
+          top: calc(60px + 0.5rem);
+          left: 1rem;
+          right: 1rem;
+          width: auto;
+        }
       }
 
       /* Dark mode for hamburger and mobile menu */
@@ -954,11 +971,26 @@
   // Footer CSS
   const footerCSS = `
     <style>
+      /* Sticky footer. The footer is the last child of a plain block-level
+         body on most pages, so margin-top: auto alone is inert -- it only
+         does anything on the handful of pages whose own CSS makes body a
+         flex column. Reserving a viewport-tall body and offsetting the
+         footer with sticky pushes it to the bottom of a short page without
+         changing body's formatting context, which margin collapsing and
+         floats on 100+ pages depend on. */
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+      }
+
       .aao-footer {
         background: #1b1b1d;
         color: #9ca3af;
         padding: 2.5rem 1rem 1.5rem;
         margin-top: auto;
+        position: sticky;
+        top: 100vh;
+        top: 100dvh;
       }
 
       .aao-footer__inner {

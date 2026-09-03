@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tools &amp; standards | AgenticAdvertising.org</title>
   <meta name="description" content="Standards specifications, builder tools, and developer resources for the Ad Context Protocol ecosystem.">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -41,8 +41,10 @@
       gap: var(--space-6);
       align-items: start;
     }
+    /* --color-primary-200 is a fixed near-white in both themes, so it
+       painted a glaring light outline on a dark card. */
     .standard-card:hover {
-      border-color: var(--color-primary-200);
+      border-color: var(--color-brand-border, var(--color-primary-200));
     }
     .standard-card__body h3 {
       font-size: var(--text-xl);
@@ -67,34 +69,56 @@
       gap: var(--space-3);
       min-width: 160px;
     }
-    .standard-card__actions a {
-      display: block;
-      padding: 10px 20px;
-      border-radius: var(--radius-lg);
-      font-size: var(--text-sm);
-      font-weight: var(--font-semibold);
+    /* Action controls. The box geometry belongs on the classes themselves,
+       not on a .standard-card__actions descendant selector: the publisher
+       lookup form uses .action-primary / .action-secondary standalone, and
+       .action-primary is a <button>, which inherits neither font nor
+       line-height from the page. The transparent border keeps all three
+       variants the same height as the bordered secondary. */
+    .action-primary,
+    .action-secondary,
+    .action-ghost {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--btn-padding-y) var(--btn-padding-x);
+      border: var(--border-1) solid transparent;
+      border-radius: var(--btn-radius);
+      font-family: var(--font-sans);
+      font-size: var(--btn-font-size);
+      font-weight: var(--btn-font-weight);
+      line-height: var(--leading-normal);
       text-decoration: none;
       text-align: center;
+      cursor: pointer;
       transition: var(--transition-colors);
     }
+    .action-primary:focus-visible,
+    .action-secondary:focus-visible,
+    .action-ghost:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+    }
+    /* --color-brand goes pale in dark mode, where a white label on it is
+       3.17:1. --color-brand-solid is the design system's fill for exactly
+       this case, and is what .ds-btn-primary uses. */
     .action-primary {
-      background: var(--color-brand);
-      color: white;
+      background: var(--color-brand-solid, var(--color-brand));
+      color: var(--color-text-on-dark);
     }
     .action-primary:hover {
-      background: var(--color-brand-hover);
+      background: var(--color-brand-solid-hover, var(--color-brand-hover));
     }
     .action-secondary {
       background: var(--color-bg-card);
       color: var(--color-brand);
-      border: 1px solid var(--color-primary-200);
+      border-color: var(--color-brand-border, var(--color-primary-200));
     }
     .action-secondary:hover {
       border-color: var(--color-brand);
     }
     .action-ghost {
       color: var(--color-brand);
-      padding: 10px 20px;
     }
     .action-ghost:hover {
       text-decoration: underline;
@@ -181,7 +205,7 @@
           <form id="publisher-lookup-form" style="display: flex; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap;">
             <input id="publisher-lookup-input" type="text" placeholder="example.com" required pattern="[a-zA-Z0-9.\-]+" autocomplete="off"
               style="flex: 1 1 240px; padding: var(--space-2) var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--text-sm);" />
-            <button type="submit" class="action-primary" style="border: none; cursor: pointer;">Open publisher page</button>
+            <button type="submit" class="action-primary">Open publisher page</button>
             <a href="/publishers" class="action-secondary">Browse all publishers</a>
           </form>
         </div>

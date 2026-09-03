@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>GEO visibility - Admin</title>
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
@@ -193,8 +193,6 @@
     }
 
     .error {
-      background-color: var(--color-error-50);
-      color: var(--color-error-700);
       padding: 16px;
       border-radius: 8px;
       margin-bottom: 20px;
@@ -434,7 +432,7 @@
       <p>Loading GEO visibility data...</p>
     </div>
 
-    <div id="error" class="error" role="alert" style="display: none;"></div>
+    <div id="error" class="error ds-alert ds-alert-error" role="alert" style="display: none;"></div>
     <div id="stale-banner" class="status-banner warning" role="status" aria-live="polite"></div>
 
     <div id="unconfigured" class="unconfigured" style="display: none;">

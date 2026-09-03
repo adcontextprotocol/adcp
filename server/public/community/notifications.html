@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Notifications - AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -70,9 +70,12 @@
       border-color: var(--color-brand);
     }
 
+    /* Tint layered over the card colour, so the unread surface follows the
+       theme instead of pinning itself to a fixed light-mode blue. */
     .notif-item.unread {
-      background: var(--color-primary-50);
-      border-color: var(--color-primary-200, var(--color-brand));
+      background-color: var(--color-bg-card);
+      background-image: linear-gradient(var(--color-brand-bg), var(--color-brand-bg));
+      border-color: var(--color-brand);
     }
 
     .notif-avatar {

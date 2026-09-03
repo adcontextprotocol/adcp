@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Authorization Complete - Agentic Advertising</title>
-  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/design-system.css">
   <style>
     body {
@@ -90,7 +90,6 @@
     .oauth-complete__error-details {
       margin-top: var(--space-4);
       padding: var(--space-3);
-      background: var(--color-error-50);
       border-radius: var(--radius-md);
       text-align: left;
     }
@@ -188,7 +187,7 @@
             Something went wrong during authorization.
           </p>
           ${error ? `
-            <div class="oauth-complete__error-details">
+            <div class="oauth-complete__error-details ds-alert ds-alert-error">
               <div class="oauth-complete__error-label">Error</div>
               <div class="oauth-complete__error-text">${escapeHtml(error)}</div>
             </div>

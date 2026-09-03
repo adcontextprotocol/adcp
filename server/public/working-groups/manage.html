@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title id="pageTitle">Manage Posts | Working Group | AgenticAdvertising.org</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -209,8 +209,8 @@
     }
     .type-toggle button.active {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
-      color: var(--color-brand);
+      background: var(--color-brand-bg);
+      color: var(--color-brand-fg, var(--color-brand));
     }
     .url-input-group {
       display: flex;
@@ -426,11 +426,8 @@
     .document-fix-hint {
       margin-top: var(--space-2);
       padding: var(--space-2) var(--space-3);
-      background: var(--color-error-50);
-      border: 1px solid var(--color-error-200);
       border-radius: var(--radius-sm);
       font-size: var(--text-sm);
-      color: var(--color-text-secondary);
       line-height: 1.5;
     }
 
@@ -1748,7 +1745,7 @@
               </div>
               ${doc.document_summary ? `<div class="document-summary-preview">${escapeHtml(doc.document_summary)}</div>` : ''}
               ${doc.index_status === 'access_denied' ? `
-                <div class="document-fix-hint">
+                <div class="document-fix-hint ds-alert ds-alert-error ds-alert-ring">
                   Share this document with <code>addie@agenticadvertising.org</code> (Viewer), then click the refresh button to retry.
                 </div>
               ` : ''}

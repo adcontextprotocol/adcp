@@ -9,7 +9,7 @@
   <meta property="og:description" content="How advertising works when AI agents handle media buying, selling, and campaign management. Stories, analysis, and news from AgenticAdvertising.org.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agenticadvertising.org/stories">
-  <link rel="icon" href="/AAo.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <link rel="stylesheet" href="/layout.css">
   <style>
@@ -46,7 +46,20 @@
       overflow-x: auto;
       -webkit-overflow-scrolling: touch;
       scrollbar-width: none;
-      justify-content: center;
+      /* Centring an overflowing flex row spills content into negative scroll
+         space, where it is unreachable. Start aligned; `safe center` below
+         re-centres only when the pills actually fit. */
+      justify-content: flex-start;
+      /* Soft edges, set per side by syncPillFade() so an edge stays crisp
+         until there is really more to scroll toward. A mask fades to true
+         transparency, so it needs no colour and works on any background. */
+      --pill-fade-start: 0px;
+      --pill-fade-end: 0px;
+      -webkit-mask-image: linear-gradient(to right, transparent 0, black var(--pill-fade-start), black calc(100% - var(--pill-fade-end)), transparent 100%);
+      mask-image: linear-gradient(to right, transparent 0, black var(--pill-fade-start), black calc(100% - var(--pill-fade-end)), transparent 100%);
+    }
+    @supports (justify-content: safe center) {
+      .pill-tabs { justify-content: safe center; }
     }
     .pill-tabs::-webkit-scrollbar { display: none; }
 
@@ -497,10 +510,62 @@
         return topicStr.split(',').some(function(t) { return t.trim() === topic; });
       }
 
+      // Fade an edge only while there is more rail beyond it, so the first
+      // and last pill stay crisp at the ends of the scroll.
+      var PILL_FADE = 48;
+      function syncPillFade() {
+        var rail = document.getElementById('topic-tabs');
+        if (!rail) return;
+        var maxScroll = rail.scrollWidth - rail.clientWidth;
+        // Sub-pixel layout can leave scrollLeft a hair short of maxScroll.
+        var atStart = rail.scrollLeft <= 1;
+        var atEnd = rail.scrollLeft >= maxScroll - 1;
+        rail.style.setProperty('--pill-fade-start', (atStart ? 0 : PILL_FADE) + 'px');
+        rail.style.setProperty('--pill-fade-end', (atEnd ? 0 : PILL_FADE) + 'px');
+      }
+
+      // Async content keeps registering topics and rebuilding the rail, which
+      // resets scrollLeft. Keep re-centring across those rebuilds, but stop as
+      // soon as the reader takes over. Only real input events count -- a
+      // scroll listener would also fire for our own programmatic scrolling.
+      var railTouched = false;
+      function markRailTouched() { railTouched = true; }
+
+      // Scroll the rail itself rather than calling scrollIntoView, which
+      // would also scroll ancestors and jump the page away from the hero.
+      function centerActivePill() {
+        var rail = document.getElementById('topic-tabs');
+        if (!rail) return;
+        var active = rail.querySelector('.pill-tab.active');
+        if (!active) return;
+        // Measure against the rail itself. offsetLeft is relative to the
+        // nearest positioned ancestor, which is not this container, so it
+        // would skew the target by the rail's own page offset.
+        var railBox = rail.getBoundingClientRect();
+        var pillBox = active.getBoundingClientRect();
+        var target = rail.scrollLeft + (pillBox.left - railBox.left)
+          - (rail.clientWidth - pillBox.width) / 2;
+        rail.scrollLeft = Math.max(0, Math.min(target, rail.scrollWidth - rail.clientWidth));
+      }
+
       // Register topics from static story cards and build pills immediately
       registerTopicsFromElements('#stories-grid .card');
       buildPills();
       buildOriginFilter();
+
+      var topicRail = document.getElementById('topic-tabs');
+      if (topicRail) {
+        topicRail.addEventListener('scroll', syncPillFade, { passive: true });
+        ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function(evt) {
+          topicRail.addEventListener(evt, markRailTouched, { passive: true });
+        });
+        window.addEventListener('resize', function() {
+          if (!railTouched) centerActivePill();
+          syncPillFade();
+        });
+      }
+      centerActivePill();
+      syncPillFade();
 
       var pillsBuilt = true;
 
@@ -645,6 +710,9 @@
           tab.addEventListener('click', function(e) { e.preventDefault(); applyFilter(topic); });
           tabsContainer.appendChild(tab);
         });
+
+        if (!railTouched) centerActivePill();
+        syncPillFade();
       }
 
       function buildOriginFilter() {

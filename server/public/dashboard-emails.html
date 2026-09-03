@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Email Preferences - Dashboard</title>
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <script src="/nav.js"></script>
   <script src="/dashboard-nav.js"></script>
@@ -155,8 +155,6 @@
     }
 
     .unsubscribed-banner {
-      background: var(--color-warning-50);
-      border: 1px solid var(--color-warning-300);
       border-radius: 8px;
       padding: 16px;
       margin-bottom: 24px;
@@ -173,13 +171,13 @@
     .unsubscribed-banner h3 {
       margin: 0 0 4px 0;
       font-size: 14px;
-      color: var(--color-warning-800);
+      color: var(--color-text-heading);
     }
 
     .unsubscribed-banner p {
       margin: 0;
       font-size: 13px;
-      color: var(--color-warning-700);
+      color: var(--color-text);
     }
 
     .loading {
@@ -229,7 +227,7 @@
 
     <div id="content" style="display: none;">
       <!-- Global unsubscribe banner -->
-      <div id="unsubscribedBanner" class="unsubscribed-banner" style="display: none;">
+      <div id="unsubscribedBanner" class="unsubscribed-banner ds-alert ds-alert-warning ds-alert-ring" style="display: none;">
         <div class="unsubscribed-banner-text">
           <h3>You're unsubscribed from all emails</h3>
           <p>You won't receive any marketing or community emails. Transactional emails (password resets, billing) will still be sent.</p>

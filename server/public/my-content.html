@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <title>My Content - AgenticAdvertising.org</title>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
   <script src="/nav.js"></script>
@@ -224,9 +224,9 @@
     .badge-link { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-personal { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
     .badge-committee { background: var(--color-primary-50); color: var(--color-primary-700); }
-    .badge-author { background: var(--color-info-50); color: var(--color-info-700); }
-    .badge-proposer { background: var(--color-warning-50); color: var(--color-warning-700); }
-    .badge-owner { background: var(--color-success-50); color: var(--color-success-700); }
+    .badge-author { background: var(--color-info-bg); color: var(--color-info-fg); }
+    .badge-proposer { background: var(--color-warning-bg); color: var(--color-warning-fg); }
+    .badge-owner { background: var(--color-success-bg); color: var(--color-success-fg); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -401,8 +401,8 @@
     }
     .type-toggle button.active {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
-      color: var(--color-brand);
+      background: var(--color-brand-bg);
+      color: var(--color-brand-fg, var(--color-brand));
     }
     .url-input-group {
       display: flex;
@@ -489,13 +489,10 @@
 
     /* Rejection reason display */
     .rejection-reason {
-      background: var(--color-error-50);
-      border: var(--border-1) solid var(--color-error-200);
       border-radius: var(--radius-md);
       padding: var(--space-3);
       margin-top: var(--space-2);
       font-size: var(--text-sm);
-      color: var(--color-error-700);
     }
 
     /* Authors display */
@@ -518,8 +515,6 @@
 
     /* Alert banner */
     .alert-banner {
-      background: var(--color-warning-50);
-      border: var(--border-1) solid var(--color-warning-200);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-5);
@@ -528,16 +523,16 @@
       gap: var(--space-3);
     }
     .alert-banner-icon {
-      color: var(--color-warning-600);
+      color: var(--color-warning-fg);
       font-size: var(--text-xl);
     }
     .alert-banner-content h3 {
-      color: var(--color-warning-800);
+      color: var(--color-text-heading);
       font-size: var(--text-sm);
       margin-bottom: var(--space-1);
     }
     .alert-banner-content p {
-      color: var(--color-warning-700);
+      color: var(--color-text);
       font-size: var(--text-sm);
     }
   </style>
@@ -584,7 +579,7 @@
       </div>
 
       <!-- Alert banner for pending reviews -->
-      <div id="pendingAlert" class="alert-banner hidden">
+      <div id="pendingAlert" class="alert-banner hidden ds-alert ds-alert-warning ds-alert-ring">
         <span class="alert-banner-icon">!</span>
         <div class="alert-banner-content">
           <h3>Content Awaiting Review</h3>
@@ -1067,9 +1062,9 @@
         : '';
 
       const rejectionInfo = item.status === 'rejected' && item.rejection_reason
-        ? `<div class="rejection-reason"><strong>Rejection reason:</strong> ${escapeHtml(item.rejection_reason)}</div>`
+        ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring"><strong>Rejection reason:</strong> ${escapeHtml(item.rejection_reason)}</div>`
         : item.status === 'needs_revisions' && item.revision_notes
-          ? `<div class="rejection-reason" style="border-color: var(--color-warning-300);"><strong>Revision notes:</strong> ${escapeHtml(item.revision_notes)}</div>`
+          ? `<div class="rejection-reason ds-alert ds-alert-error ds-alert-ring" style="border-color: var(--color-warning-300);"><strong>Revision notes:</strong> ${escapeHtml(item.revision_notes)}</div>`
           : '';
       const pageviews30dValue = Number(item.performance?.pageviews_last_30d || 0);
       const pageviews30d = pageviews30dValue > 0 ? formatMetricCount(pageviews30dValue) : null;

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AdAgents.json Manager - AdCP Testing Framework</title>
-    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/design-system.css">
     <link rel="stylesheet" href="/layout.css">
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -629,23 +629,8 @@
         border: var(--border-1) solid var(--color-border);
       }
 
-      .result-success {
-        background: var(--color-success-50);
-        border-color: var(--color-success-200);
-        color: var(--color-success-700);
-      }
 
-      .result-warning {
-        background: var(--color-warning-50);
-        border-color: var(--color-warning-300);
-        color: var(--color-warning-800);
-      }
 
-      .result-error {
-        background: var(--color-error-50);
-        border-color: var(--color-error-300);
-        color: var(--color-error-600);
-      }
 
       /* JSON Output */
       .json-output-container {
@@ -1909,7 +1894,7 @@
         } catch (error) {
           console.error(`Domain validation failed: ${error.message}`);
           resultsDiv.innerHTML = `
-                    <div class="validation-result result-error">
+                    <div class="validation-result result-error ds-alert ds-alert-error ds-alert-ring">
                         <strong>❌ Validation Error</strong><br>
                         ${error.message}
                     </div>
@@ -1930,21 +1915,21 @@
         // Overall status
         if (found && validation.valid) {
           html += `
-                    <div class="validation-result result-success">
+                    <div class="validation-result result-success ds-alert ds-alert-success ds-alert-ring">
                         <strong>✅ Valid AdAgents.json Found</strong><br>
                         Found at: <code>${escapeHtml(validation.url)}</code>
                     </div>
                 `;
         } else if (found && !validation.valid) {
           html += `
-                    <div class="validation-result result-warning">
+                    <div class="validation-result result-warning ds-alert ds-alert-warning ds-alert-ring">
                         <strong>⚠️ AdAgents.json Found but Invalid</strong><br>
                         Found at: <code>${escapeHtml(validation.url)}</code>
                     </div>
                 `;
         } else {
           html += `
-                    <div class="validation-result result-error">
+                    <div class="validation-result result-error ds-alert ds-alert-error ds-alert-ring">
                         <strong>❌ No AdAgents.json Found</strong><br>
                         Expected at: <code>https://${escapeHtml(domain)}/.well-known/adagents.json</code>
                     </div>
