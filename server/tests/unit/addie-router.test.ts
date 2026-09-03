@@ -572,6 +572,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toMatch(/\*\*admin_organization_integrity\*\*/);
       expect(descriptions).toMatch(/\*\*admin_organization_member_records\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin_organizations\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_brand_registry_integrity\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_brand_logo_review\*\*/);
+      expect(descriptions).not.toMatch(/\*\*admin_brands\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin_groups\*\*/);
       expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });

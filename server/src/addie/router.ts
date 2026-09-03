@@ -716,7 +716,9 @@ ${isAAOAdmin ? `- Invite someone to an event, create/update events, manage regis
 ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming a working group (admin action) → ["admin_group_structure"]
 - Adding/removing/listing committee or working-group leaders (admin action) → ["admin_group_leadership"]
 - Adding/removing working-group members (admin action) → ["admin_group_membership"]
-- Brand-logo review, registry gaps, community mirrors, ownership transfers, or orphaned brands → ["admin_brands"]
+- Brand or property registry gaps, community-mirror reconciliation, ownership transfers, or orphaned brands → ["admin_brand_registry_integrity"]
+- Pending or existing brand-logo queues, approvals, rejections, or deletions → ["admin_brand_logo_review"]
+- A request that genuinely needs both brand-registry integrity and logo-review workflows may select both bounded domains; do not select the hidden legacy alias.
 - Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_workflows"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]

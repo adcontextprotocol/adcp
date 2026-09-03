@@ -13,6 +13,7 @@ import {
 } from '../../../src/addie/slack-tool-selection.js';
 import {
   AGENT_END_TO_END_TOOLS,
+  ADMIN_BRANDS_TOOLS,
   ADMIN_ORGANIZATIONS_TOOLS,
   COMMUNITY_GROUP_FULL_PARTICIPATION_TOOLS,
   COMMUNITY_GROUP_TOOLS,
@@ -528,6 +529,25 @@ describe('Slack tool-set selection policy', () => {
     )).toEqual([]);
   });
 
+  it.each([
+    'admin_brand_registry_integrity',
+    'admin_brand_logo_review',
+  ])('filters the exact brand-admin union from a public app mention routed to %s', (toolSet) => {
+    const selection = selectBoundedRoutedToolSets({
+      plan: { action: 'respond', tool_sets: [toolSet], confidence: 'high', reason: 'brand-admin request', decision_method: 'quick_match' },
+      routerAvailable: true,
+      source: 'mention',
+      isAdmin: true,
+      isPublicChannel: true,
+      isToolAvailable: () => true,
+    });
+
+    expect(selection.useSafeFallback).toBe(false);
+    expect(selection.allowedToolNames.filter((name) =>
+      (ADMIN_BRANDS_TOOLS as readonly string[]).includes(name),
+    )).toEqual([]);
+  });
+
   it('does not attach admin-only tools to a public channel community-group route', () => {
     const selection = selectBoundedRoutedToolSets({
       plan: { action: 'respond', tool_sets: ['community_group_discovery'], confidence: 'high', reason: 'group lookup', decision_method: 'quick_match' },
@@ -552,8 +572,10 @@ describe('Slack tool-set selection policy', () => {
     ['legacy meetings union', { action: 'respond', tool_sets: ['meetings'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy community-groups union', { action: 'respond', tool_sets: ['community_groups'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized organization integrity domain', { action: 'respond', tool_sets: ['admin_organization_integrity'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['unauthorized brand logo-review domain', { action: 'respond', tool_sets: ['admin_brand_logo_review'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
   ] as const)('uses the mutation-free fallback for reaction %s', (_label, plan) => {
     const selection = selectBoundedRoutedToolSets({

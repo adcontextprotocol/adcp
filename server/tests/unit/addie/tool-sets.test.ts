@@ -6,6 +6,9 @@ import {
   AGENT_QUALITY_TOOLS,
   AGENT_REGISTRY_TOOLS,
   AGENT_VALIDATION_TOOLS,
+  ADMIN_BRAND_LOGO_REVIEW_TOOLS,
+  ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS,
+  ADMIN_BRANDS_TOOLS,
   ADMIN_DOMAIN_TOOL_SETS,
   ADMIN_ORGANIZATION_INTEGRITY_TOOLS,
   ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS,
@@ -100,6 +103,9 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_organization_member_records**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_organizations**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_registry_integrity**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_logo_review**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_brands**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_structure**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_leadership**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_group_membership**');
@@ -147,6 +153,46 @@ describe('getToolsForSets', () => {
       );
       expect(getToolsForSets(['admin_organization_member_records'], false, false)).not.toEqual(
         expect.arrayContaining(ADMIN_ORGANIZATION_MEMBER_RECORDS_TOOLS),
+      );
+    });
+
+    it('keeps brand-registry integrity and logo review separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS).toEqual([
+        'list_missing_brands', 'list_missing_properties', 'list_pending_community_mirrors',
+        'transfer_brand_ownership', 'list_orphaned_brands',
+      ]);
+      expect(ADMIN_BRAND_LOGO_REVIEW_TOOLS).toEqual([
+        'list_pending_brand_logos', 'list_brand_logos', 'review_brand_logo',
+      ]);
+      expect(ADMIN_BRANDS_TOOLS).toEqual([
+        'list_missing_brands', 'list_missing_properties', 'list_pending_brand_logos', 'list_brand_logos',
+        'review_brand_logo', 'list_pending_community_mirrors', 'transfer_brand_ownership', 'list_orphaned_brands',
+      ]);
+      expect(ADMIN_BRANDS_TOOLS).toHaveLength(8);
+      expect(TOOL_SETS.admin_brands.tools).toEqual(ADMIN_BRANDS_TOOLS);
+      expect(TOOL_SETS.admin_brands.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('admin_brands')).toBe(false);
+      for (const name of ['admin_brand_registry_integrity', 'admin_brand_logo_review']) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+      }
+      expect(getToolsForSets(['admin_brand_registry_integrity'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS),
+      );
+      expect(getToolsForSets(['admin_brand_registry_integrity'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BRAND_LOGO_REVIEW_TOOLS),
+      );
+      expect(getToolsForSets(['admin_brand_logo_review'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_BRAND_LOGO_REVIEW_TOOLS),
+      );
+      expect(getToolsForSets(['admin_brand_logo_review'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS),
+      );
+      expect(getToolsForSets(['admin_brands'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_BRANDS_TOOLS),
+      );
+      expect(getToolsForSets(['admin_brand_logo_review'], false, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BRAND_LOGO_REVIEW_TOOLS),
       );
     });
   });
