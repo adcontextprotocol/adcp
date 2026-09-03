@@ -13,7 +13,7 @@ description: "Every published AdCP version, its status, and its end-of-life date
 
 | Status | Versions | Wire pin | What it means |
 |---|---|---|---|
-| **Beta** | 3.2 (current prerelease: `beta.11`) | `"3.2-beta.11"` | Development and staging only. Beta.11 is the current protocol checkpoint; TypeScript SDK beta.29 embeds it exactly. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
+| **Beta** | 3.2 (current prerelease: `beta.11`) | `"3.2-beta.11"` | Development and staging only. Beta.11 is the current protocol checkpoint; TypeScript SDK beta.29 and Python SDK beta.12 embed it exactly. Follow the [3.2 beta program](/docs/reference/3-2-beta). |
 | **Active** | 3.1 (current stable: 3.1.20) | `"3.1"` | Current production minor release. See [What's New in AdCP 3.1](/docs/reference/whats-new-in-3-1) for the feature set. |
 | **Maintained** | 3.0 (current stable: 3.0.26) | `"3.0"` | Supported previous minor for existing production integrations. Receives compatibility and security patches. |
 | **End of life** | 2.0.0, 2.1.0, 2.5.0–2.5.3 | — | No patches. Migrate to 3.0. See [v2 sunset](/docs/reference/v2-sunset). |
@@ -45,7 +45,7 @@ Supported patches don't change the wire contract. Upgrading within 3.0.x is alwa
 
 | Version | Released | Notes |
 |---|---|---|
-| **3.2.0-beta.11** | 2026-09-03 | Current protocol checkpoint. Adds `get_principal` to the MCP media-buy role profile alongside `sync_principal`, and aligns training-agent and compliance guidance with the beta.10 bundle. TypeScript SDK beta.29 embeds it exactly; use `"3.2-beta.11"` only with peers that explicitly advertise it. |
+| **3.2.0-beta.11** | 2026-09-03 | Current protocol checkpoint. Adds `get_principal` to the MCP media-buy role profile alongside `sync_principal`, and aligns training-agent and compliance guidance with the beta.10 bundle. TypeScript SDK beta.29 and Python SDK beta.12 embed it exactly; use `"3.2-beta.11"` only with peers that explicitly advertise it. |
 | 3.2.0-beta.10 | 2026-09-01 | Previous protocol checkpoint. Adds managed reporting delivery, authenticated principals, audio VAST and DOOH support, programmed channel collections, and committed collection selection. TypeScript SDK beta.28 and Python SDK beta.11 embed it. |
 | 3.2.0-beta.9 | 2026-08-28 | Previous protocol checkpoint. Adds the draft account change feed, product-scoped inventory-list receipts, authority-discriminated inventory delivery identity, seller policy and change-right contracts, and broader conformance coverage. |
 | 3.2.0-beta.8 | 2026-08-27 | Previous protocol checkpoint. Proves metric-container subsumption behavior end to end and repairs versioned documentation snapshot builds. |
@@ -97,7 +97,7 @@ Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/
 |---|---|
 | Building a new production integration today | **3.1**. Pin `"3.1"` on the wire. |
 | Implementing or testing 3.2 without an SDK | Use the signed **3.2 beta.11** artifacts with raw-wire or code-generation workflows. Follow the [beta program](/docs/reference/3-2-beta). |
-| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.29` with exact wire pin `"3.2-beta.11"`; use Go only after its support matrix row names an exact checkpoint. |
+| Running an SDK-backed 3.2 integration test | Use `@adcp/sdk@14.0.0-beta.29` or Python `adcp==8.0.0b12` with exact wire pin `"3.2-beta.11"`; use Go only after its support matrix row names an exact checkpoint. |
 | Running an existing 3.0 integration | Stay on **3.0** while you migrate, or move to **3.1** when your SDK and validation are ready. |
 | Running a 2.5.x integration | Upgrade now — out of support. Start with the [migration guide](/docs/reference/migration). |
 | Running a 2.0 or 2.1 integration | Upgrade now — out of support. |
