@@ -179,7 +179,7 @@
     "eval:addie-google-read-only-tools": "tsx --import dotenv/config server/tests/manual/provider-read-only-tool-loop.ts"
   },
   "dependencies": {
-    "@adcp/sdk": "14.0.0-beta.29",
+    "@adcp/sdk": "14.0.0-beta.30",
     "@anthropic-ai/sdk": "^0.121.0",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.9.1",

@@ -139,7 +139,7 @@ Deep dive on canonical `Product.format_options[]` and publisher `adagents.json.f
 
 ## B3: Measurement, signals, and optimization
 
-**~20 min** | Prerequisite: B2
+**~35 min** | Prerequisite: B2
 
 How to expose delivery data, measurement signals, and optimization levers through your sales agent. Integration with measurement platforms, audience handling, and account management.
 
@@ -148,6 +148,12 @@ How to expose delivery data, measurement signals, and optimization levers throug
 <CardGroup cols={2}>
   <Card title="get_media_buy_delivery task" icon="chart-line" href="/docs/media-buy/task-reference/get_media_buy_delivery">
     Delivery metrics: impressions, spend, completion rates, and performance data.
+  </Card>
+  <Card title="Implementing reporting.core" icon="clock-rotate-left" href="/docs/media-buy/reporting-core-implementation-guide">
+    Make expected periods, missing reports, recovery, and responsibility machine-checkable.
+  </Card>
+  <Card title="get_reporting_status task" icon="list-check" href="/docs/media-buy/task-reference/get_reporting_status">
+    Project obligations, immutable revisions, health, and retained reporting history.
   </Card>
   <Card title="Optimization and reporting" icon="chart-mixed" href="/docs/media-buy/media-buys/optimization-reporting">
     How buyer agents use delivery data for campaign optimization.
@@ -180,7 +186,9 @@ How to expose delivery data, measurement signals, and optimization levers throug
 
 ### Key concepts
 
-- **Delivery reporting** — accurate, timely delivery data via `get_media_buy_delivery`
+- **Delivery reporting** — accurate metrics via `get_media_buy_delivery`, plus
+  durable obligations and missing-first-report detection through
+  `reporting.core` and `get_reporting_status`
 - **Signals framework** — `get_signals` and `activate_signal` replace fragmented measurement vendor integrations
 - **Audience handling** — `sync_audiences` for accepting buyer audience data
 - **Execution integration** — publishers participate in TMP by sending Context Match requests (page content + available packages) and Identity Match requests (user token + package IDs) to the TMP Router, then joining the results locally. This enables cross-publisher frequency capping and impression-time activation without exposing user identity and page context to the buyer simultaneously. TMP is an [experimental surface](/docs/reference/experimental-status) in AdCP 3.0 (feature id `trusted_match.core`); execution and privacy details may change between 3.x releases with at least 6 weeks' notice.
@@ -193,6 +201,20 @@ How to expose delivery data, measurement signals, and optimization levers throug
 Given sample Context Match and Identity Match responses, determine which packages the publisher activates and what targeting key-values to set.
 
 **Broadcast delivery reporting:** Given a broadcast product with `measurement_windows: [{window_id: "c3"}, {window_id: "c7"}]`, a buyer calls `get_media_buy_delivery` two days after the flight date. Describe what data is available in each window, why the `c7` window is still incomplete, and how the seller should represent delivery to avoid the buyer misreading partial data as underdelivery.
+
+**Reliable reporting (10–15 minutes):** Run
+`reporting_core_lifecycle_probe` against the sales sandbox. Save the complete
+configuration, period, obligation ID, `expected_at`, and recovery deadline
+returned by `prepare`; make a four-row observation table for waiting, delayed,
+zero-row, and missing-obligation states. Read the same obligation before its
+first revision, advance it beyond its SLA, and publish the explicit zero-row
+revision. Reset with `prepare`, run `omit_obligation`, and show that the
+returned expected period is absent from the complete `periods` result even
+though your saved configuration requires it. Submit the table plus a short
+explanation of the authoritative read and optional doorbells. Common errors
+Addie will flag: starting the clock at buy acceptance, treating zero rows as no
+report, trusting the seller's returned obligations as the denominator, or
+using a notification as proof of ledger state.
 
 <Card title="Start B3 with Addie" icon="play" href="https://agenticadvertising.org/chat">
   "I'd like to start certification module B3."

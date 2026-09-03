@@ -41,6 +41,10 @@ import { getPublicJwks } from './webhooks.js';
 import { getAggregatedPublicJwks } from './tenants/signing.js';
 import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
+  TRAINING_REPORTING_DEFINITION_BYTES,
+  TRAINING_REPORTING_ROW_SCHEMA_BYTES,
+} from './reporting-reliability.js';
+import {
   buildStrictRequestSigningAuthenticator,
   buildStrictRequiredRequestSigningAuthenticator,
   buildStrictForbiddenRequestSigningAuthenticator,
@@ -579,6 +583,18 @@ export function createTrainingAgentRouter(options: {
   // Health check
   router.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'healthy', service: 'training-agent' });
+  });
+
+  // The Core reporting offering pins these immutable bytes by SHA-256. Serve
+  // them directly (not through res.json) so a consumer's digest covers the
+  // exact advertised payload.
+  router.get('/reporting/schemas/delivery-summary-v1.json', (_req: Request, res: Response) => {
+    res.type('application/schema+json').set('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(TRAINING_REPORTING_ROW_SCHEMA_BYTES);
+  });
+  router.get('/reporting/definitions/delivery-summary-v1.json', (_req: Request, res: Response) => {
+    res.type('application/vnd.adcp.reporting-definition+json').set('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(TRAINING_REPORTING_DEFINITION_BYTES);
   });
 
   // JWKS for webhook-signature verification by buyers (RFC 7517).

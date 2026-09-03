@@ -29,7 +29,7 @@ import {
   resolveServedAdcpVersion,
   supportedCanonicalFormatsCapability,
 } from '../task-handlers.js';
-import { supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
+import { atLeastAdcpVersion, supportsAccountChangeFeed, supportsGetProductsRejected, supportsSellerGovernanceDiscovery, REPORTING_STATUS_ADCP_VERSION, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getAgentUrl } from '../config.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -146,6 +146,7 @@ const SALES_CURRENT_SCENARIOS = [
   'seed_measurement_catalog',
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
+  'reporting_core_lifecycle_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
 ] as const;
@@ -194,9 +195,12 @@ function salesComplyScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
+  const current = atLeastAdcpVersion(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
+    ? [...SALES_CURRENT_SCENARIOS]
+    : SALES_CURRENT_SCENARIOS.filter(scenario => scenario !== 'reporting_core_lifecycle_probe');
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
-    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
-    : [...SALES_CURRENT_SCENARIOS];
+    ? [...current, 'expire_account_change_cursor']
+    : current;
 }
 
 function salesCapabilityScenarios(
@@ -204,9 +208,7 @@ function salesCapabilityScenarios(
   servedVersion?: string,
 ): string[] {
   if (storyboardCompat?.version === '3.0') return [...SALES_LEGACY_CAPABILITY_SCENARIOS];
-  return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
-    ? [...SALES_CURRENT_SCENARIOS, 'expire_account_change_cursor']
-    : [...SALES_CURRENT_SCENARIOS];
+  return salesComplyScenarios(storyboardCompat, servedVersion);
 }
 
 /**
@@ -292,7 +294,6 @@ function tenantMcpHandler(
       storyboardCompat,
       proposalNegotiationProfile,
     );
-
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
     // transport surfaces it as `ctx.authInfo` to platform handlers
@@ -486,6 +487,7 @@ async function tryHandleLocalComplyScenario(
     && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
   const isCompactLifecycleProbe = rawArgs.scenario === 'compact_product_lifecycle_probe'
     || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
+  const isReportingLifecycleProbe = rawArgs.scenario === 'reporting_core_lifecycle_probe';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'expire_account_change_cursor'
@@ -494,6 +496,7 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'evaluate_distributed_brand_resolution'
     && rawArgs.scenario !== 'compact_product_lifecycle_probe'
     && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
+    && rawArgs.scenario !== 'reporting_core_lifecycle_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
@@ -509,6 +512,7 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'evaluate_distributed_brand_resolution'
       || rawArgs.scenario === 'compact_product_lifecycle_probe'
       || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
+      || rawArgs.scenario === 'reporting_core_lifecycle_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
       || isRejectedGetProductsDirective
     )
@@ -528,6 +532,9 @@ async function tryHandleLocalComplyScenario(
     });
     return true;
   }
+  if (isReportingLifecycleProbe && !atLeastAdcpVersion(versionResolution.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+    return false;
+  }
 
   const result = await runWithSessionContext(async () => {
     const isCompactLifecycleScenario = rawArgs.scenario === 'compact_product_lifecycle_probe'
@@ -535,7 +542,7 @@ async function tryHandleLocalComplyScenario(
     const auth = (req as unknown as {
       auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
     }).auth;
-    const localContext = isCompactLifecycleScenario
+    const localContext = isCompactLifecycleScenario || isReportingLifecycleProbe
       ? await resolveTrainingSalesRequestContext(handlerArgs, auth, storyboardCompat)
       : {
           mode: 'open' as const,
@@ -587,11 +594,11 @@ function wrapTenantCapabilitiesProjection(
   const capabilityArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
   const hasVersionSelector = capabilityArgs.adcp_version !== undefined
     || capabilityArgs.adcp_major_version !== undefined;
-  const requestedVersion = proposalNegotiationProfile
-    ? hasVersionSelector
-      ? resolveServedAdcpVersion(capabilityArgs)
-      : { ok: true as const, servedVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION }
-    : undefined;
+  const requestedVersion = hasVersionSelector
+    ? resolveServedAdcpVersion(capabilityArgs)
+    : proposalNegotiationProfile
+      ? { ok: true as const, servedVersion: TRAINING_AGENT_CURRENT_ADCP_VERSION }
+      : undefined;
 
   const origEnd = res.end.bind(res);
   const chunks: Buffer[] = [];
@@ -895,6 +902,10 @@ function projectTenantCapabilities(
       const experimentalFeatures = Array.isArray(structured.experimental_features)
         ? structured.experimental_features.filter((feature): feature is string => typeof feature === 'string')
         : [];
+      if (!atLeastAdcpVersion(servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+        const reportFeature = experimentalFeatures.indexOf('media_buy.reporting_delivery');
+        if (reportFeature >= 0) experimentalFeatures.splice(reportFeature, 1);
+      }
       if (!experimentalFeatures.includes('measurement.core')) {
         experimentalFeatures.push('measurement.core');
       }
@@ -966,6 +977,9 @@ function projectTenantCapabilities(
           },
         }),
       };
+      if (!atLeastAdcpVersion(servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+        delete structured.media_buy.reporting_delivery;
+      }
       if (!supportsGetProductsRejected(servedVersion)) {
         delete structured.media_buy.lifecycle_tools;
         delete structured.media_buy.proposal_refinement;

@@ -30,6 +30,8 @@ export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current prerelease schema bundle shipped by the server SDK. */
 export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.11' as const;
+/** First released schema checkpoint containing get_reporting_status. */
+export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 
 /** Release checkpoints the reference training agent can serve. */
 export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS = [
@@ -664,6 +666,8 @@ export interface MediaBuyState {
   invoiceRecipient?: Record<string, unknown>;
   reportingWebhook?: Record<string, unknown>;
   packages: PackageState[];
+  /** Offering applicability frozen from the accepted product/package terms. */
+  reportingOfferingIdsByPackage?: Record<string, string[]>;
   productAllowedActions?: MediaBuyProductAllowedActionState[];
   availableActions?: MediaBuyAvailableActionState[];
   /** Stable execution identities assigned by purchase position. */

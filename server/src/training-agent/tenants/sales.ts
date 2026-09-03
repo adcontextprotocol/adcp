@@ -10,6 +10,7 @@ import type { TaskRegistry, TenantConfig } from '@adcp/sdk/server';
 import { TOOL_INPUT_SHAPES } from '@adcp/sdk/schemas';
 import {
   TrainingSalesPlatform,
+  legacyGetReportingStatusHandler,
   legacyGetProductsHandler,
   legacyListCreativesHandler,
   legacySyncCreativesHandler,
@@ -103,6 +104,9 @@ export function buildSalesTenantConfig(
         legacyHandlers: {
           mediaBuy: {
             getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
+            ...(options.storyboardCompat?.version !== '3.0' && {
+              getReportingStatus: legacyGetReportingStatusHandler(),
+            }),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),
           },

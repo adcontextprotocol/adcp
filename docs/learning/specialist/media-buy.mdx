@@ -8,7 +8,7 @@ description: "AdCP specialist module S1: Media buy mastery. Full transaction lif
 # S1: Media buy mastery
 
 <Info>
-  **Members only** — Requires Practitioner credential. ~45 minutes with Addie.
+  **Members only** — Requires Practitioner credential. ~60 minutes with Addie.
   Combines hands-on lab and adaptive exam.
 </Info>
 
@@ -45,6 +45,10 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
 - Know that `update_media_buy` requires `account` (not just `media_buy_id`) so billing routes to the right relationship; omitting it is a protocol error
 - Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
 - Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window's DVR accumulation doesn't close until seven days post-air, and vendor processing adds further delay before final data is available; incomplete data during this period is by design, not underdelivery
+- Reconcile reliable reporting from the buyer side: retain configuration
+  generations, derive expected periods independently, distinguish obligation
+  creation at `period.end` from report lateness at `expected_at`, and use
+  `get_reporting_status` rather than doorbells as the authoritative repair path
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
 - Interpret seller indicators as current relationship-scoped state: explain why creative fatigue belongs to one package–creative assignment, why the same creative may be fatigued on one seller but not another, and why provider methodology belongs in `ext`
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
@@ -96,6 +100,22 @@ See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for
     href="/docs/media-buy/task-reference/get_media_buy_delivery"
   >
     Delivery reporting: impressions, spend, completion rates, performance.
+  </Card>
+  <Card
+    title="Implementing reporting.core"
+    icon="clock-rotate-left"
+    href="/docs/media-buy/reporting-core-implementation-guide"
+  >
+    Seller and buyer responsibilities for obligations, deadlines, recovery,
+    and optional doorbells.
+  </Card>
+  <Card
+    title="get_reporting_status"
+    icon="list-check"
+    href="/docs/media-buy/task-reference/get_reporting_status"
+  >
+    Authoritative reporting health, expected periods, revisions, and managed
+    materializations.
   </Card>
 </CardGroup>
 
@@ -228,6 +248,18 @@ During the module, Addie will guide you through hands-on exercises:
 9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated. Then design, conceptually and outside the public sales-agent sandbox, an orchestrator-hosted measurement gateway that exposes `get_media_buy_delivery` and `provide_performance_feedback`, grants only those orchestrator tasks, and maps one cross-seller result into seller-local submissions.
 10. **Warnings, indicators, and invalidations** — Analyze a success warning and the later resource snapshot; distinguish buy/package/assignment indicator placement, exact type coverage, assignment approval, and webhook invalidation handling.
 11. **Shared-account convergence (3.2 draft)** — Connect to an existing sandbox account that is also managed by a connected platform. Acquire a latest account-change cursor before snapshotting, observe an externally initiated creative or media-buy transition, drain `list_account_changes`, and repair through the named authoritative read. Complete the [shared-account change feed lab](/docs/learning/shared-account-change-feed).
+12. **Reliable reporting reconciliation (3.2 experimental; 10–15 minutes)** — Run the public
+    sandbox's `reporting_core_lifecycle_probe` with `operation: "prepare"`,
+    then read the supplied account through `get_reporting_status(view:
+    "periods")`. Derive the expected period independently and verify that its
+    obligation exists before any revision. Advance the same fixture to
+    `delayed`, then `publish_zero_row` and prove that `row_count: 0` differs
+    from no revision. Reset with `prepare`, call `omit_obligation`, exhaust the
+    matching `periods` view, and submit an expected-versus-observed table that
+    identifies the supplied omitted period. Addie flags clocks started at buy
+    acceptance, seller-ledger-as-denominator logic, zero-row confusion, and
+    notifications treated as evidence. Explain why `reporting.delivery_ready`
+    never replaces the authoritative read.
 
 For the indicator exercise, Addie supplies this compact creative-library fixture:
 
