@@ -1,0 +1,26 @@
+{
+  "from": "3.2.0-beta.11",
+  "to": "3.2.0-rc.0",
+  "pendingChangesets": [
+    {
+      "file": "add-daypart-timezone-semantics.md",
+      "sha256": "a97d7754b01ef1bb29d5e010711ab14add3fc691868bcef9fb167c29b21287da"
+    },
+    {
+      "file": "adopt-beta11-training-wire.md",
+      "sha256": "6d684e5145f1b1c821d3a11e5944a60762df7f4c3d124e3a2c543e03d0967f1b"
+    },
+    {
+      "file": "define-dooh-time-share.md",
+      "sha256": "908ebc162b69d73ecdedc8f73b75cc95e1725976d6d92dc99cca87d38b0a8067"
+    },
+    {
+      "file": "mainline-candidate-storyboards.md",
+      "sha256": "081620f8c36bdad2bae8632bf8af6a561d31bec970e0f8848dadc621a6c8606b"
+    },
+    {
+      "file": "refresh-beta10-release-ledger.md",
+      "sha256": "d6c2250a26b8952ef5eecde5159bcfbaa7bd609a1ffae8e7e1f1e85680c535e5"
+    }
+  ]
+}
