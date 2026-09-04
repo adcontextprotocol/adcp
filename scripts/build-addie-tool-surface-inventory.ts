@@ -921,6 +921,14 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
     ...meetings.MEETING_TOOLS,
     ...tavusTailRequest,
   ];
+  const tavusGlobalNames = new Set(tavusGlobal.map((tool) => tool.name));
+  const tavusUnverifiedThreadFallback = selectBoundedRoutedToolSets({
+    plan: null,
+    routerAvailable: false,
+    source: 'dm',
+    isAdmin: false,
+    isToolAvailable: (name) => tavusGlobalNames.has(name),
+  });
   // Authenticated Tavus turns now use the same bounded direct-response
   // selection as web chat and Slack reactions. Record each surface's actual
   // reachable maximum (one or two routed domains) and the explicit safe
@@ -1017,8 +1025,14 @@ function buildAuxiliaryProfiles(defs: Awaited<ReturnType<typeof loadDefinitions>
       conditionalMaximums: ['nonstreaming_web_search'],
     }),
     profile({
-      id: 'tavus_voice:baseline:exact', runtime: 'tavus_voice', audience: 'baseline',
-      globalTools: tavusGlobal, providerToolCount: 0,
+      id: 'tavus_voice:unverified_thread:safe_fallback',
+      runtime: 'tavus_voice',
+      audience: 'unverified_thread',
+      route: 'safe_fallback',
+      selectedToolSets: tavusUnverifiedThreadFallback.selectedToolSets,
+      allowedToolNames: tavusUnverifiedThreadFallback.allowedToolNames,
+      globalTools: tavusGlobal,
+      providerToolCount: 0,
       conditionalMaximums: ['thread_or_identity_unavailable'],
     }),
     ...buildTavusRoutedProfiles('member', false, tavusMemberRequest, ['moltbook_configured']),
