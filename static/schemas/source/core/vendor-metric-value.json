@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/vendor-metric-value.json",
   "title": "Vendor Metric Value",
-  "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. Channels whose atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based) use the sibling denominators `measurable_plays` / `measurable_screen_seconds`. `measurement_source` optionally echoes the seller's declared relationship to the vendor (`first_party` / `affiliated` / `third_party`) so a row is self-describing without a discovery hop. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
+  "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. Channels whose atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based) use the sibling denominators `measurable_plays` / `measurable_play_seconds`. `vendor_relationship` optionally echoes the seller's declared relationship to the vendor (`first_party` / `affiliated` / `third_party`) so a row is self-describing without a discovery hop. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
   "type": "object",
   "properties": {
     "vendor": {
@@ -24,7 +24,7 @@
     },
     "measurable_impressions": {
       "type": "number",
-      "description": "Number of impressions in this reporting period that the vendor was able to measure. Coverage denominator — buyers compute coverage rate as `measurable_impressions / impressions`. When absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When the vendor measured zero impressions but is integrated, set to 0 explicitly. When the entry is omitted from `vendor_metric_values` entirely, the buyer infers no measurement happened (no integration). This pattern parallels `viewability.measurable_impressions` (`delivery-metrics.json#/properties/viewability`), which has handled vendor coverage in the IAS/DV/MRC ecosystem for over a decade — same convention: absence is unknown, not full. For channels where the atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based), report `measurable_plays` or `measurable_screen_seconds` instead — `impressions` there is itself a modelled figure (`plays × audience multiplier`), so `measurable_impressions / impressions` divides a measured count by a model output and has no interpretation.",
+      "description": "Number of impressions in this reporting period that the vendor was able to measure. Coverage denominator — buyers compute coverage rate as `measurable_impressions / impressions`. When absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When the vendor measured zero impressions but is integrated, set to 0 explicitly. When the entry is omitted from `vendor_metric_values` entirely, the buyer infers no measurement happened (no integration). This pattern parallels `viewability.measurable_impressions` (`delivery-metrics.json#/properties/viewability`), which has handled vendor coverage in the IAS/DV/MRC ecosystem for over a decade — same convention: absence is unknown, not full. For channels where the atomic observation unit is a play or screen-second rather than an impression (DOOH, cinema, place-based), report `measurable_plays` or `measurable_play_seconds` instead — `impressions` there is itself a modelled figure (`plays × audience multiplier`), so `measurable_impressions / impressions` divides a measured count by a model output and has no interpretation.",
       "minimum": 0
     },
     "measurable_plays": {
@@ -32,14 +32,14 @@
       "description": "Number of plays (loop plays / spots aired) in this reporting period that the vendor was able to measure. Coverage denominator for channels where a play, not an impression, is the atomic observation unit — DOOH, cinema, place-based audio. Buyers compute coverage as `measurable_plays / plays` (top-level `plays` on `delivery-metrics.json`). Same absence semantics as `measurable_impressions`: absent means coverage is unspecified and buyers MUST NOT compute a rate; 0 means the vendor is integrated but measured nothing. A row SHOULD carry exactly one coverage denominator — the one matching the unit the vendor actually observes.",
       "minimum": 0
     },
-    "measurable_screen_seconds": {
+    "measurable_play_seconds": {
       "type": "number",
-      "description": "Screen-seconds (seconds of creative on-screen, summed across screens) in this reporting period that the vendor was able to measure. Coverage denominator when the vendor meters exposure duration rather than discrete plays. Buyers compute coverage as `measurable_screen_seconds / dooh_metrics.screen_time_seconds` when both are present. Same absence semantics as `measurable_impressions`.",
+      "description": "Play-seconds — seconds of creative playout summed across endpoints (screens, speakers, players) — in this reporting period that the vendor was able to measure. Medium-neutral on purpose: place-based audio has plays and duration but no screen. Coverage denominator when the vendor meters exposure duration rather than discrete plays. On screen networks buyers compute coverage as `measurable_play_seconds / dooh_metrics.screen_time_seconds`; on other place-based media, against the seller's reported playout seconds for the period. Same absence semantics as `measurable_impressions`.",
       "minimum": 0
     },
-    "measurement_source": {
-      "$ref": "/schemas/enums/measurement-source.json",
-      "description": "Optional echo of the product's `reporting_capabilities.vendor_metrics[].measurement_source` for this `(vendor, metric_id)`, so the delivery row is self-describing without joining back to the product (same reasoning as `viewability.vendor`). When present it MUST equal the declared value; buyers MAY resolve from the product declaration when absent. Deliberately not a `qualifier` key: the relationship is constant across every row for a (seller, vendor) pair and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` reconciliation join."
+    "vendor_relationship": {
+      "$ref": "/schemas/enums/vendor-relationship.json",
+      "description": "Optional echo of the product's `reporting_capabilities.vendor_metrics[].vendor_relationship` for this `(vendor, metric_id)`, so the delivery row is self-describing without joining back to the product (same reasoning as `viewability.vendor`). When present it MUST equal the declared value; buyers MAY resolve from the product declaration when absent. Absence on the row is *undeclared*, never `third_party`. A relationship disposition, not a trust ranking. Deliberately not a `qualifier` key: the relationship is constant across every row for a (seller, vendor) pair and does not partition rows, so it stays out of the `(vendor, metric_id, qualifier)` reconciliation join."
     },
     "qualifier": {
       "type": "object",
@@ -105,7 +105,7 @@
       "value": 7242008.3,
       "unit": "seconds",
       "measurable_plays": 964984,
-      "measurement_source": "first_party"
+      "vendor_relationship": "first_party"
     }
   ]
 }

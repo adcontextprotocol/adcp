@@ -276,16 +276,16 @@ Attention measurement is optional and is not required to claim `sales-dooh`. Whe
 {
   "reporting_capabilities": {
     "vendor_metrics": [
-      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "people_in_frame", "measurement_source": "third_party" },
-      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "gaze_attention_seconds", "measurement_source": "third_party" }
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "people_in_frame", "vendor_relationship": "third_party" },
+      { "vendor": { "domain": "vision-metrics.example" }, "metric_id": "gaze_attention_seconds", "vendor_relationship": "third_party" }
     ]
   }
 }
 ```
 
-The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. When the seller operates the sensors itself — the common DOOH case, since the camera is bolted to the seller's own screen — the `vendor` is the seller's own `brand.json` and the entry declares `"measurement_source": "first_party"`. The seller still publishes the metric catalog like any vendor; `first_party` is a disclosure that lets a buyer agent discount or corroborate, not an exemption.
+The vendor's measurement-agent catalog defines units, methodology, accreditations, and whether the metric is observed or modeled. When the seller operates the sensors itself — the common DOOH case, since the camera is bolted to the seller's own screen — the `vendor` is the seller's own `brand.json` and the entry MUST declare `"vendor_relationship": "first_party"` — self-measurement is permitted only when disclosed, and an absent value is undeclared, never `third_party`. The seller still publishes the metric catalog like any vendor; `first_party` is a disclosure that lets a buyer agent discount or corroborate, not an exemption.
 
-Coverage for these rows is measured over plays, not impressions. A DOOH `impressions` figure is `plays × audience multiplier`, so `measurable_impressions / impressions` would divide a measured count by a model output. Report `measurable_plays` (or `measurable_screen_seconds` when the vendor meters duration) instead:
+Coverage for these rows is measured over plays, not impressions. A DOOH `impressions` figure is `plays × audience multiplier`, so `measurable_impressions / impressions` would divide a measured count by a model output. Report `measurable_plays` (or `measurable_play_seconds` when the vendor meters duration) instead:
 
 ```json
 {
@@ -296,7 +296,7 @@ Coverage for these rows is measured over plays, not impressions. A DOOH `impress
       "value": 7242008.3,
       "unit": "seconds",
       "measurable_plays": 964984,
-      "measurement_source": "first_party"
+      "vendor_relationship": "first_party"
     },
     {
       "vendor": { "domain": "dooh-seller.example" },
@@ -304,7 +304,7 @@ Coverage for these rows is measured over plays, not impressions. A DOOH `impress
       "value": 1481441,
       "unit": "persons",
       "measurable_plays": 964984,
-      "measurement_source": "first_party"
+      "vendor_relationship": "first_party"
     }
   ]
 }
