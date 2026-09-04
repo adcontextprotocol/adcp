@@ -297,7 +297,7 @@ describe('mounted Addie web-thread ownership', () => {
       quickMatch: vi.fn().mockReturnValue(null),
       route: vi.fn().mockResolvedValue({
         action: 'respond',
-        tool_sets: ['directory'],
+        tool_sets: ['agent_publisher_directory'],
         confidence: 'high',
         reason: 'directory lookup',
         decision_method: 'llm',
@@ -323,7 +323,7 @@ describe('mounted Addie web-thread ownership', () => {
     const streamOptions = chatClient.processMessageStream.mock.calls[0]?.[3];
 
     expect(jsonTools).toEqual(streamTools);
-    expect(jsonOptions.selectedToolSetNames).toEqual(['directory']);
+    expect(jsonOptions.selectedToolSetNames).toEqual(['agent_publisher_directory']);
     expect(streamOptions.selectedToolSetNames).toEqual(jsonOptions.selectedToolSetNames);
     expect(streamOptions.allowedToolNames).toEqual(jsonOptions.allowedToolNames);
   });
@@ -341,7 +341,7 @@ describe('mounted Addie web-thread ownership', () => {
     const router = {
       quickMatch: vi.fn().mockReturnValue(null),
       route: vi.fn().mockResolvedValue({
-        action: 'respond', tool_sets: ['directory'], confidence: 'high', reason: 'test', decision_method: 'llm',
+        action: 'respond', tool_sets: ['partner_directory'], confidence: 'high', reason: 'test', decision_method: 'llm',
       }),
     };
     siHostMocks.hasCachedSiSession.mockReturnValue(true);
@@ -358,7 +358,7 @@ describe('mounted Addie web-thread ownership', () => {
 
     expect(siHostMocks.hasCachedSiSession).toHaveBeenCalledWith(conversationId);
     expect(processMessage.mock.calls[0]?.[optionsArgument]?.selectedToolSetNames)
-      .toEqual(['directory', 'sponsored_intelligence']);
+      .toEqual(['partner_directory', 'sponsored_intelligence']);
   });
 
   it('issues an HttpOnly owner capability cookie when an anonymous POST creates a thread', async () => {

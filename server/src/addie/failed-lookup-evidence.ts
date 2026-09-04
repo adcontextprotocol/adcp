@@ -13,7 +13,8 @@ const SOURCE_LOOKUP_TOOL_NAMES = new Set([
   ...TOOL_SETS.knowledge.tools,
   ...TOOL_SETS.community_research.tools,
   ...TOOL_SETS.schema_reference.tools.filter((name) => name !== 'validate_json'),
-  ...TOOL_SETS.directory.tools.filter((name) => name !== 'request_introduction'),
+  ...TOOL_SETS.partner_directory.tools.filter((name) => name !== 'request_introduction'),
+  ...TOOL_SETS.agent_publisher_directory.tools,
   'web_search',
 ]);
 

@@ -107,7 +107,7 @@ describe('authenticated Tavus voice Addie tool routing', () => {
       quickMatch: vi.fn().mockReturnValue({ action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }),
       route: vi.fn(),
     }],
-    ['over-broad plan', routerFor(['member_billing', 'directory', 'events'])],
+    ['over-broad plan', routerFor(['member_billing', 'partner_directory', 'events'])],
   ] as const)('uses the safe read-only fallback for a %s', async (_label, router) => {
     const selected = await select(router);
     expect(selected.selectedToolSets).toEqual(['knowledge', 'community_research', 'schema_reference']);

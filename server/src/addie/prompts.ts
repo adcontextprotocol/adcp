@@ -492,14 +492,17 @@ When a member asks why their listing is missing:
 Publishing requires an active subscription; escalate payment errors to an admin.`,
   },
   {
-    selectedToolSets: ['directory'],
-    text: `### Member-directory operations
-The directory lists member organizations, not individual people. For vendors, implementation partners, consultants, or service providers, search using the user's actual need (for example, "CTV measurement"), not generic terms such as "partner".
-
-- search_members: Find member organizations by capability or need; use the user's stated need as the query.
-- list_members: Browse organizations by offering, market, or search term.
-- request_introduction: Request an email introduction to a specific member organization.
-- get_my_search_analytics: Show the current user's profile analytics.`,
+    selectedToolSets: ['partner_directory'],
+    text: `### Partner-directory operations
+- search_members / list_members / get_member: Find member organizations by stated need; results are organizations, not people.
+- request_introduction: Ask for an introduction to one member organization.
+- get_my_search_analytics: Show the user's search analytics.`,
+  },
+  {
+    selectedToolSets: ['agent_publisher_directory'],
+    text: `### Agent and publisher directory operations
+- list_agents / get_agent: Browse visible agents or inspect an exact URL; preserve visibility scope.
+- list_publishers / lookup_domain: List publishers or agents for a domain; distinguish authorization from claims.`,
   },
   {
     selectedToolSets: ['content'],
