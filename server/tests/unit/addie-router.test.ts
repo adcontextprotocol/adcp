@@ -334,6 +334,9 @@ describe('AddieRouter.quickMatch', () => {
       );
       expect(plan).not.toBeNull();
       expect(plan!.action).toBe('respond');
+      if (plan!.action === 'respond') {
+        expect(plan!.tool_sets).toEqual(['outreach_reporting']);
+      }
     });
 
     it('should NOT route engagement queries for non-admins', () => {
@@ -564,8 +567,9 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toMatch(/\*\*member_billing\*\*/);
     });
 
-    it('should NOT include outreach set', () => {
-      // outreach is adminOnly: true
+    it('should NOT include outreach sets', () => {
+      expect(descriptions).not.toMatch(/\*\*outreach_reporting\*\*/);
+      expect(descriptions).not.toMatch(/\*\*outreach_contact_management\*\*/);
       expect(descriptions).not.toMatch(/\*\*outreach\*\*/);
     });
   });
@@ -603,8 +607,10 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).not.toMatch(/\*\*billing\*\*/);
     });
 
-    it('should include outreach set', () => {
-      expect(descriptions).toMatch(/\*\*outreach\*\*/);
+    it('should include bounded outreach sets without the legacy alias', () => {
+      expect(descriptions).toMatch(/\*\*outreach_reporting\*\*/);
+      expect(descriptions).toMatch(/\*\*outreach_contact_management\*\*/);
+      expect(descriptions).not.toMatch(/\*\*outreach\*\*/);
     });
 
     it('should still include non-admin sets', () => {

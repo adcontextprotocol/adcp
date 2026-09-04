@@ -172,6 +172,10 @@ const CANONICAL_ADCP_AGENT_MANAGEMENT_TOOLS = MEMBER_TOOLS.filter((definition) =
   'list_saved_agents',
 ].includes(definition.name));
 
+const CANONICAL_OUTREACH_REPORTING_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'get_action_items',
+].includes(definition.name));
+
 const CANONICAL_BRAND_IDENTITY_TOOLS = BRAND_CANONICAL_TOOLS.filter((definition) => [
   'check_mutual_assertion',
 ].includes(definition.name));
@@ -201,6 +205,7 @@ const TOOL_DEFINITIONS = [
   CANONICAL_ADMIN_FEED_TOOLS,
   CANONICAL_ADMIN_WORKFLOW_TOOLS,
   CANONICAL_ADCP_AGENT_MANAGEMENT_TOOLS,
+  CANONICAL_OUTREACH_REPORTING_TOOLS,
   CANONICAL_BRAND_IDENTITY_TOOLS,
   CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS,
   CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS,

@@ -543,6 +543,11 @@ Publishing requires an active subscription; escalate payment errors to an admin.
     text: `### Admin workflows
 - Review handles analytics/flags; follow-up handles tasks/logs.`,
   },
+  {
+    selectedToolSets: ['outreach_reporting', 'outreach_contact_management', 'outreach'],
+    text: `### Outreach tools
+- Review context first; create or send only when authorized.`,
+  },
 ];
 
 const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
@@ -574,8 +579,6 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
   admin_brand_logo_review: `### Admin brand-logo review
 - Inspect the pending or existing logo queue before moderating a submission.
 - review_brand_logo changes public registry state; act only on the explicitly identified logo and requested disposition.`,
-  outreach: `### Admin outreach operations
-- Inspect history before outreach, maintain person and follow-up context, and send only when the request and confirmation requirements authorize it.`,
 };
 
 const ADDIE_TOOL_REFERENCE_SUFFIX = `## Behavioral Guidelines
@@ -745,6 +748,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'adcp_operations'
       && ['adcp_task_operations', 'adcp_agent_management']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The prospect system channel may add the hidden outreach union alongside
+    // both bounded domains. Render each tool only through the visible domains.
+    if (
+      name === 'outreach'
+      && ['outreach_reporting', 'outreach_contact_management']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

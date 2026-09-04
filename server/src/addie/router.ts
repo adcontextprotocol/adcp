@@ -738,7 +738,9 @@ ${isAAOAdmin ? `- Creating/listing chapters or industry gatherings, or renaming 
 - Brand or property registry gaps, community-mirror reconciliation, ownership transfers, or orphaned brands → ["admin_brand_registry_integrity"]
 - Pending or existing brand-logo queues, approvals, rejections, or deletions → ["admin_brand_logo_review"]
 - A request that genuinely needs both brand-registry integrity and logo-review workflows may select both bounded domains; do not select the hidden legacy alias.
-- Outreach history, sending outreach, person lookup, contacts, or action items → ["outreach"]
+- Outreach performance, history, or action items → ["outreach_reporting"]
+- Person/account lookup, contact creation, or sending outreach → ["outreach_contact_management"]
+- Requests needing reporting plus contact work may select both; never use the hidden legacy alias.
 - Community-wide engagement ranking, most engaged members overall, top contributors, who to invite to events, lifecycle stage analytics → ["admin_conversation_review"]` : ''}
 - Multiple intents? Include multiple sets: ["knowledge", "agent_registry"]
 - Questions about Addie's current capabilities, tools, integrations, API or MCP availability, or how to connect to Addie → ["knowledge"]. This includes asking whether Addie exists as an MCP tool. These are deployment facts, not general knowledge
@@ -1481,7 +1483,7 @@ export class AddieRouter {
       if (adminOutreachPattern.test(text)) {
         return {
           action: "respond",
-          tool_sets: ["outreach"],
+          tool_sets: ["outreach_reporting"],
           confidence: "high",
           reason: "Admin outreach query",
           decision_method: "quick_match",
