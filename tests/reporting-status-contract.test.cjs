@@ -328,17 +328,37 @@ describe('managed reporting status contract', () => {
       partially_covered_media_buy_ids: ['mb_123'],
       unsupported_media_buy_ids: [],
       unknown_media_buy_ids: [],
-      package_ids: ['pkg_covered', 'pkg_unsupported'],
-      covered_package_ids: ['pkg_covered'],
-      unsupported_package_ids: ['pkg_unsupported'],
+      package_ids: [],
+      covered_package_ids: [],
+      unsupported_package_ids: [],
       unknown_package_ids: [],
       limitations: [{
         reason: 'offering_unsupported',
         media_buy_id: 'mb_123',
-        package_ids: ['pkg_unsupported'],
       }],
     };
     assert.equal(validateCoverage(partialCoverage), true, JSON.stringify(validateCoverage.errors));
+
+    const emptyCoverage = {
+      status: 'full',
+      evaluated_at: '2026-08-27T00:00:00Z',
+      media_buy_ids: [],
+      fully_covered_media_buy_ids: [],
+      partially_covered_media_buy_ids: [],
+      unsupported_media_buy_ids: [],
+      unknown_media_buy_ids: [],
+      package_ids: [],
+      covered_package_ids: [],
+      unsupported_package_ids: [],
+      unknown_package_ids: [],
+      limitations: [],
+    };
+    assert.equal(validateCoverage(emptyCoverage), true, JSON.stringify(validateCoverage.errors));
+
+    const coverageSemantics = readSchema('/schemas/core/reporting-coverage.json')['x-adcp-validation'].status;
+    assert.match(coverageSemantics, /or partially covered media buy/);
+    assert.match(coverageSemantics, /explicit empty denominator is full/);
+    assert.match(coverageSemantics, /partially covered media buy counts as a covered item when excluding none and unknown/);
 
     const configuration = {
       delivery_config_id: 'pacing-hourly-s3',

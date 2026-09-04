@@ -204,6 +204,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const validateMaterialization = await compileSchema('/schemas/core/reporting-materialization.json');
   const validateAdjustment = await compileSchema('/schemas/core/reporting-adjustment.json');
   const validateAdjustmentReceipt = await compileSchema('/schemas/core/reporting-adjustment-receipt.json');
+  const validateCoverage = await compileSchema('/schemas/core/reporting-coverage.json');
   const validateReceiptRequest = await compileSchema('/schemas/media-buy/sync-reporting-receipts-request.json');
   const validateReceiptResponse = await compileSchema('/schemas/media-buy/sync-reporting-receipts-response.json');
   const rowAjv = new Ajv2020({ allErrors: true, strict: false });
@@ -228,6 +229,42 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
     assert.equal(bytes.length, expected.size_bytes, `${relative} byte length`);
     assert.equal(hash(bytes, 'sha256'), expected.sha256, `${relative} SHA-256`);
     assert.equal(hash(bytes, 'sha512'), expected.sha512, `${relative} SHA-512`);
+  }
+
+  const coverageVectors = readJson('coverage-aggregation.json').vectors;
+  assert.deepEqual(
+    coverageVectors.map(vector => vector.id),
+    ['mixed_support_single_media_buy', 'empty_denominator'],
+  );
+  assert.equal(new Set(coverageVectors.map(vector => vector.id)).size, coverageVectors.length);
+  for (const vector of coverageVectors) {
+    assert.equal(
+      validateCoverage(vector.expected_coverage),
+      true,
+      `${vector.id}: ${JSON.stringify(validateCoverage.errors)}`,
+    );
+  }
+
+  const mixedCoverage = coverageVectors[0];
+  assert.deepEqual(mixedCoverage.input.media_buy_ids, ['mb_mixed_support']);
+  assert.deepEqual(mixedCoverage.input.package_ids, []);
+  assert.deepEqual(mixedCoverage.input.period_slices.map(slice => slice.support), ['full', 'unsupported']);
+  assert.equal(mixedCoverage.expected_coverage.status, 'partial');
+  assert.deepEqual(mixedCoverage.expected_coverage.partially_covered_media_buy_ids, ['mb_mixed_support']);
+  assert.deepEqual(mixedCoverage.expected_coverage.package_ids, []);
+
+  const emptyCoverage = coverageVectors[1];
+  assert.deepEqual(emptyCoverage.input.media_buy_ids, []);
+  assert.deepEqual(emptyCoverage.input.package_ids, []);
+  assert.deepEqual(emptyCoverage.input.period_slices, []);
+  assert.equal(emptyCoverage.expected_coverage.status, 'full');
+
+  const coverageSemantics = readSchema('/schemas/core/reporting-coverage.json')['x-adcp-validation'].status;
+  const aggregationSemantics = readSchema('/schemas/media-buy/get-reporting-status-response.json')['x-adcp-validation'].coverage_aggregation;
+  for (const semantics of [coverageSemantics, aggregationSemantics]) {
+    assert.match(semantics, /partially covered media buy/);
+    assert.match(semantics, /explicit empty denominator is full/);
+    assert.match(semantics, /partially covered media buy counts as a covered item when excluding none and unknown/);
   }
 
   const contract = readJson('canonicalization.json');

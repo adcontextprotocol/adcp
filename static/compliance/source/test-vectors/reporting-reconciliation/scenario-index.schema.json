@@ -6,7 +6,7 @@
   "definitions": {
     "assetPath": {
       "type": "string",
-      "pattern": "^(?:(?:adjustment|canonicalization|manifest|materialization|obligation|report-definition|revision|row-schema)\\.json|rows\\.jsonl|receipts/[a-z0-9][a-z0-9.-]*\\.json)$"
+      "pattern": "^(?:(?:adjustment|canonicalization|coverage-aggregation|manifest|materialization|obligation|report-definition|revision|row-schema)\\.json|rows\\.jsonl|receipts/[a-z0-9][a-z0-9.-]*\\.json)$"
     },
     "digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "asset": {
