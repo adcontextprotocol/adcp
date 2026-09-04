@@ -161,28 +161,42 @@ test('default version carries the Latest tag', () => {
   }
 });
 
-test('current llms index discovers and follows the default docs version', () => {
+test('current llms index discovers the default docs version and build', () => {
   const aliasUrl = 'https://docs.adcontextprotocol.org/llms-current.md';
-  const aliases = docsConfig.redirects?.filter(
-    redirect => redirect.source === '/llms-current.md'
-  ) || [];
-  const [alias] = aliases;
+  const currentIndex = fs.readFileSync(path.join(rootDir, 'llms-current.md'), 'utf8');
   const expectedDestination = `/_llms/${defaultVersion.replaceAll('.', '-')}.md`;
+  const expectedProtocolDestination = `/_llms/${defaultVersion.replaceAll('.', '-')}/protocol.md`;
+  const defaultEntry = navigation.versions.find(version => version.default)
+    || navigation.versions[0];
+  const builds = new Set(
+    collectPages(defaultEntry.groups)
+      .map(page => /^dist\/docs\/([^/]+)\//.exec(page)?.[1])
+      .filter(Boolean)
+  );
+  const [build] = builds;
 
   if (!docsConfig.description?.includes(aliasUrl)) {
     throw new Error(`docs.json description must advertise ${aliasUrl} for /llms.txt clients`);
   }
-  if (aliases.length !== 1) {
-    throw new Error('docs.json must define exactly one /llms-current.md alias');
+  if (docsConfig.redirects?.some(
+    redirect => ['/llms-current.md', '/_llms/current.md'].includes(redirect.source)
+  )) {
+    throw new Error('docs.json must not redirect Markdown index routes that Mintlify Cloud reserves');
   }
-  if (docsConfig.redirects?.some(redirect => redirect.source === '/_llms/current.md')) {
-    throw new Error('docs.json must not define aliases inside Mintlify\'s reserved /_llms namespace');
-  }
-  if (alias.destination !== expectedDestination || alias.permanent !== false) {
+  if (builds.size !== 1) {
     throw new Error(
-      `/llms-current.md must temporarily redirect to ${expectedDestination}; ` +
-      `found ${alias.destination || '(missing destination)'}`
+      `the default docs version must reference exactly one build; found ${[...builds].join(', ') || 'none'}`
     );
+  }
+  for (const expected of [
+    `# AdCP Current Documentation: ${defaultVersion}`,
+    `Version: ${defaultVersion}. Build: ${build}.`,
+    `https://docs.adcontextprotocol.org${expectedDestination}`,
+    `https://docs.adcontextprotocol.org${expectedProtocolDestination}`,
+  ]) {
+    if (!currentIndex.includes(expected)) {
+      throw new Error(`llms-current.md must include ${expected}`);
+    }
   }
 });
 

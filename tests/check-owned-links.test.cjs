@@ -151,7 +151,7 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
     assert.deepEqual(result, { ok: true, status: 200, method: 'GET' });
   });
 
-  test('checks the current llms alias redirect, target, content type, and propagation', async () => {
+  test('checks the current llms source, target, content type, and propagation', async () => {
     const source = 'https://docs.adcontextprotocol.org/llms-current.md';
     const target = 'https://docs.adcontextprotocol.org/_llms/3-1.md';
     const calls = [];
@@ -165,7 +165,15 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
       fetchImpl: async (url) => {
         calls.push(url);
         if (url === source && sourceAttempts++ === 0) return mockResponse(404);
-        if (url === source) return mockResponse(307, '/_llms/3-1.md');
+        if (url === source) {
+          return mockResponse(
+            200,
+            null,
+            () => {},
+            'text/markdown; charset=utf-8',
+            `Current build: ${target}.`,
+          );
+        }
         if (url === target) {
           return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
         }
@@ -184,18 +192,24 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
       status: 200,
       method: 'GET',
       location: target,
-      redirects: 1,
+      redirects: 0,
     });
     assert.deepEqual(calls, [source, source, target, 'https://docs.adcontextprotocol.org/llms.txt']);
     assert.deepEqual(waits, [25]);
   });
 
-  test('rejects current llms alias drift and non-Markdown targets', async () => {
+  test('rejects current llms source drift and non-Markdown targets', async () => {
     const source = 'https://docs.adcontextprotocol.org/llms-current.md';
     const drift = await checkCurrentLlmsIndexAlias(source, {
       expectedDestination: '/_llms/3-1.md',
       propagationRetries: 0,
-      fetchImpl: async () => mockResponse(307, '/_llms/3-2-beta.md'),
+      fetchImpl: async () => mockResponse(
+        200,
+        null,
+        () => {},
+        'text/markdown',
+        'https://docs.adcontextprotocol.org/_llms/3-2-beta.md',
+      ),
     });
     let calls = 0;
     const html = await checkCurrentLlmsIndexAlias(source, {
@@ -204,13 +218,19 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
       fetchImpl: async () => {
         calls += 1;
         return calls === 1
-          ? mockResponse(307, '/_llms/3-1.md')
+          ? mockResponse(
+            200,
+            null,
+            () => {},
+            'text/markdown',
+            'https://docs.adcontextprotocol.org/_llms/3-1.md',
+          )
           : mockResponse(200, null, () => {}, 'text/html');
       },
     });
 
     assert.equal(drift.ok, false);
-    assert.match(drift.error, /CURRENT LLMS INDEX DRIFT/);
+    assert.match(drift.error, /did not advertise/);
     assert.equal(html.ok, false);
     assert.match(html.error, /Content-Type text\/html/);
   });
@@ -223,7 +243,15 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
       propagationRetries: 0,
       fetchImpl: async () => {
         calls += 1;
-        if (calls === 1) return mockResponse(307, '/_llms/3-1.md');
+        if (calls === 1) {
+          return mockResponse(
+            200,
+            null,
+            () => {},
+            'text/markdown',
+            'https://docs.adcontextprotocol.org/_llms/3-1.md',
+          );
+        }
         if (calls === 2) {
           return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
         }
@@ -265,7 +293,15 @@ Prose may mention https://agenticadvertising.org/not-an-entry.
         output: captured.output,
         fetchImpl: async (url, options) => {
           calls.push({ url, redirect: options.redirect });
-          if (url === source) return mockResponse(307, '/_llms/3-1.md');
+          if (url === source) {
+            return mockResponse(
+              200,
+              null,
+              () => {},
+              'text/markdown',
+              target,
+            );
+          }
           if (url === target) {
             return mockResponse(200, null, () => {}, 'text/markdown; charset=utf-8');
           }
