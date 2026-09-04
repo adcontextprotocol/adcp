@@ -381,7 +381,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_core_integrity_probe"
           params:
             operation: "prepare"
@@ -419,7 +419,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reliable_reporting_core--baseline"
@@ -459,7 +459,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_core_integrity_probe"
           params:
             operation: "publish_official_adjustment"
@@ -492,7 +492,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           changes_after: "$context.reliable_reporting_core_checkpoint"
           context:

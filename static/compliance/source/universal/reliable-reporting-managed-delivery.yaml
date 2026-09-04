@@ -99,7 +99,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_managed_delivery_probe"
           params:
             operation: "prepare"
@@ -127,7 +127,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_managed_delivery_probe"
           params:
             operation: "suppress_readiness"
@@ -152,7 +152,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "revision"
           reporting_revision_id: "$context.reliable_reporting_managed_revision_id"
           context:
@@ -189,7 +189,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_managed_delivery_probe"
           params:
             operation: "advance_within_retention"
@@ -218,7 +218,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_managed_delivery_probe"
           params:
             operation: "revoke_access"

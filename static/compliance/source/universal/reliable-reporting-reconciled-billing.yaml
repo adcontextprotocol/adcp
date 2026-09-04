@@ -99,7 +99,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_reconciled_billing_probe"
           params:
             operation: "prepare"
@@ -130,7 +130,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reliable_reporting_billing--baseline"
@@ -161,7 +161,7 @@ phases:
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           account:
             account_id: "reporting_core_lab"
           idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_official_receipt"
@@ -223,7 +223,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reliable_reporting_reconciled_billing_probe"
           params:
             operation: "publish_adjustment"
@@ -257,7 +257,7 @@ phases:
         comply_scenario: reliable_reporting_reconciled_billing_probe
         stateful: true
         sample_request:
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           account:
             account_id: "reporting_core_lab"
           idempotency_key: "$generate:uuid_v4#reliable_reporting_billing_adjustment_receipts"
@@ -304,7 +304,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           changes_after: "$context.reliable_reporting_billing_checkpoint"
           context:
