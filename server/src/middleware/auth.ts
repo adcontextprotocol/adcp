@@ -6,7 +6,6 @@ import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
 import {
   decideAAOAdminAccess,
-  isBreakGlassAdminEmail,
   type AAOAdminAccessMechanism,
 } from '../auth/admin-access.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
@@ -1743,10 +1742,15 @@ export function createRequireWorkingGroupLeader(
       });
     }
 
-    // Check if user is a site admin first (admins can manage all groups)
-    const isAdmin = isBreakGlassAdminEmail(req.user.email);
+    // Match the platform-admin authority decision: aao-admin membership is
+    // primary and ADMIN_EMAILS remains a centralized break-glass fallback.
+    // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
+    const decision = decideAAOAdminAccess(
+      await isWebUserAAOAdmin(req.user.id),
+      req.user.email,
+    );
 
-    if (isAdmin) {
+    if (decision.isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
       return next();
     }
@@ -1807,10 +1811,15 @@ export function createRequireWorkingGroupMember(
       });
     }
 
-    // Check if user is a site admin first
-    const isAdmin = isBreakGlassAdminEmail(req.user.email);
+    // Match the platform-admin authority decision: aao-admin membership is
+    // primary and ADMIN_EMAILS remains a centralized break-glass fallback.
+    // isWebUserAAOAdmin fails closed to false when its membership lookup fails.
+    const decision = decideAAOAdminAccess(
+      await isWebUserAAOAdmin(req.user.id),
+      req.user.email,
+    );
 
-    if (isAdmin) {
+    if (decision.isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
       return next();
     }
