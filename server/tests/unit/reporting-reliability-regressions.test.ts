@@ -788,10 +788,14 @@ describe('Reliable Reporting pipeline – PR #7228 regression suite', () => {
     // Deactivate mid-day on 2026-09-03 at 14:00 New York time (18:00Z).
     replaceReportingConfigurations(principal, accountId, [{ ...baseConfig, active: false, revocation_effective_at: '2026-09-03T18:00:00.000Z' }], '2026-09-03T18:00:00.000Z');
 
-    // Advance clock to end of 2026-09-03 (just before midnight New York = 03:59Z on Sep 4).
-    setReportingCoreLifecycleProbeClock(principal, accountId, '2026-09-04T03:59:00.000Z');
+    // Advance past the end of 2026-09-03 (midnight New York = 04:00Z on Sep 4).
+    // Obligations are committed only after their reporting period has closed.
+    setReportingCoreLifecycleProbeClock(principal, accountId, '2026-09-04T04:01:00.000Z');
 
-    const response = getReportingStatusForAccount({ view: 'periods' } as TrainingGetReportingStatusRequest, principal, accountId);
+    const response = getReportingStatusForAccount({
+      view: 'periods',
+      delivery_config_ids: [baseConfig.delivery_config_id],
+    } as TrainingGetReportingStatusRequest, principal, accountId);
     const periods = response.periods ?? [];
 
     // 2026-09-03 in America/New_York runs from 2026-09-03T04:00:00.000Z to 2026-09-04T04:00:00.000Z.
