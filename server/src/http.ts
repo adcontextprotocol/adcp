@@ -105,6 +105,8 @@ import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
+import { resolveWebUserAAOAdminAccess } from "./addie/admin-status-lookup.js";
+import { isBreakGlassAdminEmail } from "./auth/admin-access.js";
 import { createSlackRouter } from "./routes/slack.js";
 import { createWebhooksRouter } from "./routes/webhooks.js";
 import { createWorkOSWebhooksRouter } from "./routes/workos-webhooks.js";
@@ -1083,8 +1085,7 @@ function buildAppConfig(user?: { id?: string; email: string; firstName?: string 
     if (typeof user.isAdmin === 'boolean') {
       isAdmin = user.isAdmin;
     } else {
-      const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-      isAdmin = adminEmails.includes(user.email.toLowerCase());
+      isAdmin = isBreakGlassAdminEmail(user.email);
     }
   }
 
@@ -8603,13 +8604,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           throw error;
         }
 
-        // Check if user is admin via aao-admin working group (primary) or
-        // ADMIN_EMAILS env var (fallback). Must match requireAdmin middleware
-        // so the admin UI and backend agree on who sees admin surfaces.
-        const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-        const isAdminByEmail = adminEmails.includes(user.email.toLowerCase());
-        const isAdminByWorkingGroup = await isWebUserAAOAdmin(user.id);
-        const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
+        // Match requireAdmin: working-group authority with an explicit,
+        // environment-managed break-glass fallback.
+        const isAdmin = (await resolveWebUserAAOAdminAccess(user.id, user.email)).isAdmin;
         // Check Slack sync status, seat type, and read DB names (user may have
         // set a display name that differs from the WorkOS session values)
         let isLinkedToSlack = false;

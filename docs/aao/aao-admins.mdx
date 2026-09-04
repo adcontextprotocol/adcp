@@ -15,7 +15,13 @@ For end-user docs see [AAO for Members](/docs/aao/users). For org-admin docs see
 
 ## Becoming an AAO admin
 
-AAO admin status is granted via `ADMIN_EMAILS` env var on the deployed app and (separately) the `is_aao_admin` column on the user record. Both must be set for full access — `ADMIN_EMAILS` lets you call admin tools from Addie; `is_aao_admin` lets you use the admin web UI at `/admin`.
+Site-admin access is granted through membership in the server-pinned `aao-admin` working group. Manage that membership from the existing people/working-group administration views; WorkOS organization roles never grant AgenticAdvertising.org platform administration.
+
+`ADMIN_EMAILS` is an environment-managed break-glass path. It is not shown or edited in the UI. Keep its list minimal, rotate it through the deployment-secret process, and remove emergency entries as soon as the incident is resolved. When removing an entry, deploy the changed environment to every application replica and verify that the former address can no longer use an admin route.
+
+Every site-admin grant or revoke requires a written reason and writes an append-only event with the actor, target, access mechanism, reason, and timestamp. The revoke and its audit event commit together, so deleting the active membership cannot delete its forensic record.
+
+The replica that performs a grant or revoke clears that user's local admin-status cache immediately. Other replicas cache a positive `aao-admin` membership decision for at most 60 seconds, so emergency revocation takes effect there within that bound. Negative and failed checks remain fail-closed.
 
 ## Escalation triage
 
@@ -57,7 +63,7 @@ Admin moderation uses the admin portrait API:
 
 ## Internal flags and gates
 
-- `ADMIN_EMAILS` — comma-separated env var, controls Addie admin tool registration.
+- `ADMIN_EMAILS` — comma-separated, environment-managed break-glass access. Rotate and remove entries through deployment secrets; do not treat it as a UI-managed role.
 - `ALLOW_INSECURE_COOKIES` — dev only; do not set in prod.
 - `ANTHROPIC_API_KEY` — required for Addie chat to function at all.
 - `ANONYMOUS_DAILY_LIMIT_USD` — daily anonymous usage cap; gates `anonymousChat` model.

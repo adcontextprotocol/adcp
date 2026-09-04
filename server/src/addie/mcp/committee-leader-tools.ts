@@ -255,6 +255,9 @@ export function createCommitteeLeaderToolHandlers(
       return `⚠️ ${permCheck.error}`;
     }
     const committee = permCheck.committee!;
+    if (committeeSlug === 'aao-admin') {
+      return '⚠️ AAO site-admin membership must be changed through the dedicated audited admin workflow.';
+    }
 
     try {
       // Resolve to canonical ID for consistent comparison

@@ -26,6 +26,8 @@ const {
   mockInvalidateMembershipCache,
   mockPickMembershipSubWithProductFetch,
   mockBuildSubscriptionUpdate,
+  mockGetWorkingGroupBySlug,
+  mockUpdateWorkingGroup,
 } = vi.hoisted(() => {
   const mockPoolQuery = vi.fn();
   const mockPoolConnect = vi.fn();
@@ -43,6 +45,8 @@ const {
   const mockInvalidateMembershipCache = vi.fn();
   const mockPickMembershipSubWithProductFetch = vi.fn();
   const mockBuildSubscriptionUpdate = vi.fn();
+  const mockGetWorkingGroupBySlug = vi.fn();
+  const mockUpdateWorkingGroup = vi.fn();
   return {
     mockPoolQuery,
     mockPoolConnect,
@@ -59,6 +63,8 @@ const {
     mockInvalidateMembershipCache,
     mockPickMembershipSubWithProductFetch,
     mockBuildSubscriptionUpdate,
+    mockGetWorkingGroupBySlug,
+    mockUpdateWorkingGroup,
   };
 });
 
@@ -100,7 +106,10 @@ vi.mock("../../server/src/db/slack-db.js", () => ({
 
 // ── working group db ──────────────────────────────────────────────────────────
 vi.mock("../../server/src/db/working-group-db.js", () => ({
-  WorkingGroupDatabase: class {},
+  WorkingGroupDatabase: class {
+    getWorkingGroupBySlug = mockGetWorkingGroupBySlug;
+    updateWorkingGroup = mockUpdateWorkingGroup;
+  },
 }));
 
 // ── member db ─────────────────────────────────────────────────────────────────
@@ -609,6 +618,30 @@ describe("ADMIN_TOOLS definitions", () => {
         expect(ADMIN_TOOLS.some((candidate) => candidate.name === legacyName)).toBe(false);
       }
     });
+  });
+});
+
+describe("protected working-group mutations", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("refuses to rename the server-pinned AAO site-admin group", async () => {
+    mockGetWorkingGroupBySlug.mockResolvedValue({
+      id: "wg_aao_admin",
+      slug: "aao-admin",
+      name: "AAO Admin",
+      committee_type: "working_group",
+    });
+
+    const result = await createAdminToolHandlers(adminMemberContext)
+      .get("rename_working_group")!({
+        working_group_slug: "aao-admin",
+        new_name: "Renamed authority group",
+      });
+
+    expect(result).toContain("cannot be renamed");
+    expect(mockUpdateWorkingGroup).not.toHaveBeenCalled();
   });
 });
 

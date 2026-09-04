@@ -212,6 +212,19 @@ export async function syncWorkingGroupMembersFromSlack(
     };
   }
 
+  if (workingGroup.slug === 'aao-admin') {
+    return {
+      working_group_id: workingGroupId,
+      working_group_name: workingGroup.name,
+      slack_channel_id: workingGroup.slack_channel_id || '',
+      total_channel_members: 0,
+      members_added: 0,
+      members_already_in_group: 0,
+      unmapped_slack_users: 0,
+      errors: ['AAO site-admin membership must use the dedicated audited grant endpoint'],
+    };
+  }
+
   if (!workingGroup.slack_channel_id) {
     return {
       working_group_id: workingGroupId,
@@ -410,6 +423,11 @@ export async function syncUserToChaptersFromSlackChannels(
     // since a public channel shouldn't grant access to a private committee
     for (const group of workingGroups) {
       if (!group.slack_channel_id) continue;
+
+      // The fixed platform-admin group must never be populated by Slack
+      // discovery, even if a future configuration accidentally makes it
+      // public. Its dedicated audited grant route is the only authority path.
+      if (group.slug === 'aao-admin') continue;
 
       // Skip private committees (we only have public channel data from getUserChannels)
       if (group.is_private) continue;

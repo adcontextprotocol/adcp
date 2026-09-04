@@ -59,13 +59,11 @@ vi.mock('../../src/middleware/csrf.js', () => ({
 }));
 
 const adminState = { isAdmin: false };
-vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
-  const actual = await importOriginal() as Record<string, unknown>;
-  return {
-    ...actual,
-    isWebUserAAOAdmin: vi.fn(async () => adminState.isAdmin),
-  };
-});
+// Draft preview authorization reads the thin membership-status seam directly.
+// Mock it before HTTPServer is imported so the module graph sees test state.
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({
+  isWebUserAAOAdmin: vi.fn(async () => adminState.isAdmin),
+}));
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: null,

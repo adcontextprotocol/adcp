@@ -4,6 +4,11 @@ import { WorkOS } from '@workos-inc/node';
 import { CompanyDatabase } from '../db/company-db.js';
 import type { WorkOSUser, Company, CompanyUser, Ban } from '../types.js';
 import { createLogger } from '../logger.js';
+import {
+  decideAAOAdminAccess,
+  isBreakGlassAdminEmail,
+  type AAOAdminAccessMechanism,
+} from '../auth/admin-access.js';
 import { isWebUserAAOAdmin } from '../addie/mcp/admin-tools.js';
 import { bansDb } from '../db/bans-db.js';
 import { isWorkOSApiKeyFormat } from './api-key-format.js';
@@ -216,6 +221,8 @@ declare global {
       accessToken?: string;
       company?: Company;
       companyUser?: CompanyUser;
+      /** Authority path used by requireAdmin, retained for audited mutations. */
+      adminAccessMechanism?: AAOAdminAccessMechanism;
     }
   }
 }
@@ -1506,6 +1513,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
   // Check for static admin API key (set by requireAuth)
   if ((req as Request & { isStaticAdminApiKey?: boolean }).isStaticAdminApiKey) {
+    req.adminAccessMechanism = 'static_admin_api_key';
     logger.debug({ path: req.path, method: req.method }, 'Admin access via static admin API key');
     return next();
   }
@@ -1584,6 +1592,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
         current_user: devUser.email,
       });
     }
+    req.adminAccessMechanism = 'development';
     return next();
   }
 
@@ -1597,14 +1606,12 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     });
   }
 
-  // Check admin access via aao-admin working group membership (primary)
-  // or ADMIN_EMAILS env var (fallback for emergency access)
-  const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-  const isAdminByEmail = adminEmails.includes(req.user.email.toLowerCase());
-  const isAdminByWorkingGroup = await isWebUserAAOAdmin(req.user.id);
-  const isAdmin = isAdminByWorkingGroup || isAdminByEmail;
+  const decision = decideAAOAdminAccess(
+    await isWebUserAAOAdmin(req.user.id),
+    req.user.email,
+  );
 
-  if (!isAdmin) {
+  if (!decision.isAdmin) {
     logger.warn({ userId: req.user.id, email: req.user.email }, 'Non-admin user attempted to access admin endpoint');
     if (isHtmlRequest) {
       return res.status(403).send(`
@@ -1637,7 +1644,8 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     });
   }
 
-  logger.debug({ userId: req.user.id, email: req.user.email }, 'Admin access granted');
+  req.adminAccessMechanism = decision.mechanism!;
+  logger.debug({ userId: req.user.id, email: req.user.email, mechanism: decision.mechanism }, 'Admin access granted');
   next();
 }
 
@@ -1736,8 +1744,7 @@ export function createRequireWorkingGroupLeader(
     }
 
     // Check if user is a site admin first (admins can manage all groups)
-    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-    const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+    const isAdmin = isBreakGlassAdminEmail(req.user.email);
 
     if (isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');
@@ -1801,8 +1808,7 @@ export function createRequireWorkingGroupMember(
     }
 
     // Check if user is a site admin first
-    const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim().toLowerCase()) || [];
-    const isAdmin = adminEmails.includes(req.user.email.toLowerCase());
+    const isAdmin = isBreakGlassAdminEmail(req.user.email);
 
     if (isAdmin) {
       logger.debug({ userId: req.user.id, slug }, 'Admin access granted to working group');

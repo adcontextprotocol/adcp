@@ -1,4 +1,5 @@
 import { query, getPool } from './client.js';
+import type { PoolClient } from 'pg';
 import { computeJourneyStage } from '../addie/services/journey-computation.js';
 import { CommunityDatabase } from './community-db.js';
 import { createLogger } from '../logger.js';
@@ -25,6 +26,21 @@ import type {
 } from '../types.js';
 
 const logger = createLogger('working-group-db');
+
+const AAO_ADMIN_WORKING_GROUP_SLUG = 'aao-admin';
+
+export type AAOAdminMembershipAuditMechanism =
+  | 'aao_admin_working_group'
+  | 'break_glass_admin_email'
+  | 'static_admin_api_key'
+  | 'development';
+
+interface AAOAdminMembershipMutationInput {
+  targetUserId: string;
+  actorUserId: string;
+  actorAuthorizationMechanism: AAOAdminMembershipAuditMechanism;
+  reason: string;
+}
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -74,6 +90,28 @@ function extractSlackChannelId(url: string | null | undefined): string | null {
  */
 export class WorkingGroupDatabase {
   /**
+   * Generic working-group mutations must never change the platform-admin
+   * group. The audited grant/revoke methods below are the intentionally
+   * narrow bypass: they resolve the server-owned slug in their transaction
+   * and do not call this generic mutation surface.
+   */
+  private async assertGenericMutationAllowed(workingGroupId: string): Promise<void> {
+    const result = await query<{ slug: string }>(
+      'SELECT slug FROM working_groups WHERE id = $1',
+      [workingGroupId],
+    );
+    if (result.rows[0]?.slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+      throw new Error('AAO site-admin group can only be changed through the dedicated audited workflow');
+    }
+  }
+
+  private assertGenericSlugAllowed(slug: string | undefined): void {
+    if (slug === AAO_ADMIN_WORKING_GROUP_SLUG) {
+      throw new Error('The aao-admin slug is reserved for the dedicated audited site-admin workflow');
+    }
+  }
+
+  /**
    * Resolve a user ID to its canonical WorkOS user ID.
    * If the ID is a Slack user ID with a linked WorkOS account, returns the WorkOS ID.
    * Otherwise returns the original ID unchanged.
@@ -94,6 +132,7 @@ export class WorkingGroupDatabase {
    * Create a new working group
    */
   async createWorkingGroup(input: CreateWorkingGroupInput): Promise<WorkingGroup> {
+    this.assertGenericSlugAllowed(input.slug);
     // Auto-extract channel ID from URL if not explicitly provided
     const channelId = input.slack_channel_id || extractSlackChannelId(input.slack_channel_url);
 
@@ -180,6 +219,9 @@ export class WorkingGroupDatabase {
     id: string,
     updates: UpdateWorkingGroupInput
   ): Promise<WorkingGroup | null> {
+    this.assertGenericSlugAllowed(updates.slug);
+    await this.assertGenericMutationAllowed(id);
+
     // Auto-extract channel ID from URL if URL is being updated and channel_id isn't explicitly set
     if (updates.slack_channel_url !== undefined && updates.slack_channel_id === undefined) {
       updates.slack_channel_id = extractSlackChannelId(updates.slack_channel_url) ?? undefined;
@@ -269,6 +311,7 @@ export class WorkingGroupDatabase {
    * Deactivate a working group by setting status to 'inactive'
    */
   async deactivateWorkingGroup(id: string): Promise<boolean> {
+    await this.assertGenericMutationAllowed(id);
     const result = await query(
       `UPDATE working_groups SET status = 'inactive', updated_at = NOW() WHERE id = $1`,
       [id]
@@ -280,6 +323,7 @@ export class WorkingGroupDatabase {
    * Reactivate a working group by setting status to 'active'
    */
   async reactivateWorkingGroup(id: string): Promise<boolean> {
+    await this.assertGenericMutationAllowed(id);
     const result = await query(
       `UPDATE working_groups SET status = 'active', updated_at = NOW() WHERE id = $1`,
       [id]
@@ -851,6 +895,7 @@ export class WorkingGroupDatabase {
    * Add a member to a working group
    */
   async addMembership(input: AddWorkingGroupMemberInput): Promise<WorkingGroupMembership> {
+    await this.assertGenericMutationAllowed(input.working_group_id);
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
 
@@ -890,6 +935,7 @@ export class WorkingGroupDatabase {
    * Remove a member from a working group (soft delete by setting status to inactive)
    */
   async removeMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    await this.assertGenericMutationAllowed(workingGroupId);
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `UPDATE working_group_memberships
@@ -915,6 +961,7 @@ export class WorkingGroupDatabase {
    * Hard delete a membership record
    */
   async deleteMembership(workingGroupId: string, userId: string): Promise<boolean> {
+    await this.assertGenericMutationAllowed(workingGroupId);
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     const result = await query(
       `DELETE FROM working_group_memberships
@@ -933,6 +980,111 @@ export class WorkingGroupDatabase {
     }
 
     return (result.rowCount || 0) > 0;
+  }
+
+  /**
+   * Grant the fixed site-admin working-group membership and append its audit
+   * record in one transaction. The group is resolved by its server-owned
+   * slug; callers never supply a working-group ID for this authority.
+   */
+  async grantAAOAdminMembership(
+    input: AAOAdminMembershipMutationInput,
+  ): Promise<WorkingGroupMembership> {
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const groupResult = await client.query<{ id: string }>(
+        'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE',
+        [AAO_ADMIN_WORKING_GROUP_SLUG],
+      );
+      const group = groupResult.rows[0];
+      if (!group) throw new Error('AAO admin working group not found');
+
+      const targetUserId = await this.resolveCanonicalUserIdWithClient(client, input.targetUserId);
+      const membershipResult = await client.query<WorkingGroupMembership>(
+        `INSERT INTO working_group_memberships (
+          working_group_id, workos_user_id, added_by_user_id
+        ) VALUES ($1, $2, $3)
+        ON CONFLICT (working_group_id, workos_user_id)
+        DO UPDATE SET status = 'active', updated_at = NOW(), added_by_user_id = EXCLUDED.added_by_user_id
+        RETURNING *`,
+        [group.id, targetUserId, input.actorUserId],
+      );
+      await client.query(
+        `INSERT INTO aao_admin_access_events (
+          event_type, actor_user_id, target_user_id, mechanism,
+          actor_authorization_mechanism, reason
+        ) VALUES ('granted', $1, $2, 'aao_admin_working_group', $3, $4)`,
+        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+      );
+      await client.query('COMMIT');
+      return membershipResult.rows[0];
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError }, 'AAO admin grant rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Revoke the fixed site-admin membership and preserve an immutable event
+   * before committing the membership deletion.
+   */
+  async revokeAAOAdminMembership(input: AAOAdminMembershipMutationInput): Promise<string | null> {
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      const groupResult = await client.query<{ id: string }>(
+        'SELECT id FROM working_groups WHERE slug = $1 FOR SHARE',
+        [AAO_ADMIN_WORKING_GROUP_SLUG],
+      );
+      const group = groupResult.rows[0];
+      if (!group) throw new Error('AAO admin working group not found');
+
+      const targetUserId = await this.resolveCanonicalUserIdWithClient(client, input.targetUserId);
+      const deleted = await client.query<{ workos_user_id: string }>(
+        `DELETE FROM working_group_memberships
+         WHERE working_group_id = $1 AND workos_user_id = $2 AND status = 'active'
+         RETURNING workos_user_id`,
+        [group.id, targetUserId],
+      );
+      if (deleted.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      await client.query(
+        `INSERT INTO aao_admin_access_events (
+          event_type, actor_user_id, target_user_id, mechanism,
+          actor_authorization_mechanism, reason
+        ) VALUES ('revoked', $1, $2, 'aao_admin_working_group', $3, $4)`,
+        [input.actorUserId, targetUserId, input.actorAuthorizationMechanism, input.reason],
+      );
+      await client.query('COMMIT');
+      return targetUserId;
+    } catch (error) {
+      await client.query('ROLLBACK').catch((rollbackError) => {
+        logger.warn({ err: rollbackError }, 'AAO admin revoke rollback failed');
+      });
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async resolveCanonicalUserIdWithClient(
+    client: PoolClient,
+    userId: string,
+  ): Promise<string> {
+    const result = await client.query<{ workos_user_id: string }>(
+      `SELECT workos_user_id FROM slack_user_mappings
+       WHERE slack_user_id = $1 AND workos_user_id IS NOT NULL`,
+      [userId],
+    );
+    return result.rows[0]?.workos_user_id ?? userId;
   }
 
   /**
@@ -1184,6 +1336,7 @@ export class WorkingGroupDatabase {
    * Set leaders for a working group (replaces existing leaders)
    */
   async setLeaders(workingGroupId: string, userIds: string[]): Promise<void> {
+    await this.assertGenericMutationAllowed(workingGroupId);
     // Resolve all Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserIds = await Promise.all(
       userIds.map(id => this.resolveToCanonicalUserId(id))
@@ -1236,6 +1389,7 @@ export class WorkingGroupDatabase {
    * Add a leader to a working group
    */
   async addLeader(workingGroupId: string, userId: string): Promise<void> {
+    await this.assertGenericMutationAllowed(workingGroupId);
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
 
@@ -1268,6 +1422,7 @@ export class WorkingGroupDatabase {
    * Remove a leader from a working group
    */
   async removeLeader(workingGroupId: string, userId: string): Promise<void> {
+    await this.assertGenericMutationAllowed(workingGroupId);
     const canonicalUserId = await this.resolveToCanonicalUserId(userId);
     await query(
       'DELETE FROM working_group_leaders WHERE working_group_id = $1 AND user_id = $2',
@@ -1841,6 +1996,7 @@ export class WorkingGroupDatabase {
     interest_level?: EventInterestLevel;
     interest_source?: EventInterestSource;
   }): Promise<WorkingGroupMembership> {
+    await this.assertGenericMutationAllowed(input.working_group_id);
     // Resolve Slack IDs to canonical WorkOS IDs to prevent duplicates
     const canonicalUserId = await this.resolveToCanonicalUserId(input.workos_user_id);
 

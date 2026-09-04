@@ -360,6 +360,8 @@
 
       <div class="detail-stats" id="detailStats"></div>
 
+      <div id="detailSiteAdminAccess" style="margin-top: var(--space-4);"></div>
+
       <div id="detailSignInActions" style="margin-top: var(--space-4);"></div>
 
       <div class="timeline">
@@ -533,6 +535,7 @@
 
         // Sign-in credentials (Phase 2b admin tools)
         const signInActions = document.getElementById('detailSignInActions');
+        renderSiteAdminAccess(document.getElementById('detailSiteAdminAccess'), r);
         if (r.workos_user_id) {
           await renderSignInCredentials(signInActions, r);
         } else {
@@ -548,6 +551,22 @@
       } catch (e) {
         console.error('Failed to load person detail', e);
       }
+    }
+
+    function renderSiteAdminAccess(container, relationship) {
+      if (!relationship.workos_user_id) {
+        container.innerHTML = '';
+        return;
+      }
+
+      const href = '/admin/working-groups?tab=members&group=aao-admin&user=' + encodeURIComponent(relationship.workos_user_id);
+      container.innerHTML = `
+        <h3 style="margin: 0 0 var(--space-2); font-size: var(--text-base);">AAO site-admin access</h3>
+        <p style="margin: 0 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm);">
+          WorkOS organization roles never grant AgenticAdvertising.org platform administration.
+        </p>
+        <a class="btn btn-secondary" href="${href}">Manage in working-group membership</a>
+      `;
     }
 
     async function renderSignInCredentials(container, r) {

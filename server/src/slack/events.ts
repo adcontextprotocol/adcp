@@ -363,6 +363,17 @@ async function autoAddToWorkingGroup(
       return;
     }
 
+    // A Slack invite or channel join must never become an alternate grant
+    // mechanism for platform administration. Site-admin membership is only
+    // mutable through the globally authorized, reasoned, audited endpoint.
+    if (workingGroup.slug === 'aao-admin') {
+      logger.warn(
+        { workingGroupId: workingGroup.id, channelId, userId: workosUserId },
+        'Refused Slack channel join auto-add for AAO site-admin group',
+      );
+      return;
+    }
+
     // Skip auto-add for private committees unless the Slack channel is also private
     // (private Slack channels already enforce access control)
     if (workingGroup.is_private && !isPrivateSlackChannel) {

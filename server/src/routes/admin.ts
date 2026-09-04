@@ -41,6 +41,7 @@ import { setupAddieCostRoutes } from "./admin/addie-costs.js";
 import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
 import { setupAdminAgentsRoutes } from "./admin/agents.js";
+import { createAAOAdminRouter } from "./aao-admin.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
 // Ensure newsletters register themselves before routes mount
@@ -70,6 +71,10 @@ const workos = AUTH_ENABLED
 export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   const pageRouter = Router();
   const apiRouter = Router();
+
+  // Site-admin membership is a separate authority surface. Its router applies
+  // requireGlobalAdmin itself rather than inheriting broad admin middleware.
+  apiRouter.use('/aao-admin', createAAOAdminRouter());
 
   // =========================================================================
   // ADMIN PAGE ROUTES (mounted at /admin)

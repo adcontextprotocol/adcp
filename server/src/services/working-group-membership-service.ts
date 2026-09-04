@@ -170,6 +170,13 @@ export async function joinWorkingGroup({ user, slug }: JoinWorkingGroupInput): P
     throw new WorkingGroupMembershipError('group_not_found', `No working group found with slug: ${slug}`, { slug });
   }
 
+  if (group.slug === 'aao-admin') {
+    throw new WorkingGroupMembershipError('group_private', 'This working group is private and requires an invitation', {
+      slug: group.slug,
+      groupName: group.name,
+    });
+  }
+
   if (group.is_private) {
     throw new WorkingGroupMembershipError('group_private', 'This working group is private and requires an invitation', {
       slug: group.slug,
