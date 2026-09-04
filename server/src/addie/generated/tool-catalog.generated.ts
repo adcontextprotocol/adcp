@@ -34,7 +34,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **agent_quality** — evaluate_agent_quality, test_rfp_response, test_io_execution
 - **agent_authentication** — grade_agent_signing, diagnose_agent_auth
 - **agent_end_to_end** — validate_adagents, resolve_brand, get_agent_status, check_publisher_authorization, validate_agent, evaluate_agent_quality, test_rfp_response, test_io_execution, grade_agent_signing, diagnose_agent_auth
-- **property_catalog** — resolve_property, save_property, list_properties, list_missing_properties, check_property_list, enhance_property, resolve_catalog, browse_catalog, dispute_catalog_entry
+- **property_registry_records** — resolve_property, save_property, list_properties, list_missing_properties
+- **property_list_enrichment** — check_property_list, enhance_property
+- **property_identifier_catalog** — resolve_catalog, browse_catalog, dispute_catalog_entry
 - **agent_conformance** — issue_conformance_token, run_conformance_against_my_agent
 - **adcp_operations** — ask_about_adcp_task, call_adcp_task, get_adcp_capabilities, save_agent, list_saved_agents, remove_saved_agent, setup_test_agent
 - **sponsored_intelligence** — get_si_availability, list_si_agents, connect_to_si_agent, send_to_si_agent, end_si_session, get_si_session_status

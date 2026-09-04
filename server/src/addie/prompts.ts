@@ -332,23 +332,23 @@ Compliance monitoring is for seller agents: MCP servers that expose inventory to
 - notify_pending_verification: Use only after check_mutual_assertion returns leaf_only with the published house contact. Respect its feature flag and rate limit.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_registry_records'],
     text: `### Property-registry operations
-The registry combines publisher-controlled adagents.json entries with revision-tracked hosted enrichment and community contributions. Publisher-controlled entries cannot be community-edited.
+The registry combines publisher-controlled adagents.json with hosted enrichment and community entries. Publisher-controlled entries cannot be community-edited.
 
 - resolve_property: Resolve a publisher domain, falling back to live adagents.json validation.
-- save_property: Create or update a hosted entry. Use source_type "community" for member contributions and "enriched" for third-party data.
+- save_property: Create or update a hosted community or enriched entry.
 - list_properties: Browse entries by source or search term.
-- list_missing_properties: Show demand for domains that are not yet registered.`,
+- list_missing_properties: Show demand for unregistered domains.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_list_enrichment'],
     requiredToolNames: ['check_property_list', 'enhance_property'],
     text: `### Property-list enrichment
 Use check_property_list to audit the supplied domains and surface its report_url. Unknown domains appear in the assess bucket. Run enhance_property on those domains one at a time; it assesses publisher legitimacy and submits qualifying entries for registry review.`,
   },
   {
-    selectedToolSets: ['property_catalog'],
+    selectedToolSets: ['property_identifier_catalog'],
     requiredToolNames: ['resolve_catalog', 'browse_catalog', 'dispute_catalog_entry'],
     text: `### Property catalog operations
 - resolve_catalog: Add or refresh a publisher domain in the property catalog after checking its live declarations.

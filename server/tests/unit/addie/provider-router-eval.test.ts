@@ -141,11 +141,11 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(94);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(94);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(97);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(97);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
-      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_catalog', 'agent_conformance',
+      'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
       'adcp_operations', 'sponsored_intelligence', 'content',
       'publishing_author', 'publishing_review', 'publishing_promotion', 'github', 'illustrations',
       'community_research', 'schema_reference',
@@ -158,11 +158,12 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(93);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(96);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
     expect(expectedSets).not.toContain('agent_validation');
+    expect(expectedSets).not.toContain('property_catalog');
     expect(expectedSets).not.toContain('meetings');
     expect(expectedSets).not.toContain('community_groups');
     expect(expectedSets).not.toContain('directory');
@@ -395,7 +396,11 @@ describe('strict router eval', () => {
     expect(nonAdmin).toContain('→ ["agent_quality"]');
     expect(nonAdmin).toContain('→ ["agent_authentication"]');
     expect(nonAdmin).toContain('exactly ["agent_end_to_end"]');
-    expect(nonAdmin).toContain('select exactly ["agent_registry", "property_catalog"]');
+    expect(nonAdmin).toContain('→ ["property_registry_records"]');
+    expect(nonAdmin).toContain('→ ["property_list_enrichment"]');
+    expect(nonAdmin).toContain('→ ["property_identifier_catalog"]');
+    expect(nonAdmin).toContain('select exactly ["agent_registry", "property_registry_records"]');
+    expect(nonAdmin).not.toContain('→ ["property_catalog"]');
     expect(nonAdmin).not.toContain('→ ["agent_validation"]');
     expect(nonAdmin).toContain('→ ["brand_registry_records"]');
     expect(nonAdmin).toContain('→ ["brand_registry_identity"]');

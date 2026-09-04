@@ -483,7 +483,30 @@ export const AGENT_VALIDATION_TOOLS = [
   "validate_agent",
 ] as const;
 
-/** Bounded property-registry audit, enrichment, and catalog surface. */
+/** Bounded property domains for ordinary router plans. */
+export const PROPERTY_DOMAIN_TOOL_SETS = {
+  property_registry_records: [
+    "resolve_property",
+    "save_property",
+    "list_properties",
+    "list_missing_properties",
+  ],
+  property_list_enrichment: [
+    "check_property_list",
+    "enhance_property",
+  ],
+  property_identifier_catalog: [
+    "resolve_catalog",
+    "browse_catalog",
+    "dispute_catalog_entry",
+  ],
+} as const;
+
+export const PROPERTY_REGISTRY_RECORD_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_registry_records;
+export const PROPERTY_LIST_ENRICHMENT_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_list_enrichment;
+export const PROPERTY_IDENTIFIER_CATALOG_TOOLS = PROPERTY_DOMAIN_TOOL_SETS.property_identifier_catalog;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
 export const PROPERTY_CATALOG_TOOLS = [
   "resolve_property",
   "save_property",
@@ -678,11 +701,34 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  property_registry_records: {
+    name: "property_registry_records",
+    description:
+      'Resolve, save, and browse publisher property-registry records, including missing domains and property visibility.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_registry_records],
+  },
+
+  property_list_enrichment: {
+    name: "property_list_enrichment",
+    description:
+      'Audit supplied publisher-domain lists and assess unknown domains for property-registry review.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_list_enrichment],
+  },
+
+  property_identifier_catalog: {
+    name: "property_identifier_catalog",
+    description:
+      'Resolve identifiers to stable property records, browse the property catalog, and dispute incorrect catalog entries.',
+    tools: [...PROPERTY_DOMAIN_TOOL_SETS.property_identifier_catalog],
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or two bounded property domains.
   property_catalog: {
     name: "property_catalog",
-    description:
-      'Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.',
+    description: 'Legacy combined property registry, enrichment, and identifier-catalog compatibility surface.',
     tools: [...PROPERTY_CATALOG_TOOLS],
+    routerVisible: false,
   },
 
   agent_conformance: {

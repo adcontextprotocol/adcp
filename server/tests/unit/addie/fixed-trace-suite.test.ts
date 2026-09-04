@@ -138,8 +138,8 @@ function passingObservation(trace: FixedTraceCase): FixedTraceObservation {
 
 describe('fixed cross-provider trace suite', () => {
   it('is a fixed synthetic corpus covering every required risk category', () => {
-    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v19');
-    expect(FIXED_TRACE_SUITE).toHaveLength(18);
+    expect(FIXED_TRACE_SUITE_VERSION).toBe('addie-fixed-traces-v20');
+    expect(FIXED_TRACE_SUITE).toHaveLength(19);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.id)).size).toBe(FIXED_TRACE_SUITE.length);
     expect(new Set(FIXED_TRACE_SUITE.map((trace) => trace.category))).toEqual(new Set([
       'surface_policy', 'knowledge', 'member_context', 'admin_read', 'safe_mutation',
@@ -282,6 +282,25 @@ describe('fixed cross-provider trace suite', () => {
     expect(trace.expectation.mutationAuthorization).toBe('none');
   });
 
+  it('keeps the property identifier-catalog trace read-only and isolated from registry and enrichment', () => {
+    const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'property-identifier-catalog-browse')!;
+    expect(trace.routing).toEqual({ action: 'respond', toolSets: ['property_identifier_catalog'] });
+    expect(trace.toolFixtures.map((fixture) => fixture.name)).toEqual(['browse_catalog']);
+    expect(trace.expectation.requiredTools).toEqual(['browse_catalog']);
+    expect(trace.expectation.allowedTools).toEqual(trace.expectation.requiredTools);
+    expect(trace.expectation.forbiddenTools).toEqual([
+      'resolve_property',
+      'save_property',
+      'list_properties',
+      'list_missing_properties',
+      'check_property_list',
+      'enhance_property',
+      'resolve_catalog',
+      'dispute_catalog_entry',
+    ]);
+    expect(trace.expectation.mutationAuthorization).toBe('none');
+  });
+
   it('retains the exact legacy community-group union for a confirmed four-workflow request', () => {
     const trace = FIXED_TRACE_SUITE.find((candidate) => candidate.id === 'community-group-full-participation-confirmed')!;
     expect(trace.routing).toEqual({ action: 'respond', toolSets: ['community_group_full_participation'] });
@@ -391,8 +410,8 @@ describe('fixed cross-provider trace suite', () => {
     const { grades, summary } = summarizeFixedTraceRun(observations);
     expect(grades.every((grade) => grade.deterministicPass)).toBe(true);
     expect(summary).toMatchObject({
-      expected: 18,
-      observed: 18,
+      expected: 19,
+      observed: 19,
       omitted: 0,
       complete: true,
       deterministicPassRate: 1,
@@ -403,11 +422,11 @@ describe('fixed cross-provider trace suite', () => {
       metadataPassRate: 1,
       latencyP95Ms: 10,
     });
-    expect(summary.terminalFailureRate).toBeCloseTo(2 / 18);
-    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.014);
+    expect(summary.terminalFailureRate).toBeCloseTo(2 / 19);
+    expect(summary.totalEstimatedCostUsd).toBeCloseTo(0.015);
     expect(summary.comparisonEligible).toBe(true);
     expect(summary.terminalStatusCounts).toMatchObject({
-      complete: 15,
+      complete: 16,
       ignored: 1,
       truncated: 1,
       provider_error: 1,
@@ -556,7 +575,7 @@ describe('fixed cross-provider trace suite', () => {
 
   it('reports omissions instead of silently shrinking the requested matrix', () => {
     const { summary } = summarizeFixedTraceRun(FIXED_TRACE_SUITE.slice(0, 3).map(passingObservation));
-    expect(summary).toMatchObject({ expected: 18, observed: 3, omitted: 15, complete: false });
+    expect(summary).toMatchObject({ expected: 19, observed: 3, omitted: 16, complete: false });
   });
 
   it('rejects duplicate and unknown observations', () => {

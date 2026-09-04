@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v19';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v20';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -437,6 +437,26 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports only the synthetic visible-agent result without searching members or requesting an introduction.'],
+  },
+  {
+    id: 'property-identifier-catalog-browse',
+    category: 'knowledge',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Browse catalog records matching synthetic-publisher.invalid.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['property_identifier_catalog'] },
+    toolFixtures: [
+      { name: 'browse_catalog', effect: 'read', resultStatus: 'ok', result: 'Catalog record: synthetic-publisher.invalid maps to property_rid synthetic-property-1.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['browse_catalog'],
+      allowedTools: ['browse_catalog'],
+      forbiddenTools: ['resolve_property', 'save_property', 'list_properties', 'list_missing_properties', 'check_property_list', 'enhance_property', 'resolve_catalog', 'dispute_catalog_entry'],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic-publisher.invalid', 'synthetic publisher'], ['synthetic-property-1', 'property_rid']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic catalog match without changing registry records, enriching domains, resolving new identifiers, or filing a dispute.'],
   },
   {
     id: 'admin-duplicate-organizations',

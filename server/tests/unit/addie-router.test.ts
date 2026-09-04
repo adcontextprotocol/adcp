@@ -539,6 +539,10 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('partner_directory');
       expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).toContain('property_registry_records');
+      expect(descriptions).toContain('property_list_enrichment');
+      expect(descriptions).toContain('property_identifier_catalog');
+      expect(descriptions).not.toMatch(/\*\*property_catalog\*\*/);
       expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });
@@ -601,6 +605,10 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).toContain('community_group_contribution');
       expect(descriptions).toContain('partner_directory');
       expect(descriptions).toContain('agent_publisher_directory');
+      expect(descriptions).toContain('property_registry_records');
+      expect(descriptions).toContain('property_list_enrichment');
+      expect(descriptions).toContain('property_identifier_catalog');
+      expect(descriptions).not.toMatch(/\*\*property_catalog\*\*/);
       expect(descriptions).not.toMatch(/\*\*directory\*\*/);
       expect(descriptions).not.toMatch(/\*\*member\*\*/);
     });

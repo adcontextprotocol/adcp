@@ -677,14 +677,18 @@ ${
 - Looking for member organizations, companies, vendors, service providers, implementation partners, or an introduction → ["partner_directory"]
 - Browsing visible AdCP agents or publishers, inspecting an agent URL, or finding agents for a publisher domain → ["agent_publisher_directory"]
 - A request that genuinely needs both member-organization discovery and agent/publisher lookup may select both bounded directory domains; do not select the hidden legacy alias.
-- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
-- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or ["property_catalog"]
+- Researching, resolving, saving, or browsing brand-registry records, or finding missing brands → ["brand_registry_records"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or a property domain
+- Managing brand logos or canonical documents, checking reciprocal brand.json assertions, or notifying pending verification → ["brand_registry_identity"], not ["partner_directory"], ["agent_publisher_directory"], ["agent_registry"], or a property domain
 - A request that genuinely needs both registry-record and identity-verification workflows may select both bounded domains; do not select the hidden legacy alias.
 - Validating adagents.json, brand resolution, registry status, or publisher authorization → ["agent_registry"]
 - Testing an agent's live quality, RFP response, or IO execution → ["agent_quality"]
 - Diagnosing OAuth or grading RFC 9421 request signing → ["agent_authentication"]
 - A single long end-to-end agent diagnosis that explicitly needs registry/configuration, OAuth or signing, and RFP or IO behavior → exactly ["agent_end_to_end"]. This composite preserves every requested step under the direct two-domain cap; use the three narrow domains above for typical requests.
-- Auditing, resolving, enriching, browsing, or disputing publisher property-registry or catalog entries → ["property_catalog"]. For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_registry", "property_catalog"]
+- Resolving, saving, or browsing publisher property-registry records, including missing domains and property visibility → ["property_registry_records"]
+- Auditing a supplied publisher-domain list or assessing unknown domains for registry review → ["property_list_enrichment"]
+- Resolving identifiers to stable property records, browsing the identifier catalog, or disputing a catalog entry → ["property_identifier_catalog"]
+- A request that audits a property list and adds legitimate identifiers to the catalog may select exactly ["property_list_enrichment", "property_identifier_catalog"]. Do not select the hidden legacy alias.
+- For end-to-end publisher setup where agent configuration and property visibility both need diagnosis, select exactly ["agent_registry", "property_registry_records"]
 - Actually executing AdCP operations (media buys, creatives, signals) → ["adcp_operations"]
 - Discovering, connecting to, or continuing a conversation with a Sponsored Intelligence brand agent → ["sponsored_intelligence"]
 - Committee documents and news-source proposals → ["content"]

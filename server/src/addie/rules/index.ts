@@ -67,7 +67,7 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Honest Reporting After Search': ['knowledge', 'schema_reference', 'partner_directory', 'agent_publisher_directory'],
   'Verify Claims With Tools': GLOBAL_BEHAVIOR_SECTION,
   'Compliance Controller Skip Framing': ['agent_quality', 'agent_end_to_end', 'agent_conformance'],
-  'Publisher and Agent Setup Diagnosis': ['agent_registry', 'agent_end_to_end', 'property_catalog'],
+  'Publisher and Agent Setup Diagnosis': ['agent_registry', 'agent_end_to_end', 'property_registry_records'],
   'Multi-Participant Thread Awareness': GLOBAL_BEHAVIOR_SECTION,
   'Anonymous Tier Awareness': GLOBAL_BEHAVIOR_SECTION,
   'Member Engagement': GLOBAL_BEHAVIOR_SECTION,
@@ -80,7 +80,13 @@ const BEHAVIOR_SECTION_TOOL_SETS: Readonly<Record<string, readonly string[] | nu
   'Knowledge Search First': ['knowledge'],
   'Building and Testing Agents': ['knowledge', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'agent_conformance'],
   'Registering an Agent in the AgenticAdvertising.org Registry': ['agent_registry'],
-  'Brand-Ownership Intent: Route to Brand Builder': ['brand_registry_records', 'brand_registry_identity', 'property_catalog'],
+  'Brand-Ownership Intent: Route to Brand Builder': [
+    'brand_registry_records',
+    'brand_registry_identity',
+    'property_registry_records',
+    'property_list_enrichment',
+    'property_identifier_catalog',
+  ],
   'Uncertainty Acknowledgment': GLOBAL_BEHAVIOR_SECTION,
 };
 

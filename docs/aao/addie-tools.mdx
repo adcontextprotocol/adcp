@@ -594,9 +594,9 @@ Diagnose a public HTTPS agent's OAuth handshake by probing RFC 9728 protected-re
 
 *Source: `server/src/addie/mcp/auth-grader-tools.ts`*
 
-## property_catalog
+## property_registry_records
 
-Audit, resolve, enrich, and manage publisher property-registry and catalog entries, including missing domains and correction disputes. Use for property visibility, property-list, registry, or catalog questions.
+Resolve, save, and browse publisher property-registry records, including missing domains and property visibility.
 
 ### `resolve_property`
 
@@ -622,6 +622,10 @@ List the most-requested publisher domains that are not yet in the registry. Show
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
+## property_list_enrichment
+
+Audit supplied publisher-domain lists and assess unknown domains for property-registry review.
+
 ### `check_property_list`
 
 Check a list of publisher domains against the AAO registry. Returns a summary of issues and a report URL for full details. Domains are automatically normalized (www/m stripped), duplicates removed, and known ad tech infrastructure flagged.
@@ -633,6 +637,10 @@ Check a list of publisher domains against the AAO registry. Returns a summary of
 Analyze an unknown publisher domain and submit it to the registry as a pending entry for review. Checks domain age (flags &lt; 90 days as high risk), validates adagents.json presence, and uses AI to assess whether it's a real publisher and its likely inventory types.
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
+
+## property_identifier_catalog
+
+Resolve identifiers to stable property records, browse the property catalog, and dispute incorrect catalog entries.
 
 ### `resolve_catalog`
 
