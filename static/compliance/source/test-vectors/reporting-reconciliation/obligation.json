@@ -32,6 +32,7 @@
   "health": "waiting",
   "production_status": "published",
   "revision_count": 1,
+  "adjustment_count": 0,
   "materialization_count": 1,
   "successful_materialization_count": 1,
   "receipt_count": 0,

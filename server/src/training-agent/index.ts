@@ -41,8 +41,10 @@ import { getPublicJwks } from './webhooks.js';
 import { getAggregatedPublicJwks } from './tenants/signing.js';
 import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
+  TRAINING_REPORTING_CANONICALIZATION_BYTES,
   TRAINING_REPORTING_DEFINITION_BYTES,
   TRAINING_REPORTING_ROW_SCHEMA_BYTES,
+  TRAINING_SOURCE_CALENDAR_DEFINITION_BYTES,
 } from './reporting-reliability.js';
 import {
   buildStrictRequestSigningAuthenticator,
@@ -595,6 +597,14 @@ export function createTrainingAgentRouter(options: {
   router.get('/reporting/definitions/delivery-summary-v1.json', (_req: Request, res: Response) => {
     res.type('application/vnd.adcp.reporting-definition+json').set('Cache-Control', 'public, max-age=31536000, immutable')
       .send(TRAINING_REPORTING_DEFINITION_BYTES);
+  });
+  router.get('/reporting/definitions/source-calendar-billing-v1.json', (_req: Request, res: Response) => {
+    res.type('application/vnd.adcp.reporting-definition+json').set('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(TRAINING_SOURCE_CALENDAR_DEFINITION_BYTES);
+  });
+  router.get('/reporting/canonicalization/billing-rows-v1.json', (_req: Request, res: Response) => {
+    res.type('application/vnd.adcp.reporting-canonicalization+json').set('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(TRAINING_REPORTING_CANONICALIZATION_BYTES);
   });
 
   // JWKS for webhook-signature verification by buyers (RFC 7517).

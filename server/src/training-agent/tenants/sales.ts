@@ -11,6 +11,7 @@ import { TOOL_INPUT_SHAPES } from '@adcp/sdk/schemas';
 import {
   TrainingSalesPlatform,
   legacyGetReportingStatusHandler,
+  legacySyncReportingReceiptsHandler,
   legacyGetProductsHandler,
   legacyListCreativesHandler,
   legacySyncCreativesHandler,
@@ -106,6 +107,7 @@ export function buildSalesTenantConfig(
             getProducts: legacyGetProductsHandler(options.storyboardCompat, taskRegistry),
             ...(options.storyboardCompat?.version !== '3.0' && {
               getReportingStatus: legacyGetReportingStatusHandler(),
+              syncReportingReceipts: legacySyncReportingReceiptsHandler(),
             }),
             listCreatives: legacyListCreativesHandler(options.storyboardCompat),
             syncCreatives: legacySyncCreativesHandler(options.storyboardCompat),

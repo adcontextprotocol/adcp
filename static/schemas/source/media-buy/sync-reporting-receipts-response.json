@@ -3,7 +3,7 @@
   "$id": "/schemas/media-buy/sync-reporting-receipts-response.json",
   "title": "Sync Reporting Receipts Response",
   "x-status": "experimental",
-  "description": "Per-receipt durable recording results. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
+  "description": "Per-receipt durable recording results for revisions and post-official adjustments. Successful readback lets a consumer prove the seller recorded its reconciliation outcome; failed results expose no cross-caller or cross-account resource metadata.",
   "type": "object",
   "allOf": [
     { "$ref": "/schemas/core/version-envelope.json" },
@@ -14,7 +14,7 @@
     "results": {
       "type": "array",
       "items": {
-        "oneOf": [
+        "anyOf": [
           {
             "title": "Recorded reporting receipt",
             "type": "object",
@@ -43,6 +43,36 @@
               }
             },
             "required": ["result", "receipt"],
+            "additionalProperties": false
+          },
+          {
+            "title": "Recorded reporting adjustment receipt",
+            "type": "object",
+            "properties": {
+              "result": { "type": "string", "const": "recorded" },
+              "adjustment_receipt": {
+                "allOf": [
+                  { "$ref": "/schemas/core/reporting-adjustment-receipt.json" },
+                  { "required": ["received_at"] }
+                ]
+              }
+            },
+            "required": ["result", "adjustment_receipt"],
+            "additionalProperties": false
+          },
+          {
+            "title": "Unchanged reporting adjustment receipt",
+            "type": "object",
+            "properties": {
+              "result": { "type": "string", "const": "unchanged" },
+              "adjustment_receipt": {
+                "allOf": [
+                  { "$ref": "/schemas/core/reporting-adjustment-receipt.json" },
+                  { "required": ["received_at"] }
+                ]
+              }
+            },
+            "required": ["result", "adjustment_receipt"],
             "additionalProperties": false
           },
           {

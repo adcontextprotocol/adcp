@@ -147,6 +147,9 @@ const SALES_CURRENT_SCENARIOS = [
   'compact_product_lifecycle_probe',
   'compact_direct_buy_lifecycle_probe',
   'reporting_core_lifecycle_probe',
+  'reliable_reporting_core_integrity_probe',
+  'reliable_reporting_managed_delivery_probe',
+  'reliable_reporting_reconciled_billing_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
 ] as const;
@@ -197,7 +200,12 @@ function salesComplyScenarios(
   if (storyboardCompat?.version === '3.0') return [...SALES_THREE_ZERO_COMPLY_SCENARIOS];
   const current = atLeastAdcpVersion(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION, REPORTING_STATUS_ADCP_VERSION)
     ? [...SALES_CURRENT_SCENARIOS]
-    : SALES_CURRENT_SCENARIOS.filter(scenario => scenario !== 'reporting_core_lifecycle_probe');
+    : SALES_CURRENT_SCENARIOS.filter(scenario => (
+      scenario !== 'reporting_core_lifecycle_probe'
+      && scenario !== 'reliable_reporting_core_integrity_probe'
+      && scenario !== 'reliable_reporting_managed_delivery_probe'
+      && scenario !== 'reliable_reporting_reconciled_billing_probe'
+    ));
   return supportsAccountChangeFeed(servedVersion ?? TRAINING_AGENT_CURRENT_ADCP_VERSION)
     ? [...current, 'expire_account_change_cursor']
     : current;
@@ -487,7 +495,10 @@ async function tryHandleLocalComplyScenario(
     && (rawArgs.params as Record<string, unknown> | undefined)?.arm === 'rejected';
   const isCompactLifecycleProbe = rawArgs.scenario === 'compact_product_lifecycle_probe'
     || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe';
-  const isReportingLifecycleProbe = rawArgs.scenario === 'reporting_core_lifecycle_probe';
+  const isReportingLifecycleProbe = rawArgs.scenario === 'reporting_core_lifecycle_probe'
+    || rawArgs.scenario === 'reliable_reporting_core_integrity_probe'
+    || rawArgs.scenario === 'reliable_reporting_managed_delivery_probe'
+    || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe';
   if (
     rawArgs.scenario !== 'seed_measurement_catalog'
     && rawArgs.scenario !== 'expire_account_change_cursor'
@@ -497,6 +508,9 @@ async function tryHandleLocalComplyScenario(
     && rawArgs.scenario !== 'compact_product_lifecycle_probe'
     && rawArgs.scenario !== 'compact_direct_buy_lifecycle_probe'
     && rawArgs.scenario !== 'reporting_core_lifecycle_probe'
+    && rawArgs.scenario !== 'reliable_reporting_core_integrity_probe'
+    && rawArgs.scenario !== 'reliable_reporting_managed_delivery_probe'
+    && rawArgs.scenario !== 'reliable_reporting_reconciled_billing_probe'
     && rawArgs.scenario !== 'query_account_governance_binding'
     && rawArgs.scenario !== 'list_scenarios'
     && !isCompactLifecycleProbe
@@ -513,6 +527,9 @@ async function tryHandleLocalComplyScenario(
       || rawArgs.scenario === 'compact_product_lifecycle_probe'
       || rawArgs.scenario === 'compact_direct_buy_lifecycle_probe'
       || rawArgs.scenario === 'reporting_core_lifecycle_probe'
+      || rawArgs.scenario === 'reliable_reporting_core_integrity_probe'
+      || rawArgs.scenario === 'reliable_reporting_managed_delivery_probe'
+      || rawArgs.scenario === 'reliable_reporting_reconciled_billing_probe'
       || rawArgs.scenario === 'query_account_governance_binding'
       || isRejectedGetProductsDirective
     )
@@ -542,7 +559,7 @@ async function tryHandleLocalComplyScenario(
     const auth = (req as unknown as {
       auth?: { clientId?: string; scopes?: string[]; extra?: Record<string, unknown> };
     }).auth;
-    const localContext = isCompactLifecycleScenario || isReportingLifecycleProbe
+    const localContext = isCompactLifecycleScenario
       ? await resolveTrainingSalesRequestContext(handlerArgs, auth, storyboardCompat)
       : {
           mode: 'open' as const,

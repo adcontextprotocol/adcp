@@ -55,9 +55,10 @@ const PRODUCTION_PROFILE_DIR = path.join(PROJECTION_DIR, 'profiles', 'production
 // concurrent schema slimming absorbed it, so the 400 KiB media-buy ceiling
 // held at ~394 KiB. Reporting Core adds two compact operational inputs to the
 // same profile. Product-scoped daypart timezone modes and exact IANA support
-// add two shared definitions; keep the resulting prompt view within 411 KiB.
+// add two shared definitions. Reliable Reporting adjustment receipts add one
+// more shared input definition; keep the resulting prompt view within 412 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 411,
+  'media-buy': 412,
   creative: 410,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema

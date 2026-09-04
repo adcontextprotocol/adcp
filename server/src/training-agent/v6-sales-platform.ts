@@ -67,7 +67,12 @@ import {
   getReportingStatusForAccountDurably,
   reportingStatusUnavailable,
   resolveReportingAccountDurably,
+  syncReliableReportingReceiptsForAccount,
   TRAINING_REPORTING_CORE_OFFERING,
+  TRAINING_REPORTING_MANAGED_OFFERING,
+  TRAINING_REPORTING_RECONCILED_OFFERING,
+  validateReliableReportingResponse,
+  withDurableReportingLedger,
 } from './reporting-reliability.js';
 import { getSession, registerSharedPublicBrandPartition, runWithSessionContext, sessionKeyFromArgs } from './state.js';
 import { atLeastAdcpVersion, REPORTING_STATUS_ADCP_VERSION, type ToolArgs, type TrainingContext } from './types.js';
@@ -436,15 +441,27 @@ export const TRAINING_SALES_CAPABILITIES = {
         publisher_domains: PUBLISHERS.map(publisher => publisher.domain),
         primary_channels: [...TRAINING_SALES_CHANNELS],
       },
-      // Core tier only. The sandbox deliberately does not imply durable
-      // destination delivery, readiness webhooks, or consumer receipts.
       reporting_delivery: {
         supported: true as const,
+        reliable_reporting_version: '1.0' as const,
+        managed_delivery: true as const,
+        reconciled_billing: true as const,
         configuration_task: 'sync_accounts' as const,
         status_task: 'get_reporting_status' as const,
-        offerings: [TRAINING_REPORTING_CORE_OFFERING] as [typeof TRAINING_REPORTING_CORE_OFFERING],
+        receipt_task: 'sync_reporting_receipts' as const,
+        offerings: [
+          TRAINING_REPORTING_CORE_OFFERING,
+          TRAINING_REPORTING_MANAGED_OFFERING,
+          TRAINING_REPORTING_RECONCILED_OFFERING,
+        ] as [
+          typeof TRAINING_REPORTING_CORE_OFFERING,
+          typeof TRAINING_REPORTING_MANAGED_OFFERING,
+          typeof TRAINING_REPORTING_RECONCILED_OFFERING,
+        ],
         automated_recovery_window_seconds: 7200,
         status_retention_days: 31,
+        resource_retention_days: 31,
+        authorization_revocation_seconds: 60,
       },
     },
     experimental_features: ['media_buy.reporting_delivery'],
@@ -1155,7 +1172,7 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     const principal = ctx.authInfo?.clientId;
     const reportingAccount = await resolveReportingAccountDurably(principal, requestedAccount);
     if (!reportingAccount) {
-      return reportingStatusUnavailable(req.view);
+      return validateReliableReportingResponse(reportingStatusUnavailable(req.view));
     }
     const accountId = reportingAccount.accountId;
     const sessionArgs = {
@@ -1165,7 +1182,7 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
     const session = await getSession(sessionKeyFromArgs(sessionArgs, 'open', undefined, undefined, principal));
     const reportingProducts = new Map(buildCatalog().map(entry => [entry.product.product_id, entry.product]));
     for (const [productId, product] of session.configuredProducts) reportingProducts.set(productId, product);
-    return await getReportingStatusForAccountDurably(
+    const response = await getReportingStatusForAccountDurably(
       req as Parameters<typeof getReportingStatusForAccountDurably>[0],
       principal,
       accountId,
@@ -1186,11 +1203,48 @@ export function legacyGetReportingStatusHandler(): NonNullable<LegacyMediaBuyHan
             ?? [];
           return {
             packageId: pkg.packageId,
-            supported: acceptedOfferingIds.includes(TRAINING_REPORTING_CORE_OFFERING.offering_id),
+            offeringIds: [...acceptedOfferingIds],
           };
         }),
       })),
     );
+    return validateReliableReportingResponse(response);
+  };
+}
+
+export function legacySyncReportingReceiptsHandler(): NonNullable<LegacyMediaBuyHandlers['syncReportingReceipts']> {
+  return async (req, ctx) => {
+    const version = resolveServedAdcpVersion(req as unknown as Record<string, unknown>);
+    if (!version.ok || !atLeastAdcpVersion(version.servedVersion, REPORTING_STATUS_ADCP_VERSION)) {
+      throw new AdcpError('VERSION_UNSUPPORTED', {
+        recovery: 'correctable',
+        message: 'sync_reporting_receipts is available only in AdCP 3.2 and later.',
+        field: 'adcp_version',
+      });
+    }
+    const resolved = ctx.account as { id?: unknown; ctx_metadata?: { account_ref?: ToolArgs['account'] } } | undefined;
+    const requestedAccount = resolved?.ctx_metadata?.account_ref ?? (req as unknown as ToolArgs).account;
+    if (!requestedAccount) {
+      throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting receipts require a resolved account.', field: 'account' });
+    }
+    const principal = ctx.authInfo?.clientId;
+    const reportingAccount = await resolveReportingAccountDurably(principal, requestedAccount);
+    if (!reportingAccount) {
+      throw new AdcpError('ACCOUNT_NOT_FOUND', { recovery: 'correctable', message: 'Reporting account was not found.', field: 'account' });
+    }
+    const response = await withDurableReportingLedger(
+      principal,
+      reportingAccount.accountId,
+      true,
+      () => syncReliableReportingReceiptsForAccount(
+        req as unknown as Parameters<typeof syncReliableReportingReceiptsForAccount>[0],
+        principal,
+        reportingAccount.accountId,
+      ),
+      reportingAccount.account,
+      reportingAccount.accountState,
+    );
+    return response as never;
   };
 }
 

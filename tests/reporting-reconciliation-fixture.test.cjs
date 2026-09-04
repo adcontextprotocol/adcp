@@ -202,6 +202,8 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const validateObligation = await compileSchema('/schemas/core/reporting-obligation.json');
   const validateRevision = await compileSchema('/schemas/core/reporting-revision.json');
   const validateMaterialization = await compileSchema('/schemas/core/reporting-materialization.json');
+  const validateAdjustment = await compileSchema('/schemas/core/reporting-adjustment.json');
+  const validateAdjustmentReceipt = await compileSchema('/schemas/core/reporting-adjustment-receipt.json');
   const validateReceiptRequest = await compileSchema('/schemas/media-buy/sync-reporting-receipts-request.json');
   const validateReceiptResponse = await compileSchema('/schemas/media-buy/sync-reporting-receipts-response.json');
   const rowAjv = new Ajv2020({ allErrors: true, strict: false });
@@ -297,6 +299,7 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   const obligation = readJson(index.base_inputs.obligation);
   const revision = readJson(index.base_inputs.revision);
   const materialization = readJson(index.base_inputs.materialization);
+  const adjustment = readJson(index.base_inputs.adjustment);
   assert.equal(validateReportDefinition(reportDefinition), true, JSON.stringify(validateReportDefinition.errors));
   assert.equal(validateObligation(obligation), true, JSON.stringify(validateObligation.errors));
   assert.equal(obligation.reconciliation_status, 'pending');
@@ -305,6 +308,12 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   assert.equal(obligation.accepted_receipt_count, 0);
   assert.equal(validateRevision(revision), true, JSON.stringify(validateRevision.errors));
   assert.equal(validateMaterialization(materialization), true, JSON.stringify(validateMaterialization.errors));
+  assert.equal(validateAdjustment(adjustment), true, JSON.stringify(validateAdjustment.errors));
+  assert.equal(adjustment.adjusts_reporting_revision_id, revision.reporting_revision_id);
+  const adjustmentForDigest = structuredClone(adjustment);
+  delete adjustmentForDigest.canonical_adjustment_sha256;
+  assert.equal(hash(Buffer.from(canonicalize(adjustmentForDigest)), 'sha256'), adjustment.canonical_adjustment_sha256);
+  assert.equal(new Set(adjustment.control_total_deltas.map(total => total.name)).size, adjustment.control_total_deltas.length);
   assert.equal(revision.report_definition_sha256, index.assets[index.base_inputs.report_definition].sha256);
   assert.equal(revision.schema_sha256, index.assets[index.base_inputs.row_schema].sha256);
   assert.equal(revision.canonical_content_digest.canonicalization_sha256, index.assets[index.base_inputs.canonicalization].sha256);
@@ -315,6 +324,22 @@ test('reporting reconciliation fixture is portable, byte-exact, and schema-valid
   assert.deepEqual(validManifest.period, obligation.period);
   assert.deepEqual(validManifest.period, revision.period);
   assert.ok(Date.parse(validManifest.created_at) < Date.parse(readJson('receipts/accepted-request.json').receipts[0].observed_at));
+
+  const adjustmentReceiptRequest = readJson(index.post_official_adjustment.accepted_receipt_request_asset);
+  const adjustmentReceiptResponse = readJson(index.post_official_adjustment.accepted_receipt_response_asset);
+  assert.equal(validateReceiptRequest(adjustmentReceiptRequest), true, JSON.stringify(validateReceiptRequest.errors));
+  assert.equal(validateReceiptResponse(adjustmentReceiptResponse), true, JSON.stringify(validateReceiptResponse.errors));
+  const submittedAdjustmentReceipt = adjustmentReceiptRequest.adjustment_receipts[0];
+  assert.equal(validateAdjustmentReceipt(submittedAdjustmentReceipt), true, JSON.stringify(validateAdjustmentReceipt.errors));
+  assert.equal(submittedAdjustmentReceipt.reporting_adjustment_id, adjustment.reporting_adjustment_id);
+  assert.equal(submittedAdjustmentReceipt.observed_adjustment_sha256, adjustment.canonical_adjustment_sha256);
+  assert.equal(adjustmentReceiptResponse.results[0].result, 'recorded');
+  assert.deepEqual(
+    adjustmentReceiptResponse.results[0].adjustment_receipt,
+    { ...submittedAdjustmentReceipt, received_at: '2026-08-29T10:01:01Z' },
+  );
+  assert.equal(index.post_official_adjustment.invoice_anchor_revision_id, revision.reporting_revision_id);
+  assert.equal(index.post_official_adjustment.original_revision_and_receipt_immutable, true);
 
   for (const manifestPath of ['manifest.json']) {
     const manifest = readJson(manifestPath);

@@ -2,7 +2,7 @@
   "reporting_revision_id": "revision-august-official",
   "report_definition_id": "billing-v1",
   "report_definition_uri": "https://schemas.fixture.example.net/report-definition.json",
-  "report_definition_sha256": "e76fd773afe79938b17db11fd07f1274db311f842d8ae94586168229d38d9086",
+  "report_definition_sha256": "960239b140adfefcd9a4ac4117c4272f7e92cd7bdcf8531715af0455f0424c94",
   "reporting_profile": "billing-v1",
   "schema_version": "1.0",
   "schema_uri": "https://schemas.fixture.example.net/row-schema.json",

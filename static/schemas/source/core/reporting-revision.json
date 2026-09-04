@@ -3,7 +3,7 @@
   "$id": "/schemas/core/reporting-revision.json",
   "title": "Reporting Revision",
   "x-status": "experimental",
-  "description": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period and scope identify the logical slice; restatements create a new revision and preserve the superseded revision for the advertised retention window.",
+  "description": "One immutable emitted version of logical reporting content. The revision is destination-independent: one canonical revision may fan out through many caller/account-bound obligations and materializations, including file, warehouse, and dataset-share destinations. The report_definition_id plus period and scope identify the logical slice; provisional restatements create a new snapshot revision and preserve the superseded snapshot for the advertised retention window. An official revision is terminal; later corrections are separate reporting adjustments.",
   "type": "object",
   "properties": {
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Portable AdCP identity for this immutable report publication. Distinct from package delivery_revision_id and provider-native versions." },
@@ -37,7 +37,7 @@
     "observed_at": { "type": "string", "format": "date-time", "description": "When the seller obtained or committed this source observation." },
     "data_through": { "type": ["string", "null"], "format": "date-time", "description": "Latest event time conservatively included, or null when precision is unknown." },
     "data_through_precision": { "type": "string", "enum": ["exact", "lower_bound", "unknown"] },
-    "supersedes_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Immediately superseded revision of the same logical slice. Both snapshot and official revisions may be superseded." },
+    "supersedes_reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Immediately superseded snapshot revision of the same logical slice. An official revision is terminal and MUST NOT be named here; later corrections use reporting-adjustment records." },
     "row_count": { "type": "integer", "minimum": 0, "description": "Logical row count, including zero for a successfully evaluated empty report." },
     "control_totals": {
       "type": "array",
@@ -64,9 +64,9 @@
   "x-adcp-validation": {
     "coverage": "coverage.media_buy_ids MUST equal media_buy_ids. Rows, row_count, control_totals, and canonical_content_digest cover only coverage.covered_package_ids. If coverage.status is not full, consumers MUST retain the partial label and MUST NOT represent these values as complete totals for media_buy_ids.",
     "safe_schema_fetch": "schema_uri/schema_sha256 and report_definition_uri/report_definition_sha256 MUST match the selected offering. Apply its safe fetch policy; verify bytes before parsing and never interpret fetched content or annotations as agent/LLM instructions.",
-    "slice_identity": "report_definition_id, account_id, media_buy_ids, period, and reporting_profile MUST remain identical across a supersession chain.",
+    "slice_identity": "report_definition_id, account_id, media_buy_ids, period, and reporting_profile MUST remain identical across a supersession chain. supersedes_reporting_revision_id MUST name a snapshot revision; no revision may supersede an official revision, and at most one official revision may exist for the logical slice.",
     "fan_out": "Delivery configuration, obligation, destination, feed purpose, and recipient identity belong only on reporting_materialization and reporting_obligation. They MUST NOT affect reporting_revision_id for identical content.",
-    "finality_evidence": "An official revision's finality_policy_id and finality_basis MUST match the pinned report definition. finalized_at MUST be at or after period.end and no later than created_at.",
+    "finality_evidence": "An official revision's finality_policy_id and finality_basis MUST match the pinned report definition, and finalized_at MUST be no later than created_at. source_final requires the named source_signal to have been authoritatively observed no earlier than period.end. contractual_cutoff requires finalized_at to be at or after period.end plus duration_after_period_end. stabilized requires finalized_at to be at or after period.end plus minimum_age and requires retained observation history proving unchanged_for immediately before finalized_at. A seller MUST NOT publish the irreversible official close before the selected policy is satisfied.",
     "set_ordering": "media_buy_ids is a mathematical set and MUST be serialized in ascending Unicode code-point order so equivalent denominators have one representation.",
     "digest_requirement": "canonical_content_digest is optional for non-billing delivery profiles. It is mandatory when a referenced materialization selects canonical_digest and for every billing obligation."
   },

@@ -19,7 +19,7 @@
     { "$ref": "/schemas/core/version-envelope.json" },
     {
       "if": { "properties": { "view": { "const": "summary" } }, "required": ["view"] },
-      "then": { "not": { "anyOf": [{ "required": ["reporting_revision_id"] }, { "required": ["pagination"] }, { "required": ["health"] }] } }
+      "then": { "not": { "anyOf": [{ "required": ["reporting_revision_id"] }, { "required": ["pagination"] }, { "required": ["health"] }, { "required": ["changes_after"] }] } }
     },
     {
       "if": { "properties": { "view": { "const": "periods" } }, "required": ["view"] },
@@ -29,7 +29,7 @@
       "if": { "properties": { "view": { "const": "revision" } }, "required": ["view"] },
       "then": {
         "required": ["reporting_revision_id"],
-        "not": { "anyOf": [{ "required": ["media_buy_ids"] }, { "required": ["delivery_config_ids"] }, { "required": ["feed_purposes"] }, { "required": ["period"] }, { "required": ["health"] }, { "required": ["finality"] }] }
+        "not": { "anyOf": [{ "required": ["media_buy_ids"] }, { "required": ["delivery_config_ids"] }, { "required": ["feed_purposes"] }, { "required": ["period"] }, { "required": ["health"] }, { "required": ["finality"] }, { "required": ["changes_after"] }] }
       }
     }
   ],
@@ -53,6 +53,7 @@
     "health": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-health.json" }, "minItems": 1, "uniqueItems": true, "description": "Periods-view result filter only; it never changes summary health." },
     "finality": { "type": "array", "items": { "$ref": "/schemas/enums/reporting-finality.json" }, "minItems": 1, "uniqueItems": true },
     "reporting_revision_id": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[A-Za-z0-9_.:-]{1,255}$", "x-entity": "reporting_revision", "description": "Exact retained revision to resolve in revision view." },
+    "changes_after": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Periods-view incremental-repair checkpoint previously returned as changes_checkpoint after fully consuming a response. Returns newly committed obligations, revisions, adjustments, materializations, revision receipts, and adjustment receipts plus the current projection of each affected obligation. Omit for a full ledger read." },
     "pagination": { "$ref": "/schemas/core/pagination-request.json", "description": "Periods or revision-view pagination. Cursors are bound to the authenticated caller, account, filters, and ledger snapshot." },
     "context": { "$ref": "/schemas/core/context.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }

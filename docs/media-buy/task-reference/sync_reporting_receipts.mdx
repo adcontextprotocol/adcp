@@ -1,6 +1,6 @@
 ---
 title: sync_reporting_receipts
-description: "Record authenticated consumer reconciliation results for managed reporting materializations."
+description: "Record authenticated consumer reconciliation results for Reliable Reporting materializations."
 "og:title": "AdCP — sync_reporting_receipts"
 ---
 
@@ -17,9 +17,19 @@ receipts. Sellers implementing it declare `media_buy.reporting_delivery` in
 report” and “this consumer independently observed matching data.” It is a batched,
 idempotent write. It does not acknowledge mere webhook delivery.
 
-**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/sync-reporting-receipts-request.json)
+A receipt is evidence agreement, not a separate commercial-settlement mutation.
+For billing, the immutable official `reporting_revision_id` is the invoice anchor.
+If the source is corrected later, the seller publishes a separate reporting
+adjustment into an open accounting period; it does not replace the official
+revision or alter its receipt. The consumer recomputes the adjustment's
+`canonical_adjustment_sha256` and submits an `adjustment_receipts[]` accepted
+or rejected result. Reconciled Billing does not treat the correction as agreed
+until that exact adjustment digest has an accepted receipt.
 
-**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/3.2.0-beta.10/media-buy/sync-reporting-receipts-response.json)
+{/* Using latest because Reliable Reporting 1.0 is not yet in a released schema bundle. */}
+**Request schema:** [`sync-reporting-receipts-request.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-receipts-request.json)
+
+**Response schema:** [`sync-reporting-receipts-response.json`](https://adcontextprotocol.org/schemas/latest/media-buy/sync-reporting-receipts-response.json)
 
 ```json
 {

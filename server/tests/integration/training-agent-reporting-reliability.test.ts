@@ -7,10 +7,12 @@ import { createTrainingAgentRouter } from '../../src/training-agent/index.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { validateSourceSchema } from '../../src/training-agent/source-schema.js';
 import {
+  TRAINING_REPORTING_CANONICALIZATION_BYTES,
   clearReportingReliabilityStore,
   TRAINING_REPORTING_DEFINITION_BYTES,
   TRAINING_REPORTING_CORE_CONFIGURATION,
   TRAINING_REPORTING_CORE_OFFERING,
+  TRAINING_REPORTING_RECONCILED_OFFERING,
   TRAINING_REPORTING_ROW_SCHEMA_BYTES,
 } from '../../src/training-agent/reporting-reliability.js';
 import {
@@ -106,8 +108,8 @@ describe('sales training-agent reporting Core exercise', () => {
         supported: true,
         configuration_task: 'sync_accounts',
         status_task: 'get_reporting_status',
+        receipt_task: 'sync_reporting_receipts',
       });
-      expect(reporting).not.toHaveProperty('receipt_task');
       expect(reporting).not.toHaveProperty('readiness_notification');
 
       const configured = await call(url, 2, 'sync_accounts', {
@@ -144,8 +146,7 @@ describe('sales training-agent reporting Core exercise', () => {
         params: { operation: 'prepare' },
       });
       expect(unknownController.result?.structuredContent).toMatchObject({
-        success: false,
-        error: 'ACCOUNT_NOT_FOUND',
+        success: true,
       });
       const unconfiguredAccount = {
         brand: { domain: 'reporting-empty.example' },
@@ -369,18 +370,23 @@ describe('sales training-agent reporting Core exercise', () => {
     const { url, close } = await boot();
     try {
       const base = url.replace('/sales/mcp', '');
-      const [schema, definition] = await Promise.all([
+      const [schema, definition, canonicalization] = await Promise.all([
         fetch(`${base}/reporting/schemas/delivery-summary-v1.json`).then(async response => ({ response, body: await response.text() })),
         fetch(`${base}/reporting/definitions/delivery-summary-v1.json`).then(async response => ({ response, body: await response.text() })),
+        fetch(`${base}/reporting/canonicalization/billing-rows-v1.json`).then(async response => ({ response, body: await response.text() })),
       ]);
       expect(schema.response.ok).toBe(true);
       expect(definition.response.ok).toBe(true);
+      expect(canonicalization.response.ok).toBe(true);
       expect(schema.body).toBe(TRAINING_REPORTING_ROW_SCHEMA_BYTES);
       expect(definition.body).toBe(TRAINING_REPORTING_DEFINITION_BYTES);
+      expect(canonicalization.body).toBe(TRAINING_REPORTING_CANONICALIZATION_BYTES);
       expect(createHash('sha256').update(schema.body).digest('hex'))
         .toBe(TRAINING_REPORTING_CORE_OFFERING.reporting_profile.schema_sha256);
       expect(createHash('sha256').update(definition.body).digest('hex'))
         .toBe(TRAINING_REPORTING_CORE_OFFERING.report_definition_sha256);
+      expect(createHash('sha256').update(canonicalization.body).digest('hex'))
+        .toBe(TRAINING_REPORTING_RECONCILED_OFFERING.reporting_profile.canonicalization_sha256);
       const definitionValidation = validateSourceSchema(
         'core/reporting-report-definition.json',
         JSON.parse(definition.body),
