@@ -119,8 +119,9 @@ These endpoints resolve domains to brand identities. The `source` field identifi
 | `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
 | `enriched` | Enriched via Brandfetch API |
 | `community` | Submitted by a community member |
+| `stub` | Minimal organization-derived placeholder awaiting stronger evidence |
 
-All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is identity provenance, not proof of a house relationship—use `relationship_trust` for that. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+All sources produce the same resolution response structure, but they are not equivalent evidence. `hosted` and `brand_json` are backed by domain control; `community` and `enriched` describe what the registry has learned without proving that the domain operator asserted it. `source` is the authoritative response provenance, not proof of a house relationship—use `relationship_trust` for that. `enrichment_provider`, when present, is the preferred open-ended attribution/diagnostic identifier and is only emitted for `source: "enriched"`; clients must not treat it as a trust tier or behavioral switch. `provenance_provider` is temporarily also emitted with the same value as a deprecated compatibility alias for enriched responses. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
 
 #### Reading trust
 
@@ -148,7 +149,31 @@ An absent `relationship_trust` is not the same as `standalone`: it means the sel
 
 Following a redirect never lets a domain adopt a house's identity. When a domain's brand.json points at a house that does not name the domain back — in `properties[]` as `relationship: "owned"`, or in `brand_refs[]` — the response carries the claim (`claimed_house_domain` with `relationship_trust: leaf_only`) and no brand identity. A house that lists a domain with `direct`, `delegated`, or `ad_network` is declaring a monetization path, not ownership, so it does not resolve that domain's identity either. If you expected an identity here, the house is missing its half of the relationship.
 
-`fresh=true` bypasses the resolution cache and refetches from the origin. When that fetch fails and a stored record is returned instead, `live_brand_json` carries that request's failed-fetch diagnostics so you can distinguish "stored evidence returned" from "origin checked successfully." Apply your own freshness policy to that fallback rather than silently treating it as live.
+`fresh=true` bypasses the resolution cache and refetches from the origin. Its response is `Cache-Control: no-store`, so an HTTP intermediary cannot satisfy an explicit origin-read request from cache. When that fetch fails and a stored record is returned instead, `live_brand_json` carries that request's failed-fetch diagnostics so you can distinguish "stored evidence returned" from "origin checked successfully." Apply your own freshness policy to that fallback rather than silently treating it as live.
+
+#### Cache behavior and provenance surfaces
+
+The registry keeps successful origin validation/resolution in `BrandManager` for 24 hours. It keeps failed origin validation and resolution misses for only five minutes, so a negative entry cannot hide a newly published origin document after the resolution-miss TTL has elapsed. Stored `community` and `enriched` rows are selected from the database on each resolver request; they do **not** live in `BrandManager.resolutionCache`.
+
+| Surface and outcome | Cache-Control / in-process TTL |
+|---|---|
+| `BrandManager`: successful origin validation or resolution | 24 hours |
+| `BrandManager`: failed validation or resolution miss | 5 minutes |
+| `GET /brands/:domain/brand.json`: `brand_json` | `public, max-age=3600` (1 hour) |
+| `GET /brands/:domain/brand.json`: `community` | `public, max-age=900` (15 minutes) |
+| `GET /brands/:domain/brand.json`: `enriched` | `public, max-age=300` (5 minutes) |
+| `GET /brands/:domain/brand.json`: 404 miss | `public, max-age=60` (1 minute) |
+| `GET /brands/:domain/brand.json`: failure | `no-store` |
+| `GET /api/brands/resolve`: `hosted` or `brand_json` | `public, max-age=300` (5 minutes) |
+| `GET /api/brands/resolve`: `community` | `public, max-age=120` (2 minutes) |
+| `GET /api/brands/resolve`: `enriched` or `stub` | `public, max-age=60` (1 minute) |
+| `GET /api/brands/resolve`: miss | `public, max-age=30` (30 seconds) |
+| `GET /api/brands/resolve`: error or `fresh=true` | `no-store` |
+| `POST /api/brands/resolve/bulk` | `no-store` (a shared cache cannot safely key public POST responses by request body) |
+
+`GET /brands/:domain/brand.json` and `GET /api/brands/resolve` intentionally report provenance on different surfaces. The public `brand.json` mirror puts its stored source type (`brand_json`, `community`, or `enriched`) in `X-AAO-Source`; its body stays a clean brand.json document. The resolver carries the exact selected source (`hosted`, `brand_json`, `community`, `enriched`, or `stub`) in its JSON body and conditionally adds preferred `enrichment_provider` plus its deprecated `provenance_provider` compatibility alias only for enriched results. Do not infer one endpoint's response shape from the other.
+
+For operational monitoring, each single result and each entry in a bulk result emits the fixed-cardinality `brand_resolution_outcome` event with one `outcome` value: `hosted`, `brand_json`, `community`, `enriched`, `stub`, `miss`, or `error`. Domains and provider identifiers are intentionally excluded from that event.
 
 Pre-v3 documents are promoted to canonical v3 identity for the response, flagged with `promoted_from_schema` and `migration_warnings`. Promotion covers identity only; legacy relationship data is preserved opaquely and never becomes a trust claim. In particular, a warning with `field: "house"` means the legacy house object was moved to `legacy_metadata.legacy_house` and did **not** establish `house_domain`. The publisher must add `house_domain` to the leaf document and a reciprocal `brand_refs[]` entry to the house document.
 

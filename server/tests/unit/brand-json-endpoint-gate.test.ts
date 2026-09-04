@@ -16,6 +16,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
+import { brandJsonCacheControl } from '../../src/services/brand-resolution-cache-policy.js';
 
 // The endpoint is registered inside HTTPServer.start, but the handler logic is
 // what we want to pin — re-register it on a bare router with a stubbed brandDb.
@@ -24,25 +25,35 @@ function mountGate(brandDb: {
 }) {
   const app = express();
   app.get('/brands/:domain/brand.json', async (req, res) => {
-    const domain = req.params.domain.toLowerCase();
-    const brand: any = await brandDb.getDiscoveredBrandByDomain(domain);
-    if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
-    const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
-    if (!ALLOWED_SOURCE_TYPES.has(brand.source_type)) {
-      return res.status(404).json({ error: 'Brand not found' });
+    try {
+      const domain = req.params.domain.toLowerCase();
+      const brand: any = await brandDb.getDiscoveredBrandByDomain(domain);
+      const notFound = () => {
+        res.setHeader('Cache-Control', brandJsonCacheControl('miss'));
+        return res.status(404).json({ error: 'Brand not found' });
+      };
+      if (!brand || brand.is_public === false) return notFound();
+      const ALLOWED_SOURCE_TYPES = new Set(['brand_json', 'community', 'enriched']);
+      if (!ALLOWED_SOURCE_TYPES.has(brand.source_type)) {
+        return notFound();
+      }
+      const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
+      if (!manifest) return notFound();
+      if (brand.source_type === 'community' && brand.review_status === 'pending') {
+        return notFound();
+      }
+      const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+      const brandJson: Record<string, unknown> =
+        typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
+          ? { ...manifest }
+          : { $schema: schemaUrl, ...manifest };
+      res.setHeader('X-AAO-Source', brand.source_type);
+      res.setHeader('Cache-Control', brandJsonCacheControl(brand.source_type));
+      return res.json(brandJson);
+    } catch {
+      res.setHeader('Cache-Control', brandJsonCacheControl('error'));
+      return res.status(500).json({ error: 'Failed to retrieve brand' });
     }
-    const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
-    if (!manifest) return res.status(404).json({ error: 'Brand not found' });
-    if (brand.source_type === 'community' && brand.review_status === 'pending') {
-      return res.status(404).json({ error: 'Brand not found' });
-    }
-    const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
-    const brandJson: Record<string, unknown> =
-      typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
-        ? { ...manifest }
-        : { $schema: schemaUrl, ...manifest };
-    res.setHeader('X-AAO-Source', brand.source_type);
-    return res.json(brandJson);
   });
   return app;
 }
@@ -52,6 +63,14 @@ describe('GET /brands/:domain/brand.json gate', () => {
     const app = mountGate({ getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null) });
     const res = await request(app).get('/brands/missing.example/brand.json');
     expect(res.status).toBe(404);
+    expect(res.headers['cache-control']).toBe(brandJsonCacheControl('miss'));
+  });
+
+  it('does not cache transient failures', async () => {
+    const app = mountGate({ getDiscoveredBrandByDomain: vi.fn().mockRejectedValue(new Error('database unavailable')) });
+    const res = await request(app).get('/brands/acme.com/brand.json');
+    expect(res.status).toBe(500);
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('serves enriched (Brandfetch) rows with X-AAO-Source: enriched so agents can tell unattested data apart from brand-attested', async () => {
@@ -66,6 +85,7 @@ describe('GET /brands/:domain/brand.json gate', () => {
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('SBS Australia');
     expect(res.headers['x-aao-source']).toBe('enriched');
+    expect(res.headers['cache-control']).toBe(brandJsonCacheControl('enriched'));
   });
 
   it('404s unknown source_types (e.g. hosted) — only the explicit allowlist is served', async () => {
@@ -101,6 +121,7 @@ describe('GET /brands/:domain/brand.json gate', () => {
     expect(res.body.colors.accent).toBe('#dcfc01');
     expect(res.body.$schema).toBe('https://adcontextprotocol.org/schemas/v3/brand.json');
     expect(res.headers['x-aao-source']).toBe('community');
+    expect(res.headers['cache-control']).toBe(brandJsonCacheControl('community'));
   });
 
   it('serves brand_json source rows untouched', async () => {
@@ -115,6 +136,7 @@ describe('GET /brands/:domain/brand.json gate', () => {
     expect(res.status).toBe(200);
     expect(res.body.house.domain).toBe('acme.com');
     expect(res.headers['x-aao-source']).toBe('brand_json');
+    expect(res.headers['cache-control']).toBe(brandJsonCacheControl('brand_json'));
   });
 
   it('404s community brands still pending review', async () => {

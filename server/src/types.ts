@@ -666,8 +666,9 @@ export interface ResolvedBrand {
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
   source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
-  provenance?: 'canonical' | 'community' | 'enriched';
-  /** Present only for enriched provenance when the writer is known. */
+  /** Preferred provider attribution; present only when source is enriched and the writer is known. */
+  enrichment_provider?: string;
+  /** @deprecated Use enrichment_provider. Present only when source is enriched. */
   provenance_provider?: string;
 }
 

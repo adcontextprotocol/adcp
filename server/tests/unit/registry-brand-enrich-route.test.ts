@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   fetchBrandData: vi.fn(),
   fetchBrandContext: vi.fn(),
   isBrandfetchConfigured: vi.fn(),
+  captureEvent: vi.fn(),
 }));
 
 vi.hoisted(() => {
@@ -20,7 +21,12 @@ vi.mock('../../src/services/brandfetch.js', () => ({
   ENRICHMENT_CACHE_MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000,
 }));
 
+vi.mock('../../src/utils/posthog.js', () => ({
+  captureEvent: mocks.captureEvent,
+}));
+
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
+import { brandResolveCacheControl } from '../../src/services/brand-resolution-cache-policy.js';
 
 function buildApp(
   brandDb: Pick<RegistryApiConfig['brandDb'], 'getDiscoveredBrandByDomain' | 'upsertDiscoveredBrand'>,
@@ -355,9 +361,18 @@ describe('public registry brand read paths', () => {
     expect(res.body.brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
     expect(res.body).toMatchObject({
       source: 'enriched',
-      provenance: 'enriched',
+      enrichment_provider: 'brandfetch',
       provenance_provider: 'brandfetch',
     });
+    expect(res.body.provenance).toBeUndefined();
+    expect(res.headers['cache-control']).toBe(brandResolveCacheControl('enriched'));
+    expect(mocks.captureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'brand_resolution_outcome',
+      { outcome: 'enriched' },
+    );
+    expect(JSON.stringify(mocks.captureEvent.mock.calls)).not.toContain('acme.com');
+    expect(JSON.stringify(mocks.captureEvent.mock.calls)).not.toContain('brandfetch');
   });
 
   it('reports verified owner-registered fallback records as hosted', async () => {
@@ -375,8 +390,10 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('hosted');
-    expect(res.body.provenance).toBe('canonical');
+    expect(res.body.provenance).toBeUndefined();
+    expect(res.body.enrichment_provider).toBeUndefined();
     expect(res.body.provenance_provider).toBeUndefined();
+    expect(res.headers['cache-control']).toBe(brandResolveCacheControl('hosted'));
   });
 
   it('does not guess the provider for a legacy enriched record', async () => {
@@ -391,7 +408,7 @@ describe('public registry brand read paths', () => {
     const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=acme.com');
 
     expect(res.status).toBe(200);
-    expect(res.body.provenance).toBe('enriched');
+    expect(res.body.enrichment_provider).toBeUndefined();
     expect(res.body.provenance_provider).toBeUndefined();
   });
 
@@ -410,10 +427,12 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('community');
-    expect(res.body.provenance).toBe('community');
+    expect(res.body.provenance).toBeUndefined();
+    expect(res.body.enrichment_provider).toBeUndefined();
+    expect(res.body.provenance_provider).toBeUndefined();
   });
 
-  it('omits provenance instead of inventing an unknown tier for stubs', async () => {
+  it('does not attach provider metadata to non-enriched stubs', async () => {
     const brandDb = {
       getDiscoveredBrandByDomain: vi.fn().mockResolvedValue({
         ...discoveredBrandWithContext(),
@@ -426,7 +445,7 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('stub');
-    expect(res.body.provenance).toBeUndefined();
+    expect(res.body.enrichment_provider).toBeUndefined();
     expect(res.body.provenance_provider).toBeUndefined();
   });
 
@@ -538,7 +557,6 @@ describe('public registry brand read paths', () => {
     expect(res.body).toMatchObject({
       canonical_id: 'acme-live',
       source: 'brand_json',
-      provenance: 'canonical',
       promoted_from_schema: live.promoted_from_schema,
       migration_warnings: live.migration_warnings,
     });
@@ -570,7 +588,7 @@ describe('public registry brand read paths', () => {
     })).get('/api/brands/resolve?domain=acme.com');
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ...live, provenance: 'canonical' });
+    expect(res.body).toEqual(live);
   });
 
   it('rejects path and port lookup inputs before brand resolution', async () => {
@@ -584,6 +602,7 @@ describe('public registry brand read paths', () => {
       .get('/api/brands/resolve?domain=public.example%3A8443%2Fadmin');
 
     expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(resolveBrand).not.toHaveBeenCalled();
     expect(brandDb.getDiscoveredBrandByDomain).not.toHaveBeenCalled();
   });
@@ -611,8 +630,10 @@ describe('public registry brand read paths', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.source).toBe('enriched');
-    expect(res.body.provenance).toBe('enriched');
+    expect(res.body.provenance).toBeUndefined();
+    expect(res.body.enrichment_provider).toBe('brandfetch');
     expect(res.body.provenance_provider).toBe('brandfetch');
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body.live_brand_json).toEqual({
       valid: false,
       url: validation.url,
@@ -653,6 +674,24 @@ describe('public registry brand read paths', () => {
     expect(res.status).toBe(404);
     expect(res.body.file_status).toBe(503);
     expect(validateDomain).not.toHaveBeenCalled();
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('gives ordinary resolution misses a short cache policy', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn().mockResolvedValue(null),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+
+    const res = await request(buildApp(brandDb)).get('/api/brands/resolve?domain=missing.example');
+
+    expect(res.status).toBe(404);
+    expect(res.headers['cache-control']).toBe(brandResolveCacheControl('miss'));
+    expect(mocks.captureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'brand_resolution_outcome',
+      { outcome: 'miss' },
+    );
   });
 
   it('strips legacy brand_context from /api/brands/resolve/bulk fallback manifests', async () => {
@@ -669,9 +708,11 @@ describe('public registry brand read paths', () => {
     expect(res.body.results['acme.com'].brand_manifest).toEqual({ name: 'Acme', url: 'https://acme.com' });
     expect(res.body.results['acme.com']).toMatchObject({
       source: 'enriched',
-      provenance: 'enriched',
+      enrichment_provider: 'brandfetch',
       provenance_provider: 'brandfetch',
     });
+    expect(res.body.results['acme.com'].provenance).toBeUndefined();
+    expect(res.headers['cache-control']).toBe('no-store');
   });
 
   it('rejects non-hostname inputs from bulk resolution', async () => {
@@ -701,8 +742,29 @@ describe('public registry brand read paths', () => {
       .send({ domains: Array.from({ length: 26 }, (_, i) => `brand-${i}.example`) });
 
     expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body.error).toBe('Maximum 25 domains per request');
     expect(resolveBrand).not.toHaveBeenCalled();
+  });
+
+  it('does not return a cacheable partial result when one bulk resolution fails', async () => {
+    const brandDb = {
+      getDiscoveredBrandByDomain: vi.fn(),
+      upsertDiscoveredBrand: vi.fn(),
+    };
+    const res = await request(buildApp(brandDb, false, {
+      resolveBrand: vi.fn().mockRejectedValue(new Error('resolver unavailable')),
+    }))
+      .post('/api/brands/resolve/bulk')
+      .send({ domains: ['broken.example'] });
+
+    expect(res.status).toBe(500);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(mocks.captureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'brand_resolution_outcome',
+      { outcome: 'error' },
+    );
   });
 
   it('shares one concurrency ceiling across simultaneous bulk requests', async () => {

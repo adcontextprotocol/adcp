@@ -631,11 +631,12 @@ export const ResolvedBrandSchema = z
     source: z.enum(["hosted", "brand_json", "community", "enriched", "stub"]).openapi({
       description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence.",
     }),
-    provenance: z.enum(["canonical", "community", "enriched"]).optional().openapi({
-      description: "Caller-facing trust tier for the selected identity. `canonical` covers owner-hosted and origin-published brand.json records; `community` is member-contributed; `enriched` is provisional third-party data. Absent means the record has no recognized provenance tier. Use `source` when the distinction between hosted and origin-published canonical records is needed.",
+    enrichment_provider: z.string().optional().openapi({
+      description: "Preferred open-ended attribution/diagnostic identifier for the enrichment writer. Present only when `source` is `enriched`; it is not a trust tier or behavioral switch.",
     }),
     provenance_provider: z.string().optional().openapi({
-      description: "Provider identifier for provisional third-party enrichment. Present only when `provenance` is `enriched`; the provider is intentionally not constrained to a vendor-specific enum.",
+      description: "Deprecated compatibility alias for `enrichment_provider`. Present only when `source` is `enriched`; it is not a trust tier or behavioral switch.",
+      deprecated: true,
     }),
     live_brand_json: LiveBrandJsonValidationSchema.optional().openapi({
       description: "This request's origin-validation diagnostics when `fresh=true` falls back to a stored registry record. Presence means the response is stored evidence, not a successful live-origin read.",
