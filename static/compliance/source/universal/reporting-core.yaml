@@ -77,7 +77,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "prepare"
@@ -105,7 +105,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reporting_core--waiting"
@@ -148,7 +148,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "advance_time"
@@ -182,7 +182,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "summary"
           context:
             correlation_id: "reporting_core--delayed"
@@ -216,7 +216,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "advance_time"
@@ -250,7 +250,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "summary"
           context:
             correlation_id: "reporting_core--action-required"
@@ -288,7 +288,7 @@ phases:
           account:
             account_id: "reporting_core_lab"
             sandbox: true
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           scenario: "reporting_core_lifecycle_probe"
           params:
             operation: "publish_zero_row"
@@ -316,7 +316,7 @@ phases:
         sample_request:
           account:
             account_id: "reporting_core_lab"
-          adcp_version: "3.2-beta.11"
+          adcp_version: "3.2-rc.0"
           view: "periods"
           context:
             correlation_id: "reporting_core--zero-row"

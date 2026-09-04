@@ -3030,7 +3030,7 @@ Tell ${codingTool}: "Build a buyer agent using @adcp/sdk that connects to the pu
 
 The SDK handles protocol details — the learner focuses on orchestration logic.
 
-Use the current 3.2 beta.11 wire pin with @adcp/sdk@14.0.0-beta.29 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
+Use the current \`3.2-rc.0\` wire pin with @adcp/sdk@14.0.0-beta.31 for the targeting-aware discovery portion. Decompose one messy request into brief plus criteria.offer_filters, criteria.targeting_overlay, and criteria.required_overlay_support; verify that unsupported future-selection requirements filter products; review any targeting_resolution.modifications before purchase; and verify effective package targeting on readback. Treat the get_products compatibility facade's equivalent fields as compatibility evidence, not as proof that the compact tasks work.
 
 Reference: ${SDKS_URL}
 
@@ -3045,12 +3045,12 @@ Validate in two parts.
 
 1. Run the compatibility buying workflow against the public test agent and share the output. Use the \`adcp\` CLI:
 \`\`\`
-npx @adcp/sdk@14.0.0-beta.29 test-mcp get_products '{"adcp_version":"3.2-beta.11","buying_mode":"brief","brief":"<your campaign brief>"}'
+npx @adcp/sdk@14.0.0-beta.31 test-mcp get_products '{"adcp_version":"3.2-rc.0","buying_mode":"brief","brief":"<your campaign brief>"}'
 \`\`\`
 
 Replace \`<your campaign brief>\` with your actual brief. Then run the full buying flow: get_products (select a canonical \`format_options[]\` entry) → create_media_buy → get_adcp_capabilities on the chosen creative endpoint → sync_creatives with \`format_kind\` and optional \`format_option_ref\`.
 
-2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the beta.11 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
+2. Validate the 3.2 targeting-aware objectives live with \`list_products\` and \`request_proposals\`: request decomposition, required future targeting support, disclosed modification acceptance/rejection, and effective package readback. First retain a capability response advertising the exact served version and relevant lifecycle tools. Then retain one supported and one unsupported requirement result, the RC.0 request/response envelopes, and the post-purchase package readback. An empty result for the unsupported requirement is evidence only when the same seller returns an eligible product for the supported control request.
 
 Paste the live output and validation results. We'll verify both the compatibility workflow and the native 3.2 behavior.
 

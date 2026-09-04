@@ -13,8 +13,8 @@ The goal is not to make the brief verbose. The goal is to put intent in the brie
 
 <Note>
 This module teaches the AdCP 3.2 targeting-aware discovery contract. The public
-training seller supports the exact `3.2-beta.11` wire bundle with
-`@adcp/sdk@14.0.0-beta.29`. Verify those advertised capabilities before the lab;
+training seller supports the exact `3.2-rc.0` wire bundle with
+`@adcp/sdk@14.0.0-beta.31`. Verify those advertised capabilities before the lab;
 unknown-field acceptance by an older seller is not evidence of support.
 </Note>
 
@@ -45,7 +45,7 @@ Example:
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json",
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655442008",
   "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts, avoid discount-led positioning, and prioritize packages that can support a brand-lift readout.",
   "brand": {
@@ -77,7 +77,7 @@ Example:
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/request-proposals-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655442009",
-  "adcp_version": "3.2-beta.11",
+  "adcp_version": "3.2-rc.0",
   "brief": "Launch Nova Running's spring trail shoe line with outdoor enthusiasts. Favor trusted adventure and fitness contexts.",
   "brand": {
     "domain": "novarunning.example"
@@ -144,7 +144,7 @@ Do not send a totally new campaign through `refine_proposals`; start a new `requ
 
 ## Implementation checklist
 
-- Read `get_adcp_capabilities.adcp.supported_versions` and `media_buy.lifecycle_tools`, pin `adcp_version: "3.2-beta.11"` for this lab, and validate the echoed served release before using targeting-aware discovery.
+- Read `get_adcp_capabilities.adcp.supported_versions` and `media_buy.lifecycle_tools`, pin `adcp_version: "3.2-rc.0"` for this lab, and validate the echoed served release before using targeting-aware discovery.
 - If release precision is absent, major-only, or 3.1-or-earlier, omit the 3.2 fields and fall back to retained legacy targeting filters or explicit brief prose; unknown fields may otherwise be silently ignored.
 - Normalize the human request into intent, hard constraints, and follow-up changes before calling the seller.
 - Preserve the buyer's business language in `brief`; do not collapse it into only keywords.

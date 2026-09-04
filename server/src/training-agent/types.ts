@@ -24,12 +24,12 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
 /**
  * First wire checkpoint that may carry the standardized seller-governance
- * discovery fields ratified for the current 3.2 beta checkpoint.
+ * discovery fields ratified for the current 3.2 prerelease checkpoint.
  */
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /** Current prerelease schema bundle shipped by the server SDK. */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-beta.11' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2-rc.0' as const;
 /** First released schema checkpoint containing get_reporting_status. */
 export const REPORTING_STATUS_ADCP_VERSION = '3.2-beta.10' as const;
 

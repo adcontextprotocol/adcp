@@ -1,15 +1,15 @@
 ---
 title: Migrating from 3.1 to 3.2
 sidebarTitle: 3.1 to 3.2
-description: "Role-based migration checklist for adopting the AdCP 3.2 beta while preserving 3.1 compatibility."
+description: "Role-based migration checklist for adopting the AdCP 3.2 release candidate while preserving 3.1 compatibility."
 "og:title": "AdCP — Migrating from 3.1 to 3.2"
 ---
 
 # Migrating from 3.1 to 3.2
 
 <Warning>
-**3.2 is in beta.** Beta.11 is the current protocol checkpoint. TypeScript
-`@adcp/sdk@14.0.0-beta.29` and Python `adcp==8.0.0b12` embed beta.11 exactly.
+**3.2 is in release candidate.** RC.0 is the current protocol checkpoint. TypeScript
+`@adcp/sdk@14.0.0-beta.31` and Python `adcp==8.0.0b13` embed RC.0 exactly.
 Python higher-level helpers remain partial, and Go exact
 support remains pending. Keep production traffic pinned to `"3.1"` while
 validating 3.2 in staging.
@@ -21,7 +21,7 @@ new compact tools immediately: `get_products`, `create_media_buy`, and
 only after the peer advertises the exact release in `supported_versions`.
 
 For the feature narrative, start with [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2).
-For prerelease artifacts and SDK timing, use the [3.2 beta program](/docs/reference/3-2-beta).
+For prerelease artifacts and SDK timing, use the [3.2 prerelease program](/docs/reference/3-2-beta).
 
 ## The migration cost is intentional—and bounded
 
@@ -46,23 +46,23 @@ surfaces by hand.
 
 | Step | Who | Action |
 |---|---|---|
-| 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 beta artifact for staging. |
-| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-beta.11` protocol tarball, not `main` or `/schemas/latest/`. |
+| 1 | Everyone | Keep production on `"3.1"`; choose an exact 3.2 prerelease artifact for staging. |
+| 2 | SDK and codegen maintainers | Generate from the signed `3.2.0-rc.0` protocol tarball, not `main` or `/schemas/latest/`. |
 | 3 | Sellers and agents | Advertise the exact prerelease in `adcp.supported_versions` and echo the release actually served. |
-| 4 | Buyers | Send `adcp_version: "3.2-beta.N"` only after exact capability discovery; never silently move between beta pins. |
+| 4 | Buyers | Send `adcp_version: "3.2-rc.0"` only after exact capability discovery; never silently move between prerelease pins. |
 | 5 | Media-buy implementations | Move create/update success handling completely to `media_buy_status`. |
 | 6 | Signing implementations | Require `content-digest` coverage and migrate request `Signature` and `Content-Digest` binary values to RFC 8941 padded Base64. |
 | 7 | Creative implementations | Adopt canonical format capability/product discovery and isolate legacy projection at compatibility boundaries. |
-| 8 | Compliance operators | Test beta.11 from its signed assets or pair `@adcp/sdk@14.0.0-beta.29` or Python `adcp==8.0.0b12` with exact beta.11. Retain the exact package and wire versions. |
+| 8 | Compliance operators | Test RC.0 from its signed assets or pair `@adcp/sdk@14.0.0-beta.31` or Python `adcp==8.0.0b13` with exact RC.0. Retain the exact package and wire versions. |
 | 9 | Delivery-reporting implementations | Emit and consume currency at media-buy or package grain, move qualified outcomes to `by_package[].metric_values`, and stop producing new `aggregated_totals`. |
 
 ## Required to claim 3.2 behavior
 
 ### Serve and echo the exact release
 
-During beta, prerelease matching is exact. A seller serving beta.11 advertises
-`"3.2-beta.11"`. Do not advertise stable `"3.2"` before GA, silently negotiate
-between beta ordinals, or treat a major-only declaration as evidence of 3.2
+During prerelease, version matching is exact. A seller serving RC.0 advertises
+`"3.2-rc.0"`. Do not advertise stable `"3.2"` before GA, silently negotiate
+between prerelease pins, or treat a major-only declaration as evidence of 3.2
 support.
 
 The 3.2 compliance posture makes missing `supported_versions` or a missing
@@ -215,24 +215,24 @@ See [Cross-role governance enforcement](/docs/reference/migration/cross-role-gov
 
 | Role | Minimum before advertising or sending 3.2 |
 |---|---|
-| Hand-rolled buyer | Exact prerelease discovery/pin, beta-aware schema validation, `media_buy_status` handling, open error-code decoding, and capability gates for every new tool/field. |
+| Hand-rolled buyer | Exact prerelease discovery/pin, prerelease-aware schema validation, `media_buy_status` handling, open error-code decoding, and capability gates for every new tool/field. |
 | SDK buyer | An SDK version that names the exact 3.2 bundle, plus the same capability and prerelease negotiation checks. |
 | Seller | Exact release advertisement and echo, 3.1 compatibility routing, canonical status emission, integer retry delays, and truthful task/targeting/format capabilities. |
 | Creative agent | Canonical supported-format capabilities, operation selection, and explicit compatibility handling for legacy named formats. |
-| Signals or measurement agent | Exact beta pin and only the attestation, targeting, or feedback capabilities actually implemented. |
-| Governance provider/service | Exact beta pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
-| SDK maintainer | Signed beta.10 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the release candidate. |
-| Compliance operator | Matching beta.10 assets and SDK support end to end; no 3.2 badge from a beta checkpoint. |
+| Signals or measurement agent | Exact prerelease pin and only the attestation, targeting, or feedback capabilities actually implemented. |
+| Governance provider/service | Exact prerelease pin, `governance.campaign` experimental declaration, and the complete cross-role authorization migration. |
+| SDK maintainer | Signed RC.0 bundle ingestion, generated-type/validator tests, exact support matrix entry, and protocol feedback destined for the next prerelease. |
+| Compliance operator | Matching RC.0 assets and SDK support end to end; no 3.2 badge from a prerelease checkpoint. |
 
 ## Rollback
 
-Keep the 3.1 handler and schema bundle available throughout beta. If a 3.2
+Keep the 3.1 handler and schema bundle available throughout prerelease. If a 3.2
 staging integration fails:
 
 1. Stop advertising the affected 3.2 prerelease.
 2. Re-pin the peer to `"3.1"` only if it advertises 3.1.
 3. Route through the 3.x compatibility facades and 3.1 schemas.
-4. Preserve the failed beta payload and exact artifact version for diagnosis.
+4. Preserve the failed prerelease payload and exact artifact version for diagnosis.
 
 Do not retry a 3.2 payload under a 3.1 pin without applying an explicit
 version adapter; additive fields and compact task names may not exist in the
@@ -240,7 +240,7 @@ version adapter; additive fields and compact task names may not exist in the
 
 ## Related
 
-- [3.2 beta program](/docs/reference/3-2-beta)
+- [3.2 prerelease program](/docs/reference/3-2-beta)
 - [What's New in AdCP 3.2](/docs/reference/whats-new-in-3-2)
 - [Release Notes](/docs/reference/release-notes#version-3-2-0)
 - [Versions & Compatibility](/docs/reference/versions)
