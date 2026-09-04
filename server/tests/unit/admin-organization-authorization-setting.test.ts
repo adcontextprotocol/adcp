@@ -39,6 +39,8 @@ vi.mock("../../src/middleware/organization-authorization-canary.js", () => ({
       "organization_pending_join_request_count_read",
     ORGANIZATION_PENDING_JOIN_REQUESTS_READ:
       "organization_pending_join_requests_read",
+    ORGANIZATION_REFERRAL_CODES_READ:
+      "organization_referral_codes_read",
   },
   isOrganizationAuthorizationBoundaryAllowedByEnvironment: environmentAllowsBoundaryMock,
   invalidateOrganizationAuthorizationRuntimeSettingCache: invalidateCacheMock,
@@ -213,6 +215,24 @@ describe("organization authorization runtime admin setting", () => {
       {
         enabled: true,
         boundaries: ["organization_pending_join_requests_read"],
+      },
+      "user_authenticated_admin",
+    );
+  });
+
+  it("persists the referral-codes boundary independently", async () => {
+    const response = await request(createApp())
+      .put("/api/admin/settings/organization-authorization-enforcement")
+      .send({
+        enabled: true,
+        boundaries: ["organization_referral_codes_read"],
+      });
+
+    expect(response.status).toBe(200);
+    expect(setSettingMock).toHaveBeenCalledWith(
+      {
+        enabled: true,
+        boundaries: ["organization_referral_codes_read"],
       },
       "user_authenticated_admin",
     );

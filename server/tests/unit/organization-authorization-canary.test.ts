@@ -40,6 +40,8 @@ const PENDING_COUNT_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_PENDING_JOIN_REQUEST_COUNT_READ;
 const PENDING_REQUESTS_BOUNDARY =
   ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_PENDING_JOIN_REQUESTS_READ;
+const REFERRAL_CODES_BOUNDARY =
+  ORGANIZATION_AUTHORIZATION_BOUNDARIES.ORGANIZATION_REFERRAL_CODES_READ;
 
 describe("organization authorization canary", () => {
   beforeEach(() => {
@@ -166,25 +168,30 @@ describe("organization authorization canary", () => {
     expect(resolveUserOrgAuthorizationMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [BOUNDARY, DOMAINS_BOUNDARY],
-    [DOMAINS_BOUNDARY, BOUNDARY],
-    [PENDING_COUNT_BOUNDARY, BOUNDARY],
-    [BOUNDARY, PENDING_COUNT_BOUNDARY],
-    [PENDING_COUNT_BOUNDARY, DOMAINS_BOUNDARY],
-    [DOMAINS_BOUNDARY, PENDING_COUNT_BOUNDARY],
-    [PENDING_REQUESTS_BOUNDARY, BOUNDARY],
-    [BOUNDARY, PENDING_REQUESTS_BOUNDARY],
-    [PENDING_REQUESTS_BOUNDARY, DOMAINS_BOUNDARY],
-    [DOMAINS_BOUNDARY, PENDING_REQUESTS_BOUNDARY],
-    [PENDING_REQUESTS_BOUNDARY, PENDING_COUNT_BOUNDARY],
-    [PENDING_COUNT_BOUNDARY, PENDING_REQUESTS_BOUNDARY],
-  ])(
+  it.each(
+    [
+      BOUNDARY,
+      DOMAINS_BOUNDARY,
+      PENDING_COUNT_BOUNDARY,
+      PENDING_REQUESTS_BOUNDARY,
+      REFERRAL_CODES_BOUNDARY,
+    ].flatMap((requestedBoundary) =>
+      [
+        BOUNDARY,
+        DOMAINS_BOUNDARY,
+        PENDING_COUNT_BOUNDARY,
+        PENDING_REQUESTS_BOUNDARY,
+        REFERRAL_CODES_BOUNDARY,
+      ]
+        .filter((enabledBoundary) => enabledBoundary !== requestedBoundary)
+        .map((enabledBoundary) => [requestedBoundary, enabledBoundary] as const),
+    ),
+  )(
     "does not enforce %s when runtime enables only %s",
     async (requestedBoundary, enabledBoundary) => {
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
       process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
-        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY},${PENDING_REQUESTS_BOUNDARY}`;
+        `${BOUNDARY},${DOMAINS_BOUNDARY},${PENDING_COUNT_BOUNDARY},${PENDING_REQUESTS_BOUNDARY},${REFERRAL_CODES_BOUNDARY}`;
       const getWorkos = vi.fn();
 
       const decision = await evaluateOrganizationAuthorizationCanary({
@@ -308,6 +315,61 @@ describe("organization authorization canary", () => {
     expect(evaluateUserOrgRoleAuthorizationMock).toHaveBeenCalledWith(
       resolution,
       "admin",
+    );
+  });
+
+  it("enforces the referral-codes boundary when both rollout gates select it", async () => {
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_ENABLED = "true";
+    process.env.ORG_AUTHORIZATION_ENFORCEMENT_BOUNDARIES =
+      REFERRAL_CODES_BOUNDARY;
+    const getRuntimeSetting = vi.fn().mockResolvedValue({
+      enabled: true,
+      boundaries: [REFERRAL_CODES_BOUNDARY],
+    });
+    const workos = { userManagement: {} };
+    resolveUserOrgAuthorizationMock.mockResolvedValue({ status: "authorized" });
+    evaluateUserOrgRoleAuthorizationMock.mockReturnValue({
+      status: "authorized",
+      membership: {
+        organizationId: "org_test",
+        role: "member",
+        source: "credential_grant",
+      },
+    });
+
+    const decision = await evaluateOrganizationAuthorizationCanary({
+      boundary: REFERRAL_CODES_BOUNDARY,
+      principal: {
+        id: "user_canonical",
+        authWorkosUserId: "user_authenticated",
+      },
+      organizationId: "org_test",
+      getWorkos: () => workos as never,
+      getRuntimeSetting,
+      minimumRole: "member",
+    });
+
+    expect(decision).toEqual({
+      enforced: true,
+      status: "authorized",
+      membership: {
+        organizationId: "org_test",
+        role: "member",
+        source: "credential_grant",
+      },
+    });
+    expect(getRuntimeSetting).toHaveBeenCalledOnce();
+    expect(resolveUserOrgAuthorizationMock).toHaveBeenCalledWith(
+      workos,
+      {
+        id: "user_canonical",
+        authWorkosUserId: "user_authenticated",
+      },
+      "org_test",
+    );
+    expect(evaluateUserOrgRoleAuthorizationMock).toHaveBeenCalledWith(
+      { status: "authorized" },
+      "member",
     );
   });
 
