@@ -101,6 +101,8 @@ const ECOSYSTEM_CONTEXT_TOOL_SETS = new Set([
   'community_research',
   'github',
   'content',
+  'publishing_submission',
+  'publishing_assets',
   'publishing_author',
   'publishing_review',
   'publishing_promotion',

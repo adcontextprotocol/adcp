@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v27';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v28';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -418,6 +418,48 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 120,
     },
     answerRubric: ['Clearly presents only the synthetic company listing without changing profile or brand-domain state.'],
+  },
+  {
+    id: 'publishing-own-submissions',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Show my submitted perspectives without changing them.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['publishing_submission'] },
+    toolFixtures: [{ name: 'get_my_content', effect: 'read', resultStatus: 'ok', result: 'Synthetic perspective: Measurement Notes; status is pending review.' }],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['get_my_content'],
+      allowedTools: ['get_my_content'],
+      forbiddenTools: [
+        'propose_content', 'read_google_doc', 'check_illustration_status',
+        'generate_perspective_illustration', 'attach_content_asset',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['measurement notes', 'perspective'], ['pending review']],
+      maxWords: 120,
+    },
+    answerRubric: ['Reports only the synthetic member submission without changing content or assets.'],
+  },
+  {
+    id: 'publishing-cover-status',
+    category: 'member_context',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Check whether my published perspective has a cover illustration. Do not generate one.', nowUtc: NOW, isAdmin: false },
+    routing: { action: 'respond', toolSets: ['publishing_assets'] },
+    toolFixtures: [{ name: 'check_illustration_status', effect: 'read', resultStatus: 'ok', result: 'Synthetic perspective cover status: no illustration is present; generation is available.' }],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['check_illustration_status'],
+      allowedTools: ['check_illustration_status'],
+      forbiddenTools: [
+        'propose_content', 'read_google_doc', 'generate_perspective_illustration',
+        'attach_content_asset',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['no illustration', 'not present'], ['available']],
+      maxWords: 120,
+    },
+    answerRubric: ['Reports only the synthetic cover status and does not generate or attach an asset.'],
   },
   {
     id: 'brand-mutual-assertion',
