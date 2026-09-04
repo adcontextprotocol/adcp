@@ -70,6 +70,10 @@
           "$ref": "/schemas/core/vendor-metric-id.json",
           "description": "Identifier for the metric within the vendor's vocabulary."
         },
+        "methodology_version": {
+          "type": "string",
+          "description": "Optional pin of the vendor's `get_adcp_capabilities.measurement.metrics[].methodology_version` that this commitment is contracted against. When present, the seller commits to reporting values computed under this methodology version; a vendor-side methodology change that alters the value definition is a contract change and SHOULD surface as a new appended entry with its own `committed_at`, never a silent substitution. Absence means the contract does not pin a version and buyers MUST treat methodology changes as untracked. Opaque string — compare for equality, do not parse."
+        },
         "qualifier": {
           "type": "object",
           "description": "Optional qualifier disambiguating commitments to the same vendor metric measured under different methodologies or windows. Same closed key set as standard-scope entries; new keys ship explicitly.",
