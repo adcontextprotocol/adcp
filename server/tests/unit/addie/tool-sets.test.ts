@@ -6,6 +6,11 @@ import {
   AGENT_QUALITY_TOOLS,
   AGENT_REGISTRY_TOOLS,
   AGENT_VALIDATION_TOOLS,
+  ADMIN_BILLING_ACCOUNT_TOOLS,
+  ADMIN_BILLING_DISCOUNT_TOOLS,
+  ADMIN_BILLING_DOMAIN_TOOL_SETS,
+  ADMIN_BILLING_PAYMENT_TOOLS,
+  ADMIN_BILLING_TOOLS,
   ADMIN_BRAND_LOGO_REVIEW_TOOLS,
   ADMIN_BRAND_REGISTRY_INTEGRITY_TOOLS,
   ADMIN_BRANDS_TOOLS,
@@ -115,6 +120,10 @@ describe('getToolsForSets', () => {
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_registry_integrity**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **admin_brand_logo_review**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **admin_brands**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_payments**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_discounts**');
+      expect(ADDIE_TOOL_CATALOG).toContain('- **admin_billing_account**');
+      expect(ADDIE_TOOL_CATALOG).not.toContain('- **billing**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_records**');
       expect(ADDIE_TOOL_CATALOG).toContain('- **brand_registry_identity**');
       expect(ADDIE_TOOL_CATALOG).not.toContain('- **brand_registry**');
@@ -208,6 +217,46 @@ describe('getToolsForSets', () => {
       );
       expect(getToolsForSets(['admin_brand_logo_review'], false, false)).not.toEqual(
         expect.arrayContaining(ADMIN_BRAND_LOGO_REVIEW_TOOLS),
+      );
+    });
+
+    it('keeps admin billing workflows separate while retaining the exact hidden alias', () => {
+      expect(ADMIN_BILLING_PAYMENT_TOOLS).toEqual([
+        'send_payment_request', 'resend_invoice', 'list_pending_invoices',
+      ]);
+      expect(ADMIN_BILLING_DISCOUNT_TOOLS).toEqual([
+        'grant_discount', 'remove_discount', 'list_discounts', 'create_promotion_code',
+      ]);
+      expect(ADMIN_BILLING_ACCOUNT_TOOLS).toEqual([
+        'update_billing_email', 'preview_org_stripe_customer_update',
+        'confirm_org_stripe_customer_update', 'get_account',
+      ]);
+      expect(ADMIN_BILLING_TOOLS).toEqual([
+        'send_payment_request', 'grant_discount', 'remove_discount', 'list_discounts',
+        'create_promotion_code', 'resend_invoice', 'update_billing_email',
+        'preview_org_stripe_customer_update', 'confirm_org_stripe_customer_update',
+        'list_pending_invoices', 'get_account',
+      ]);
+      expect(TOOL_SETS.billing.tools).toEqual(ADMIN_BILLING_TOOLS);
+      expect(TOOL_SETS.billing.routerVisible).toBe(false);
+      expect(getValidToolSetNames(true).has('billing')).toBe(false);
+      for (const [name, domainTools] of Object.entries(ADMIN_BILLING_DOMAIN_TOOL_SETS)) {
+        expect(getValidToolSetNames(true).has(name), name).toBe(true);
+        expect(getValidToolSetNames(false).has(name), name).toBe(false);
+        expect(getToolsForSets([name], true, false)).toEqual(expect.arrayContaining(domainTools));
+        expect(TOOL_SETS[name].requiresPrecision).toBe(true);
+      }
+      expect(getToolsForSets(['admin_billing_payments'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_DISCOUNT_TOOLS),
+      );
+      expect(getToolsForSets(['admin_billing_discounts'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_ACCOUNT_TOOLS),
+      );
+      expect(getToolsForSets(['admin_billing_account'], true, false)).not.toEqual(
+        expect.arrayContaining(ADMIN_BILLING_PAYMENT_TOOLS),
+      );
+      expect(getToolsForSets(['billing'], true, false)).toEqual(
+        expect.arrayContaining(ADMIN_BILLING_TOOLS),
       );
     });
   });
@@ -531,10 +580,10 @@ describe('getToolsForSets', () => {
 
       expect(TOOL_SETS.member_billing.tools).toEqual(memberBillingTools);
       expect(tools).toEqual(expect.arrayContaining(memberBillingTools));
-      for (const adminTool of TOOL_SETS.billing.tools) {
+      for (const adminTool of ADMIN_BILLING_TOOLS) {
         expect(tools).not.toContain(adminTool);
       }
-      expect(TOOL_SETS.billing.tools.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
+      expect(ADMIN_BILLING_TOOLS.filter((tool) => memberBillingTools.includes(tool))).toEqual([]);
     });
   });
 
@@ -554,24 +603,32 @@ describe('getToolsForSets', () => {
       expect(tools).toContain('get_account_link');
     });
 
-    it('skips member and admin billing sets in public channels', () => {
-      const billingTools = [...TOOL_SETS.member_billing.tools, ...TOOL_SETS.billing.tools];
-      const tools = getToolsForSets(['member_billing', 'billing'], true, true);
+    it('skips member, bounded admin, and legacy billing sets in public channels', () => {
+      const billingTools = [...TOOL_SETS.member_billing.tools, ...ADMIN_BILLING_TOOLS];
+      const tools = getToolsForSets([
+        'member_billing',
+        'admin_billing_payments',
+        'admin_billing_discounts',
+        'admin_billing_account',
+        'billing',
+      ], true, true);
       for (const billingTool of billingTools) {
         expect(tools).not.toContain(billingTool);
       }
     });
 
-    it('includes billing tool set in private channels for admins', () => {
-      const tools = getToolsForSets(['billing'], true, false);
+    it('includes the selected bounded billing domain in private channels for admins', () => {
+      const tools = getToolsForSets(['admin_billing_payments'], true, false);
       expect(tools).toContain('send_payment_request');
+      expect(tools).not.toContain('grant_discount');
       expect(tools).not.toContain('find_membership_products');
     });
 
-    it('keeps Stripe customer relinks behind the precision-gated billing set', () => {
-      expect(TOOL_SETS.billing.requiresPrecision).toBe(true);
-      expect(TOOL_SETS.billing.tools).toContain('preview_org_stripe_customer_update');
-      expect(TOOL_SETS.billing.tools).toContain('confirm_org_stripe_customer_update');
+    it('keeps Stripe customer relinks behind the precision-gated account domain', () => {
+      expect(TOOL_SETS.admin_billing_account.requiresPrecision).toBe(true);
+      expect(TOOL_SETS.admin_billing_account.tools).toContain('preview_org_stripe_customer_update');
+      expect(TOOL_SETS.admin_billing_account.tools).toContain('confirm_org_stripe_customer_update');
+      expect(TOOL_SETS.admin_billing_payments.tools).not.toContain('preview_org_stripe_customer_update');
     });
 
     it('still includes non-enrollment always-available tools in public channels', () => {

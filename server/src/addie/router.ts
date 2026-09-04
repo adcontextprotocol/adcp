@@ -588,7 +588,7 @@ The user is an ADMIN.
     conditionalRules += `
 The user is NOT an admin.
 - The current member can handle membership pricing, payment links, invoice creation, and their organization's billing portal with "member_billing".
-- Refunds, payment disputes, failed charges, and requests to act on another organization require human support → respond with [] (no routed tools) and use escalate_to_admin. Never route a non-admin to the admin-only "billing" set.`;
+- Refunds, payment disputes, failed charges, and requests to act on another organization require human support → respond with [] (no routed tools) and use escalate_to_admin. Never route a non-admin to an admin billing domain.`;
   }
 
   const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : "";
@@ -703,7 +703,10 @@ ${
 - Questions about tracked working-group documents → ["knowledge", "community_group_discovery"]. Questions about the current member's company listing or brand profile → ["member_profile"]
 - Membership pricing or the current member's own payment link, invoice creation, or billing portal → ["member_billing"]
 ${isAAOAdmin
-    ? '- Admin billing for another organization, including payment requests, discounts, resending invoices, or Stripe customer relinks/customer ID updates → ["billing"]'
+    ? `- Sending a payment request, resending an open invoice, or listing pending invoices for other organizations → ["admin_billing_payments"]
+- Inspecting, granting, or removing discounts, or creating promotion codes → ["admin_billing_discounts"]
+- Inspecting an organization account, updating its billing email, or previewing or confirming a Stripe customer relink → ["admin_billing_account"]
+- A request that genuinely needs two admin billing workflows may select the applicable two bounded domains; do not select the hidden legacy alias.`
     : '- Refunds, disputes, failed charges, or billing actions for another organization → [] (use the always-available escalation tool)'}
 - Upcoming events, event registrations, "am I registered", event details, register interest, who's coming/attending → ["events"]
 - Meeting calendar, agendas/details, RSVPs, or adding attendees → ["meeting_attendance"]

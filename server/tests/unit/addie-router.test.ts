@@ -121,7 +121,10 @@ describe('Addie router prompt policy', () => {
     expect(memberPrompt).toContain('→ ["member_billing"]');
     expect(memberPrompt).toContain('Refunds, disputes, failed charges');
     expect(adminPrompt).toContain(`Valid sets: ${[...getValidToolSetNames(true)].join(', ')}`);
-    expect(adminPrompt).toContain('→ ["billing"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_payments"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_discounts"]');
+    expect(adminPrompt).toContain('→ ["admin_billing_account"]');
+    expect(adminPrompt).not.toContain('→ ["billing"]');
     expect(memberPrompt).toContain('Exact bare acknowledgments');
     expect(memberPrompt).toContain('whether Addie exists as an MCP tool');
   });
@@ -588,8 +591,11 @@ describe('getToolSetDescriptionsForRouter', () => {
       expect(descriptions).not.toMatch(/\*\*admin\*\*/);
     });
 
-    it('should include billing set', () => {
-      expect(descriptions).toMatch(/\*\*billing\*\*/);
+    it('should include bounded admin billing sets without the legacy alias', () => {
+      expect(descriptions).toMatch(/\*\*admin_billing_payments\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_billing_discounts\*\*/);
+      expect(descriptions).toMatch(/\*\*admin_billing_account\*\*/);
+      expect(descriptions).not.toMatch(/\*\*billing\*\*/);
     });
 
     it('should include outreach set', () => {
