@@ -12,9 +12,11 @@
       "/schemas/core/reporting-file-manifest.json",
       "/schemas/core/reporting-materialization.json",
       "/schemas/core/reporting-obligation.json",
+      "/schemas/core/reporting-coverage.json",
       "/schemas/core/reporting-report-definition.json",
       "/schemas/core/reporting-revision.json",
       "/schemas/core/reporting-verification.json",
+      "/schemas/media-buy/get-reporting-status-response.json",
       "/schemas/media-buy/sync-reporting-receipts-request.json",
       "/schemas/media-buy/sync-reporting-receipts-response.json"
     ]
@@ -22,6 +24,7 @@
   "assets": {
     "adjustment.json": { "size_bytes": 765, "sha256": "219612e625db6c7495c8ed400b7593b82fd4f4efd6ae19edb468df1937518121", "sha512": "62370059c540ca675696606f0afbd0a3f7325df5aa35b9ed49fec926e608d7b4972125c8670e7d6f6cddf85db35c158fb052c9f887862f17ee16c5f53dceefb4" },
     "canonicalization.json": { "size_bytes": 1177, "sha256": "f98d55f8b7ad49c058b17f04630576c6b27b3564090b838e49834dd7714cdefa", "sha512": "fad55d1bb257eaa7cc20659df130a0ab646e74ca26225e3fa66b3e34b1352b2ace683878f541728cffde6562532cf5d4cbb46906a093b4f3dd07dad992d728dc" },
+    "coverage-aggregation.json": { "size_bytes": 2047, "sha256": "7b3c2f3998538fb61a15a87dbda9ff8ccd3a9523ede88191c4f25a7a5f7956b6", "sha512": "28798e524914209df0d6a1d62e51ba7d7b2d82cfdee32b91c9495cd4a316cf81f654a6b59841c2e04d85267a33cd9a4db864d601fc39abaed742b9df40bcba72" },
     "manifest.json": { "size_bytes": 851, "sha256": "46d127b2026c48d2e5ced78237c9c1efe63dccbd5099ba4a561073a3f5ef75e6", "sha512": "fb9397c21b0476e182fe6738ca7f3e42bd6c79ddb4b9344b0aa9526b622c9356553c047a2d884d588093a2c73423cee128571c9cef7a2c6968f7138c1cf39583" },
     "materialization.json": { "size_bytes": 2024, "sha256": "00efd3586d60bade27754ce3b6104203ddf21824f37ac77ed40fd340c1fd1fc5", "sha512": "38d0c4d5cba4bf83893008625ec40f2ddc6a4dcc7102442d03f1441682a5fbdb935e590ddd48c305e3ced3dd07a2090c051bd6e82dded65c58c598609c4ef942" },
     "obligation.json": { "size_bytes": 1483, "sha256": "453a1b7a6740f069dba0c856b06a12e063adbf7ae662eaf5fadeaa092c14d14d", "sha512": "09d4029148891b07a6acf28f36dc26a83ddd15bdd40364732a606e35f538abd0a709d2a9c7cf63d7502d4f97d919a547ca0bd3162beef3dc3599f6b491152d79" },

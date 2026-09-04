@@ -25,6 +25,10 @@ index; this protocol copy is authoritative for subsequent changes.
 8. Execute `post_official_adjustment`: retain the invoice's official revision
    and original receipt unchanged, verify the adjustment's JCS digest, and
    record the exact accepted adjustment receipt.
+9. Execute every vector in `coverage-aggregation.json` and compare the complete
+   `expected_coverage` object. The mixed-support vector classifies its sole media
+   buy as partially covered even though it has no package denominator; the
+   explicit empty-denominator vector is full.
 
 `publish_order` is part of the fixture: data objects become visible before the
 manifest, and the manifest is the commit point. A missing object after a valid,
