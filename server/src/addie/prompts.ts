@@ -559,9 +559,6 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
   admin_brand_logo_review: `### Admin brand-logo review
 - Inspect the pending or existing logo queue before moderating a submission.
 - review_brand_logo changes public registry state; act only on the explicitly identified logo and requested disposition.`,
-  billing: `### Admin billing operations
-- get_account: Look up lifecycle, membership, engagement, billing, and directory status before diagnosing an account
-- Use preview_org_stripe_customer_update before confirm_org_stripe_customer_update; never skip the confirmation boundary.`,
   outreach: `### Admin outreach operations
 - Inspect history before outreach, maintain person and follow-up context, and send only when the request and confirmation requirements authorize it.`,
 };
@@ -697,6 +694,14 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'community_group_full_participation'
       && ['community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // The system billing channel may add the hidden compatibility alias to a
+    // profile that already contains every bounded billing domain. List the
+    // exact tool union once through the visible domains.
+    if (
+      name === 'billing'
+      && ['admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

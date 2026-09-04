@@ -81,7 +81,28 @@ const ENROLLMENT_TOOLS = ["get_account_link"];
  * audit behavior while preventing every admin turn from receiving the old
  * monolithic surface.
  */
+export const ADMIN_BILLING_DOMAIN_TOOL_SETS = {
+  admin_billing_payments: [
+    "send_payment_request",
+    "resend_invoice",
+    "list_pending_invoices",
+  ],
+  admin_billing_discounts: [
+    "grant_discount",
+    "remove_discount",
+    "list_discounts",
+    "create_promotion_code",
+  ],
+  admin_billing_account: [
+    "update_billing_email",
+    "preview_org_stripe_customer_update",
+    "confirm_org_stripe_customer_update",
+    "get_account",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
+  ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
   admin_events: [
     "create_event",
     "update_event",
@@ -192,6 +213,25 @@ export const ADMIN_BRANDS_TOOLS = [
   "list_pending_community_mirrors",
   "transfer_brand_ownership",
   "list_orphaned_brands",
+] as const;
+
+export const ADMIN_BILLING_PAYMENT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_payments;
+export const ADMIN_BILLING_DISCOUNT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_discounts;
+export const ADMIN_BILLING_ACCOUNT_TOOLS = ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_account;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_BILLING_TOOLS = [
+  "send_payment_request",
+  "grant_discount",
+  "remove_discount",
+  "list_discounts",
+  "create_promotion_code",
+  "resend_invoice",
+  "update_billing_email",
+  "preview_org_stripe_customer_update",
+  "confirm_org_stripe_customer_update",
+  "list_pending_invoices",
+  "get_account",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -835,24 +875,41 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     requiresPrecision: true,
   },
 
+  admin_billing_payments: {
+    name: "admin_billing_payments",
+    description:
+      "Administer payment requests and invoices for other organizations, including listing pending invoices and resending an open invoice (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_payments],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  admin_billing_discounts: {
+    name: "admin_billing_discounts",
+    description:
+      "Inspect, grant, or remove organization discounts and create promotion codes (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_discounts],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  admin_billing_account: {
+    name: "admin_billing_account",
+    description:
+      "Inspect an organization account, update its billing email, or preview and confirm a Stripe customer relink (admin only)",
+    tools: [...ADMIN_BILLING_DOMAIN_TOOL_SETS.admin_billing_account],
+    adminOnly: true,
+    requiresPrecision: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or two bounded admin billing domains.
   billing: {
     name: "billing",
-    description:
-      "Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts",
-    tools: [
-      "send_payment_request",
-      "grant_discount",
-      "remove_discount",
-      "list_discounts",
-      "create_promotion_code",
-      "resend_invoice",
-      "update_billing_email",
-      "preview_org_stripe_customer_update",
-      "confirm_org_stripe_customer_update",
-      "list_pending_invoices",
-      "get_account",
-    ],
+    description: "Legacy combined admin-billing compatibility surface",
+    tools: [...ADMIN_BILLING_TOOLS],
     adminOnly: true,
+    routerVisible: false,
     requiresPrecision: true,
   },
 
@@ -1129,7 +1186,14 @@ export function getToolsForSets(
         continue;
       }
       // Skip enrollment and financial actions in public channels.
-      if (isPublicChannel && (setName === "member_billing" || setName === "billing")) {
+      if (
+        isPublicChannel
+        && (
+          setName === "member_billing"
+          || setName === "billing"
+          || Object.prototype.hasOwnProperty.call(ADMIN_BILLING_DOMAIN_TOOL_SETS, setName)
+        )
+      ) {
         continue;
       }
       for (const tool of toolSet.tools) {

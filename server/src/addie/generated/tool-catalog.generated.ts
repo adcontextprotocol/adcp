@@ -47,7 +47,9 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **github** — draft_github_issue, create_github_issue, get_github_issue, list_github_issues
 - **illustrations** — search_image_library
 - **member_billing** — find_membership_products, create_payment_link, send_invoice, confirm_send_invoice, get_billing_portal
-- **billing** *(admin only)* — send_payment_request, grant_discount, remove_discount, list_discounts, create_promotion_code, resend_invoice, update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, list_pending_invoices, get_account
+- **admin_billing_payments** *(admin only)* — send_payment_request, resend_invoice, list_pending_invoices
+- **admin_billing_discounts** *(admin only)* — grant_discount, remove_discount, list_discounts, create_promotion_code
+- **admin_billing_account** *(admin only)* — update_billing_email, preview_org_stripe_customer_update, confirm_org_stripe_customer_update, get_account
 - **events** — list_events, get_event_details, list_event_attendees, register_event_interest
 - **meeting_attendance** — list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, add_meeting_attendee
 - **meeting_scheduling** — schedule_meeting, list_upcoming_meetings, cancel_meeting, update_meeting

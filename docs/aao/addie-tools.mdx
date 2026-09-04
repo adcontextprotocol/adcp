@@ -967,9 +967,9 @@ The user must be signed in and have an active owner or admin role in the selecte
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
-## billing (admin only)
+## admin_billing_payments (admin only)
 
-Administer billing for other organizations - send payment requests, manage discounts and promotions, resend invoices, update billing identity, and inspect pending accounts
+Administer payment requests and invoices for other organizations, including listing pending invoices and resending an open invoice (admin only)
 
 ### `send_payment_request`
 
@@ -981,6 +981,24 @@ Actions:
 - "send_invite": create a membership invite token and email it to the contact. This is NOT a direct invoice send — there is no admin path to issue invoices or payment links to non-signed-in recipients. The recipient signs in, accepts the agreement, and the invoice or checkout is then issued in their authenticated session — never under the admin's or a hallucinated email.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `resend_invoice`
+
+Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `list_pending_invoices`
+
+List all organizations with pending (unpaid) invoices.
+Use this when an admin asks about outstanding invoices or payment status across organizations.
+Returns a list of organizations with open or draft invoices.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_billing_discounts (admin only)
+
+Inspect, grant, or remove organization discounts and create promotion codes (admin only)
 
 ### `grant_discount`
 
@@ -1006,11 +1024,9 @@ Create a standalone Stripe promo code for marketing campaigns.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-### `resend_invoice`
+## admin_billing_account (admin only)
 
-Resend an open invoice. Provide EITHER an invoice_id (if known) OR a company_name to look up their pending invoices. If the company has exactly one open invoice, it will be resent automatically. If the invoice needs to go to a different email, use update_billing_email first.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
+Inspect an organization account, update its billing email, or preview and confirm a Stripe customer relink (admin only)
 
 ### `update_billing_email`
 
@@ -1027,14 +1043,6 @@ Preview relinking an organization to a different Stripe customer. This validates
 ### `confirm_org_stripe_customer_update`
 
 Confirm a previously previewed organization Stripe customer relink. This tool does not accept a raw Stripe customer ID; it only commits the validated preview_token after explicit admin approval.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `list_pending_invoices`
-
-List all organizations with pending (unpaid) invoices.
-Use this when an admin asks about outstanding invoices or payment status across organizations.
-Returns a list of organizations with open or draft invoices.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
