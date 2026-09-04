@@ -615,6 +615,8 @@ export interface DiscoveredBrand {
   has_brand_manifest: boolean;
   brand_manifest?: Record<string, unknown>;
   source_type: 'brand_json' | 'community' | 'enriched' | 'stub';
+  /** Provider that supplied an enriched record; absent for legacy/unknown provenance. */
+  enrichment_provider?: string;
   review_status?: 'pending' | 'approved';
   discovered_at: Date;
   last_validated?: Date;
@@ -664,6 +666,9 @@ export interface ResolvedBrand {
   brand_agent_url?: string;
   brand_manifest?: Record<string, unknown>;
   source: 'hosted' | 'brand_json' | 'community' | 'enriched' | 'stub';
+  provenance?: 'canonical' | 'community' | 'enriched';
+  /** Present only for enriched provenance when the writer is known. */
+  provenance_provider?: string;
 }
 
 /**

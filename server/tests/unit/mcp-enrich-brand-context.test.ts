@@ -66,6 +66,7 @@ describe('MCP enrich_brand Brand Context boundary', () => {
       has_brand_manifest: true,
       last_validated: new Date(),
       source_type: 'enriched',
+      enrichment_provider: 'brandfetch',
       brand_manifest: {
         name: 'Acme',
         url: 'https://acme.com',
@@ -93,6 +94,24 @@ describe('MCP enrich_brand Brand Context boundary', () => {
     expect(mocks.fetchBrandData).not.toHaveBeenCalled();
   });
 
+  it('does not invent Brandfetch attribution for a cached canonical record', async () => {
+    mocks.getDiscoveredBrandByDomain.mockResolvedValue({
+      domain: 'origin.example',
+      has_brand_manifest: true,
+      last_validated: new Date(),
+      source_type: 'brand_json',
+      brand_manifest: { name: 'Origin', url: 'https://origin.example' },
+    });
+
+    const handler = new MCPToolHandler();
+    const result = await handler.handleToolCall('enrich_brand', { domain: 'origin.example' });
+    const body = parseResource(result);
+
+    expect(body.source_type).toBe('brand_json');
+    expect(body.enrichment_provider).toBeUndefined();
+    expect(mocks.fetchBrandData).not.toHaveBeenCalled();
+  });
+
   it('does not emit or persist Brand Context from fresh enrichment results', async () => {
     mocks.getDiscoveredBrandByDomain.mockResolvedValue(null);
     mocks.fetchBrandData.mockResolvedValue({
@@ -107,7 +126,7 @@ describe('MCP enrich_brand Brand Context boundary', () => {
       context: {
         brand: { voice: { summary: 'private context' } },
       },
-      highQuality: true,
+      highQuality: false,
     });
 
     const handler = new MCPToolHandler();
@@ -126,6 +145,7 @@ describe('MCP enrich_brand Brand Context boundary', () => {
       domain: 'acme.com',
       brand_name: 'Acme',
       source_type: 'enriched',
+      enrichment_provider: 'brandfetch',
       brand_manifest: {
         name: 'Acme',
         url: 'https://acme.com',

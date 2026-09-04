@@ -146,6 +146,16 @@ components:
             - enriched
             - stub
           description: "Provenance of the selected record, not relationship authorization. Deterministic precedence is `hosted` > `brand_json` > `community` > `enriched` > `stub`; normal reads prefer the durable stored winner on a source tie, while `fresh=true` lets a successful live origin read win a tie. `brand_json`: the domain's own /.well-known/brand.json. `hosted`: registered by an owner whose control of the domain was verified. `community`: contributed by a member. `enriched`: third-party enrichment. `stub`: a minimal organization-derived placeholder awaiting stronger evidence."
+        provenance:
+          type: string
+          enum:
+            - canonical
+            - community
+            - enriched
+          description: Caller-facing trust tier for the selected identity. `canonical` covers owner-hosted and origin-published brand.json records; `community` is member-contributed; `enriched` is provisional third-party data. Absent means the record has no recognized provenance tier. Use `source` when the distinction between hosted and origin-published canonical records is needed.
+        provenance_provider:
+          type: string
+          description: Provider identifier for provisional third-party enrichment. Present only when `provenance` is `enriched`; the provider is intentionally not constrained to a vendor-specific enum.
         live_brand_json:
           type: object
           properties:

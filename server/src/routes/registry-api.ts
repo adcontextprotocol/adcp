@@ -1170,11 +1170,42 @@ const RESOLVED_BRAND_SOURCE_PRIORITY: Record<ResolvedBrandResponse["source"], nu
   stub: 5,
 };
 
+const BRAND_PROVENANCE_BY_SOURCE = {
+  hosted: "canonical",
+  brand_json: "canonical",
+  community: "community",
+  enriched: "enriched",
+} as const;
+
+/**
+ * Keep the stable caller-facing tier separate from the detailed source label.
+ * The only enrichment writer today is Brandfetch; the response contract keeps
+ * the provider open-ended so a future writer can supply its own identifier.
+ */
+function withBrandResolutionProvenance(
+  brand: ResolvedBrandResponse,
+): ResolvedBrandResponse {
+  const provenance = brand.source === "stub"
+    ? undefined
+    : BRAND_PROVENANCE_BY_SOURCE[brand.source];
+  const response = { ...brand };
+  const provenanceProvider = response.provenance_provider;
+  delete response.provenance;
+  delete response.provenance_provider;
+  return {
+    ...response,
+    ...(provenance ? { provenance } : {}),
+    ...(provenance === "enriched" && provenanceProvider
+      ? { provenance_provider: provenanceProvider }
+      : {}),
+  };
+}
+
 function storedBrandResolutionResponse(
   brand: StoredBrandResolutionRecord,
   liveValidation?: ReturnType<typeof serializeBrandValidation>,
 ): ResolvedBrandResponse {
-  return {
+  return withBrandResolutionProvenance({
     canonical_id: brand.canonical_domain || brand.domain,
     canonical_domain: brand.canonical_domain || brand.domain,
     brand_name: brand.brand_name || brand.domain,
@@ -1183,9 +1214,12 @@ function storedBrandResolutionResponse(
     ...(brand.parent_brand ? { parent_brand: brand.parent_brand } : {}),
     ...(brand.brand_agent_url ? { brand_agent_url: brand.brand_agent_url } : {}),
     source: resolvedStoredBrandSource(brand),
+    ...(brand.enrichment_provider
+      ? { provenance_provider: brand.enrichment_provider }
+      : {}),
     brand_manifest: stripLegacyBrandContext(brand.brand_manifest),
     ...(liveValidation ? { live_brand_json: liveValidation } : {}),
-  };
+  });
 }
 
 /**
@@ -1202,12 +1236,14 @@ function selectResolvedBrandResponse(
   // A private or orphaned row is not a public resolution candidate. In
   // particular, it must never replace a valid live-origin response merely
   // because its provenance would otherwise rank higher.
-  if (!stored || stored.manifest_orphaned || stored.is_public === false) return live;
+  if (!stored || stored.manifest_orphaned || stored.is_public === false) {
+    return withBrandResolutionProvenance(live);
+  }
   const storedCandidate = storedBrandResolutionResponse(stored);
   const storedPriority = RESOLVED_BRAND_SOURCE_PRIORITY[storedCandidate.source];
   const livePriority = RESOLVED_BRAND_SOURCE_PRIORITY[live.source];
   if (storedPriority > livePriority || (storedPriority === livePriority && fresh)) {
-    return live;
+    return withBrandResolutionProvenance(live);
   }
 
   // Identity provenance and persisted identity fields come from the selected
@@ -1215,7 +1251,7 @@ function selectResolvedBrandResponse(
   // diagnostics are computed by the live resolver for the requested domain;
   // retain them instead of collapsing a verified edge to "unknown" merely
   // because a higher-provenance stored identity exists.
-  return { ...live, ...storedCandidate };
+  return withBrandResolutionProvenance({ ...live, ...storedCandidate });
 }
 
 registry.registerPath({
@@ -5366,11 +5402,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       // Return cached enrichment if still fresh (avoids Brandfetch API cost)
       const existing = await brandDb.getDiscoveredBrandByDomain(domain);
-      if (existing?.has_brand_manifest && existing.brand_manifest && existing.last_validated) {
-        const ageMs = Date.now() - new Date(existing.last_validated).getTime();
+      const existingIsCanonical = existing?.source_type === 'brand_json'
+        || (existing?.workos_organization_id != null && existing.domain_verified === true);
+      if (existing?.has_brand_manifest && existing.brand_manifest
+        && (existingIsCanonical || existing.last_validated)) {
+        const ageMs = existing.last_validated
+          ? Date.now() - new Date(existing.last_validated).getTime()
+          : Number.POSITIVE_INFINITY;
         const manifest = stripLegacyBrandContext(existing.brand_manifest) || {};
         const company = (manifest as { company?: unknown }).company;
-        if (ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
+        if (existingIsCanonical || ageMs < ENRICHMENT_CACHE_MAX_AGE_MS) {
           const contextResult = includeContext && isBrandfetchConfigured()
             ? await fetchBrandContext(domain)
             : undefined;
@@ -5409,18 +5450,16 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
             ...(enrichment.company ? { company: enrichment.company } : {}),
           }
         : undefined;
-      const sourceType = enrichment.raw
-        ? (enrichment.highQuality !== false ? 'enriched' : 'community')
-        : undefined;
+      const sourceType = enrichment.raw ? 'enriched' : undefined;
 
       if (enrichment.raw && enrichment.manifest) {
-        const persistedSourceType = enrichment.highQuality !== false ? 'enriched' : 'community';
         brandDb.upsertDiscoveredBrand({
           domain: enrichment.domain,
           brand_name: enrichment.manifest.name,
           brand_manifest: manifest,
           has_brand_manifest: true,
-          source_type: persistedSourceType,
+          source_type: 'enriched',
+          enrichment_provider: 'brandfetch',
         }).catch((err) => logger.warn({ err, domain }, 'Failed to save enrichment result'));
       }
 

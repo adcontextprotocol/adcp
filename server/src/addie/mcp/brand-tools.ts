@@ -268,7 +268,8 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
               ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
             },
             has_brand_manifest: true,
-            source_type: result.highQuality !== false ? 'enriched' : 'community',
+            source_type: 'enriched',
+            enrichment_provider: 'brandfetch',
           });
         } catch (err) {
           logger.warn({ err, domain }, 'Failed to cache enrichment result');
