@@ -160,6 +160,10 @@ const CANONICAL_ADMIN_PROSPECT_TOOLS = ADMIN_TOOLS.filter((definition) => [
   'query_prospects',
 ].includes(definition.name));
 
+const CANONICAL_ADMIN_FEED_TOOLS = ADMIN_TOOLS.filter((definition) => [
+  'list_feed_proposals',
+].includes(definition.name));
+
 const CANONICAL_BRAND_IDENTITY_TOOLS = BRAND_CANONICAL_TOOLS.filter((definition) => [
   'check_mutual_assertion',
 ].includes(definition.name));
@@ -186,6 +190,7 @@ const TOOL_DEFINITIONS = [
   CANONICAL_ADMIN_BRAND_LOGO_TOOLS,
   CANONICAL_ADMIN_BILLING_TOOLS,
   CANONICAL_ADMIN_PROSPECT_TOOLS,
+  CANONICAL_ADMIN_FEED_TOOLS,
   CANONICAL_BRAND_IDENTITY_TOOLS,
   CANONICAL_AGENT_PUBLISHER_DIRECTORY_TOOLS,
   CANONICAL_PROPERTY_IDENTIFIER_CATALOG_TOOLS,

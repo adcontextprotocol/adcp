@@ -1502,19 +1502,13 @@ Suggest companies to add to prospect list. Finds unmapped domains and Lusha matc
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-## admin_feeds (admin only)
+## admin_feed_monitoring (admin only)
 
-Manage industry news feeds and media contacts, including review of proposed feeds (admin only)
+Search industry feeds, inspect feed statistics, or list proposed feeds (admin only)
 
 ### `search_industry_feeds`
 
 Search and list RSS industry feeds. Use this to find feeds by name, URL, or category, or to see feeds with errors that need attention.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
-### `add_industry_feed`
-
-Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1527,6 +1521,16 @@ Get statistics about industry feeds - total feeds, active feeds, articles collec
 ### `list_feed_proposals`
 
 List pending feed proposals submitted by community members. Use this to review what news sources have been proposed.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_feed_curation (admin only)
+
+Add industry feeds, review feed proposals, or add verified media contacts (admin only)
+
+### `add_industry_feed`
+
+Add a new RSS feed to monitor for industry news. Provide the feed URL and a name.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 

@@ -59,7 +59,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_prospect_pipeline** *(admin only)* — add_prospect, update_prospect, query_prospects, claim_prospect
 - **admin_prospect_research** *(admin only)* — enrich_company, prospect_search_lusha, triage_prospect_domain, suggest_prospects
-- **admin_feeds** *(admin only)* — search_industry_feeds, add_industry_feed, get_feed_stats, list_feed_proposals, approve_feed_proposal, reject_feed_proposal, add_media_contact
+- **admin_feed_monitoring** *(admin only)* — search_industry_feeds, get_feed_stats, list_feed_proposals
+- **admin_feed_curation** *(admin only)* — add_industry_feed, approve_feed_proposal, reject_feed_proposal, add_media_contact
 - **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
 - **admin_group_membership** *(admin only)* — list_working_groups, get_working_group, add_working_group_member, remove_working_group_member

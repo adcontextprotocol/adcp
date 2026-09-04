@@ -296,6 +296,28 @@ describe('Addie tool reference', () => {
     expect(reference).not.toContain('### Admin workflow operations');
   });
 
+  it('keeps feed monitoring and curation guidance request-scoped', () => {
+    const monitoring = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_feed_monitoring'], true, false),
+      selectedToolSetNames: ['admin_feed_monitoring'],
+    });
+    const curation = buildAddieToolReference({
+      availableToolNames: getToolsForSets(['admin_feed_curation'], true, false),
+      selectedToolSetNames: ['admin_feed_curation'],
+    });
+
+    expect(monitoring).toContain('### Feed operations');
+    expect(monitoring).toContain('- **admin_feed_monitoring** *(admin only)*');
+    expect(monitoring).toContain('list_feed_proposals');
+    expect(monitoring).not.toContain('- **admin_feed_curation**');
+    expect(monitoring).not.toContain('approve_feed_proposal');
+    expect(curation).toContain('### Feed operations');
+    expect(curation).toContain('- **admin_feed_curation** *(admin only)*');
+    expect(curation).toContain('approve_feed_proposal');
+    expect(curation).not.toContain('- **admin_feed_monitoring**');
+    expect(curation).not.toContain('list_feed_proposals');
+  });
+
   it('keeps organization-integrity and member-record guidance request-scoped', () => {
     const integrity = buildAddieToolReference({
       availableToolNames: getToolsForSets(['admin_organization_integrity'], true, false),

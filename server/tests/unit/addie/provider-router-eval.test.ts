@@ -141,8 +141,8 @@ describe('strict router eval', () => {
   });
 
   it('uses a frozen synthetic corpus covering every tool set', () => {
-    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(102);
-    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(102);
+    expect(SYNTHETIC_ROUTER_CORPUS).toHaveLength(104);
+    expect(new Set(SYNTHETIC_ROUTER_CORPUS.map((testCase) => testCase.id)).size).toBe(104);
     const expectedSets = new Set(SYNTHETIC_ROUTER_CORPUS.flatMap((testCase) => testCase.expected.toolSets ?? []));
     expect(expectedSets).toEqual(new Set([
       'knowledge', 'member_profile', 'community_group_discovery', 'community_group_membership', 'council_interest', 'community_group_contribution', 'community_group_full_participation', 'partner_directory', 'agent_publisher_directory', 'brand_registry_records', 'brand_registry_identity', 'agent_registry', 'agent_quality', 'agent_authentication', 'agent_end_to_end', 'property_registry_records', 'property_list_enrichment', 'property_identifier_catalog', 'agent_conformance',
@@ -151,7 +151,7 @@ describe('strict router eval', () => {
       'community_research', 'schema_reference',
       'member_billing', 'admin_billing_payments', 'admin_billing_discounts', 'admin_billing_account',
       'events', 'meeting_attendance', 'meeting_scheduling', 'meeting_series_topics', 'meeting_full_administration',
-      'committee_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feeds',
+      'committee_leadership', 'admin_events', 'admin_prospect_pipeline', 'admin_prospect_research', 'admin_feed_monitoring', 'admin_feed_curation',
       'admin_group_structure', 'admin_group_leadership', 'admin_group_membership',
       'admin_organization_integrity', 'admin_organization_member_records', 'admin_workflows',
       'admin_brand_registry_integrity', 'admin_brand_logo_review',
@@ -159,7 +159,7 @@ describe('strict router eval', () => {
       'certification_overview', 'certification_learning', 'certification_assessment',
     ]));
     const productionRouter = new AddieRouter('unused');
-    expect(MODEL_ROUTER_CORPUS).toHaveLength(101);
+    expect(MODEL_ROUTER_CORPUS).toHaveLength(103);
     for (const testCase of MODEL_ROUTER_CORPUS) {
       expect(productionRouter.quickMatch(testCase.context), testCase.id).toBeNull();
     }
@@ -173,6 +173,7 @@ describe('strict router eval', () => {
     expect(expectedSets).not.toContain('admin_brands');
     expect(expectedSets).not.toContain('billing');
     expect(expectedSets).not.toContain('admin_prospects');
+    expect(expectedSets).not.toContain('admin_feeds');
   });
 
   it('selects only the bounded directory domain needed by an ordinary request', async () => {
@@ -349,6 +350,33 @@ describe('strict router eval', () => {
     ), 'router-model', 'prompt_parity', testCase);
 
     expect(testCase.expected.toolSets).toEqual(['admin_prospect_research', 'admin_prospect_pipeline']);
+    expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
+    expect(incompleteResult.scores.toolsExact).toBe(false);
+  });
+
+  it('selects only the bounded feed domain needed by an admin request', async () => {
+    for (const [id, toolSet] of [
+      ['admin-feed-monitoring', 'admin_feed_monitoring'],
+      ['admin-feed-curation', 'admin_feed_curation'],
+    ] as const) {
+      const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === id)!;
+      const result = await evaluateRouterCase(fakeProvider(
+        `{"action":"respond","tool_sets":["${toolSet}"],"confidence":"high","requires_depth":false,"reason":"bounded feed workflow"}`,
+      ), 'router-model', 'prompt_parity', testCase);
+      expect(result.scores, id).toMatchObject({ actionExact: true, toolsExact: true });
+    }
+  });
+
+  it('grades the documented bounded dual-domain feed case exactly, regardless of plan order', async () => {
+    const testCase = SYNTHETIC_ROUTER_CORPUS.find((item) => item.id === 'admin-feed-monitoring-and-curation')!;
+    const reversedResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_feed_curation","admin_feed_monitoring"],"confidence":"high","requires_depth":false,"reason":"inspect then approve"}',
+    ), 'router-model', 'prompt_parity', testCase);
+    const incompleteResult = await evaluateRouterCase(fakeProvider(
+      '{"action":"respond","tool_sets":["admin_feed_curation"],"confidence":"high","requires_depth":false,"reason":"approval only"}',
+    ), 'router-model', 'prompt_parity', testCase);
+
+    expect(testCase.expected.toolSets).toEqual(['admin_feed_monitoring', 'admin_feed_curation']);
     expect(reversedResult.scores).toMatchObject({ actionExact: true, toolsExact: true, privilegeLeak: false });
     expect(incompleteResult.scores.toolsExact).toBe(false);
   });

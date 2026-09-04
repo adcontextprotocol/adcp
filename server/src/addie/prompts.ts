@@ -533,6 +533,11 @@ Publishing requires an active subscription; escalate payment errors to an admin.
     text: `### Prospect operations
 - Use pipeline for records and research for enrichment or triage. Never invent inputs.`,
   },
+  {
+    selectedToolSets: ['admin_feed_monitoring', 'admin_feed_curation'],
+    text: `### Feed operations
+- Use monitoring for reads and curation for changes or contacts.`,
+  },
 ];
 
 const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
@@ -541,7 +546,7 @@ const ADMIN_TOOL_REFERENCE_MODULES: Record<string, string> = {
   admin_prospects: `### Admin prospect operations
 - Compatibility surface for add, update, query, claim, research, enrich, triage, and suggestions. Do not fabricate missing inputs.`,
   admin_feeds: `### Admin industry-feed operations
-- Search and maintain industry sources, review feed proposals, and add verified media contacts.`,
+- Compatibility surface for searching and maintaining industry sources, reviewing feed proposals, and adding verified media contacts.`,
   admin_group_structure: `### Admin group-structure operations
 - Create or list chapters and temporary gatherings, and rename working groups.`,
   admin_group_leadership: `### Admin group-leadership operations
@@ -714,6 +719,13 @@ function renderScopedToolCatalog(scope: AddieToolReferenceScope): string {
     if (
       name === 'admin_prospects'
       && ['admin_prospect_pipeline', 'admin_prospect_research']
+        .every(narrowName => selectedNames.includes(narrowName))
+    ) continue;
+    // Explicit legacy callers may carry the hidden feed union alongside both
+    // bounded feed domains. Render each tool only through the visible domains.
+    if (
+      name === 'admin_feeds'
+      && ['admin_feed_monitoring', 'admin_feed_curation']
         .every(narrowName => selectedNames.includes(narrowName))
     ) continue;
     const set = TOOL_SETS[name];

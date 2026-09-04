@@ -116,24 +116,30 @@ export const ADMIN_PROSPECT_DOMAIN_TOOL_SETS = {
   ],
 } as const;
 
+export const ADMIN_FEED_DOMAIN_TOOL_SETS = {
+  admin_feed_monitoring: [
+    "search_industry_feeds",
+    "get_feed_stats",
+    "list_feed_proposals",
+  ],
+  admin_feed_curation: [
+    "add_industry_feed",
+    "approve_feed_proposal",
+    "reject_feed_proposal",
+    "add_media_contact",
+  ],
+} as const;
+
 export const ADMIN_DOMAIN_TOOL_SETS = {
   ...ADMIN_BILLING_DOMAIN_TOOL_SETS,
   ...ADMIN_PROSPECT_DOMAIN_TOOL_SETS,
+  ...ADMIN_FEED_DOMAIN_TOOL_SETS,
   admin_events: [
     "create_event",
     "update_event",
     "manage_event_registrations",
     "check_person_event_status",
     "invite_to_event",
-  ],
-  admin_feeds: [
-    "search_industry_feeds",
-    "add_industry_feed",
-    "get_feed_stats",
-    "list_feed_proposals",
-    "approve_feed_proposal",
-    "reject_feed_proposal",
-    "add_media_contact",
   ],
   admin_group_structure: [
     "create_chapter",
@@ -253,6 +259,20 @@ export const ADMIN_PROSPECTS_TOOLS = [
   "claim_prospect",
   "triage_prospect_domain",
   "suggest_prospects",
+] as const;
+
+export const ADMIN_FEED_MONITORING_TOOLS = ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_monitoring;
+export const ADMIN_FEED_CURATION_TOOLS = ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_curation;
+
+/** Exact compatibility union for explicit callers carrying the pre-split route. */
+export const ADMIN_FEEDS_TOOLS = [
+  "search_industry_feeds",
+  "add_industry_feed",
+  "get_feed_stats",
+  "list_feed_proposals",
+  "approve_feed_proposal",
+  "reject_feed_proposal",
+  "add_media_contact",
 ] as const;
 
 /** Bounded member-facing brand-registry domains for ordinary router plans. */
@@ -1036,12 +1056,30 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     routerVisible: false,
   },
 
+  admin_feed_monitoring: {
+    name: "admin_feed_monitoring",
+    description:
+      "Search industry feeds, inspect feed statistics, or list proposed feeds (admin only)",
+    tools: [...ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_monitoring],
+    adminOnly: true,
+  },
+
+  admin_feed_curation: {
+    name: "admin_feed_curation",
+    description:
+      "Add industry feeds, review feed proposals, or add verified media contacts (admin only)",
+    tools: [...ADMIN_FEED_DOMAIN_TOOL_SETS.admin_feed_curation],
+    adminOnly: true,
+  },
+
+  // Compatibility only for explicit callers carrying the pre-split route.
+  // New router plans use one or both bounded feed domains.
   admin_feeds: {
     name: "admin_feeds",
-    description:
-      "Manage industry news feeds and media contacts, including review of proposed feeds (admin only)",
-    tools: [...ADMIN_DOMAIN_TOOL_SETS.admin_feeds],
+    description: "Legacy combined admin-feed compatibility surface",
+    tools: [...ADMIN_FEEDS_TOOLS],
     adminOnly: true,
+    routerVisible: false,
   },
 
   admin_group_structure: {
