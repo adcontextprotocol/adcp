@@ -1185,14 +1185,31 @@
             body: JSON.stringify({ domain }),
           });
           const body = await res.json();
-          const errors = (body && body.data && body.data.validation && body.data.validation.errors) || [];
+          const validation = body && body.data && body.data.validation;
+          const errors = (validation && validation.errors) || [];
+          const statusCode = validation && validation.status_code;
+          const isMissingFileError = (error) =>
+            error && error.field === 'http_status'
+              && /(?:\b404\b|not found)/i.test(error.message || '');
+          const missingFile = errors.every(isMissingFileError)
+            && (statusCode === 404 || errors.some(isMissingFileError));
+          if (missingFile) {
+            const manifestUrl = `https://${domain}/.well-known/adagents.json`;
+            const builderUrl = `/adagents/builder?domain=${encodeURIComponent(domain)}`;
+            panel.innerHTML = `<h3>adagents.json not found</h3><p>No adagents.json found at <code>${escapeHtml(manifestUrl)}</code> — publish one to register your agent.</p><p><a class="ds-link-subtle" href="${builderUrl}">Open adagents.json builder →</a></p>`;
+            return;
+          }
           if (!errors.length) {
             panel.innerHTML = `<em>No structured errors returned. The fetch may have failed at the network layer — check that <code>${escapeHtml('https://' + domain + '/.well-known/adagents.json')}</code> is reachable.</em>`;
             return;
           }
+          const fieldLabels = {
+            http_status: 'HTTP error',
+            json: 'Parse error',
+          };
           const list = errors
             .slice(0, 8)
-            .map((e) => `<li><strong>${escapeHtml(e.field || 'document')}:</strong> ${escapeHtml(e.message || String(e))}</li>`)
+            .map((e) => `<li><strong>${escapeHtml(fieldLabels[e.field] || e.field || 'Document')}:</strong> ${escapeHtml(e.message || String(e))}</li>`)
             .join('');
           panel.innerHTML = `<h3>Validation errors</h3><ul>${list}</ul>`;
         } catch {
