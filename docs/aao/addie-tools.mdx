@@ -1446,9 +1446,9 @@ The invitation is recorded immediately; the outreach message is a draft for the 
 
 *Source: `server/src/addie/mcp/event-tools.ts`*
 
-## admin_prospects (admin only)
+## admin_prospect_pipeline (admin only)
 
-Manage the prospect pipeline: add, update, enrich, search, claim, triage, and suggest prospect organizations (admin only)
+Add, update, query, or claim prospect records (admin only)
 
 ### `add_prospect`
 
@@ -1462,27 +1462,31 @@ Update information about an existing prospect. Use this to add notes, change sta
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-### `enrich_company`
-
-Research a company using Lusha to get firmographic data (revenue, employee count, industry, etc.). Can be used with a domain or company name.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
 ### `query_prospects`
 
 Query prospects across different views. Use `view` to switch perspective: "all" (default), "my_engaged", "my_followups", "unassigned", or "addie_pipeline".
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
-### `prospect_search_lusha`
-
-Search Lusha's database for potential prospects matching criteria. Use this to find new companies to reach out to based on industry, size, or location.
-
-*Source: `server/src/addie/mcp/admin-tools.ts`*
-
 ### `claim_prospect`
 
 Claim ownership of a prospect. Use owner_type "self" (default) to assign the current human user, or "addie" to assign Addie as SDR owner.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+## admin_prospect_research (admin only)
+
+Research, enrich, triage, or suggest prospect organizations (admin only)
+
+### `enrich_company`
+
+Research a company using Lusha to get firmographic data (revenue, employee count, industry, etc.). Can be used with a domain or company name.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `prospect_search_lusha`
+
+Search Lusha's database for potential prospects matching criteria. Use this to find new companies to reach out to based on industry, size, or location.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 

@@ -283,12 +283,12 @@ describe('Addie tool reference', () => {
 
   it('scopes admin guidance and the authoritative catalog to routed domains', () => {
     const reference = buildAddieToolReference({
-      availableToolNames: getToolsForSets(['admin_prospects'], true, false),
-      selectedToolSetNames: ['admin_prospects'],
+      availableToolNames: getToolsForSets(['admin_prospect_pipeline'], true, false),
+      selectedToolSetNames: ['admin_prospect_pipeline'],
     });
 
-    expect(reference).toContain('### Admin prospect operations');
-    expect(reference).toContain('- **admin_prospects** *(admin only)*');
+    expect(reference).toContain('### Prospect operations');
+    expect(reference).toContain('- **admin_prospect_pipeline** *(admin only)*');
     expect(reference).toContain('query_prospects');
     expect(reference).not.toContain('### Admin organization operations');
     expect(reference).not.toContain('- **admin_organizations**');

@@ -359,7 +359,7 @@ describe('Slack tool-set selection policy', () => {
     expect(publicMember.allowedToolNames).not.toContain('get_account_link');
 
     const admin = selectBoundedRoutedToolSets({
-      plan: { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
+      plan: { action: 'respond', tool_sets: ['admin_prospect_pipeline'], confidence: 'high', reason: 'test', decision_method: 'quick_match' },
       routerAvailable: true,
       source: 'channel',
       isAdmin: true,
@@ -616,7 +616,7 @@ describe('Slack tool-set selection policy', () => {
     ['legacy property-catalog union', { action: 'respond', tool_sets: ['property_catalog'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy organization-admin union', { action: 'respond', tool_sets: ['admin_organizations'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['legacy brand-admin union', { action: 'respond', tool_sets: ['admin_brands'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
-    ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospects'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
+    ['unauthorized admin domain', { action: 'respond', tool_sets: ['admin_prospect_pipeline'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized organization integrity domain', { action: 'respond', tool_sets: ['admin_organization_integrity'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['unauthorized brand logo-review domain', { action: 'respond', tool_sets: ['admin_brand_logo_review'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],
     ['over-broad domains', { action: 'respond', tool_sets: ['knowledge', 'partner_directory', 'events'], confidence: 'high', reason: 'test', decision_method: 'quick_match' }],

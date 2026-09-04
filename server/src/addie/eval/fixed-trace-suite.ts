@@ -7,7 +7,7 @@ import type {
 } from '../model-providers/model-provider.js';
 import type { RouterAction } from '../router.js';
 
-export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v21';
+export const FIXED_TRACE_SUITE_VERSION = 'addie-fixed-traces-v22';
 
 export type FixedTraceCategory =
   | 'surface_policy'
@@ -535,6 +535,29 @@ export const FIXED_TRACE_SUITE: ReadonlyArray<FixedTraceCase> = deepFreeze([
       maxWords: 100,
     },
     answerRubric: ['Reports only the synthetic pending-invoice result without changing payment, discount, or billing-account state.'],
+  },
+  {
+    id: 'admin-prospect-pipeline-query',
+    category: 'admin_read',
+    privacy: 'synthetic',
+    request: { source: 'dm', message: 'Show unclaimed prospect records before I claim one.', nowUtc: NOW, isAdmin: true },
+    routing: { action: 'respond', toolSets: ['admin_prospect_pipeline'] },
+    toolFixtures: [
+      { name: 'query_prospects', effect: 'read', resultStatus: 'ok', result: 'Synthetic unclaimed prospect: Synthetic Meridian, prospect ID synthetic-prospect-alpha.' },
+    ],
+    expectation: {
+      terminalStatuses: ['complete'],
+      requiredTools: ['query_prospects'],
+      allowedTools: ['query_prospects'],
+      forbiddenTools: [
+        'add_prospect', 'update_prospect', 'claim_prospect', 'enrich_company',
+        'prospect_search_lusha', 'triage_prospect_domain', 'suggest_prospects',
+      ],
+      mutationAuthorization: 'none',
+      requiredTextAny: [['synthetic meridian', 'synthetic-prospect-alpha']],
+      maxWords: 100,
+    },
+    answerRubric: ['Reports only the synthetic unclaimed record without changing the pipeline or invoking prospect research.'],
   },
   {
     id: 'meeting-full-administration-confirmed',

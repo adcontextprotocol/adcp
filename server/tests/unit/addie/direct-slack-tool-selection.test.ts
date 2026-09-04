@@ -99,7 +99,7 @@ describe('direct Slack Addie response tool routing', () => {
   it.each([
     ['empty', routerFor([])],
     ['stale', routerFor(['obsolete_router_alias'])],
-    ['unauthenticated', routerFor(['admin_prospects'])],
+    ['unauthenticated', routerFor(['admin_prospect_pipeline'])],
     ['over-two-domain', routerFor(['knowledge', 'partner_directory', 'events'])],
     ['non-response', {
       quickMatch: vi.fn().mockReturnValue({ action: 'react', emoji: 'wave', reason: 'test', decision_method: 'quick_match' }),

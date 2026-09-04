@@ -57,7 +57,8 @@ Treat every tool listed here as available. The router handles selection invisibl
 - **meeting_full_administration** — schedule_meeting, list_upcoming_meetings, get_my_meetings, get_meeting_details, rsvp_to_meeting, cancel_meeting, cancel_meeting_series, update_meeting, add_meeting_attendee, update_topic_subscriptions, manage_committee_topics
 - **committee_leadership** — add_committee_co_leader, remove_committee_co_leader, list_committee_co_leaders, list_working_groups, create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
 - **admin_events** *(admin only)* — create_event, update_event, manage_event_registrations, check_person_event_status, invite_to_event
-- **admin_prospects** *(admin only)* — add_prospect, update_prospect, enrich_company, query_prospects, prospect_search_lusha, claim_prospect, triage_prospect_domain, suggest_prospects
+- **admin_prospect_pipeline** *(admin only)* — add_prospect, update_prospect, query_prospects, claim_prospect
+- **admin_prospect_research** *(admin only)* — enrich_company, prospect_search_lusha, triage_prospect_domain, suggest_prospects
 - **admin_feeds** *(admin only)* — search_industry_feeds, add_industry_feed, get_feed_stats, list_feed_proposals, approve_feed_proposal, reject_feed_proposal, add_media_contact
 - **admin_group_structure** *(admin only)* — create_chapter, list_chapters, create_industry_gathering, list_industry_gatherings, rename_working_group
 - **admin_group_leadership** *(admin only)* — list_working_groups, get_working_group, add_committee_leader, remove_committee_leader, list_committee_leaders
